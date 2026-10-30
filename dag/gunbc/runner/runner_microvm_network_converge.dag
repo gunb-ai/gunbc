@@ -623,8 +623,9 @@ fn host_ruleset_digest_wet(listing: String) -> Sha256FileDigest {
 
 // THE FOUR ROOT-ONLY READINGS ARE SUPPLIED, NOT TAKEN HERE. The ruleset, xtables, userspace-helper and
 // conntrack-expectation surfaces are readable only by root, and the job user this process runs as is
-// granted none of them (gunbc-ghrunner.sudoers stays modeled and uninstalled, operator decision
-// 2026-09-22). They are read by the host's ADMINISTRATOR over the fleet SSH edge in
+// granted none of them (gunbc-ghrunner.sudoers was kept uninstalled by the operator decision of
+// 2026-09-22, REVERSED (ruling gunbc.design_ruling runner_host_sudoers_is_installed, from msg_b6241e41): it is now installed by gunbc.runner.runner_host_file_converge,
+// and these readings stay with the administrator). They are read by the host's ADMINISTRATOR over the fleet SSH edge in
 // gunbc.runner.runner_microvm_network_observe, which cannot live here: gunbc.runner.runner_host_grants consumes this
 // module's operation fold, and the administrator edge reaches through it. What stays here is every
 // reading an unprivileged principal CAN take -- procfs, ip, uname -- and the fold over all of them.

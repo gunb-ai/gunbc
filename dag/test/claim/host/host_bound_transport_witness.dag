@@ -1,0 +1,134 @@
+module test.claim.host.host_bound_transport_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.decl_ref { decl_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.network.endpoint { socket_address }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh }
+import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved }
+import gunbc.host.host_bound_transport {
+  HostBoundTransportResolution, HostBoundTransportResolved, HostBoundTransportRefused, host_bound_transport_of, hosts_reached_at,
+}
+import gunbc.runner.runner_lost_boot_sweep_run {
+  CurrentBootObserved, CurrentBootUnobserved, LostBootCurrentPresent, LostBootCurrentRefused,
+  lost_boot_observed_over, lost_boot_current_from_capture,
+}
+import test.claim.runner.runner_host_medium_witness { closed }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data boot_id: String = "aaaaaaaa-0000-4000-8000-000000000001"
+
+// A FleetSsh transport to a host, built the way production builds it (fleet_locus_ssh_target), over the
+// hermetic sealed context. Absent when the context or the target does not resolve.
+fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "a_transport_to_another_machine_is_not_bound_to_the_swept_host"),
+  decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "a_transport_to_the_swept_host_is_bound_to_it_and_admits_its_boot"),
+  decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_nothing"),
+  decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "the_join_is_disjoint_across_hosts"),
+] {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } =>
+      match fleet_locus_ssh_target(host: host) {
+        SshTargetRefused { endpoint: _, refusal: _ } => none
+        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+      }
+  }
+}
+
+fn target_of(host: HostIdentity) -> SshTarget? {
+  match fleet_locus_ssh_target(host: host) {
+    SshTargetRefused { endpoint: _, refusal: _ } => none
+    SshTargetResolved { target: t } => Present { value: t }
+  }
+}
+
+fn boot_read() -> HostOperationOutcome { HostOperationObserved { stdout: concat(boot_id, "\n"), success: true, stderr: "" } }
+
+// WRONG-HOST RED: a transport to srv2 -- a machine that is not the swept managed host -- never becomes a
+// host-bound transport, so no CurrentBootEvidence can be minted from it for mtcollins1 or for anything.
+test fn a_transport_to_another_machine_is_not_bound_to_the_swept_host() -> Bool {
+  match fleet_transport_to(host: operator_host_srv2) {
+    Absent => false
+    Present { value: t } =>
+      match host_bound_transport_of(transport: t) {
+        HostBoundTransportRefused { cause: c } => string_contains(s: c, pattern: "is not the endpoint of any managed host")
+        HostBoundTransportResolved { bound: _ } => false
+      }
+  }
+}
+
+// POSITIVE CONTROL, through the real acceptance path: the transport to mtcollins1 binds to mtcollins1, the
+// observer's continuation mints evidence for THAT host from the read, and the capture join admits it.
+test fn a_transport_to_the_swept_host_is_bound_to_it_and_admits_its_boot() -> Bool {
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      match host_bound_transport_of(transport: t) {
+        HostBoundTransportRefused { cause: _ } => false
+        HostBoundTransportResolved { bound: b } =>
+          (b.host as String) == "mtcollins1" && (match lost_boot_observed_over(bound: b, read: boot_read()) {
+            CurrentBootUnobserved { cause: _ } => false
+            CurrentBootObserved { evidence: e } =>
+              (e.host == "mtcollins1") && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootObserved { evidence: e }) {
+                LostBootCurrentPresent { host: h, boot: _ } => (h as String) == "mtcollins1"
+                LostBootCurrentRefused { cause: _ } => false
+              })
+          })
+      }
+  }
+}
+
+test fn an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_nothing() -> Bool {
+  (match target_of(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      match fleet_ssh_execution_context_hermetic_witness_fixture() {
+        Absent => false
+        Present { value: ctx } =>
+          // the same host name at another port is a different sshd
+          (match host_bound_transport_of(transport: FleetSsh { target: SshTarget { address: socket_address(host: t.address.host, port: 2222), principal: t.principal }, context: ctx }) {
+            HostBoundTransportRefused { cause: _ } => true
+            HostBoundTransportResolved { bound: _ } => false
+          })
+      }
+  }) && (match host_bound_transport_of(transport: LocalShell) {
+    HostBoundTransportRefused { cause: _ } => true
+    HostBoundTransportResolved { bound: _ } => false
+  }) && (match host_bound_transport_of(transport: SshShell { ssh_host: "mtcollins1" as NonEmptyStr }) {
+    HostBoundTransportRefused { cause: _ } => true
+    HostBoundTransportResolved { bound: _ } => false
+  })
+}
+
+// THE JOIN IS PARAMETRIC IN THE HOST SET: over {srv2, mtcollins1} each host's own target selects exactly
+// that host, so a second managed host would be told apart from the first with no edit to the join.
+test fn the_join_is_disjoint_across_hosts() -> Bool {
+  match target_of(host: operator_host_srv2) {
+    Absent => false
+    Present { value: t2 } =>
+      match target_of(host: operator_host_mtcollins1) {
+        Absent => false
+        Present { value: t1 } => {
+          let both = [operator_host_srv2, operator_host_mtcollins1]
+          count(hosts_reached_at(hosts: both, target: t2)) == 1 && host_is(found: first(hosts_reached_at(hosts: both, target: t2)), want: "srv2")
+            && count(hosts_reached_at(hosts: both, target: t1)) == 1 && host_is(found: first(hosts_reached_at(hosts: both, target: t1)), want: "mtcollins1")
+        }
+      }
+  }
+}
+
+fn host_is(found: HostIdentity?, want: String) -> Bool {
+  match found {
+    Absent => false
+    Present { value: h } => (h as String) == want
+  }
+}

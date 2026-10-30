@@ -1,0 +1,98 @@
+module gunbc.host.boot_medium_reader_key_mint
+
+import std.types { Secret, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.keys { ssh_public_key_line }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host.fleet_keypair_mint {
+  FleetKeypairGeneration, FleetAddVerdict,
+  boot_medium_reader_keypair_mint_subject, fleet_keypair_generate_pair, fleet_keypair_store_verdict,
+  fleet_keypair_privkey_resource, fleet_keypair_mint_verdict, fleet_keypair_mint_verdict_holds,
+  fleet_keypair_mint_receipt_text,
+}
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
+
+// ── MINTING THE BOOT MEDIUM READER KEY (gunbc.host.boot_medium_reader_key) ───────────────────────
+// A main fleet-converge run generates an ed25519 keypair and adds the private half as a version of the
+// key's custody secret, under the run's federated identity and the versionAdder cell the converge grant
+// set binds (gunbc.auth.fleet_secret_accessor_roster boot_medium_reader_key_version_adder_row). The
+// selection over this effect is FederatedScopedGrant (gunbc.auth.privileged_effect_census): it mints a
+// credential whose only reach is one forced sha256sum on the export host, and a mint is undone by
+// minting again.
+//
+// THE PRIVATE HALF EXISTS IN ONE PLACE AFTER THE RUN: the secret version.
+//
+// IT IS WRITTEN ONLY TO MEMORY, ON A MACHINE THAT IS DISCARDED. The mint runs as its own job on a
+// GitHub-hosted runner (gunbc.fleet.fleet_converge_workflow), never on a fleet runner, whose job user is
+// shared with branch jobs on the same host. The key is generated into a fixed directory under /dev/shm,
+// created mode 0700 CREATE-ONLY (an existing directory means an earlier mint died there, and refuses),
+// and findmnt must report the directory's filesystem as tmpfs before ssh-keygen runs. The directory is
+// removed before the mint is judged, and a removal that fails refuses. A run killed between generation
+// and removal (SIGKILL, a runner crash, a cancelled job) runs no cleanup at all: the key then lived only
+// in the RAM of a VM that GitHub discards, and the run left no receipt naming a version, so the operator
+// treats any version it may have added as exposed and rotates it by minting again.
+//
+// IT IS NEVER RENDERED. No receipt arm can carry it, and every diagnostic the mint carries -- the store's
+// refusal body, a transport cause, ssh-keygen's stderr -- passes through the core's
+// redact_fleet_keypair_private against the private half and its wire encoding before any receipt is built,
+// so a diagnostic that happened to echo it is replaced, not printed. The payload itself travels only in the
+// AddVersion request body: the REST transport is in-process (the seed's ureq client, send_string over TLS),
+// with no subprocess argv
+// and no environment variable carrying it. The receipt names the public key, its fingerprint and the
+// version the store assigned, which is what the pin commit lands in gunbc.host.boot_medium_reader_key.
+//
+// THE PIN IS THE IDEMPOTENCE. Once the public key is pinned in the corpus the mint refuses to mint
+// again (a second version beside the pin would be sprawl nothing reads). The versionAdder cell cannot
+// list versions, so a second run before the pin lands adds a second version; its receipt names it, and
+// the pin names the one whose public key it lands.
+
+// THE PIN, READ AS A LINE, IN THE ONE PLACE THAT PROJECTS IT. A reader key is pinned by the authorized_keys
+// value gunbc.host.boot_medium_reader_key holds; the core fold's pin question takes a line, and the fold's
+// arms -- minted, already pinned, refused, outcome unknown -- are the core's own vocabulary, imported and
+// used directly. There is no reader-named twin of any core type: what this module owns is the pin, the
+// receipt path projection, and the wet entry. (Review 88082 removed a parallel Reader* vocabulary whose
+// functions only converted to and from the core's; the reason it once existed -- aliased coproduct arms
+// typecheck and die at run -- is recorded as gunbc.recurring_failure_mode
+// coproduct_alias_arm_membership_untouched_by_the_typechecker, and the answer is to speak the core's
+// vocabulary, not to duplicate it.)
+fn boot_medium_reader_key_pinned_line() -> String? {
+  match boot_medium_reader_ssh_key {
+    Present { value: k } => Present { value: ssh_public_key_line(k: k) }
+    Absent => none
+  }
+}
+
+// WHERE THE RECEIPT GOES: a projection of the subject row's receipt_path, so the row stays the one home of
+// the fact and the wet entry reads it without spelling the field.
+data boot_medium_reader_key_mint_receipt_path: String = boot_medium_reader_keypair_mint_subject.receipt_path
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_key_mint.dag --function boot_medium_reader_key_mint_wet`
+// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderKeyMint
+// (gunbc.fleet.fleet_converge_workflow), which signs in as the fleet identity at main and holds no fleet SSH
+// key. The receipt is written whatever the outcome and uploaded by the step that follows -- the receipt
+// renderer is the core's, keyed on this key's subject row, so a successful mint's receipt reaches the
+// artifact no differently than the host key's does.
+fn boot_medium_reader_key_mint_wet() -> ProcessExit {
+  let verdict = fleet_keypair_mint_verdict(
+    pinned: boot_medium_reader_key_pinned_line(),
+    generate: fn() { fleet_keypair_generate_pair(subject: boot_medium_reader_keypair_mint_subject) },
+    add: fn(payload) {
+      fleet_keypair_store_verdict(
+        project: boot_medium_reader_keypair_mint_subject.privkey_secret.project,
+        secret_id: boot_medium_reader_keypair_mint_subject.privkey_secret.secret,
+        resource: fleet_keypair_privkey_resource(subject: boot_medium_reader_keypair_mint_subject),
+        payload: payload as Secret,
+      )
+    },
+  )
+  let rendered = fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: verdict)
+  let written = Filesystem.Write(path: boot_medium_reader_key_mint_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("boot medium reader key: the receipt could not be written: ", rendered))
+  } else if fleet_keypair_mint_verdict_holds(v: verdict) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot medium reader key mint did not hold:\n", rendered))
+  }
+}

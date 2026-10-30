@@ -1,0 +1,166 @@
+module test.claim.duct_card_catalog_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { MillilitrePerSecond, micrometer_count, watt_count, millilitre_per_second }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.gpu.passive_card_row {
+  CardRow, RowField, FromCitedFigure, NeedsReading, AuxiliaryPowerInput, CpuEightPin, PcieEightPin, CardEastEdge, CardTopEdge,
+  LengthFromBracketFace, BracketInclusionUnstated, row_field_value, row_field_obligation, row_field_stands_on_authority,
+  row_is_sealed, row_unread_fields,
+}
+import extdeps.standards.pcie_cem {
+  CemFullHeight, CemLowProfile, CemFullHeightBracket, CemLowProfileBracket, cem_slot_envelope, cem_class_bracket,
+  cem_class_max_card_height,
+}
+import extdeps.gpu.nvidia_a16 { a16_card_row, a16_stated_length }
+import extdeps.gpu.nvidia_t4 { t4_card_row }
+import extdeps.gpu.nvidia_a2 { a2_card_row }
+import extdeps.gpu.nvidia_t10 { t10_card_row }
+import extdeps.fans.types { BlowerLengthEdge, BlowerDepthEdge }
+import extdeps.fans.delta { delta_bfb1012m_envelope, delta_bfb1012m_outlet, delta_bfb1012m_outlet_standing }
+import product.printed_chassis.duct_card_catalog {
+  duct_cards, duct_card, duct_card_bench_list, end_face_is_read, a16_duct_card, t10_duct_card,
+}
+import product.printed_chassis.gpu_duct { a16_blower_duct_design }
+
+// ═══ THE CARD ROWS SAY WHAT THEIR DOCUMENTS SAY, AND NO MORE ═══
+
+fn slots(row: CardRow) -> Nat? { row_field_value(field: row.slot_count) }
+fn slots_are(row: CardRow, n: Nat) -> Bool { match slots(row: row) { Present { value: m } => m == n Absent => false } }
+fn unread_value<V>(field: RowField<V>) -> Bool { match row_field_value(field: field) { Present { value: _ } => false Absent => true } }
+fn has_obligation<V>(field: RowField<V>) -> Bool { match row_field_obligation(field: field) { Present { value: _ } => true Absent => false } }
+
+fn is_low_profile(row: CardRow) -> Bool {
+  match row_field_value(field: row.height_class) { Present { value: CemLowProfile } => true Present { value: CemFullHeight } => false Absent => false }
+}
+
+fn aux_inputs(row: CardRow) -> List<AuxiliaryPowerInput>? { row_field_value(field: row.auxiliary_power) }
+
+fn has_cpu_eight_pin_on_far_end(row: CardRow) -> Bool {
+  match aux_inputs(row: row) {
+    Present { value: inputs } => any(inputs, i => match i.connector { CpuEightPin => match i.edge { CardEastEdge => true CardTopEdge => false } PcieEightPin => false })
+    Absent => false
+  }
+}
+
+fn is_slot_powered(row: CardRow) -> Bool {
+  match aux_inputs(row: row) { Present { value: inputs } => length(list: inputs) == 0 Absent => false }
+}
+
+// THE A16 ROW IS THE BRIEF: full height, two slots, the CPU 8-pin on the east (far) edge, board power read
+// off the board catalog (250 W), its length the 10.5-inch class with the bracket's inclusion unstated.
+test fn w_the_a16_row_reads_its_brief() -> Bool {
+  !is_low_profile(row: a16_card_row)
+    && slots_are(row: a16_card_row, n: 2)
+    && has_cpu_eight_pin_on_far_end(row: a16_card_row)
+    && match row_field_value(field: a16_card_row.board_power) { Present { value: w } => watt_count(w: w) == 250 Absent => false }
+    && match row_field_value(field: a16_card_row.length) {
+         Present { value: l } => micrometer_count(m: l.length) == micrometer_count(m: a16_stated_length) && match l.reference { BracketInclusionUnstated => true LengthFromBracketFace => false }
+         Absent => false
+       }
+    && row_field_stands_on_authority(field: a16_card_row.auxiliary_power)
+}
+
+// THE BRIEF IS NOT A DRAWING: the A16's height and its required airflow are obligations, not numbers.
+test fn w_the_a16_row_names_what_its_brief_does_not_publish() -> Bool {
+  !row_is_sealed(row: a16_card_row)
+    && unread_value(field: a16_card_row.height)
+    && unread_value(field: a16_card_row.required_airflow)
+    && length(list: row_unread_fields(row: a16_card_row)) == 2
+}
+
+// THE TWO LOW-PROFILE CARDS ARE SLOT-POWERED, AND SAY SO AS A CITED EMPTY LIST: an empty list is a fact
+// a part may act on (no connector, so no keep-out), which an unread field is not.
+test fn w_t4_and_a2_are_low_profile_and_slot_powered() -> Bool {
+  is_low_profile(row: t4_card_row) && is_low_profile(row: a2_card_row)
+    && is_slot_powered(row: t4_card_row) && is_slot_powered(row: a2_card_row)
+    && !has_cpu_eight_pin_on_far_end(row: t4_card_row)
+    && row_field_stands_on_authority(field: t4_card_row.auxiliary_power)
+    && row_field_stands_on_authority(field: a2_card_row.auxiliary_power)
+    && slots_are(row: t4_card_row, n: 1)
+    && slots_are(row: a2_card_row, n: 1)
+}
+
+// THE DRAWN FIGURES, as the two briefs dimension them: T4 169.53 x 68.90 MAX, A2 (167.64) x 68.90, both
+// from the bracket face. Each sits inside its class's maximum height.
+test fn w_the_low_profile_drawings_are_transcribed_as_drawn() -> Bool {
+  let lp_max = micrometer_count(m: cem_class_max_card_height(class: CemLowProfile).value)
+  match row_field_value(field: t4_card_row.length) { Present { value: l } => micrometer_count(m: l.length) == 169530 Absent => false }
+    && match row_field_value(field: a2_card_row.length) { Present { value: l } => micrometer_count(m: l.length) == 167640 Absent => false }
+    && match row_field_value(field: t4_card_row.height) { Present { value: h } => micrometer_count(m: h) == 68900 && micrometer_count(m: h) <= lp_max Absent => false }
+    && match row_field_value(field: a2_card_row.height) { Present { value: h } => micrometer_count(m: h) == 68900 && micrometer_count(m: h) <= lp_max Absent => false }
+}
+
+// A LOW-PROFILE CARD WEARS THE LOW-PROFILE BRACKET in a low-profile slot: its class selects it, and the
+// full-height bracket it ships beside is an adapter, not a second class.
+test fn w_the_height_class_selects_the_bracket() -> Bool {
+  match cem_class_bracket(class: CemLowProfile) { CemLowProfileBracket => true CemFullHeightBracket => false }
+    && match cem_class_bracket(class: CemFullHeight) { CemFullHeightBracket => true CemLowProfileBracket => false }
+}
+
+// NO AIRFLOW FIGURE IS PUBLISHED FOR ANY OF THEM, and none is typed: every row's required airflow is an
+// obligation naming the document to read.
+test fn w_no_row_carries_an_unpublished_airflow() -> Bool {
+  all(duct_cards, c => unread_value(field: c.row.required_airflow) && has_obligation(field: c.row.required_airflow))
+}
+
+// THE T10 HAS NO DOCUMENT, SO IT HAS NO NUMBERS: all nine fields are obligations.
+test fn w_the_t10_row_carries_no_unbacked_numbers() -> Bool {
+  !row_is_sealed(row: t10_card_row) && length(list: row_unread_fields(row: t10_card_row)) == 9
+    && unread_value(field: t10_card_row.slot_count)
+}
+
+// RED CONTROL FOR THE SEAL: a T4 row whose figures were transcribed second-hand instead of read off the
+// brief does not seal, even with every value present -- the standing is part of the fact.
+test fn w_a_transcribed_figure_does_not_seal_a_row() -> Bool {
+  let typed = TranscribedUncited { read_obligation: "fixture: typed from a reseller listing" }
+  let t4_typed = CardRow {
+    id: t4_card_row.id, product: t4_card_row.product,
+    height_class: FromCitedFigure { value: CemLowProfile, standing: typed },
+    slot_count: t4_card_row.slot_count, length: t4_card_row.length, height: t4_card_row.height, brackets: t4_card_row.brackets,
+    auxiliary_power: t4_card_row.auxiliary_power, board_power: t4_card_row.board_power,
+    required_airflow: FromCitedFigure { value: millilitre_per_second_fixture(), standing: typed },
+    airflow_direction: t4_card_row.airflow_direction, sources: t4_card_row.sources,
+  }
+  !row_is_sealed(row: t4_typed) && length(list: row_unread_fields(row: t4_typed)) == 2
+}
+
+fn millilitre_per_second_fixture() -> MillilitrePerSecond { millilitre_per_second(count: 1) }
+
+// ═══ THE CATALOG: VENDOR ROW + THIS REPOSITORY'S READING OF THE FACE ═══
+
+// Only the A16's face has been read; the other three cards' faces are bench obligations, and the bench
+// list carries a heading per card plus every unread line -- so a fourth card shows up where the operator
+// reads it, with no other change.
+test fn w_the_catalog_joins_rows_to_read_faces() -> Bool {
+  length(list: duct_cards) == 4
+    && end_face_is_read(card: a16_duct_card) && !end_face_is_read(card: t10_duct_card)
+    && length(list: filter(duct_cards, c => end_face_is_read(card: c))) == 1
+    && length(list: duct_card_bench_list()) == 4 + 2 + (9 + 1) + (1 + 1) + (1 + 1)
+    && match duct_card(id: "t4") { Present { value: c } => c.row.id == "t4" Absent => false }
+    && match duct_card(id: "a100") { Present { value: _ } => false Absent => true }
+}
+
+// ═══ THE PIECES THE GEOMETRY WILL DERIVE FROM ═══
+
+// THE SLOT PITCH IS THE CEM SLOT WIDTH TIMES THE CARD'S SLOTS. For the dual-slot A16 that is the 40.64 mm
+// the blower design carries as a constant today (product.printed_chassis.gpu_duct a16_blower_duct_design),
+// so deriving it there preserves the A16 value.
+test fn w_the_a16_slot_envelope_is_the_designed_pitch() -> Bool {
+  match row_field_value(field: a16_card_row.slot_count) {
+    Present { value: n } => micrometer_count(m: cem_slot_envelope(slot_count: n).value) == micrometer_count(m: a16_blower_duct_design.slot_pitch)
+    Absent => false
+  }
+}
+
+// THE DELTA OUTLET IS READ, AND IT CLOSES ON THE HOUSING: it is on the 94.4 mm (depth) edge, its frame
+// fits along that edge, and its opening plus the drawing's two 1.85 mm walls is the 33.0 mm thickness.
+test fn w_the_blower_outlet_is_cited_and_closes_on_the_housing() -> Bool {
+  match delta_bfb1012m_outlet.edge { BlowerDepthEdge => true BlowerLengthEdge => false }
+    && micrometer_count(m: delta_bfb1012m_outlet.frame_along_edge) <= micrometer_count(m: delta_bfb1012m_envelope.housing_depth)
+    && micrometer_count(m: delta_bfb1012m_outlet.opening_along_edge) < micrometer_count(m: delta_bfb1012m_outlet.frame_along_edge)
+    && micrometer_count(m: delta_bfb1012m_outlet.opening_across_thickness) + 2 * 1850 == micrometer_count(m: delta_bfb1012m_envelope.thickness)
+    && match delta_bfb1012m_outlet_standing { CitedToAuthority { authority: _ } => true TranscribedUncited { read_obligation: _ } => false ObservedByReceipt { observed: _ } => false }
+}

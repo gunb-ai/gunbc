@@ -11,14 +11,34 @@ import extdeps.ssh.session {
   SshSessionExecResult,
 }
 import extdeps.ssh.session
+import extdeps.ssh.openssh_remote_command { openssh_server_version_argv }
+import extdeps.ssh.openssh_remote_command
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_words,
-  shape_ssh_shell_exec, ssh_target_wire }
+  shape_ssh_shell_exec, ssh_target_wire,
+  fleet_posix_quoted_leg,
+  PosixLoginShellProof,
+  PosixRemoteRouteStanding,
+  PosixRemoteRouteCovered,
+  PosixRemoteRouteUnmeasured,
+  PosixRemoteRouteUncovered,
+  posix_remote_route_standing,
+  posix_remote_route_refusal_text,
+  fleet_openssh_server_binary,
+  LoginShellStanding,
+  LoginShellUnreadable,
+  LoginShellPosix,
+  LoginShellNotPosix,
+  login_shell_standing,
+}
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
+  exec_fleet_remote_leg,
+  exec_as_fleet_principal_on_fresh_connection,
+  exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
@@ -181,6 +201,28 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
 // THE SESSION IS A FACT OF THE PRINCIPAL, READ HERE RATHER THAN ASSUMED. This arm named
 // shape_fleet_ssh_exec, so every typed argv run against the bootstrap principal was a key-session
 // leg against an account that holds no key. gunbc.fleet.fleet_bootstrap_principal_session decides.
+// THE SAME TYPED LEG ON A CONNECTION OF ITS OWN (gunbc.fleet.fleet_bootstrap_principal_session
+// exec_as_fleet_principal_on_fresh_connection): for a readback that must authenticate as a new login.
+fn typed_argv_exec_over_fleet_ssh_fresh_connection(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+) -> TypedArgvExecOutcome {
+  match portable_remote_words(raws: argv) {
+    Absent => TypedArgvExecRefused {
+      reason: concat(
+        "remote words are not portable under the far-side shell re-parse, so the leg was NOT attempted for ",
+        ssh_target_wire(target: target) as String,
+      ),
+    }
+    Present { value: words } =>
+      match exec_as_fleet_principal_on_fresh_connection(context: context, target: target, words: words) {
+        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+      }
+  }
+}
+
 fn typed_argv_exec_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -200,6 +242,88 @@ fn typed_argv_exec_over_fleet_ssh(
       ) {
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
         FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+      }
+  }
+}
+
+// THE SAME LEG WITH ITS PAYLOAD ON STDIN: the words are admitted exactly as above, and the bytes go to
+// the far side's stdin through exec_as_fleet_principal_with_stdin, the leg typed_remote_file_write
+// already runs against the same principal, so a payload is never a word the far-side shell re-parses.
+fn typed_argv_exec_over_fleet_ssh_with_stdin(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+  stdin_payload: String,
+) -> TypedArgvExecOutcome {
+  match portable_remote_words(raws: argv) {
+    Absent => TypedArgvExecRefused {
+      reason: concat(
+        "remote words are not portable under the far-side shell re-parse, so the leg was NOT attempted for ",
+        ssh_target_wire(target: target) as String,
+      ),
+    }
+    Present { value: words } =>
+      match exec_as_fleet_principal_with_stdin(
+        context: context, target: target, words: words, stdin_payload: stdin_payload,
+        credential: BootstrapCredentialInRunEnvironment,
+      ) {
+        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+      }
+  }
+}
+
+// THE LOGIN SHELL OF THE TARGET PRINCIPAL, READ, NOT ASSUMED: `getent passwd <principal>` over the bare-word edge (every
+// word is in the alphabet), parsed by the one mint of PosixLoginShellProof.
+fn read_fleet_login_shell(target: SshTarget, context: FleetSshExecutionContext) -> LoginShellStanding {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["getent", "passwd", target.principal as String]) {
+    TypedArgvExecRefused { reason: why } => LoginShellUnreadable { principal: target.principal, reason: why }
+    TypedArgvExecConverged { result: r } => login_shell_standing(target: target, success: r.success, output: r.stdout)
+  }
+}
+
+// THE TWO RELEASES THE QUOTED ROUTE DEPENDS ON, MEASURED IN THE SAME CALL: the executor's `ssh -V` (the client the
+// transport's argv names) and the target's `sshd -V` over the bare-word edge (both words in the alphabet). `-V` prints
+// on stderr (ssh.c, sshd.c case 'V').
+fn read_posix_remote_route(target: SshTarget, context: FleetSshExecutionContext, proof: PosixLoginShellProof) -> PosixRemoteRouteStanding {
+  let client = openssh.Client.Version()
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: openssh_server_version_argv(binary: fleet_openssh_server_binary)) {
+    TypedArgvExecRefused { reason: why } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: why)
+    TypedArgvExecConverged { result: r } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: r.success, server_output: r.stderr)
+  }
+}
+
+// THE QUOTED ROUTE: the same leg as typed_argv_exec_over_fleet_ssh, for words the alphabet refuses. It reads the target
+// principal's login shell ITSELF, in this call, over the same target and context, and quotes only under the proof that
+// read mints, and only over a route whose client and server releases it has just measured and found covered. The
+// quoted leg it runs takes its target from that proof (FleetPosixQuotedLeg has no target of its own), so
+// no other target can receive the quoted words, and no proof carried in from an earlier read authorizes them.
+fn typed_argv_exec_over_fleet_ssh_posix(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+) -> TypedArgvExecOutcome {
+  match read_fleet_login_shell(target: target, context: context) {
+    LoginShellUnreadable { principal: _, reason: r } => TypedArgvExecRefused { reason: concat("the target's login shell could not be read, so no word is quoted: ", r) }
+    LoginShellNotPosix { principal: _, shell: sh } => TypedArgvExecRefused { reason: concat("the target's login shell is not a POSIX sh, so no word is quoted: ", sh) }
+    LoginShellPosix { proof: shell } =>
+      match read_posix_remote_route(target: target, context: context, proof: shell) {
+        PosixRemoteRouteUnmeasured { side: sd, reason: r } => TypedArgvExecRefused { reason: concat("no word is quoted: ", posix_remote_route_refusal_text(standing: PosixRemoteRouteUnmeasured { side: sd, reason: r })) }
+        PosixRemoteRouteUncovered { side: sd, release_name: rl } => TypedArgvExecRefused { reason: concat("no word is quoted: ", posix_remote_route_refusal_text(standing: PosixRemoteRouteUncovered { side: sd, release_name: rl })) }
+        PosixRemoteRouteCovered { route: route } =>
+          match fleet_posix_quoted_leg(route: route, argv: argv) {
+            Absent => TypedArgvExecRefused {
+              reason: concat("a remote word is empty or carries NUL, which no argv carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
+            }
+            Present { value: leg } =>
+              match exec_fleet_remote_leg(
+                context: context, leg: leg,
+                credential: BootstrapCredentialInRunEnvironment,
+              ) {
+                FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+                FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+              }
+          }
       }
   }
 }

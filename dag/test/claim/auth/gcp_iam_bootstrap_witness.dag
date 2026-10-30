@@ -1,26 +1,30 @@
 module test.claim.auth.gcp_iam_bootstrap_witness
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, EpochSecs, List, NonEmptyStr, String }
+import std.optional { Present }
+import std.measure { second_count }
+import std.algebra { string_contains }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
+  iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_delta_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
   BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
   iam_bootstrap_identity_federations, iam_bootstrap_bound_secrets, BootstrapPool, BootstrapAccount,
 }
 import gunbc.auth.gcp_iam_converge {
   gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account,
-  ConvergeSecretPolicyRole, ConvergeCreateRole, iam_converge_role_id,
+  ConvergeSecretPolicyRole, ConvergeCreateRole, iam_converge_role_id, gcp_iam_observe_dedicated_federation,
 }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, journal_object_name }
 import gunbc.auth.gcp_iam_bootstrap {
-  custody_container_step, custody_after_create, custody_journal_of, custody_journal_name, custody_journal_wire, custody_candidate_operations,
+  iam_bootstrap_quota_wait_plan, QuotaPlanRetryNow, QuotaPlanSleep, QuotaPlanRefused,
+  custody_container_step, custody_after_create, custody_journal_of, custody_records_of,
   CustodyOperationRecords, CustodyJournalRead, CustodyJournalUnreadable,
-  IamAuthorityRecord, AuthorityRecordAbsent, AuthorityRecordPresent, AuthorityRecordRefused,
   CustodyCreateJournal, CustodyContainerStep, CustodyAfterCreate,
-  CustodyMarkElected, CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed,
   CustodyObservedPresent, CustodyObservedAbsent, CustodyObservationRefused,
   CustodyCreated, CustodyCreateRefused, CustodyCreateOutcomeUnknown,
   CustodyContainerLeave, CustodyContainerSettle, CustodyContainerCreateBare, CustodyContainerRefuse,
@@ -146,13 +150,20 @@ test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool
 
 test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
   let refused = RestStatusRefused { status: 403, body: "permission not established" }
-  bootstrap_deny_retry_admitted(refusal: refused, remaining: 2, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 1, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: refused, remaining: 30, live: false)
-    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
-    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
+  bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: refused, admitted_status: 403, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestTransportRefused { cause: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 500, body: "unknown commit" }, admitted_status: 403, remaining: 30, live: true)
 }
 
+test fn a_429_retry_is_admitted_only_for_a_429_with_budget_and_live_authority() -> Bool {
+  let limited = RestStatusRefused { status: 429, body: "x" }
+  bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(refusal: limited, admitted_status: 429, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(refusal: RestStatusRefused { status: 403, body: "x" }, admitted_status: 429, remaining: 30, live: true)
+}
 
 test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> Bool {
   !any(bootstrap_authority_requires(subject: TemporaryAuthorityRetired), prerequisite => prerequisite == DenyPolicyReadback)
@@ -179,8 +190,12 @@ test fn empty_pool_policy_does_not_authorize_unconditional_publication() -> Bool
 }
 
 
+// THE INITIALIZER SEEDS ROOT POOLS ONLY (gunbc#14360 side chat: the ceremony binds root cells only), so
+// its fixture is iam-observe's own pool; a target pool such as the heal publisher's has no ceremony
+// initial cells, and its first, unfenced policy publication is an open question put to the reviewer
+// rather than a ceremony write of delta cells (the delta refuses an etag-less pool read, typed).
 test fn pool_initialization_rejects_existing_unfenced_bindings() -> Bool {
-  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  let cells = iam_bootstrap_pool_initial_cells(pool: gcp_iam_observe_dedicated_federation().pool_id)
   count(cells) > 0
     && iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Absent)
     && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Present { value: gcp_cells_bindings(cs: cells) }, etag: Absent, version: Absent)
@@ -188,10 +203,11 @@ test fn pool_initialization_rejects_existing_unfenced_bindings() -> Bool {
     && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Present { value: 99 })
     && !iam_bootstrap_pool_seedable(audit_configured: true, bindings: Absent, etag: Absent, version: Absent)
     && count(iam_bootstrap_pool_initial_cells(pool: "undeclared-pool")) == 0
+    && count(iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")) == 0
 }
 
 test fn pool_initialization_readback_requires_exact_cells_and_a_revision() -> Bool {
-  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  let cells = iam_bootstrap_pool_initial_cells(pool: gcp_iam_observe_dedicated_federation().pool_id)
   let policy = GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "revision", version: 3 }
   iam_bootstrap_pool_initialized(policy: policy, cells: cells)
     && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: policy.bindings, etag: "", version: 3 }, cells: cells)
@@ -238,72 +254,75 @@ test fn grant_set_secrets_are_bound_per_secret_never_on_the_project() -> Bool {
     && all(gcp_iam_converge_grant_set_secrets(), x =>
       binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account))
         && binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
-    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)), b =>
+    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)
+        && b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), b =>
       b.cell.role == iam_converge_role_id(r: ConvergeCreateRole))
     && !any(iam_bootstrap_role_permissions(role: BootstrapApplyRole { role: ConvergeCreateRole }), p => starts_with(s: p, prefix: "secretmanager."))
 }
 
 data custody_x: NonEmptyStr = "cloudflare-r2-workspace-read-token"
 
-fn valid(op: String) -> IamAuthorityRecord { AuthorityRecordPresent { bytes: custody_journal_wire(secret: custody_x, operation: op) } }
-
-fn ops(op: String, elected: IamAuthorityRecord, closed: IamAuthorityRecord, refused: IamAuthorityRecord, disposed: IamAuthorityRecord) -> CustodyOperationRecords {
-  CustodyOperationRecords { operation: op, elected: elected, closed: closed, refused: refused, disposed: disposed }
+// A JOURNAL AS LISTED: the object names a durable bootstrap journal holds for custody_x. The checkout is
+// not an input at all, which is the control for "an empty checkout cannot reissue".
+fn mark(op: String, m: JournalMark) -> String {
+  journal_object_name(subject: JournalBareSecretCreate, resource_key: iam_bootstrap_resource_key(resource: BootstrapSecret { secret: custody_x }), consent: op, mark: m) as String
 }
 
-fn elected_only(op: String) -> CustodyOperationRecords { ops(op: op, elected: valid(op: op), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordAbsent) }
+fn journal_with(names: List<String>) -> CustodyCreateJournal {
+  custody_journal_of(secret: custody_x, records: custody_records_of(secret: custody_x, names: names))
+}
 
 fn creates(st: CustodyContainerStep) -> Bool {
-  match st { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRefuse { reason: _ } => false }
+  match st { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRefuse { reason: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => false }
 }
 
 fn refuses(st: CustodyContainerStep) -> Bool {
-  match st { CustodyContainerRefuse { reason: _ } => true  CustodyContainerCreateBare => false  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false }
+  match st { CustodyContainerRefuse { reason: _ } => true  CustodyContainerCreateBare => false  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => true }
 }
 
 fn stops_unresolved(a: CustodyAfterCreate) -> Bool {
   match a { CustodyCreateStops { reason: _ } => true  CustodyReadBack => false  CustodyCreateRefusedDefinitely { reason: _ } => false }
 }
 
-fn absent_step(records: List<CustodyOperationRecords>) -> CustodyContainerStep {
-  custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: custody_journal_of(secret: custody_x, records: records))
+fn absent_step(names: List<String>) -> CustodyContainerStep {
+  custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: journal_with(names: names))
 }
 
 // THE CROSS-INVOCATION CONTROL. Run 1 reads an empty journal, observes the container absent, elects
 // and issues the create, and the outcome is unknown: the step stops and records nothing beyond its
-// election. Run 2 reads that election, discovered from the file name run 1 wrote and read with run
-// 1's wire, and again observes absent -- and must refuse, never reaching the create. The REDs are a
+// election. Run 2, in ANOTHER WORKSPACE with an empty checkout, lists that election from the durable
+// journal and again observes absent -- and must refuse, never reaching the create. The REDs are a
 // run-2 step that ignores the journal, and an unknown outcome treated as a definite refusal.
 test fn an_ambiguous_create_blocks_every_later_automatic_create() -> Bool {
-  let run1_step = absent_step(records: [])
+  let run1_step = absent_step(names: [])
   let run1_after = custody_after_create(secret: custody_x, c: CustodyCreateOutcomeUnknown { cause: "timeout" })
-  let discovered = custody_candidate_operations(secret: custody_x, listing: custody_journal_name(secret: custody_x, operation: "op1", mark: CustodyMarkElected))
-  let run2_step = absent_step(records: map(discovered, op => elected_only(op: op)))
-  creates(st: run1_step) && stops_unresolved(a: run1_after) && count(discovered) == 1 && refuses(st: run2_step) && !creates(st: run2_step)
+  let run2_step = absent_step(names: [mark(op: "op1", m: JournalElection)])
+  let run2_new_digest = absent_step(names: [mark(op: "op1", m: JournalElection)])
+  creates(st: run1_step) && stops_unresolved(a: run1_after) && count(custody_records_of(secret: custody_x, names: [mark(op: "op1", m: JournalElection)])) == 1
+    && refuses(st: run2_step) && !creates(st: run2_step) && refuses(st: run2_new_digest)
 }
 
 // SETTLE BY OBSERVED PRESENT: an unresolved election whose container is now observed present is
 // closed, never re-created. The RED is a present observation that ignores the unresolved election.
 test fn an_unresolved_create_is_settled_by_observing_the_container() -> Bool {
-  match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [elected_only(op: "op1")])) {
+  match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: journal_with(names: [mark(op: "op1", m: JournalElection)])) {
     CustodyContainerSettle { operations: settled } => count(settled) == 1 && all(settled, o => o == "op1")
     CustodyContainerLeave => false
     CustodyContainerCreateBare => false
     CustodyContainerRefuse { reason: _ } => false
+    CustodyContainerRunCeremonyFirst { ceremony: _ } => false
   }
 }
 
-// A TERMINAL MARK SETTLES NOTHING UNLESS ITS BYTES ARE THE EXACT WIRE. A valid election beside a
-// disposed marker that is empty (a disposition interrupted after WriteCreateNew), carries another
-// operation's wire, or cannot be read, with the container absent, refuses and never creates. A
-// terminal mark with no election refuses too. Positive control: the exact wire releases a new
-// operation. The RED is a fold that believes a mark without comparing its bytes.
-test fn a_terminal_mark_settles_only_with_its_exact_wire() -> Bool {
-  refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordPresent { bytes: "" })]))
-    && refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op2"))]))
-    && refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordRefused)]))
-    && refuses(st: absent_step(records: [ops(op: "op1", elected: AuthorityRecordAbsent, closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op1"))]))
-    && creates(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op1"))]))
+// A TERMINAL MARK SETTLES NOTHING WITHOUT ITS ELECTION, and an election with no terminal mark under ANY
+// earlier operation blocks a new operation's create: a closure, refusal or disposal with no election,
+// or an operation that is not a safe identity, makes the journal unreadable, which refuses. Positive
+// control: a disposal of the earlier election releases a new operation.
+test fn a_terminal_mark_settles_only_its_own_election() -> Bool {
+  refuses(st: absent_step(names: [mark(op: "op1", m: JournalDisposal)]))
+    && refuses(st: absent_step(names: [mark(op: "op1", m: JournalElection), mark(op: "op2", m: JournalDisposal)]))
+    && refuses(st: absent_step(names: [mark(op: "op1", m: JournalElection), mark(op: "op2", m: JournalElection), mark(op: "op2", m: JournalDisposal)]))
+    && creates(st: absent_step(names: [mark(op: "op1", m: JournalElection), mark(op: "op1", m: JournalDisposal)]))
 }
 
 // POSITIVE CONTROLS: an empty journal and an absent container create; a definite refusal journaled
@@ -311,15 +330,15 @@ test fn a_terminal_mark_settles_only_with_its_exact_wire() -> Bool {
 // an unreadable journal or an unobservable container refuses; and candidate discovery never takes
 // another secret's marks as this one's (the '.' around the id).
 test fn resolved_journals_admit_a_new_create_and_unreadable_ones_refuse() -> Bool {
-  let other = custody_journal_name(secret: "cloudflare-r2-workspace-read-token-old" as NonEmptyStr, operation: "op9", mark: CustodyMarkElected)
-  creates(st: absent_step(records: []))
+  let other = journal_object_name(subject: JournalBareSecretCreate, resource_key: iam_bootstrap_resource_key(resource: BootstrapSecret { secret: "cloudflare-r2-workspace-read-token-old" as NonEmptyStr }), consent: "op9", mark: JournalElection) as String
+  creates(st: absent_step(names: []))
     && (match custody_after_create(secret: custody_x, c: CustodyCreateRefused { cause: "409" }) { CustodyCreateRefusedDefinitely { reason: _ } => true  CustodyReadBack => false  CustodyCreateStops { reason: _ } => false })
     && (match custody_after_create(secret: custody_x, c: CustodyCreated) { CustodyReadBack => true  CustodyCreateRefusedDefinitely { reason: _ } => false  CustodyCreateStops { reason: _ } => false })
-    && creates(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: valid(op: "op1"), disposed: AuthorityRecordAbsent)]))
-    && count(custody_candidate_operations(secret: custody_x, listing: other)) == 0
-    && (match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [])) { CustodyContainerLeave => true  CustodyContainerSettle { operations: _ } => false  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false })
+    && creates(st: absent_step(names: [mark(op: "op1", m: JournalElection), mark(op: "op1", m: JournalRefusal)]))
+    && count(custody_records_of(secret: custody_x, names: [other])) == 0
+    && (match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: journal_with(names: [])) { CustodyContainerLeave => true  CustodyContainerSettle { operations: _ } => false  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false  CustodyContainerRunCeremonyFirst { ceremony: _ } => false })
     && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: CustodyJournalUnreadable { cause: "list failed" }))
-    && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservationRefused { cause: "403" }, journal: custody_journal_of(secret: custody_x, records: [])))
+    && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservationRefused { cause: "403" }, journal: journal_with(names: [])))
 }
 
 fn with_inputs(f: DedicatedFederation, pool_id: NonEmptyStr, display_name: NonEmptyStr, provider_id: NonEmptyStr) -> DedicatedFederation {
@@ -391,16 +410,39 @@ test fn the_resource_id_syntax_holds_at_its_boundaries() -> Bool {
 }
 
 // The capabilities stage binds a role on every one of these, so the identities stage creates each
-// bare when absent. The two named secrets were absent on 2026-10-14 and would have refused it.
+// bare when absent. It binds ROOT cells only (gunbc#14360 side chat): a grant-set or target secret is
+// a delta subject, created bare by the delta apply (gunbc.auth.gcp_iam_bootstrap_delta_route
+// settle_existence), so it is not the ceremony's to create. The two named secrets (absent on
+// 2026-10-14) are therefore delta secrets now.
 test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
   let bare = map(iam_bootstrap_bound_secrets(), s => s as String)
-  all(iam_bootstrap_capability_bindings(), b => match b.resource {
+  all(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
     BootstrapSecret { secret } => any(bare, s => s == (secret as String))
+    BootstrapBucket { bucket: _ } => true
     BootstrapProject => true
     BootstrapPool { pool: _ } => true
     BootstrapAccount { account: _ } => true
   })
-    && all(gcp_iam_converge_grant_set_secrets(), g => any(bare, s => s == (g as String)))
-    && any(bare, s => s == "hetzner-cloud-default-read-api-key")
-    && any(bare, s => s == "bmc-mtjade1-gunbc")
+    && count(bare) > 0
+    && all(gcp_iam_converge_grant_set_secrets(), g => !any(bare, s => s == (g as String)))
+    && !any(bare, s => s == "hetzner-cloud-default-read-api-key")
+    && any(iam_bootstrap_delta_bindings(), d => match d.resource { BootstrapSecret { secret } => (secret as String) == "bmc-mtjade1-gunbc"  BootstrapProject => false  BootstrapPool { pool: _ } => false  BootstrapAccount { account: _ } => false  BootstrapBucket { bucket: _ } => false })
+}
+
+// THE QUOTA WAIT'S DECISION AT ITS BOUNDARY: the refusal, the clock's reading and the instant reduction are
+// SUPPLIED ("T0" is epoch 1000, quota 1/min). Sleep carries exactly window_start+window-now; a rolled window
+// retries now; every missing fact (no ErrorInfo, no clock, a window beyond the allowance) refuses typed.
+data quota_429_body: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_limit_value\":\"10\",\"quota_unit\":\"1/min\",\"window_start_time\":\"T0\"}}]}}"
+data quota_429_daily_body: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_limit_value\":\"10\",\"quota_unit\":\"1/d\",\"window_start_time\":\"T0\"}}]}}"
+
+fn quota_fake_epoch(s: String) -> EpochSecs? { if s == "T0" { Present { value: 1000 } } else { none } }
+
+test fn the_quota_wait_plan_sleeps_the_derived_wait_and_refuses_each_missing_fact() -> Bool {
+  let limited = RestStatusRefused { status: 429, body: quota_429_body }
+  (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanSleep { wait } => second_count(s: wait) == 50  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisObserved { millis: 1060000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRetryNow => true  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisRefused { detail: "no clock" }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "needs the clock")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestStatusRefused { status: 429, body: "slow down" }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "without a derivable wait")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestStatusRefused { status: 429, body: quota_429_daily_body }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "actuation allowance")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestTransportRefused { cause: "x" }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "no body")  _ => false })
 }

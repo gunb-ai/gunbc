@@ -1,0 +1,280 @@
+module test.claim.spark.serving_performance_subject_witness
+
+import std.types { Bool, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { token_count, watt }
+import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
+import extdeps.nvidia.nccl { NcclRealizedTransport, NcclTransportSocket }
+import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4 }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject, serving_engine_vllm, serving_engine_ninfer,
+  serving_accelerator_realization, HostLinkNegotiated, HostLinkUnread,
+  AcceleratorSparkGb10, AcceleratorUnread, AcceleratorCited, ServingAcceleratorAxis,
+  ServingEngineRequest,
+  serving_subject_reads, ServingSubjectJoin, SameSubject, DifferentSubject, SubjectIncomparable,
+  serving_subject_axis_list_contains, ServingSubjectAxis, AxisEngine, AxisAccelerator,
+  AxisKvCacheDtype, AxisSpeculativePolicy, AxisIndexerKvDtype, AxisSchedulerAdmission,
+  serving_subject_standing, SubjectEstablished, SubjectPartial,
+  serving_subject_key, serving_subject_key_equal,
+  serving_subject_axis_reading, ServingSubjectAxisReading, AxisNotApplicable, AxisUnread, AxisRead,
+}
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_server_catalog }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
+import extdeps.storage.types { PcieLink, Gen4, Gen5 }
+import extdeps.ninfer.ninfer_serve { NinferKvFp8, NinferKvInt8, NinferKvNvfp4, NinferMtp, NinferKvDtype }
+
+data fx_socket: NcclRealizedTransport = NcclTransportSocket { read_from: "fixture" as NonEmptyStr }
+
+fn join_is_different(j: ServingSubjectJoin) -> Bool {
+  match j {
+    DifferentSubject { axes: _, left: _, right: _ } => true
+    SameSubject => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+fn join_is_same(j: ServingSubjectJoin) -> Bool {
+  match j {
+    SameSubject => true
+    DifferentSubject { axes: _, left: _, right: _ } => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+fn join_is_incomparable(j: ServingSubjectJoin) -> Bool {
+  match j {
+    SubjectIncomparable { because: _ } => true
+    SameSubject => false
+    DifferentSubject { axes: _, left: _, right: _ } => false
+  }
+}
+
+fn join_names_axis(j: ServingSubjectJoin, a: ServingSubjectAxis) -> Bool {
+  match j {
+    DifferentSubject { axes: axes, left: _, right: _ } =>
+      serving_subject_axis_list_contains(axes: axes, a: a)
+    SameSubject => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+fn reading_is_not_applicable(r: ServingSubjectAxisReading) -> Bool {
+  match r {
+    AxisNotApplicable => true
+    AxisUnread => false
+    AxisRead { value: _ } => false
+  }
+}
+
+fn reading_is_unread(r: ServingSubjectAxisReading) -> Bool {
+  match r {
+    AxisUnread => true
+    AxisNotApplicable => false
+    AxisRead { value: _ } => false
+  }
+}
+
+fn fx_base(engine: ServingEngineRequest, accel: ServingAcceleratorAxis) -> ServingPerformanceSubject {
+  serving_performance_subject(
+    checkpoint: Glm53NativeFp8,
+    checkpoint_revision: Present { value: "fixture-revision" as NonEmptyStr },
+    runtime: GunbcGlm53DerivedKvplanV2Gb10,
+    runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
+    topology: Present { value: FourSparkTp4 },
+    rank_population: Present { value: 4 },
+    context_ceiling: Present { value: token_count(count: 262144) },
+    max_num_batched_tokens: token_count(count: 2048),
+    max_num_seqs: Present { value: 12 },
+    collective_transport: Present { value: fx_socket },
+    launch_profile_key: Present { value: "fixture-profile" },
+    deployment_env_key: Present { value: "env=none" },
+    engine: engine,
+    accelerator: accel,
+  )
+}
+
+fn fx_vllm_engine() -> ServingEngineRequest {
+  serving_engine_vllm(
+    kv_cache_dtype: Present { value: KvFp8 },
+    speculative: Present { value: SpeculativeDecodingOff },
+    indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
+    scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
+  )
+}
+
+fn fx_vllm(accel: ServingAcceleratorAxis) -> ServingPerformanceSubject {
+  fx_base(engine: fx_vllm_engine(), accel: accel)
+}
+
+fn fx_ninfer_full() -> ServingEngineRequest {
+  serving_engine_ninfer(
+    kv_dtype: Present { value: NinferKvNvfp4 },
+    speculation: Present { value: NinferMtp { draft_tokens: 1, lm_head_draft: false } },
+    max_concurrency: Present { value: 1 },
+    kv_capacity_auto: Present { value: false },
+  )
+}
+
+fn fx_ninfer_kv_unread_concurrency(kv: NinferKvDtype) -> ServingPerformanceSubject {
+  fx_base(
+    engine: serving_engine_ninfer(
+      kv_dtype: Present { value: kv },
+      speculation: Present { value: NinferMtp { draft_tokens: 1, lm_head_draft: false } },
+      max_concurrency: Absent,
+      kv_capacity_auto: Present { value: false },
+    ),
+    accel: AcceleratorSparkGb10,
+  )
+}
+
+fn fx_cited(sku: GpuDeviceCatalogRow, watts: Nat, lanes: Int) -> ServingPerformanceSubject {
+  fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
+    sku: sku,
+    count: 1,
+    host_link: HostLinkNegotiated { link: PcieLink { generation: Gen5, lane_count: lanes } },
+    applied_power_limit: Present { value: watt(count: watts) },
+  ) })
+}
+
+fn fx_cited_unread_power() -> ServingPerformanceSubject {
+  fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
+    sku: nvidia_rtx_pro_6000_workstation_catalog,
+    count: 1,
+    host_link: HostLinkNegotiated { link: PcieLink { generation: Gen5, lane_count: 16 } },
+    applied_power_limit: Absent,
+  ) })
+}
+
+fn fx_cited_unread_link() -> ServingPerformanceSubject {
+  fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
+    sku: nvidia_rtx_pro_6000_workstation_catalog,
+    count: 1,
+    host_link: HostLinkUnread,
+    applied_power_limit: Present { value: watt(count: 600) },
+  ) })
+}
+
+test fn w_vllm_and_ninfer_engine_requests_are_different_subjects() -> Bool {
+  let j = serving_subject_reads(measurement_subject: fx_vllm(accel: AcceleratorSparkGb10), decision_subject: fx_base(engine: fx_ninfer_full(), accel: AcceleratorSparkGb10))
+  join_is_different(j: j)
+    && join_names_axis(j: j, a: AxisEngine)
+    && !join_names_axis(j: j, a: AxisKvCacheDtype)
+    && !join_names_axis(j: j, a: AxisSpeculativePolicy)
+    && !join_names_axis(j: j, a: AxisIndexerKvDtype)
+    && !join_names_axis(j: j, a: AxisSchedulerAdmission)
+}
+
+test fn w_ninfer_vllm_request_axes_are_not_applicable_not_unread() -> Bool {
+  let n = fx_base(engine: fx_ninfer_full(), accel: AcceleratorSparkGb10)
+  let v_unread_kv = fx_base(
+    engine: serving_engine_vllm(
+      kv_cache_dtype: Absent,
+      speculative: Present { value: SpeculativeDecodingOff },
+      indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
+      scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
+    ),
+    accel: AcceleratorSparkGb10,
+  )
+  reading_is_not_applicable(r: serving_subject_axis_reading(s: n, a: AxisKvCacheDtype))
+    && reading_is_not_applicable(r: serving_subject_axis_reading(s: n, a: AxisSpeculativePolicy))
+    && reading_is_not_applicable(r: serving_subject_axis_reading(s: n, a: AxisIndexerKvDtype))
+    && reading_is_not_applicable(r: serving_subject_axis_reading(s: n, a: AxisSchedulerAdmission))
+    && reading_is_unread(r: serving_subject_axis_reading(s: v_unread_kv, a: AxisKvCacheDtype))
+}
+
+test fn w_two_identical_ninfer_subjects_are_the_same() -> Bool {
+  let n = fx_base(engine: fx_ninfer_full(), accel: AcceleratorSparkGb10)
+  join_is_same(j: serving_subject_reads(measurement_subject: n, decision_subject: n))
+}
+
+test fn w_a_fully_specified_ninfer_subject_becomes_established() -> Bool {
+  match serving_subject_standing(subject: fx_base(engine: fx_ninfer_full(), accel: AcceleratorSparkGb10), believed: "fx" as NonEmptyStr, would_settle: "fx" as NonEmptyStr) {
+    SubjectEstablished { subject: _ } => true
+    SubjectPartial { subject: _, unknown_axes: _, believed: _, would_settle: _ } => false
+  }
+}
+
+test fn w_ninfer_kv_mismatch_wins_over_unread_concurrency() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_ninfer_kv_unread_concurrency(kv: NinferKvFp8),
+    decision_subject: fx_ninfer_kv_unread_concurrency(kv: NinferKvInt8))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisEngine)
+}
+
+test fn w_nested_ninfer_mismatch_partials_do_not_share_a_key() -> Bool {
+  let a = fx_ninfer_kv_unread_concurrency(kv: NinferKvFp8)
+  let b = fx_ninfer_kv_unread_concurrency(kv: NinferKvInt8)
+  match serving_subject_standing(subject: a, believed: "fx" as NonEmptyStr, would_settle: "fx" as NonEmptyStr) {
+    SubjectEstablished { subject: _ } => false
+    SubjectPartial { subject: _, unknown_axes: _, believed: _, would_settle: _ } =>
+      match serving_subject_standing(subject: b, believed: "fx" as NonEmptyStr, would_settle: "fx" as NonEmptyStr) {
+        SubjectEstablished { subject: _ } => false
+        SubjectPartial { subject: _, unknown_axes: _, believed: _, would_settle: _ } =>
+          !serving_subject_key_equal(a: serving_subject_key(s: a), b: serving_subject_key(s: b))
+      }
+  }
+}
+
+test fn w_vllm_differs_from_ninfer_even_when_ninfer_concurrency_is_unread() -> Bool {
+  let j = serving_subject_reads(measurement_subject: fx_vllm(accel: AcceleratorSparkGb10), decision_subject: fx_ninfer_kv_unread_concurrency(kv: NinferKvFp8))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisEngine)
+}
+
+test fn w_workstation_and_server_pro6000_are_different_accelerator_subjects() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
+    decision_subject: fx_cited(sku: nvidia_rtx_pro_6000_server_catalog, watts: 600, lanes: 16))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_negotiated_pcie_width_is_an_accelerator_axis() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
+    decision_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 8))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_negotiated_pcie_generation_is_an_accelerator_axis() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
+    decision_subject: fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
+      sku: nvidia_rtx_pro_6000_workstation_catalog,
+      count: 1,
+      host_link: HostLinkNegotiated { link: PcieLink { generation: Gen4, lane_count: 16 } },
+      applied_power_limit: Present { value: watt(count: 600) },
+    ) }))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_applied_power_limit_is_an_accelerator_axis() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
+    decision_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 400, lanes: 16))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_unread_accelerator_does_not_join_spark_gb10() -> Bool {
+  join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_vllm(accel: AcceleratorUnread), decision_subject: fx_vllm(accel: AcceleratorSparkGb10)))
+}
+
+test fn w_two_unread_accelerators_are_incomparable() -> Bool {
+  join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_vllm(accel: AcceleratorUnread), decision_subject: fx_vllm(accel: AcceleratorUnread)))
+}
+
+test fn w_two_cited_unread_power_accelerators_are_incomparable() -> Bool {
+  join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_cited_unread_power(), decision_subject: fx_cited_unread_power()))
+}
+
+test fn w_two_cited_unread_link_accelerators_are_incomparable() -> Bool {
+  join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_cited_unread_link(), decision_subject: fx_cited_unread_link()))
+}
+
+test fn w_cited_unread_power_still_differs_from_spark_gb10() -> Bool {
+  let j = serving_subject_reads(measurement_subject: fx_cited_unread_power(), decision_subject: fx_vllm(accel: AcceleratorSparkGb10))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_spark_gb10_subjects_still_join() -> Bool {
+  join_is_same(j: serving_subject_reads(measurement_subject: fx_vllm(accel: AcceleratorSparkGb10), decision_subject: fx_vllm(accel: AcceleratorSparkGb10)))
+}

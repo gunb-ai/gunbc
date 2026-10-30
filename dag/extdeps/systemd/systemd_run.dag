@@ -18,15 +18,23 @@ import extdeps.systemd {
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
+import extdeps.systemd.unit_file { LoadCredential, systemd_service_directive_line }
 
 // EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
 // CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a
 // SystemdUnitProperty under NamedUnitSetting: SystemdUnitProperty is the show surface
 // (gunbc.systemd_property_directive_overlap), and a capability set is not a free-text value, so a
 // non-empty or misspelled set has no constructor here rather than a refusal at run time.
+//
+// LoadCredentialSetting is systemd.exec(5) LoadCredential=ID:PATH on a transient unit: the MANAGER reads PATH
+// when the unit starts and places its bytes, as ID, in the invocation's private credentials directory
+// ($CREDENTIALS_DIRECTORY), owned by the unit's User= and removed when the unit stops. It is its own arm for
+// the capability-set reason: an (identifier, source) pair is not a free-text value, and the directive's text
+// is the unit-file authority's one spelling (extdeps.systemd.unit_file LoadCredential), not a second one.
 type SystemdRunProperty
   = NamedUnitSetting { property: SystemdUnitProperty, value: NonEmptyStr }
   | EmptyCapabilityBoundingSet
+  | LoadCredentialSetting { identifier: NonEmptyStr, source: NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -51,8 +59,16 @@ data systemd_run_authority: ExternalAuthority = extdeps_external_authority_ancho
 
 fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
+// `systemd-run --version`: its first line is the version the summary format is grounded against
+// (summary_format_standing), read from the same manager that will print the summary.
+fn systemd_run_version_command() -> SystemdRunCommandReading {
+  systemd_run_command_of(options: [Version], command_argv: [])
+}
+
 // THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: SystemdSummaryPrintingWait is minted in
-// exactly one place, the SystemdSummaryPrintingWaitReady arm of systemd_run_user_wait_command, so
+// exactly one place, summary_printing_wait_of, which the two waiting non-quiet builders (the user
+// manager's systemd_run_user_wait_command and the system manager's
+// systemd_run_transient_wait_pipe_summary_command) return through, so
 // what a caller holds is the builder's own fact that this projection is the waiting, non-quiet
 // one. No other site can construct it, and a launcher that cannot print a memory peak therefore
 // cannot be handed to the thing whose contract is to observe one.
@@ -93,6 +109,7 @@ type SystemdSetenvBinding {
 //   Quiet          --quiet
 //   Pipe           --pipe
 //   Collect        --collect
+//   Version        --version (prints the manager's version and exits; no unit is started)
 //   EndOfOptions   -- (systemd-run's own options end; the rest is the command)
 type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
@@ -105,6 +122,7 @@ type SystemdRunOption
   | Quiet
   | Pipe
   | Collect
+  | Version
   | EndOfOptions
 
 // WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
@@ -118,6 +136,8 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvNameContainsEquals
   | SetenvNameMultiline
   | SetenvValueMultiline
+  | CredentialIdentifierInvalid
+  | CredentialSourceNotOneAbsolutePath
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -154,6 +174,8 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     SetenvNameContainsEquals => "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own"
     SetenvNameMultiline => "--setenv= takes NAME=VALUE, so the NAME side is one line"
     SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
+    CredentialIdentifierInvalid => "a credential ID is one file name with no : (systemd.exec(5) LoadCredential=ID:PATH)"
+    CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
   }
 }
 
@@ -176,11 +198,32 @@ fn systemd_run_named_setting_assignment(property: SystemdUnitProperty, value: No
 // systemd.exec(5) spells the empty bounding set as the directive with no names.
 data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityBoundingSet="
 
+// THE CREDENTIAL ID IS A FILE NAME IN THE CREDENTIALS DIRECTORY (systemd.exec(5)): not "." or "..", no "/",
+// and no ":" because the directive splits ID from PATH at the first one. The source is the path the manager
+// opens, so it is absolute and one line.
+fn systemd_run_credential_identifier_is_valid(identifier: NonEmptyStr) -> Bool {
+  let id = identifier as String
+  id != "." && id != ".." && !string_contains(s: id, pattern: "/") && !string_contains(s: id, pattern: ":") && !systemd_run_option_word_has_newline(s: id)
+}
+
+fn systemd_run_load_credential_assignment(identifier: NonEmptyStr, source: NonEmptyStr) -> SystemdRunPropertyAssignmentReading {
+  if !systemd_run_credential_identifier_is_valid(identifier: identifier) {
+    SystemdRunPropertyAssignmentRefused { cause: CredentialIdentifierInvalid }
+  } else if !starts_with(s: source as String, prefix: "/") || systemd_run_option_word_has_newline(s: source as String) {
+    SystemdRunPropertyAssignmentRefused { cause: CredentialSourceNotOneAbsolutePath }
+  } else {
+    SystemdRunPropertyAssignmentReady {
+      assignment: systemd_service_directive_line(directive: LoadCredential { identifier: identifier, source: source }),
+    }
+  }
+}
+
 fn systemd_run_property_assignment(property: SystemdRunProperty) -> SystemdRunPropertyAssignmentReading {
   match property {
     EmptyCapabilityBoundingSet =>
       SystemdRunPropertyAssignmentReady { assignment: systemd_run_empty_capability_bounding_set_assignment }
     NamedUnitSetting { property: p, value: v } => systemd_run_named_setting_assignment(property: p, value: v)
+    LoadCredentialSetting { identifier: id, source: source } => systemd_run_load_credential_assignment(identifier: id, source: source)
   }
 }
 
@@ -248,6 +291,7 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
         Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
         Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        Version => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--version"]) }
         EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
       }
   }
@@ -341,13 +385,26 @@ fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<System
 // exists to be read for. The wait flags lead because that is the word order the string-built form
 // this replaces emitted; the projection keeps it byte-identical for existing callers.
 fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
-  match systemd_run_command_of(
+  summary_printing_wait_of(reading: systemd_run_command_of(
     options: list_append(left: [Wait, Pipe, Collect], right: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions])))),
     command_argv: command_argv,
-  ) {
+  ))
+}
+
+fn summary_printing_wait_of(reading: SystemdRunCommandReading) -> SystemdSummaryPrintingWaitReading {
+  match reading {
     SystemdRunCommandRefused { cause: cause } => SystemdSummaryPrintingWaitRefused { cause: cause }
     SystemdRunCommandReady { command: command } => SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait { command: command } }
   }
+}
+
+// THE SYSTEM-MANAGER WAITING PIPE THAT PRINTS ITS SUMMARY: systemd_run_transient_wait_pipe_unit_command
+// without --quiet. A caller that must learn the unit's own Result over a transport whose exit status
+// cannot be attributed to the remote command (a remote FleetSsh leg, where 255 is the transport's as
+// often as the command's) reads it from this summary, which only the remote manager writes
+// (systemd_run_wait_summary); the quiet form's stderr never carries it.
+fn systemd_run_transient_wait_pipe_summary_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  summary_printing_wait_of(reading: systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Pipe, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv))
 }
 
 // The pre-cutover system-scope builder systemd_run_system_scope_argv led with --scope only
@@ -395,6 +452,14 @@ fn systemd_run_transient_retained_unit_command(unit: NonEmptyStr, properties: Li
 // recoverable as an exact child status through this boundary.
 fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+}
+
+// The waiting transient whose STDIN is the caller's: `--pipe` (systemd-run(1): "the standard input, output and
+// error of the invoked process are connected to the invoking process") forwards what the caller writes to the
+// unit's main process, so a secret can reach the process through a pipe and never through the unit's argv,
+// Environment= or a file. The wait/quiet/collect vocabulary is the plain waiting form's.
+fn systemd_run_transient_wait_pipe_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Pipe, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 

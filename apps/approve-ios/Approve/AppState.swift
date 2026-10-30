@@ -6,9 +6,24 @@ import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published private(set) var state: EnrolmentState = .unenrolled
+    /// Entering a phase drops the errors of operations that are not relevant in it (OperationErrors.enter).
+    @Published private(set) var state: EnrolmentState = .signedOut {
+        didSet { errors.enter(state.phase) }
+    }
     @Published var pending: [PendingApproval] = []
-    @Published var lastError: String?
+    /// The escalation a tapped alert named (ApprovalPushHint.notification_id). It only ORDERS the
+    /// inbox: the card shown is still one the server listed as pending, read over the authenticated
+    /// route, and a locator naming nothing pending selects nothing.
+    @Published var focused: String?
+
+    /// The card the inbox shows first: the tapped request when it is pending, else the oldest.
+    var front: PendingApproval? {
+        if let f = focused, let p = pending.first(where: { $0.escalation_id == f }) { return p }
+        return pending.first
+    }
+    /// One current error per operation (the generated OperationErrors): every attempt records its
+    /// outcome, so the next success of an operation removes that operation's error.
+    @Published private(set) var errors = OperationErrors()
     /// The APNs token most recently delivered by the system. Arrives asynchronously; buffered here
     /// so a token that lands before the state is installed is not lost.
     @Published private(set) var apnsToken: String?
@@ -25,8 +40,12 @@ final class AppState: ObservableObject {
         } catch {
             config = nil
             client = nil
-            lastError = error.localizedDescription
+            errors.record(.configuration, .failed(error.localizedDescription))
         }
+    }
+
+    func record(_ operation: AppOperation, _ outcome: OperationOutcome) {
+        errors.record(operation, outcome)
     }
 
     /// Called once by the root view: read the persisted state, then register for APNs on every
@@ -34,7 +53,10 @@ final class AppState: ObservableObject {
     func install() async {
         guard !installed else { return }
         installed = true
-        do { state = try EnrolmentStore.load() } catch { lastError = error.localizedDescription }
+        do {
+            state = try EnrolmentStore.load()
+            record(.enrolmentRead, .succeeded)
+        } catch { record(.enrolmentRead, .failed(error.localizedDescription)) }
         if state.enrolled != nil {
             UIApplication.shared.registerForRemoteNotifications()
             await convergePushToken()
@@ -42,7 +64,7 @@ final class AppState: ObservableObject {
     }
 
     private func requireClient() throws -> Client {
-        guard let client else { throw WireError.configMissing(lastError ?? "no server configuration") }
+        guard let client else { throw WireError.configMissing("no server configuration") }
         return client
     }
 
@@ -59,26 +81,39 @@ final class AppState: ObservableObject {
 
     func tokenDelivered(_ hex: String) {
         apnsToken = hex
+        record(.apnsRegistration, .succeeded)
         guard installed else { return }            // buffered until install()
         Task { await convergePushToken() }
     }
 
     /// PUT /approve/device/push until the server holds the desired token. Idempotent to call: a
     /// second caller while a loop runs returns at once and the running loop sees the new desired
-    /// token on its next iteration. Runs after any adoption of Enrolled too, so a token buffered
-    /// during SubmissionUnknown is forwarded.
+    /// token on its next iteration. Runs after any adoption of Enrolled too.
     ///
     /// Exit discipline: the loop stops only when the server holds the desired token, when there is
     /// nothing to converge (not enrolled, no token), or when the EXACT attempt that failed — this
     /// enrolment identity AND this token — is still what would be attempted next. A failure whose
     /// enrolment or token has since changed continues at once with the current pair, so a failed
     /// update for an old enrolment never suppresses the same token for a newly adopted one. After a
-    /// stop, the restart is owned by tokenDelivered and adopt(): a newer token or a new enrolment
-    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair.
+    /// stop, the restart is owned by tokenDelivered and signIn(): a newer token or a new enrolment
+    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair in one loop; every foreground resume
+    /// (resyncPush) starts a fresh one, so a failed pair is retried until the broker acknowledges.
     private struct PushAttempt: Equatable {
         var enrollmentId: String
         var attestKeyId: String
         var token: String
+    }
+
+    /// The pair the broker acknowledged in THIS process. `forwarded_apns_token` is persisted and so
+    /// is only a hint (the broker may have lost or never durably stored it); the gate is this.
+    private var acknowledged: PushAttempt?
+
+    /// Foreground resume: forget the acknowledgement and re-register, so the broker is told again.
+    func resyncPush() async {
+        guard installed, state.enrolled != nil else { return }
+        acknowledged = nil
+        UIApplication.shared.registerForRemoteNotifications()
+        await convergePushToken()
     }
 
     func convergePushToken() async {
@@ -86,7 +121,8 @@ final class AppState: ObservableObject {
         converging = true
         var failedAttempt: PushAttempt?
         defer { converging = false }
-        while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired,
+        while case .enrolled(let e) = state, let desired = apnsToken,
+              PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != acknowledged,
               PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != failedAttempt {
             let attempt = PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired)
             do {
@@ -101,10 +137,12 @@ final class AppState: ObservableObject {
                 // was made for is STILL the current one; otherwise loop and re-derive.
                 guard apnsToken == desired, case .enrolled(var now) = state, now.enrollment_id == e.enrollment_id,
                       now.attest_key_id == e.attest_key_id else { continue }
+                acknowledged = attempt
                 now.forwarded_apns_token = desired
                 try transition(.enrolled(now))
+                record(.pushForward, .succeeded)
             } catch {
-                lastError = "APNs token not forwarded: \(error.localizedDescription)"
+                record(.pushForward, .failed("APNs token not forwarded: \(error.localizedDescription)"))
                 // Superseded in flight (token or enrolment changed): go on with the current pair.
                 guard apnsToken == desired, case .enrolled(let now) = state,
                       now.enrollment_id == attempt.enrollmentId, now.attest_key_id == attempt.attestKeyId else { continue }
@@ -130,122 +168,62 @@ final class AppState: ObservableObject {
     }
 
     // ── Enrolment ────────────────────────────────────────────────────────────────────────────
-    /// Step 1, local only: refuse without App Attest; generate both keys; fix the transcript; PERSIST
-    /// as Prepared before anything leaves the device.
-    func prepare(code: String) async {
-        lastError = nil
+    /// Google sign-in enrolment (gunbc.auth.approval_google_enrolment). Order: both device keys, the
+    /// transcript over them, nonce = base64url(sha256(transcript)), Google sign-in with that nonce,
+    /// attestation over the transcript, ONE POST. An unanswered POST is re-sent with the identical
+    /// body (the server is idempotent); nothing is persisted before the answer. Which phase follows
+    /// is the generated EnrolmentMachine's decision.
+    func signIn() async {
         do {
             try AppAttest.requireSupported()
             let key = try DecisionKey.create()
             let pub = DecisionKey.verifyingKey(key)
             let attestKeyId = try await AppAttest.generateKey()
-            let transcript = enrolmentTranscript(code: code, decisionKey: pub, platform: .ios)
-            try transition(.prepared(PreparedEnrolment(
-                code: code, decision_key_blob: key.dataRepresentation, decision_key_pub: pub,
-                attest_key_id: attestKeyId, transcript: transcript, attestation_b64: nil)))
-            await submit()
+            let transcript = googleEnrolmentTranscript(decisionKey: pub, platform: .ios, attestKeyId: attestKeyId)
+            let idToken = try await GoogleSignInFlow.idToken(nonce: googleEnrolmentNonce(transcript))
+            let attestation = try await AppAttest.attest(keyId: attestKeyId, transcript: transcript).attestation_b64
+            let client = try requireClient()
+            let token = try await awaitToken()
+            let submission = GoogleEnrolmentRequest(
+                platform: .ios, decision_key: pub, attest_key_id: attestKeyId,
+                attestation_b64: attestation, id_token: idToken)
+            let grant: EnrolmentGrant
+            do { grant = try await client.enrolGoogle(submission) }
+            catch WireError.transport { grant = try await client.enrolGoogle(submission) }   // identical body, once
+            // signIn always creates a fresh key, so the sign-in registered a NEW key.
+            try apply(.signedIn(.newKey), enrolled: EnrolledDevice(
+                enrollment_id: grant.enrollment_id, decision_key_blob: key.dataRepresentation,
+                attest_key_id: attestKeyId, forwarded_apns_token: nil), push: registration(client.config, token))
+            record(.signIn, .succeeded)
         } catch {
-            lastError = error.localizedDescription
+            record(.signIn, .failed(error.localizedDescription))
+            try? apply(.refused, enrolled: nil, push: nil)
         }
     }
 
-    /// Step 2, remote: attest over the fixed transcript (reusing a previous attestation if one was
-    /// generated), register for push, then PERSIST SubmissionUnknown and only then POST. From the
-    /// moment the POST may have left the device the durable state says so: a crash, a transport or
-    /// decode failure, a failed persist of Enrolled, or a refusal after a retry ("code already
-    /// used") all leave SubmissionUnknown standing, and only an authenticated readback resolves it.
-    func submit() async {
-        lastError = nil
-        let p: PreparedEnrolment
-        switch state {
-        case .prepared(var q):
-            do {
-                if q.attestation_b64 == nil {
-                    q.attestation_b64 = try await AppAttest.attest(keyId: q.attest_key_id, transcript: q.transcript).attestation_b64
-                    try transition(.prepared(q))
-                }
-            } catch { lastError = error.localizedDescription; return }
-            p = q
-        case .submissionUnknown(let q):
-            p = q                                   // a retry re-sends the same material
+    /// Move to the phase the generated machine names for this answer; Enrolled is entered only with a device.
+    private func apply(_ answer: EnrolmentAnswer, enrolled: EnrolledDevice?, push: ApnsRegistration?) throws {
+        let next = EnrolmentMachine.next(state.phase, on: answer)
+        switch (next, enrolled) {
+        case (.enrolled, let e?):
+            try transition(.enrolled(e))
+            UIApplication.shared.registerForRemoteNotifications()
+            Task { await convergePushToken() }
+        case (.revoked, _):
+            if case .enrolled(let e) = state { try transition(.revoked(e, reason: "the server reports this enrolment revoked")) }
         default:
             return
         }
-        do {
-            let client = try requireClient()
-            let token = try await awaitToken()
-            let submission = EnrolmentRequest(
-                code: p.code, platform: .ios, decision_key: p.decision_key_pub,
-                evidence: IosAppAttestBoundDecisionKey(attest_key_id: p.attest_key_id, attestation_b64: p.attestation_b64!),
-                push: registration(client.config, token))
-            try transition(.submissionUnknown(p))   // BEFORE the bytes leave
-            let grant = try await client.enrol(submission)
-            try adopt(EnrolledDevice(
-                enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
-                attest_key_id: p.attest_key_id, forwarded_apns_token: token))
-        } catch {
-            // Whatever failed — transport, decode, a refusal, persisting Enrolled — the durable
-            // state stays SubmissionUnknown; readback is the only way forward.
-            lastError = error.localizedDescription
-        }
     }
 
-    /// The one place Enrolled is entered. The attest key id is persisted as ENROLLED only here,
-    /// after the server verified it; then APNs registration is (re)requested and push-token
-    /// convergence runs for any buffered or rotated token.
-    private func adopt(_ e: EnrolledDevice) throws {
-        try transition(.enrolled(e))
-        UIApplication.shared.registerForRemoteNotifications()
-        Task { await convergePushToken() }
-    }
-
-    /// The only resolution of SubmissionUnknown: GET /approve/device/enrollments/<enrollment_id>
-    /// under the App Attest key just attested, keyed by enrollment_id_for_code over the persisted
-    /// code. Active (and naming the expected id) adopts; revoked is terminal. EVERYTHING ELSE leaves
-    /// SubmissionUnknown standing: the wire defines no absence response, and the server answers a
-    /// bare refusal for unknown, unspent and unreadable alike, so a 404 is not proof of absence —
-    /// "Retry the same submission" is the safe move for a true absence.
-    func resolveUnknownSubmission() async {
-        lastError = nil
-        guard case .submissionUnknown(let p) = state else { return }
-        let enrollmentId = enrollmentIdForCode(p.code)
-        let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
-                                   attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
-        do {
-            let client = try requireClient()
-            let path = Route.enrollment(enrollmentId)
-            let back = try await client.readback(path, try await readAuth(probe, path: path))
-            guard back.enrollment_id == enrollmentId else {
-                throw WireError.refused(at: "enrollment_id", cause: "readback names \(back.enrollment_id), expected \(enrollmentId)")
-            }
-            switch back.standing {
-            case .active:
-                try adopt(EnrolledDevice(
-                    enrollment_id: back.enrollment_id, decision_key_blob: p.decision_key_blob,
-                    attest_key_id: p.attest_key_id, forwarded_apns_token: nil))
-            case .revoked:
-                try transition(.revoked(probe, reason: "enrolment \(back.enrollment_id) is revoked"))
-            }
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    /// Re-send the identical POST from SubmissionUnknown (same key, same attestation, same
-    /// transcript). The state does not leave SubmissionUnknown to do it.
-    func retrySubmission() async { await submit() }
-
-    /// Only from Prepared: nothing has left the device, so nothing can be stranded on the server.
-    func startOver() {
-        guard case .prepared = state else { return }
-        do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
-    }
-
-    /// From a terminal state (key invalidated, revoked): the old enrolment decides nothing any more.
-    func enrolAgain() {
+    /// Discard the dead enrolment and key: the phone reads as signed out.
+    func signOut() {
         switch state {
-        case .keyInvalidated, .revoked:
-            do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
+        case .revoked, .enrolled:
+            do {
+                try transition(.signedOut)
+                record(.signOut, .succeeded)
+            } catch { record(.signOut, .failed(error.localizedDescription)) }
         default:
             return
         }
@@ -284,7 +262,9 @@ final class AppState: ObservableObject {
     // ── Inbox ────────────────────────────────────────────────────────────────────────────────
     enum RefreshResult { case changed, unchanged, failed }
 
-    /// The list, re-read. The result is the real one, so the background-push callback can report
+    /// The list, re-read and REPLACED: the server answers exactly the requests that still need the
+    /// operator (gunbc.auth.approval_decision_store pending_escalations), so nothing is kept from an
+    /// earlier read. The result is the real one, so the background-push callback can report
     /// .newData / .noData / .failed truthfully.
     @discardableResult
     func refresh() async -> RefreshResult {
@@ -293,9 +273,10 @@ final class AppState: ObservableObject {
             let fresh = try await requireClient().pending(try await readAuth(path: Route.pending))
             let changed = fresh != pending
             pending = fresh
+            record(.inboxRefresh, .succeeded)
             return changed ? .changed : .unchanged
         } catch {
-            lastError = error.localizedDescription
+            record(.inboxRefresh, .failed(error.localizedDescription))
             return .failed
         }
     }
@@ -321,7 +302,8 @@ final class AppState: ObservableObject {
         let key: SecureEnclave.P256.Signing.PrivateKey
         do { key = try DecisionKey.load(e.decision_key_blob) }
         catch let k as DeviceKeyError {
-            if case .keyInvalidated(let why) = k { try transition(.keyInvalidated(e, reason: why)) }
+            // A key the enclave refuses is dead: discard it; the phone reads as signed out.
+            if case .keyInvalidated = k { try transition(.signedOut) }
             throw k
         }
         let signature = try DecisionKey.sign(key, bytes)

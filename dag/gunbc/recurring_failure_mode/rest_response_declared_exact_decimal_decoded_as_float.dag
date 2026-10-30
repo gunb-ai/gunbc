@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.rest_response_declared_exact_decimal_decoded_as_float
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
+
+data rest_response_declared_exact_decimal_decoded_as_float: RecurringFailureMode = RecurringFailureMode {
+  identity: "rest_response_declared_exact_decimal_decoded_as_float" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**A REST response field declared `std.decimal` `ExactDecimal` arrives as a Float** (INVALID STATE: an interpreted program reads `units` or `fraction_digits` off a wire number the model declares exact -- `extdeps.cloud.vast_ai` `VastAiOffer.min_bid`, `storage_cost`, `cuda_max_good` -- and the value is a host Float carrying neither).",
+
+    "THE LINK: `v1_interpreter.rs` `decode_json_by_declared_type` consulted the declared type for lists, nullary coproducts and records, and for every other type fell through to `json_to_value`, which turns a non-integer JSON number into `Value::Float`. No arm built an ExactDecimal from a number, and none looked beneath an optional layer, so `ExactDecimal?` was never decoded by its declaration either. The extdeps module's own comment (`MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float`) described a decode that did not exist.",
+
+    "HARM: loud here, latent everywhere else. THE SPECIMEN, 2026-10-19: the first dry `flex_pass` on srv1 (fleet-converge run 39202648251) read the key, the instance and charge pages and the offer search live, then refused with `cannot access field 'units' on Float` in `product.fabric.flex_vast_shadow` `decimal_at_least`. Every declared-exact money field of the Vast wire had been a Float since the module was written; nothing executed on a live answer had read one until then. The witnesses did not see it because every one constructed its VastAiOffer by hand, so the decode between the wire and the screen never ran (the lesson of `rest_response_nested_from_key_ignored`, one type over).",
+
+    "THE REPAIR: the decoder reads a declared `ExactDecimal` from the JSON number's own decimal text (`-?D+(.D+)?([eE][+-]?D+)?`) into units and fraction digits, never through f64 arithmetic, and refuses typed (`NotAnExactDecimal`) when the text is not a finite decimal or its digits do not fit Int units. A declared `Optional` decodes its present value as the declared inner type. serde_json's arbitrary_precision keeps the number's wire text: a parse into f64 (even correctly rounded) drops the wire's scale (0.2690 became (269, 3)) and rounds a number with more digits than Int units carry instead of refusing it (review 82460 caught the first cut, which had only float_roundtrip). Witnessed through the REST replay seam on a recorded live offer body (`test.claim.vast_ai_offer_decode_witness`): 0.269 must be (269, 3), a float's full shortest spelling must keep its 17 digits, an optional 13.0 must be (130, 1), 0.0020 must keep its scale as (20, 4), a 20-digit price must refuse the page, and a hostile exponent (`0e9223372036854775807`, which an unbounded scaling loop never finishes, or `1e-999999999`) refuses in bounded time because the exponent is bounded to 18 before any scaling (review 82479). The scale is capped separately at 36 (18 free significant digits at most 18 places past the point): the exponent bound does not limit it, because the i64 mantissa parse accepts leading zeros (`0.` then ten thousand zeros then `1` has exponent 0; review 82586 caught a cut that removed the cap on that false premise). An earlier cap at 19 refused a live 17-digit price at 20 fraction digits and the whole offer page with it (run 39222150650); the live value decodes and the leading-zeros spelling refuses, both as rows.",
+
+    "RUNG FOUND AT: below the ladder (a declared type the decode never realized). RUNG AFTER THIS CHANGE: mitigatable, discriminated by the replay rows, which go red on the old decode. CEILING: 3 -- whether every declared response field type has a decode route is decidable from the declaration tree. NEXT-RUNG TRIGGER, phrased as the capability: the response decode is derived from the declared type for every type (the same total decision procedure ingestion uses, DESIGN 4), so a declared type without a wire route refuses at declaration rather than falling through to a generic value at runtime.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.cloud.vast_ai", decl_name: "VastAiOffer", field: WholeDeclaration },
+    DeclarationRef { module_path: "product.fabric.flex_vast_shadow", decl_name: "decimal_at_least", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.vast_ai_offer_decode_witness", decl_name: "a_wire_number_declared_exact_decimal_decodes_to_its_exact_digits", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.vast_ai_offer_decode_witness", decl_name: "an_optional_exact_decimal_decodes_through_its_optional_layer", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.vast_ai_offer_decode_witness", decl_name: "the_wire_scale_is_kept_and_an_overlong_number_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.vast_ai_offer_decode_witness", decl_name: "a_hostile_exponent_refuses_in_bounded_time", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.vast_ai_offer_decode_witness", decl_name: "a_small_price_with_a_deep_scale_decodes_exactly", field: WholeDeclaration },
+  ],
+}

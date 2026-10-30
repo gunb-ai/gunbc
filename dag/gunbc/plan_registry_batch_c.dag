@@ -3,8 +3,12 @@ module gunbc.plan_registry_batch_c
 import gunbc.plan { Plan }
 import gunbc.plans.shell_emission_model { shell_emission_model_plan }
 import gunbc.plans.construction_justification_rule { construction_justification_rule_plan }
+import gunbc.plans.srv1_deploy_principal_split { srv1_deploy_principal_split_plan }
+import gunbc.plans.flex_supplier_generalization { flex_supplier_generalization_plan }
 
 data batch_c_plans: List<Plan> = [
   shell_emission_model_plan,
-  construction_justification_rule_plan
+  construction_justification_rule_plan,
+  srv1_deploy_principal_split_plan,
+  flex_supplier_generalization_plan
 ]

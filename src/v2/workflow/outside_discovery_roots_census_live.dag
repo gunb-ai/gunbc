@@ -1,0 +1,295 @@
+module v2.workflow.outside_discovery_roots_census_live
+
+// THE LIVE ENTRY for the outside-discovery-roots census: it performs the ONE effect (ask git which paths
+// the index tracks) and hands the listing to the pure census, which turns each path into a typed standing.
+// The split is the one the S1 census proved: a claim cannot perform its own effect (the interpreter refuses
+// with "the claim runs no effectful operation: every effect is supplied through the hermetic envelope"), so
+// the capture lives here, in the function the runner calls, and every assertion stays pure over the listing
+// this function returns.
+//
+// ROUTE, and where it cannot go (warm-wolf-570's wording ruling; DESIGN §5 calls "never" the trap):
+// this path runs on the interpreted live route, which sits under C4-E's declared drop --
+// `v2.workflow.floor_pure_producer_share`'s fill-debt row names the same cause (`acquisition_test_markers`
+// is interpreted; trigger: the host-native marker read on the C4-E native route). This census cannot join
+// the native lane until the file list is supplied to the native entry as an input (the same move as the
+// stamped head) or a native git read is admitted. It does not fabricate an answer when git is unavailable:
+// the census answers CensusUnread, and the runner exits on the no-observation code, never as a clean
+// census over an empty population (§5: an unreadable input is typed, located, countable, and outranks a
+// finding).
+//
+// THE LOCATOR IS NOT AN INPUT. The census output is a pure function of the index listing; the revision it
+// describes is stamped beside the output by whoever runs it (head_stamp_line below), exactly as the S1
+// census has it -- which is also the move that would let a native runner supply the listing as an input.
+
+import std.types { String, Bool, List }
+import std.algebra { trim, is_empty }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.exec.command { LocalExec }
+import extdeps.git { git_grep_files_with_matches_command, git_ls_files_command }
+import gunbc.command_runner { run_shell_command_capture }
+import v2.workflow.claim_coverage_census_s1_live {
+  census_head_reading, HeadReading, RevisionRead, RevisionAbsent
+}
+import v2.workflow.outside_discovery_roots_census {
+  OutsideRootsStanding,
+  OutsideRootsOutcome,
+  CensusUnread,
+  CensusUnreadCause,
+  CensusReadFailure,
+  ReadProcessAbsent,
+  ReadProcessRefused,
+  ReadNoAnswer,
+  IndexUnread,
+  MarkerUnread,
+  census_unread_cause_text,
+  CensusObserved,
+  InsideGovernedTree,
+  OutsideDiscoveryRoots,
+  NotAClaimFile,
+  census_rows,
+  outside_roots_findings,
+  findings_under_note_subject,
+  findings_outside_note_subject,
+  outside_roots_receipt_lines,
+  outside_roots_header_lines
+}
+
+// The checkout the index is asked in. Same convention as the S1 census's live route.
+data census_checkout_dir: String = "."
+
+// The claim-file pathspec. A pattern, not a list: the population is whatever the index tracks under it,
+// so nothing is transcribed (§6).
+data claim_file_pathspec: String = "*.dag"
+
+// THE MARKER, as git's text test reads it: a line that begins a `test fn` declaration with an identifier
+// after the keyword. Why not the bare phrase -- the two answer different populations. The bare phrase matches
+// any `.dag` that contains the letters `test fn` anywhere, including prose ("read `test fn` from source are
+// not its consumer") in modules that implement other things; reporting those prose mentions as uncovered
+// claims is a fabricated finding. The anchored declaration shape matches only files that DECLARE one, which
+// is the population the interpreter's own marker read asks for, so this is the text test that agrees with the
+// parse on this population.
+//
+// The whitespace class is spelled `[[:space:]]` because git's `-E` gets this string through a shell, where a
+// backslash would not survive to the matcher.
+data claim_declaration_pattern: String = "^[[:space:]]*test fn [A-Za-z_][A-Za-z_0-9]*"
+
+// THE CAPTURE. git's own answer, or a typed refusal -- never an empty listing standing in for a failure.
+type TrackedListing
+  = ListingRead { paths: List<String> }
+  | ListingRefused { failure: CensusReadFailure }
+
+// The same discipline for the marker read: a run that printed nothing "because no file declares a claim" and
+// a run that was never answered are different facts, and only the first licenses an empty population.
+type ClaimBearerRead
+  = BearersRead { paths: List<String> }
+  | BearersRefused { failure: CensusReadFailure }
+
+fn tracked_claim_listing() -> TrackedListing {
+  match run_shell_command_capture(
+    command: git_ls_files_command(repository_dir: census_checkout_dir, pathspec: claim_file_pathspec),
+    transport: LocalExec
+  ) {
+    ProcessOutputPresent { text: text } => listing_from_captured_text(text: text)
+    ProcessOutputAbsent => ListingRefused { failure: ReadProcessAbsent }
+    ProcessRefused { exit_code: exit_code, stderr: stderr } =>
+      ListingRefused { failure: ReadProcessRefused { exit_code: exit_code, stderr: stderr } }
+  }
+}
+
+fn tracked_claim_bearers() -> ClaimBearerRead {
+  match run_shell_command_capture(
+    command: git_grep_files_with_matches_command(
+      repository_dir: census_checkout_dir,
+      pattern: claim_declaration_pattern,
+      pathspec: claim_file_pathspec
+    ),
+    transport: LocalExec
+  ) {
+    ProcessOutputPresent { text: text } => bearers_from_captured_text(text: text)
+    ProcessOutputAbsent => BearersRefused { failure: ReadProcessAbsent }
+    ProcessRefused { exit_code: exit_code, stderr: stderr } =>
+      BearersRefused { failure: ReadProcessRefused { exit_code: exit_code, stderr: stderr } }
+  }
+}
+
+// PURE, and deliberately NOT the same rule as `listing_from_captured_text`, for a reason that has to be
+// measured rather than argued. `git grep -E -l` answers rc=1 in TWO different situations: nothing matched,
+// and the pathspec named nothing. Both print empty stdout. So stdout alone cannot tell "no tracked file
+// declares a claim" (a finding about the tree) from "the read never ran" (no observation) -- and the second
+// one, read as the first, would hand the census an empty bearer list and print every path as NotAClaimFile:
+// a clean bill of health produced by a broken read, which is the fail-open this census exists to catch.
+// The transport's typed outcome carries the difference, so the refusal is stated here for the no-observation
+// side and the capture's `ProcessRefused` arm covers the refused side. Nothing invents a population.
+fn bearers_from_captured_text(text: String) -> ClaimBearerRead {
+  let body = trim(s: text)
+  if body == "" {
+    BearersRefused { failure: ReadNoAnswer }
+  } else {
+    BearersRead { paths: listing_paths(text: body) }
+  }
+}
+
+// THE DECISION, PURE, SO IT CAN BE REFUSED. An executed-but-silent transport gave no observation:
+// "nothing is tracked" and "the transport said nothing" are different claims, and only the second is what
+// an empty stdout licenses -- so it refuses rather than handing the census an empty population that would
+// read as a clean census. Split out of the capture so a claim can put an answer in its hand (the capture
+// itself can only be exercised by the real route).
+fn listing_from_captured_text(text: String) -> TrackedListing {
+  let body = trim(s: text)
+  if body != "" {
+    ListingRead { paths: listing_paths(text: body) }
+  } else {
+    ListingRefused { failure: ReadNoAnswer }
+  }
+}
+
+// git prints one path per line; the trailing newline is not a path, and a field that is only whitespace is
+// the listing's own line ending rather than a tracked file.
+//
+// WHY THIS SPLIT AND NOT `v2.std.text`'s: captured process output is kernel host text (`std.types`
+// String), and `v2.std.text::string_split` splits THAT into `String` = `FreeMonoid<Char>` fields -- a
+// different carrier, which is why feeding its fields to `trim` (a host-text operation) is a type error.
+// This is the same shape `extdeps.linux.proc_self_cgroup`'s `proc_self_cgroup_nonempty_lines` uses for
+// captured wire content: the host-text `split` on the newline, then drop the fields that are only the
+// line ending. One rule, one home: line splitting of captured output is not re-implemented here.
+fn listing_paths(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+    |> filter(line => trim(s: line) != "")
+    |> map(line => trim(s: line))
+}
+
+// THE CHANNEL THE COMPOSED INSTRUMENT CONSUMES (warm-wolf-570's one-instrument ruling): this census is one
+// source of `gunbc test //gunbc/instruments:claim-coverage-census`, and a source reaches the exit only through
+// a declared sum -- the same shape the wet census contributes `ClaimCoverageStanding` in and S1 contributes
+// `S1Standing` in. A Bool beside a String list would let an unread census and a clean census arrive as the
+// same carrier; here the refusal carries its cause and the finding carries its reasons, so the composition
+// cannot confuse them (DESIGN 4c: an invariant, receipt, ruling belongs in a typed carrier).
+type OutsideRootsChannel
+  = OutsideChannelHeld
+  | OutsideChannelFinding { reasons: List<String> }
+  | OutsideChannelUnread { cause: CensusUnreadCause }
+
+// THE CHANNEL, DERIVED FROM THE OUTCOME, never chosen beside it (review 84111: the Bool this used to take
+// made an unread census and a clean census two shapes of ONE carrier, distinguishable only because a Bool
+// said so -- §4b ranks construction over proof over validation, and here construction is available: the
+// outcome sum has no arm that could mean both). Findings dominate -- a definite finding is a definite
+// non-hold even if some OTHER source failed, the same Kleene precedence the composed census uses; an unread
+// census is the "no observation" case; an observed census that found nothing held.
+fn outside_roots_channel(outcome: OutsideRootsOutcome) -> OutsideRootsChannel {
+  match outcome {
+    CensusUnread { cause: cause } => OutsideChannelUnread { cause: cause }
+    CensusObserved { rows: rows } => {
+      let findings = outside_roots_findings(rows: rows)
+      if !is_empty(findings) {
+        OutsideChannelFinding {
+          reasons: findings |> map(f => concat("outside-discovery-roots-census: ", f))
+        }
+      } else {
+        OutsideChannelHeld
+      }
+    }
+  }
+}
+
+// The census, composed: what was known (the outcome), what it implies (the channel), and the receipt. Pure
+// over the listing the capture handed back. There is deliberately NO `unread: Bool` field and NO
+// `standing_rows` list beside it (review 84111): the outcome is the only carrier of "looked vs could not
+// look", it cannot mix rows with a refusal, and the channel is derived from it -- so no consumer can read
+// an unread census as an empty, clean population by forgetting a Bool.
+type OutsideRootsCensusOutput {
+  outcome: OutsideRootsOutcome,
+  findings: List<String>,
+  note_vouched: List<String>,
+  undeclared: List<String>,
+  scan_dir_gap: List<String>,
+  channel: OutsideRootsChannel,
+  lines: List<String>
+}
+
+fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> OutsideRootsCensusOutput {
+  match listing {
+    ListingRefused { failure: failure } => refused_census(cause: IndexUnread { failure: failure }),
+    ListingRead { paths: paths } =>
+      match bearers {
+        BearersRefused { failure: failure } => refused_census(cause: MarkerUnread { failure: failure })
+        BearersRead { paths: marker_paths } => observed_census(
+          rows: census_rows(listing: paths, claim_bearers: marker_paths),
+          claim_bearers: marker_paths
+        )
+      }
+  }
+}
+
+// THE REFUSAL, ONE HOME for both reads' failures. "Could not look" is a fact of the whole census and lives
+// in the outcome's type -- never as a row that a fold might forget to check (review 84111; §5: an unreadable
+// input is typed, located, and can never pass as an empty population, because there is no empty population
+// here to confuse it with: the findings/gap fields are empty because NOTHING WAS READ, and the outcome arm
+// says so in the type, not in a Bool beside them).
+fn refused_census(cause: CensusUnreadCause) -> OutsideRootsCensusOutput {
+  let outcome = CensusUnread { cause: cause }
+  OutsideRootsCensusOutput {
+    outcome: outcome,
+    findings: [],
+    note_vouched: [],
+    undeclared: [],
+    scan_dir_gap: [],
+    channel: outside_roots_channel(outcome: outcome),
+    lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", census_unread_cause_text(cause: cause))])
+  }
+}
+
+// THE OBSERVATION, one home. Every field is computed from the rows the fold actually produced; the marker
+// paths ride in from the read (the gap population is about what the marker read answered, not what the rows
+// kept). The channel is DERIVED from the outcome, so it cannot disagree with it.
+fn observed_census(rows: List<OutsideRootsStanding>, claim_bearers: List<String>) -> OutsideRootsCensusOutput {
+  let outcome = CensusObserved { rows: rows }
+  let findings = outside_roots_findings(rows: rows)
+  let vouched = findings_under_note_subject(findings: findings)
+  let undeclared = findings_outside_note_subject(findings: findings)
+  let gap = scan_dir_gap_population(claim_bearers: claim_bearers)
+  OutsideRootsCensusOutput {
+    outcome: outcome,
+    findings: findings,
+    note_vouched: vouched,
+    undeclared: undeclared,
+    scan_dir_gap: gap,
+    channel: outside_roots_channel(outcome: outcome),
+    lines: concat(
+      outside_roots_header_lines(),
+      concat(
+        outside_roots_receipt_lines(findings: vouched, vouched_by_note: true),
+        concat(
+          outside_roots_receipt_lines(findings: undeclared, vouched_by_note: false),
+          concat(
+            scan_dir_gap_header_lines(),
+            scan_dir_gap_receipt_lines(paths: gap)
+          )
+        )
+      )
+    )
+  }
+}
+
+// THE LOCATOR, stamped beside the output by the runner. A revision that could not be read stays a typed
+// absence; nothing here invents one.
+fn head_stamp_line(revision: String) -> String {
+  if revision != "" {
+    concat("OUTSIDE-DISCOVERY-ROOTS head: ", revision)
+  } else {
+    "OUTSIDE-DISCOVERY-ROOTS head: no revision supplied"
+  }
+}
+
+// THE RUNNER'S STAMP FOR THE COMPOSED ENTRY, beside the census lines. The locator comes from the same
+// authority the S1 receipt uses (`census_head_reading`: git, then the runner's GITHUB_SHA, then a typed
+// absence) -- one head for one tree, so the two receipts can never disagree about which tree was measured.
+// An unreadable head says so with its cause; it never prints a placeholder dressed as a revision.
+fn outside_roots_head_receipt_line() -> String {
+  match census_head_reading() {
+    RevisionRead { revision: revision } => head_stamp_line(revision: revision)
+    RevisionAbsent { cause: cause } => concat(
+      "OUTSIDE-DISCOVERY-ROOTS head: UNREADABLE: the runner could not locate the tree -- ",
+      cause
+    )
+  }
+}

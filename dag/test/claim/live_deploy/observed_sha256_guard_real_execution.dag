@@ -1,0 +1,160 @@
+module test.claim.live_deploy.observed_sha256_guard_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.live_deploy.effect_leaf { observed_sha256_env_write_effect }
+import v2.std.effect_plan { EffectPlan, Do }
+import v2.std.orchestration { FailFast }
+import v2.workflow.effect_plan_bash_materialize {
+  BashPlanEffect, effect_plan_bash_materialize, EffectPlanBashMaterialized, EffectPlanBashMaterializationRefused,
+  EffectPlanBashRefusal, ShellNameInvalid
+}
+import v2.std.effect_plan_observed_sha256 { ObservationFailed, DigestShapeInvalid, observed_sha256_failure_exit_status }
+import std.content_hash { lower_hex_64 }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OBSERVED-SHA256 ENV WRITE, BY REAL EXECUTION OF ITS MATERIALIZATION. The refusal is a fact about what bash does
+// with the text v2.workflow.effect_plan_bash_materialize emits for an ObservedSha256EnvWrite leaf, so this
+// materializes exactly that leaf (through the same observed_sha256_env_write_effect constructor the deploy uses) and
+// executes the result. Nothing here spells the guard, the exit statuses or the write: changing the arm changes what
+// runs. The harness only (a) makes the observed file, (b) shadows `sudo` and `install` so the root-owned install lands
+// in a scratch directory, and (c) for the shape REDs shadows `sha256sum` to answer a chosen line, which is the only
+// way to hand the real guard a malformed observation. A refused run must exit with the typed cause's status, write no
+// dest file, and never reach the marker.
+data write_marker: String = "GUNBC-DIGEST-WRITE-REACHED"
+data hex64: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+data scratch_root: String = "/tmp/gunbc-observed-sha256-guard"
+
+fn leaf_plan(case: String, env_name: String) -> EffectPlan<BashPlanEffect> {
+  EffectPlan {
+    steps: [Do { effect: observed_sha256_env_write_effect(
+      path: join([scratch_root, "/", case, "/observed"], ""),
+      dest: join([scratch_root, "/", case, "/dest.env"], ""),
+      env_name: env_name,
+      mode: "0644",
+      owner: "root",
+    ) }],
+    on_failure: FailFast,
+  }
+}
+
+fn materialized(case: String, env_name: String) -> String {
+  match effect_plan_bash_materialize(plan: leaf_plan(case: case, env_name: env_name)) {
+    EffectPlanBashMaterialized { source: source } => source
+    EffectPlanBashMaterializationRefused { refusal: _ } => "exit 97"
+  }
+}
+
+// The lowered script names /usr/bin/sudo by absolute path, so a shell function cannot shadow it. The harness writes the
+// materialized text to a file, repoints that one path at a scratch shim, and runs it. The shim drops `-n`, then the
+// `install -m MODE -o OWNER -g OWNER` words, and copies stdin to the destination, so the root-owned install lands
+// in the scratch directory. sha256sum shadowing, when a case needs a chosen observation, is a function in the prelude.
+data sudo_path: String = "/usr/bin/sudo"
+data sudo_shim_body: String = "#!/bin/sh\nshift 8\ncat > \"$2\"\n"
+data script_end: String = "GUNBC_SCRIPT_END"
+
+fn run_case(case: String, shadow: String) -> String {
+  let dir = join([scratch_root, "/", case], "")
+  join([
+    "rm -rf ", dir, " && mkdir -p ", dir, " && : > ", dir, "/observed && ",
+    "printf '%b' '", sudo_shim_body, "' > ", dir, "/sudo && chmod +x ", dir, "/sudo && ",
+    "cat > ", dir, "/script.sh <<'", script_end, "'\n", shadow, materialized(case: case, env_name: "NAME"), "\n", script_end, "\n",
+    "sed -i 's#", sudo_path, "#", dir, "/sudo#' ", dir, "/script.sh; ",
+    "bash ", dir, "/script.sh; status=$?; test -f ", dir, "/dest.env && cat ", dir, "/dest.env; ",
+    "test $status -eq 0 && echo ", write_marker, "; exit $status",
+  ], "")
+}
+
+fn shadow_line(line: String) -> String {
+  join(["sha256sum() { printf '%s\\n' '", line, "'; }; "], "")
+}
+
+data shadow_unreadable: String = "sha256sum() { return 1; }; "
+
+fn wrote_nothing_and_exited(case: String, shadow: String, status: String) -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: case, shadow: shadow)), transport: LocalExec)
+  to_string(obs.exit_code) == status && !string_contains(s: obs.stdout, pattern: write_marker) && !string_contains(s: obs.stdout, pattern: "NAME=")
+}
+
+fn shape_refused(case: String, line: String) -> Bool {
+  wrote_nothing_and_exited(case: case, shadow: shadow_line(line: line), status: observed_sha256_failure_exit_status(cause: DigestShapeInvalid))
+}
+
+// POSITIVE CONTROL: the real sha256sum over the real (empty) observed file is admitted and exactly
+// NAME=<that digest> is written, where the expected digest is read independently by sha256sum itself.
+test fn a_real_observation_is_written_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: "positive", shadow: "")), transport: LocalExec)
+  let expected = run_shell_command_observe(
+    command: bash_program_command(script: join(["printf 'NAME=%s' \"$(sha256sum ", scratch_root, "/positive/observed | cut -d' ' -f1)\""], "")),
+    transport: LocalExec,
+  )
+  obs.exit_code == 0 && string_contains(s: obs.stdout, pattern: write_marker) && string_contains(s: obs.stdout, pattern: expected.stdout)
+    && string_length(s: expected.stdout) == 69
+}
+
+// RED, ObservationFailed: sha256sum cannot read the file; no write, the typed cause's exit status.
+test fn an_unreadable_observation_is_refused_before_any_write_by_real_execution() -> Bool {
+  wrote_nothing_and_exited(case: "unreadable", shadow: shadow_unreadable, status: observed_sha256_failure_exit_status(cause: ObservationFailed))
+}
+
+// RED, DigestShapeInvalid: empty, 63-digit, uppercase, non-hex, missing-separator and single-space observations.
+test fn an_empty_observation_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "empty", line: "")
+}
+
+test fn a_short_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "short", line: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde  /opt/x/bin")
+}
+
+test fn an_uppercase_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "upper", line: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef  /opt/x/bin")
+}
+
+test fn a_non_hex_digest_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "nonhex", line: "zzzz456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /opt/x/bin")
+}
+
+test fn a_digest_without_the_separator_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "nosep", line: hex64)
+}
+
+test fn a_digest_with_a_single_space_separator_is_refused_before_any_write_by_real_execution() -> Bool {
+  shape_refused(case: "onespace", line: join([hex64, " /opt/x/bin"], ""))
+}
+
+// RED, static: an env name that is not a POSIX name is refused by the leaf's own lowering, before any shell exists.
+test fn a_non_posix_env_name_is_refused_by_the_leaf_lowering() -> Bool {
+  match effect_plan_bash_materialize(plan: leaf_plan(case: "badname", env_name: "1BAD NAME")) {
+    EffectPlanBashMaterializationRefused { refusal: EffectPlanBashRefusal { step_index: _, operation: _, cause: ShellNameInvalid { name: _ } } } => true
+    _ => false
+  }
+}
+
+fn first_field(line: String) -> String {
+  match get(xs: split(s: line, delimiter: " "), index: 0) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+// AGREEMENT, BY EXECUTION: for each line with a well-formed separator, the real guard admits exactly when
+// std.content_hash lower_hex_64 accepts the line's first field. The ERE is derived from that alphabet and width
+// (v2.workflow.effect_plan_bash_hex_ere); this is the claim that the derivation did not drift.
+fn guard_agrees(case: String, line: String) -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: case, shadow: shadow_line(line: line))), transport: LocalExec)
+  (obs.exit_code == 0) == lower_hex_64(value: first_field(line: line))
+}
+
+test fn the_guard_agrees_with_the_sha256_digest_hex_validator() -> Bool {
+  guard_agrees(case: "agree1", line: join([hex64, "  /p"], ""))
+    && guard_agrees(case: "agree2", line: "  /p")
+    && guard_agrees(case: "agree3", line: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde  /p")
+    && guard_agrees(case: "agree4", line: "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef  /p")
+    && guard_agrees(case: "agree5", line: "zzzz456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /p")
+}

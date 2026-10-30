@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.whole_corpus_census_exceeds_the_memory_bound
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data whole_corpus_census_exceeds_the_memory_bound: RecurringFailureMode = RecurringFailureMode {
   identity: "whole_corpus_census_exceeds_the_memory_bound" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**the native census walk over the whole corpus (`census-infer` over dag + src/v2) does not fit the bounded runner it is dispatched to: the kernel's cgroup OOM killer ends it with no stage marker and no terminal, so the census answers nothing about any module.** INVALID STATE: an instrument whose memory grows with the CORPUS rather than with the module it is reading, dispatched under a bound smaller than the corpus needs. HARM: every census reading that needs the whole tree -- the refusal census, the ambient-name census, a wave's binding diff -- is unobservable, and a reader of the killed run sees status -1 and an empty stdout that a careless reader folds into an empty census (both ambient-name-census and namespace-wave-binding-diff held vacuously over one before their readers learned to refuse an empty side, PR #14112).",

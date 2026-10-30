@@ -25,8 +25,12 @@
 .github/workflows/witnesses.yml merge=generated-artifact
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
+apps/approve-ios/Approve/EnrolmentMachine.swift merge=generated-artifact
+apps/approve-ios/Approve/OperationErrors.swift merge=generated-artifact
 apps/approve-ios/Approve/Protocol.swift merge=generated-artifact
 apps/approve-ios/Approve/Wire.swift merge=generated-artifact
+apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift merge=generated-artifact
+apps/approve-ios/ApproveTests/OperationErrorsTests.swift merge=generated-artifact
 apps/approve-ios/ApproveTests/ProtocolVectorTests.swift merge=generated-artifact
 apps/approve-ios/project.yml merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_layout_generated.dag merge=generated-artifact

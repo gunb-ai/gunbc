@@ -7,6 +7,11 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
 import std.algebra { Empty }
+// THE SEED-BUILD ENVIRONMENT AS A KEY AXIS. See release_bins_seed_build_environment_digest below.
+import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+
 import extdeps.tools.jq {
   JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
   jq_invocation_process_plan, jq_admitted_plan_surface, jq_executable,
@@ -41,10 +46,12 @@ import v2.compiler.self_host.generation {
 }
 import extdeps.git { TreeObj }
 import extdeps.git.object_store { git_object_type_wire_name }
-import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins }
+import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins, ci_emitted_release_bins }
 import gunbc.repo.repo_self_build { repo_self_build_command }
-import gunbc.ci.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
+import gunbc.ci.ci_spec { ci_release_pack_build_line, ci_release_bins_archive_name }
 import gunbc.ci.ci_failure_class { floor_attempt_command_log_filename, wrap_command_with_floor_attempt_receipt }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
 // ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
@@ -158,6 +165,7 @@ data release_bins_key_kind: String = "gunbc.fleet_release_bins"
 type ReleaseBinsProduct {
   kind: String
   roster: List<String>
+  emitted: List<String>
   build_line: String
   diagnostics: ReleaseBinsDiagnostics
   sidecars: List<String>
@@ -182,11 +190,19 @@ type ReleaseBinsDiagnostics
 // uses one to carry the checker's input record (claim_executor --write-checker-inputs), the form of
 // cargo's dep-info that survives a change of checkout, so the floor's checker-subject rule can run
 // against a restored binary without a rebased copy of the old evidence.
+// EVERY EXECUTABLE THE PACK CARRIES: the cargo bins of the roster (which claim_executor
+// --verify-build-artifacts verifies) and the emitted release bins (gunbc.ci.ci_release_bins
+// EmittedReleaseBin), which the build line produces beside them under target/release and which are
+// digested, listed, checked and promoted exactly like a roster bin.
+fn release_bins_executables(product: ReleaseBinsProduct) -> List<String> {
+  concat(product.roster, product.emitted)
+}
+
 fn release_bins_pack_members(product: ReleaseBinsProduct) -> List<String> {
   concat(
     match product.diagnostics {
-      NoBuildDiagnostics => product.roster
-      BuildLogMember { member: m, source: _ } => concat(product.roster, [m])
+      NoBuildDiagnostics => release_bins_executables(product: product)
+      BuildLogMember { member: m, source: _ } => concat(release_bins_executables(product: product), [m])
     },
     product.sidecars,
   )
@@ -194,7 +210,7 @@ fn release_bins_pack_members(product: ReleaseBinsProduct) -> List<String> {
 
 // THE FLEET PACK: every enrolled release binary, built by fleet-converge's build job.
 fn fleet_release_bins_product() -> ReleaseBinsProduct {
-  ReleaseBinsProduct { kind: release_bins_key_kind, roster: ci_floor_required_artifact_names(), build_line: ci_release_build_line(), diagnostics: NoBuildDiagnostics, sidecars: [], sidecar_writer: [] }
+  ReleaseBinsProduct { kind: release_bins_key_kind, roster: ci_floor_required_artifact_names(), emitted: map(ci_emitted_release_bins(), b => b.name), build_line: ci_release_pack_build_line(), diagnostics: NoBuildDiagnostics, sidecars: [], sidecar_writer: [] }
 }
 
 // THE COMPILER PAIR: the two binaries the required floor builds anyway (gunbc.ci.ci_release_bins
@@ -211,10 +227,11 @@ fn compiler_pair_release_product() -> ReleaseBinsProduct {
   ReleaseBinsProduct {
     kind: "gunbc.compiler_pair_release_bins",
     roster: ci_floor_invoked_bins,
+    emitted: [],
     build_line: repo_self_build_command(bins: ci_floor_invoked_bins),
     diagnostics: BuildLogMember { member: "build_diagnostics", source: floor_attempt_command_log_filename },
     sidecars: [compiler_pair_checker_inputs_sidecar],
-    sidecar_writer: ["./target/release/claim_executor", "--write-checker-inputs"],
+    sidecar_writer: [concat("./", claim_executor_relative_path()), "--write-checker-inputs"],
   }
 }
 data release_bins_admitted_producer_ref: String = "refs/heads/main"
@@ -298,7 +315,30 @@ fn append_line(file_var: String, line: Node) -> Node {
 }
 
 fn release_bins_roster_text(product: ReleaseBinsProduct) -> String {
-  join(product.roster, " ")
+  join(release_bins_executables(product: product), " ")
+}
+
+// THE SEED-BUILD ENVIRONMENT, AS A KEY AXIS, computed from the SAME authority that emits it into
+// the build steps (gunbc.repo.repo_self_build repo_self_build_env_preamble), so the two cannot
+// drift. The key could not otherwise see the environment at all: the key step runs in its own step
+// BEFORE the build step, so the RUSTFLAGS the preamble exports never reaches its `env -0` probe, and
+// release_bins_unkeyed_environment_pattern deliberately drops the location-naming variables
+// (CARGO_HOME, RUSTUP_HOME, CARGO_BIN) because their VALUES name a place rather than a build. That
+// exclusion stays correct -- keying the per-runner VALUES would re-fragment the cache per checkout
+// depth and defeat the repair -- but the preamble's TEXT is a key input regardless, since it names
+// which locations are normalized away and therefore which bytes come out. The hazard is concrete,
+// not hypothetical: on a key hit the job restores cached bins and SKIPS the build (fleet-converge's
+// `outcome != 'reuse'` guards), so a preamble change that moved the bytes without moving the key
+// would restore pre-change binaries and call them current. Dropping a remap prefix moves this digest,
+// and therefore moves the key, so the stale-restore path is closed by this row alone. The byte claim
+// itself is checked by an ON-DEMAND instrument, not by this row and not by any enrolled gate:
+// src/v1/stage0/src/compiler_tests.rs::seed_build_reproducibility_falsifier -- a hand-run cargo
+// test, not a gunbc test row; run it, do not cite a copy of its output -- which is
+// #[ignore]d because it runs cold release builds and the required path does not run v1 unit tests.
+// The rung, and why it is on-demand rather than enrolled, are the typed fields on
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
+fn release_bins_seed_build_environment_digest() -> String {
+  join(["sha256:", sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: repo_self_build_env_preamble())))], "")
 }
 
 fn release_bins_roster_lines(product: ReleaseBinsProduct) -> String {
@@ -650,6 +690,10 @@ fn axis_line(axis: GenerationAxis, product: ReleaseBinsProduct) -> List<Node> {
       lit(t: "build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\\n"),
       lit(t: product.build_line), var(n: "SOURCE_CLOSURE"), words(ws: [lit(t: "sha256:"), var(n: "AXIS_ENVIRONMENT_DIGEST")]),
       lit(t: release_bins_roster_text(product: product)),
+    ]), cmd(ws: [
+      lit(t: "printf"),
+      lit(t: "seed_build_environment=%s\\n"),
+      lit(t: release_bins_seed_build_environment_digest()),
     ])]
     RequiredLensContractAxis => [cmdl(ls: ["printf", "required_lens_contract=none (a seed cargo build admits no lens contract)\\n"])]
     MaterializedArtifactAxis => []
@@ -790,7 +834,7 @@ fn roster_file_statement(product: ReleaseBinsProduct) -> Node {
 data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_]+$"
 
 fn release_bins_member_types_expected(product: ReleaseBinsProduct) -> String {
-  fold(product.roster, init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
+  fold(release_bins_executables(product: product), init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
 }
 
 fn in_dir(dir: Node, command: Node) -> Node {
@@ -798,7 +842,7 @@ fn in_dir(dir: Node, command: Node) -> Node {
 }
 
 fn release_bins_roster_words(product: ReleaseBinsProduct) -> List<Node> {
-  map(product.roster, n => lit(t: n))
+  map(release_bins_executables(product: product), n => lit(t: n))
 }
 
 // EVERY MEMBER IN ONE PASS: stat reports each roster member's type and link count, and the whole
@@ -826,10 +870,10 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
 
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
   concat([
-    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: cargo_default_release_dir_rel)]),
+    in_dir(dir: rooted(file: cargo_default_release_dir_rel), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: join([cargo_default_release_dir_rel, "/"], ""))]))),
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: join([cargo_default_release_dir_rel, "/"], ""))]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
@@ -1136,13 +1180,13 @@ fn release_bins_pack_statements(product: ReleaseBinsProduct) -> List<Node> {
     [
       bash_build_with_redir_to_file(
         inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
-          left: cmd(ws: [lit(t: "cd"), rooted(file: "target/release")]),
+          left: cmd(ws: [lit(t: "cd"), rooted(file: cargo_default_release_dir_rel)]),
           right: cmd(ws: concat([lit(t: "sha256sum")], map(release_bins_pack_members(product: product), n => lit(t: n)))),
         )]),
         path: staged(file: release_bins_manifest_name),
       ),
       cmd(ws: concat(
-        [lit(t: "tar"), lit(t: "-czf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), rooted(file: "target/release")],
+        [lit(t: "tar"), lit(t: "-czf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), rooted(file: cargo_default_release_dir_rel)],
         map(release_bins_pack_members(product: product), n => lit(t: n)),
       )),
       cmd(ws: [lit(t: "cp"), temp(file: join([release_bins_preimage_name, ".expected"], "")), staged(file: release_bins_preimage_name)]),
@@ -1159,7 +1203,7 @@ fn release_bins_diagnostics_capture(product: ReleaseBinsProduct) -> List<Node> {
     NoBuildDiagnostics => []
     BuildLogMember { member: m, source: src } => [
       or_refuse(check: test_words(ws: [lit(t: "-s"), rooted(file: src)]), r: BuildDiagnosticsMissing { file: src }),
-      cmd(ws: [lit(t: "cp"), rooted(file: src), rooted(file: join(["target/release/", m], ""))]),
+      cmd(ws: [lit(t: "cp"), rooted(file: src), rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))]),
     ]
   }
 }
@@ -1168,7 +1212,7 @@ fn release_bins_diagnostics_capture(product: ReleaseBinsProduct) -> List<Node> {
 // requires each to exist non-empty: a product that declares a sidecar and finds none refuses.
 fn release_bins_sidecar_capture(product: ReleaseBinsProduct) -> List<Node> {
   concat(release_bins_sidecar_writes(product: product), map(product.sidecars, f => or_refuse(
-    check: test_words(ws: [lit(t: "-s"), rooted(file: join(["target/release/", f], ""))]),
+    check: test_words(ws: [lit(t: "-s"), rooted(file: join([cargo_default_release_dir_rel, "/", f], ""))]),
     r: SidecarMissing { file: f },
   )))
 }
@@ -1179,7 +1223,7 @@ fn release_bins_sidecar_capture(product: ReleaseBinsProduct) -> List<Node> {
 fn release_bins_sidecar_writes(product: ReleaseBinsProduct) -> List<Node> {
   match length(xs: product.sidecar_writer) == 0 {
     true => []
-    false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join(["target/release/", f], ""))])))
+    false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join([cargo_default_release_dir_rel, "/", f], ""))])))
   }
 }
 
@@ -1216,8 +1260,8 @@ fn release_bins_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
         product: product,
       ), [
         cmd(ws: concat(
-          [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-          map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+          [rooted(file: claim_executor_relative_path()), lit(t: "--verify-build-artifacts")],
+          map(product.roster, m => rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))),
         )),
       ]]),
     ),
@@ -1313,8 +1357,8 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
     ),
     [
       cmd(ws: concat(
-        [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-        map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+        [rooted(file: claim_executor_relative_path()), lit(t: "--verify-build-artifacts")],
+        map(product.roster, m => rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))),
       )),
       cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: canonical ", product.kind, " pack verified and promoted"], ""))]),
     ],

@@ -1,5 +1,8 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
+import v2.std.node { NotADeclaration }
+
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -18,7 +21,7 @@ data sr_use: Node = sr_claim_atom(s: ^sr_use_symbol)
 data sr_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_use, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

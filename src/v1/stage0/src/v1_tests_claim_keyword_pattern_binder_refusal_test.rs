@@ -137,7 +137,7 @@ pub fn span_text(source: String, span: Rc<SourceSpan>) -> String {
 pub fn parse_error_at_keyword(source: String, keyword: String) -> bool {
     {
         let parsed = parse_source(source.clone());
-        match parsed.result.clone().error.clone() {
+        match parsed.result.error.clone() {
             std::option::Option::None => false,
             Some(e) => match (*e.diagnostic.clone()).clone() {
                 CompilerDiagnostic::ParseError {
@@ -156,7 +156,7 @@ pub fn parse_error_at_keyword(source: String, keyword: String) -> bool {
 }
 
 pub fn parsed_ok(source: String) -> bool {
-    match parse_source(source.clone()).result.clone().error.clone() {
+    match parse_source(source).result.error.clone() {
         Some(_) => false,
         std::option::Option::None => true,
     }

@@ -11,7 +11,7 @@ import std.primitive_identity { BuiltinRegistry, PrimitiveContractRow, AlgebraTe
 import extdeps.languages.rust.emit { rt_function_registry }
 import gunbc.v1.v1_interpreter_primitive_surface { v1_interpreter_primitive_arms }
 import gunbc.seed_growth_admission { seed_growth_roster_all_declarations }
-import v2.std.decl_ref_resolution { DeclarationRefResolution, resolve_declaration_ref_live }
+import v2.std.decl_ref_resolution_host { DeclarationRefResolution, resolve_declaration_ref_live }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.primitive_egress.identity { FreeForm, MethodForm, FormlessSurface }
 import gunbc.primitive_egress.census {

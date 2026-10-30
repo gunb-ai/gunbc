@@ -695,7 +695,7 @@ fn parse_intent_scopes(text: String) -> IntentScopes? {
   let lines = split(s: text, delimiter: "\n")
   let schema = field_at(fields: lines, i: 0)
   if schema == "" { none } else {
-    let start: IntentScopeScan = ScanningScopes { scopes: [] as List<AuthorizationScope> }
+    let start: IntentScopeScan = ScanningScopes { scopes: [] }
     let scan = fold(lines |> skip(n: 1), init: start, f: (acc, l) =>
       match acc {
         ScopesEnded { scopes: _ } => acc

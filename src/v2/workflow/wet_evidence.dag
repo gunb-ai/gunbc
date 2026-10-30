@@ -1,7 +1,8 @@
 module v2.workflow.wet_evidence
 
-import std.types { List }
-import std.algebra { list_append, contains, fold_list, length }
+import std.types { List, Map }
+import std.algebra { list_append, contains, empty_map, fold_list, length, map_insert, map_lookup }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
@@ -11,7 +12,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
-  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
   claim_disposition
 }
 
@@ -254,6 +255,7 @@ type WetEvidenceRefusal
   | WetBindingExecutorContractDiffers { identity: String, observed: String, required: String }
   | WetBindingRelationMismatch { identity: String }
   | WetCrossRouteIdentityOverlap { identity: String }
+  | WetScheduledIdentityDuplicated { identity: String, occurrences: Int }
 
 type WetEvidenceValidation
   = WetEvidenceAdmitted { binding: WetEvidenceBinding, terminals: List<WetTerminalRow> }
@@ -312,6 +314,7 @@ fn wet_disposition_is_agreement(d: ClaimDisposition) -> Bool {
     PanickedBeforeVerdict => false
     NotAttemptedAfterAbort => false
     ObservationUnreadableBeforeVerdict => false
+    SubjectUnresolvedBeforeVerdict => false
   }
 }
 
@@ -427,6 +430,74 @@ fn wet_reverse_causes(
   )
 }
 
+// The second pass of the fold below accumulates causes AND the names already emitted, so each
+// duplicated identity is named exactly once and in first-occurrence order.
+type WetScheduleDuplicateSweep {
+  causes: List<WetEvidenceRefusal>
+  emitted: List<String>
+}
+
+// THE SCHEDULE'S OWN UNIQUENESS, CHECKED WHERE THE SCHEDULE IS CONSUMED.
+//
+// THE HOLE THIS CLOSES: the forward join walks SCHEDULED, so one identity written twice finds the
+// same single terminal twice -- each row sees exactly n==1 and passes -- and the reverse join sees a
+// scheduled name that is present. The sibling roster claims miss it too:
+// every_roster_row_spells_its_function_the_same_way_twice reads WITHIN a row, and
+// the_local_roster_is_not_empty compares length(identities) to length(schedule), which is a map --
+// equal over a duplicate. The executor's own builder refuses this at its grain
+// (`local_repo_wet_schedule` in cli_run/required_floor_runner.rs refuses "duplicate scheduled
+// identity" with a seen-guard) -- THE SEED PRECEDENT -- but the executor is one caller of this fold
+// and the fold is the authority: any fixture schedule, or future caller, handing one identity twice
+// must refuse HERE, naming it, and not silently pass.
+//
+// WHY A MAP FOLD AND NOT THE PAIRWISE SCAN THE DEFERRAL MEMO MEASURED (the memo at
+// v2.test.claim.local_repo_wet_terminal, above the roster claims): the memo's premise -- "not
+// made linear by any construction available -- the substrate offers no set and no sort over String"
+// -- is falsified by std.algebra's HAMT map: empty_map/map_insert/map_lookup, used in production
+// through fold_list by v2.lens.text_string_importer_census (map_over_paths) and
+// v2.lens.module_impact_query (build_impact_pool_index). This fold is two linear passes; no O(n^2)
+// scan is involved.
+// The emitted order is FIRST-OCCURRENCE order of the schedule (the second pass walks scheduled and
+// emits each duplicated name once, tracked by an emitted-name list), never a map-iteration order.
+fn wet_scheduled_identity_duplicate_causes(
+  scheduled: List<WetScheduledClaim>
+) -> List<WetEvidenceRefusal> {
+  let counts: Map<String, Int> = fold_list(
+    xs: scheduled,
+    empty: empty_map(),
+    cons: fn(m, s) {
+      let name = wet_identity_name(identity: s.identity)
+      match map_lookup(m: m, key: name) {
+        Absent => map_insert(m: m, key: name, value: 1)
+        Present { value: prior } => map_insert(m: m, key: name, value: prior + 1)
+      }
+    }
+  )
+  let swept = fold_list(
+    xs: scheduled,
+    empty: WetScheduleDuplicateSweep { causes: [], emitted: [] },
+    cons: fn(acc, s) {
+      let name = wet_identity_name(identity: s.identity)
+      match map_lookup(m: counts, key: name) {
+        Absent => acc
+        Present { value: n } =>
+          if n > 1 && !contains(xs: acc.emitted, item: name, eq: wet_string_eq) {
+            WetScheduleDuplicateSweep {
+              causes: list_append(
+                left: acc.causes,
+                right: [WetScheduledIdentityDuplicated { identity: name, occurrences: n }]
+              ),
+              emitted: list_append(left: acc.emitted, right: [name])
+            }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+  swept.causes
+}
+
 fn wet_string_eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -478,7 +549,10 @@ fn wet_evidence_validate(
 ) -> WetEvidenceValidation {
   let causes = list_append(
     left: wet_forward_causes(scheduled: scheduled, terminals: terminals, requirement: requirement),
-    right: wet_reverse_causes(scheduled: scheduled, terminals: terminals)
+    right: list_append(
+      left: wet_reverse_causes(scheduled: scheduled, terminals: terminals),
+      right: wet_scheduled_identity_duplicate_causes(scheduled: scheduled)
+    )
   )
   if length(xs: causes) == 0 {
     WetEvidenceAdmitted { binding: wet_binding_of_requirement(requirement: requirement), terminals: terminals }

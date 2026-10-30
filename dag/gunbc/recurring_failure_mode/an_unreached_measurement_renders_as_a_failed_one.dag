@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_unreached_measurement_renders_as_a_failed_one
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_unreached_measurement_renders_as_a_failed_one: RecurringFailureMode = RecurringFailureMode {
   identity: "an_unreached_measurement_renders_as_a_failed_one" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an unreached measurement renders as a failed one** (a required lane that never reached its subject -- the instrument would not build, the runner died, the checkout refused -- reports at the decision surface identically to a lane that reached its subject and refused it. Both are one red. One carries a verdict about every identity it adjudicated; the other carries a verdict about NOTHING, and the surface does not say which it is.",

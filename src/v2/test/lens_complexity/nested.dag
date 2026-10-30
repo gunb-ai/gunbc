@@ -28,7 +28,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Atom,
-  Occupancy,
+  Loop,
+  LoopBoundEdge,
+  core_edge_label,
   ComputationNode,
   Edge,
   Node,
@@ -36,6 +38,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import std.nat { Zero }
 import v2.std.witness { Holds, Violates, Witness }
@@ -57,23 +60,37 @@ data nested_body_leaf: Node = Node {
 data nested_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: nested_body_leaf }
+    Edge { label: Positional, target: nested_body_leaf, declaration: NotADeclaration }
   ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data nested_inner_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^nested_inner_measure_atom } },
+  children: [],
   occurrence_id: OccurrenceSynthetic
 }
 
 data nested_inner: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_body }
+    Edge { label: Positional, target: nested_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_inner_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
+data nested_input_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^nested_input_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data nested_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_inner }
+    Edge { label: Positional, target: nested_inner, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_input_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -81,13 +98,13 @@ data nested_input: Node = Node {
 data nested_claim: LensComplexityClaim = LensComplexityClaim {
   input: nested_input,
   expected_cost: ProductCost {
-    lhs: LinearCost { variable: SizeVariable { source: nested_input } },
-    rhs: LinearCost { variable: SizeVariable { source: nested_inner } }
+    lhs: LinearCost { variable: SizeVariable { source: nested_input_measure } },
+    rhs: LinearCost { variable: SizeVariable { source: nested_inner_measure } }
   },
   expected_complexity: multidimensional_polynomial_complexity(
     variables: composite_complexity_variables(
-      lhs: single_complexity_variable(size_var: SizeVariable { source: nested_input }),
-      rhs: single_complexity_variable(size_var: SizeVariable { source: nested_inner })
+      lhs: single_complexity_variable(size_var: SizeVariable { source: nested_input_measure }),
+      rhs: single_complexity_variable(size_var: SizeVariable { source: nested_inner_measure })
     ),
     degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
   ),

@@ -3,8 +3,8 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
-import std.optional { Present }
+import std.algebra { Cons, Empty, FreeMonoid, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceId,
@@ -31,8 +31,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Symbol
 
-// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
-// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// THE MIGRATION-TIME PROJECTION OF HOST TEXT. Host text's one home is std.host_text HostText (operator
+// ruling H2, 2026-10-17): this declaration is no longer its semantic home, and v2.extdeps.languages.dag
+// lists both as the one String kernel value type until the String-to-HostText wave respells every
+// authored String and deletes this row. It was declared beside Symbol (the v2 kernel-types home,
+// neat-boar-16's ruling on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
 // the two are distinct representations, and a host-text value reaches the structural carrier only
 // through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
 // UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
@@ -77,7 +80,6 @@ type Connective
   | Conj
   | Disj
   | Arrow
-  | Occupancy
   | Instantiation
 
 type Behavior
@@ -109,7 +111,6 @@ type ConnectiveCoproductVariant
   | ConnectiveConjArm
   | ConnectiveDisjArm
   | ConnectiveArrowArm
-  | ConnectiveOccupancyArm
   | ConnectiveInstantiationArm
 
 fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
@@ -118,7 +119,6 @@ fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
     ConnectiveConjArm,
     ConnectiveDisjArm,
     ConnectiveArrowArm,
-    ConnectiveOccupancyArm,
     ConnectiveInstantiationArm,
   ]
 }
@@ -132,7 +132,6 @@ fn connective_from_coproduct_variant(
     ConnectiveConjArm => Conj
     ConnectiveDisjArm => Disj
     ConnectiveArrowArm => Arrow
-    ConnectiveOccupancyArm => Occupancy
     ConnectiveInstantiationArm => Instantiation
   }
 }
@@ -246,7 +245,7 @@ fn production_edge_label(language: Symbol, edge: Symbol) -> EdgeLabel {
 }
 
 fn core_edge(marker: CoreEdgeLabel, target: Node) -> Edge {
-  Edge { label: core_edge_label(marker: marker), target: target }
+  Edge { label: core_edge_label(marker: marker), target: target, declaration: NotADeclaration }
 }
 
 // THE ONE READER OF A CORE MARKER: it matches the arm, so an authored name spelled like a marker
@@ -344,9 +343,23 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstantMemberEdge => ^core_constant_member_edge
   }
 }
+// WHETHER AN EDGE IS THE DECLARATION OF ITS LABEL, with the occurrence of the token that declared it.
+// A declaration name is an Authored label (a bare Symbol), so the occurrence of the token that declared
+// it has no home on the label; it lives on the Edge, beside the label, exactly as a Node carries its own
+// occurrence_id. Neither enters content_hash: content_hash_step folds (label, child hash) and never the
+// Edge. A closed coproduct with no default, so an edge built by a producer that forgot to mint refuses
+// at construction rather than reading as "not a declaration".
+type EdgeDeclaration = DeclaresAt { occurrence: NodeOccurrenceIdentity } | NotADeclaration
+
 type Edge {
   label: EdgeLabel
   target: Node
+  declaration: EdgeDeclaration
+}
+
+// THE ONE CONSTRUCTOR OF A DECLARATION EDGE: an Authored label declared by the token at `occurrence`.
+fn edge_declared(name: Symbol, target: Node, occurrence: NodeOccurrenceIdentity) -> Edge {
+  Edge { label: Authored { name: name }, target: target, declaration: DeclaresAt { occurrence: occurrence } }
 }
 
 type EdgeShape {
@@ -457,7 +470,7 @@ fn close_lowered_image_of(root: Node, source: Node) -> Node {
 fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
   match node.occurrence_id {
     OccurrenceSynthetic =>
-      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source) }))
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source), declaration: e.declaration }))
     OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
     OccurrencePending { caused_by: _ } => node
     OccurrenceProjected { id: _, caused_by: _ } => node
@@ -488,7 +501,7 @@ fn close_image_member(node: Node, source: OccurrenceId) -> Node {
 }
 
 fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
-  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source) })
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source), declaration: e.declaration })
 }
 
 // THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
@@ -512,7 +525,7 @@ fn allocate_pending_occurrences(
     f: (acc, e) => {
       let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
       PendingEdgesAllocation {
-        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root }),
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root, declaration: e.declaration }),
         allocator: child.allocator,
       }
     },
@@ -587,7 +600,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
   )
 }
 
@@ -601,6 +614,43 @@ fn strip_provenance_fold_algebra() -> NodeFold<Node> {
 fn canonicalize_node_strip_provenance(n: Node) -> Node {
   fold_node(n: n, algebra: strip_provenance_fold_algebra())
 }
+
+// NODE EQUALITY IS TWO QUESTIONS, and derived `==` on Node answered both while also comparing the
+// provenance it carries (occurrence ids, Edge.declaration). Node is declared equality-inadmissible;
+// a caller names which question it asks. Both compare exactly (no hash shortcut: content_hash is a
+// 64-bit non-cryptographic fold and a collision would be a silent false equality), recursing in
+// place with no canonical copy, and stop at the first difference.
+//
+// node_equal_ignoring_provenance: same kind, same labeled children, recursively; occurrence ids and
+// Edge.declaration are not compared. The question every structural reader asks (a type against a type,
+// a node against a pinned constant).
+fn node_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  (a.kind == b.kind)
+    && zip_eq(a: a.children, b: b.children, eq: fn(x, y) { node_edge_equal_ignoring_provenance(x: x, y: y) })
+}
+
+fn node_edge_equal_ignoring_provenance(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_equal_ignoring_provenance(a: x.target, b: y.target)
+}
+
+// node_same_occurrence: the two are the same authored occurrence. Derived `==` compared the occurrence id at
+// EVERY node of both trees (and Edge.declaration, which is provenance outside content); this keeps the
+// every-node occurrence comparison and drops only the declaration, so a node rebuilt with the same root id
+// but a rewritten descendant is NOT the same occurrence. Occurrence ids are minted unique per authored
+// node and all synthetic nodes share one, so for synthetic nodes it degrades to the structural question,
+// as `==` did.
+fn node_same_occurrence(a: Node, b: Node) -> Bool {
+  (a.occurrence_id == b.occurrence_id)
+    && (a.kind == b.kind)
+    && zip_eq(a: a.children, b: b.children, eq: fn(x, y) { node_edge_same_occurrence(x: x, y: y) })
+}
+
+
+fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
+}
+
+
 
 type Node {
   kind: NodeKind
@@ -656,28 +706,200 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
 // infer_child_context_cannot_depend_on_a_sibling_result). This algebra does: child_context also receives
 // the parent's accumulator AFTER the children already folded, and `first` schedules the dependency
 // children ahead of the rest.
-// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which edges are
+// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which children are
 // folded before the others, each part keeping its authored order; no schedule can drop, duplicate or
-// invent an edge, so there is nothing to validate. With `first` false everywhere and a child_context that
+// invent a child, so there is nothing to validate. With `first` false everywhere and a child_context that
 // ignores the accumulator, this is fold_node_topdown exactly.
+// `first` and child_context RECEIVE THE CHILD'S SLOT, NOT ONLY ITS EDGE. The normalized tree may share one
+// node at several positions, so two children can carry structurally equal edges -- a Bind whose value and
+// body are one node, a Match whose scrutinee is also an arm -- and an edge alone cannot say which role a
+// child plays (side-chat review on #14501). The slot carries the child's ordinal among its parent's
+// positional children, which is what a positional role is.
 type NodeFoldDependent<A,R> {
   init: fn(Node, A) -> R
-  first: fn(Node, Edge) -> Bool
-  child_context: fn(Node, A, R, Edge) -> A
+  first: fn(Node, ChildSlot) -> Bool
+  child_context: fn(Node, A, R, ChildSlot) -> A
   step: fn(R, Edge, R) -> R
 }
 
-fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<Edge> {
+// A CHILD AS ITS PARENT HOLDS IT: the edge, and where it sits -- its ordinal among the parent's positional
+// children, or labeled. Equal edges at two positions are two slots.
+type ChildSlot {
+  edge: Edge
+  ordinal: ChildOrdinal
+}
+
+type ChildOrdinal
+  = PositionalOrdinal { index: Int }
+  | LabeledChild
+
+type ChildSlotsAcc {
+  slots: List<ChildSlot>
+  next_positional: Int
+}
+
+fn node_child_slots(n: Node) -> List<ChildSlot> {
+  let walked = fold(n.children, init: ChildSlotsAcc { slots: [], next_positional: 0 }, f: fn(acc, e) { node_child_slots_step(acc: acc, e: e) })
+  walked.slots
+}
+
+fn node_child_slots_step(acc: ChildSlotsAcc, e: Edge) -> ChildSlotsAcc {
+  if is_positional(e: e) {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: PositionalOrdinal { index: acc.next_positional } }),
+      next_positional: acc.next_positional + 1
+    }
+  } else {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: LabeledChild }),
+      next_positional: acc.next_positional
+    }
+  }
+}
+
+fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<ChildSlot> {
+  let slots = node_child_slots(n: n)
   concat(
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { list_snoc_item(xs: acc, item: e) } else { acc } }),
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { list_snoc_item(xs: acc, item: s) } else { acc } }),
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { acc } else { list_snoc_item(xs: acc, item: s) } })
   )
 }
 
 fn fold_node_dependent<A,R>(n: Node, ctx: A, algebra: NodeFoldDependent<A,R>) -> R {
-  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_dependent(n: e.target, ctx: algebra.child_context(n, ctx, acc, e), algebra: algebra))
+  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, s) {
+    algebra.step(acc, s.edge, fold_node_dependent(n: s.edge.target, ctx: algebra.child_context(n, ctx, acc, s), algebra: algebra))
   })
+}
+
+// WHAT EACH POSITIONAL CHILD OF A Bind AND OF A Match IS -- the one table every stage reads (resolve's walk,
+// lexical scope, inference's dependent fold). A Bind's slot is keyed by its ordinal among the POSITIONAL
+// children only: the <type-annotation> edge may stand anywhere among the children, so counting it would
+// shift the value into the binder's inner scope. Ordinal 0 is the binder, 1 the value, 2 and beyond the body
+// (v2.std.compilers.body_lowering lower_bind / lower_bind_annotated). A Match's first positional child is its
+// scrutinee and every later positional child an arm (lower_match); a labeled child of a Match is neither,
+// as match_arm_children_conform_skip_first already reads it. A labeled child of either is not in the table:
+// a consumer holding a ChildSlot reads its ordinal first. Reading the role off the slot rather than off the
+// edge is what keeps two equal edges in different roles apart.
+type BindSlot
+  = BindBinderSlot
+  | BindValueSlot
+  | BindBodySlot
+
+fn bind_positional_slot(ordinal: Int) -> BindSlot {
+  if ordinal == 0 {
+    BindBinderSlot
+  } else if ordinal == 1 {
+    BindValueSlot
+  } else {
+    BindBodySlot
+  }
+}
+
+// THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
+// `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
+// parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
+// it counts positional ordinals and stops at the first child the table selects.
+fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
+}
+
+fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { match_positional_slot(ordinal: i) == slot })
+}
+
+// EVERY SLOT OF A Match IN ONE ROLE, in stored order, read through match_positional_slot. Arms are one role
+// repeated, so a reader of the arm sequence (an arm count, every arm) takes `match_role_slots(n, MatchArmSlot)`
+// rather than counting positions; a single arm's place among its siblings stays the ChildSlot ordinal.
+fn match_role_slots(n: Node, role: MatchSlot) -> List<ChildSlot> {
+  fold(node_child_slots(n: n), init: [], f: fn(acc, s) { match_role_slots_step(acc: acc, s: s, role: role) })
+}
+
+fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) -> List<ChildSlot> {
+  match s.ordinal {
+    PositionalOrdinal { index: i } =>
+      if match_positional_slot(ordinal: i) == role {
+        list_snoc_item(xs: acc, item: s)
+      } else {
+        acc
+      }
+    LabeledChild => acc
+  }
+}
+
+// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a three-positional Branch: a Branch of any
+// other positional arity is malformed and has no roles to read, so the accessor that owns the table refuses
+// rather than returning a plausible child (a fourth positional is not a second else).
+fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
+  if count(positional_child_target_nodes(node: n)) == 3 {
+    branch_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == optional_present(value: slot) })
+}
+
+fn positional_target_where(edges: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
+  match edges {
+    Empty => optional_absent()
+    Cons { head: e, tail: rest } => positional_target_where_at(e: e, rest: rest, ordinal: ordinal, wanted: wanted)
+  }
+}
+
+fn positional_target_where_at(e: Edge, rest: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
+  if is_positional(e: e) {
+    if wanted(ordinal) {
+      optional_present(value: e.target)
+    } else {
+      positional_target_where(edges: rest, ordinal: ordinal + 1, wanted: wanted)
+    }
+  } else {
+    positional_target_where(edges: rest, ordinal: ordinal, wanted: wanted)
+  }
+}
+
+type MatchSlot
+  = MatchScrutineeSlot
+  | MatchArmSlot
+
+fn match_positional_slot(ordinal: Int) -> MatchSlot {
+  if ordinal == 0 {
+    MatchScrutineeSlot
+  } else {
+    MatchArmSlot
+  }
+}
+
+fn child_slot_edge(slot: ChildSlot) -> Edge { slot.edge }
+
+fn child_slot_target(slot: ChildSlot) -> Node {
+  slot.edge.target
+}
+
+// WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
+// (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
+// Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
+// an ordinal of 3 or more has no role: the table answers Absent, and branch_slot_target answers Absent for
+// any Branch that is not three-positional, so the malformed Branch is refused where the table lives. Match and Branch keep separate tables
+// because the arity differs (total vs. three roles); both are read by the one positional walker
+// positional_target_where, which is where the shared "find the positional child by role" lives.
+type BranchSlot
+  = BranchConditionSlot
+  | BranchThenSlot
+  | BranchElseSlot
+
+fn branch_positional_slot(ordinal: Int) -> Optional<BranchSlot> {
+  if ordinal == 0 {
+    optional_present(value: BranchConditionSlot)
+  } else if ordinal == 1 {
+    optional_present(value: BranchThenSlot)
+  } else if ordinal == 2 {
+    optional_present(value: BranchElseSlot)
+  } else {
+    optional_absent()
+  }
 }
 
 type EdgeDiscipline
@@ -715,7 +937,6 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
-    Occupancy => PositionalEdges
     Instantiation => PositionalEdges
   }
 }
@@ -731,7 +952,6 @@ fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -
     Conj => connective_edge_discipline(c: c)
     Disj => connective_edge_discipline(c: c)
     Instantiation => connective_edge_discipline(c: c)
-    Occupancy => connective_edge_discipline(c: c)
   }
 }
 
@@ -761,6 +981,15 @@ fn is_positional(e: Edge) -> Bool {
 // here, so one fact decides what a slot is.
 fn positional_edges(children: List<Edge>) -> List<Edge> {
   filter(children, fn(e) { is_positional(e: e) })
+}
+
+// THE SLOTS OF A NODE, as targets rather than edges: the positional edges' targets in the order the
+// producer wrote them. Readers that index a node by position (an application's head and arguments, an
+// occupancy's payload) take them from here, so what counts as a slot is decided in one place.
+fn positional_child_target_nodes(node: Node) -> List<Node> {
+  fold(node.children, init: Empty, f: fn(acc, e) {
+    if is_positional(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
 }
 
 fn named_edges(children: List<Edge>) -> List<Edge> {
@@ -1044,7 +1273,6 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
         TypeNode { connective: Conj } => OrderUnreadable
         TypeNode { connective: Disj } => OrderUnreadable
         TypeNode { connective: Arrow } => OrderUnreadable
-        TypeNode { connective: Occupancy } => OrderUnreadable
         TypeNode { connective: Instantiation } => OrderUnreadable
         ComputationNode { behavior: _ } => OrderUnreadable
       }
@@ -1156,7 +1384,6 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
         TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
         TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
         TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
-        TypeNode { connective: Occupancy } => DomainBinderLabelsUnreadable
         TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
         ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
@@ -1206,7 +1433,6 @@ fn type_binder_conforms(e: Edge) -> Bool {
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
         TypeNode { connective: Arrow } => false
-        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
@@ -1237,7 +1463,6 @@ fn type_binder_conj_conforms(t: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1470,7 +1695,6 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
     TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
     TypeNode { connective: Disj } => NotMarkedReference
     TypeNode { connective: Arrow } => NotMarkedReference
-    TypeNode { connective: Occupancy } => NotMarkedReference
     TypeNode { connective: Instantiation } => NotMarkedReference
     ComputationNode { behavior: _ } => NotMarkedReference
   }
@@ -1489,7 +1713,6 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     TypeNode { connective: Disj } => UnsupportedArrowBody
-    TypeNode { connective: Occupancy } => UnsupportedArrowBody
     TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
@@ -1558,7 +1781,6 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1701,7 +1923,6 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
     TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
     TypeNode { connective: Conj } => CostEdgeComposed
     TypeNode { connective: Disj } => CostEdgeComposed
-    TypeNode { connective: Occupancy } => CostEdgeComposed
     TypeNode { connective: Instantiation } => CostEdgeComposed
     ComputationNode { behavior: Value } => CostEdgeComposed
     ComputationNode { behavior: Transform } => CostEdgeComposed
@@ -1775,8 +1996,6 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
-    Occupancy =>
-      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
   }
@@ -1806,7 +2025,7 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
 // the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
 // type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
-  key == edge && match key.target.kind {
+  key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
@@ -1903,7 +2122,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -2134,7 +2352,6 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
     Conj => content_hash_atom(value: ^canonical_tag_conj)
     Disj => content_hash_atom(value: ^canonical_tag_disj)
     Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Occupancy => content_hash_atom(value: ^canonical_tag_cardinality)
     Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }
@@ -2753,7 +2970,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
 }
 
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn node_offset_conj(children: List<Edge>) -> Node {
@@ -3045,8 +3262,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item), declaration: NotADeclaration },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node, declaration: NotADeclaration },
         ],
         occurrence_id: OccurrenceSynthetic
 }

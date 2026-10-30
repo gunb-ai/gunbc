@@ -3,7 +3,7 @@ module test.claim.rtx_pro_6000_catalog_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import std.measure { bandwidth_count }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog,
@@ -53,7 +53,7 @@ import extdeps.transports.rest {
   RestAnswered, RestRefused, RestBodyUndecodable, RestUnauthenticated, RestBodyRead, RestResponseObserved,
   RestBoundOperationInvocation, RestExchangeFixture,
 }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.fixture.rest_exchange_replay_probe
 
@@ -344,7 +344,7 @@ fn figure_citation_eq(a: FactCitation, b: FactCitation) -> Bool {
   a.fact == b.fact && a.authority == b.authority
 }
 
-fn row_cites_field(row: GpuModelCatalogRow, decl_name: String, field_name: String) -> Bool {
+fn row_cites_field(row: GpuDeviceCatalogRow, decl_name: String, field_name: String) -> Bool {
   row.figure_citations.any(c => c.fact == decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: decl_name, field_name: field_name))
 }
 

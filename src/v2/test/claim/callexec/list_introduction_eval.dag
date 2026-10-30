@@ -1,0 +1,116 @@
+module v2.test.claim.callexec.list_introduction_eval
+
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Transform, NotADeclaration }
+import v2.std.qualified_name { declaration_reference_node }
+import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS EVAL OF A LIST LITERAL, AT ITS OWN INTERFACE. A literal lowers to one Transform headed by
+// the marked reference to std.algebra FreeMonoid (v2.std.list_introduction); infer reads it, but eval read
+// the head as a callee and refused. The input is SUPPLIED -- the resolved shape lower_list_introduction
+// builds, the same supplied shape v2.test.claim.infer_list_introduction uses -- and the pairing claim that
+// the production route emits it is v2.test.claim.namespace_xl0 list_literal_value_lowering. The control
+// is the value: the literal evaluates to a RuntimeAggregate whose fields are the element values IN ORDER,
+// and [1, 2] against [2, 1] separates a reversed or element-dropping arm.
+fn lie_head() -> Node {
+  declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic)
+}
+
+fn lie_list(elements: List<Node>) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: fold(elements, init: [Edge { label: Positional, target: lie_head(), declaration: NotADeclaration }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e, declaration: NotADeclaration })
+    }),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+data lie_forward: Node = lie_list(elements: [dag_int_literal_fixture_one(), dag_int_literal_fixture_two()])
+
+data lie_reversed: Node = lie_list(elements: [dag_int_literal_fixture_two(), dag_int_literal_fixture_one()])
+
+fn lie_eval(list: Node) -> Optional<Outcome<RuntimeValue>> {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: list)) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      optional_present(value: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: list)))
+  }
+}
+
+fn lie_int(v: RuntimeValue) -> Optional<Int> {
+  match v {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => optional_present(value: magnitude)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn lie_field_int(f: RuntimeFieldValue) -> Optional<Int> {
+  lie_int(v: f.value)
+}
+
+fn lie_pair_of(o: Outcome<RuntimeValue>) -> Optional<List<Int>> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimeAggregate { value: a } =>
+          match a.fields {
+            Cons { head: f0, tail: Cons { head: f1, tail: Empty } } =>
+              match lie_field_int(f: f0) {
+                Present { value: x } =>
+                  match lie_field_int(f: f1) {
+                    Present { value: y } => optional_present(value: [x, y])
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn lie_is(list: Node, x: Int, y: Int) -> Bool {
+  match lie_eval(list: list) {
+    Absent => false
+    Present { value: outcome } =>
+      match lie_pair_of(o: outcome) {
+        Present { value: Cons { head: a, tail: Cons { head: b, tail: Empty } } } => a == x && b == y
+        _ => false
+      }
+  }
+}
+
+test fn list_literal_evaluates_to_its_elements_in_order_holds() -> Bool {
+  lie_is(list: lie_forward, x: 1, y: 2)
+}
+
+test fn list_literal_order_is_discriminated_holds() -> Bool {
+  lie_is(list: lie_reversed, x: 2, y: 1)
+}
+
+test fn list_literal_eval_is_reached_holds() -> Bool {
+  match lie_eval(list: lie_forward) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}

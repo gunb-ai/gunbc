@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.arithmetic_accepts_an_unconstrained_type_variable_operand
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data arithmetic_accepts_an_unconstrained_type_variable_operand: RecurringFailureMode = RecurringFailureMode {
+  identity: "arithmetic_accepts_an_unconstrained_type_variable_operand" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a binary arithmetic operand whose type is an unconstrained TypeVariable is accepted. Two populations carry that type: a declared generic parameter (`fn zz_t<T>(x: T) -> Int { x + 1 }`) and the unsolved empty_list_element placeholder (`fold_list(xs: ms(), empty: [], cons: fn(acc, m) { acc })` then `modules |> first` and `Present { value: m } => m + 1`). Neither operand type admits `+`, so no type system that read its operands would accept either program.",
+
+    "SPECIMENS, executed 2026-10-14 with gunbc built from gunbc#14005 head ee6c40c988c (gunbc run, a fixture module outside the corpus, remote one-dispatch): zz_t compiles and resolves (only the later call refuses for a missing argument); zz_u and zz_v (the placeholder via fold and via `let e = []`) resolve and RUN, returning 0. The same placeholder read by FIELD ACCESS refuses (`no field 'v' on type 'empty_list_element'`) since #14005, so the leniency is the binary-operand reader, not the placeholder producer: v1.compiler.infer defers a TypeVariable operand and nothing later refuses it.",
+
+    "HARM: silent wrongness reaching execution (DESIGN section 5), narrower than it looks only because the run path is guarded by the empty collection. A program that adds to a value of an unestablished type is accepted and its arithmetic is carried to the interpreter and to every emission target; the first non-empty instance is the first refusal, at run time, at interest (section 1 safety axis).",
+
+    "PER PATH. v1 seed infer (gunbc run): ACCEPTS both specimens, measured above. Native v2 infer: UNMEASURED. The only executing route to it from a fixture source, v2.compiler.compile compile_dag_source_to_target_text, refuses a standalone source with resolve_module_not_found even for the control `fn zz_c(x: Int) -> Int { x + 1 }` (peer_roots Empty, imports Empty), so a verdict from it would be a verdict about the driver and not about binary operands; that is the same measured result recorded in test.claim.named_argument_binding_two_route_witness. The native route is therefore unclassified, not clean. Emission targets: not separately measured; they receive the accepted tree.",
+
+    "RUNG FOUND AT: OutsideTheLadder (gunbc.guarantee_rung) on the v1 seed path: the seed accepts the invalid program and refuses nothing, so the wrong arithmetic reaches execution silently, which is below the ladder and forbidden outright (DESIGN section 5), not a mitigation. CEILING: 3 -- the operand type is decided by modeled structure (a TypeVariable has no arithmetic inhabitance unless constrained), so the compiler can refuse the application at infer. NEXT TRIGGER: v1.compiler.infer refuses a binary arithmetic application whose operand is an unconstrained TypeVariable, and the v2 route has an acceptance harness that reaches infer for a standalone fixture (the frontier named in test.claim.named_argument_binding_two_route_witness) so the native path is measured per path.",
+
+    "REDs TO LAND WITH THE FIX (not asserted here; the leniency is unchanged in this change): (1) `fn zz_t<T>(x: T) -> Int { x + 1 }` must refuse as an unconstrained operand; (2) the placeholder specimen `m + 1` over `fold_list(..., empty: [], cons: fn(acc, m) { acc })` must refuse as unresolved. ACCEPTED POSITIVE CONTROL: `fn zz_c(x: Int) -> Int { x + 1 }` stays accepted. Related, not the same class: gunbc.recurring_failure_mode unsolved_placeholder_reads_back_as_unit (the producer that fabricated Unit, fixed in gunbc#14005).",
+  ],
+
+  evidence: [],
+}

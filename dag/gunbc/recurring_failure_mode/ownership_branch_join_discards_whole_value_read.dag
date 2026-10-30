@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.ownership_branch_join_discards_whole_value_read
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 // Consumer: gunbc.design_ledgers renders this class through directory-derived row membership.
 data ownership_branch_join_discards_whole_value_read: RecurringFailureMode = RecurringFailureMode {
   identity: "ownership_branch_join_discards_whole_value_read" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: ownership.max_usage_by_fan_out selects a branch usage list with more projections and discards another branch's whole-value Read. build_movable_set then admits a move while another use still needs the value.",
     "HARM AND FOUND RUNG: emit_var_ref emits a move into a constructor before a subsequent projection; rustc refuses E0382. The defect is loudly mitigated by the target borrow check, not silently accepted.",

@@ -9,7 +9,7 @@ import std.algebra { list_append, length, empty_map, map_insert }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
+import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom, NotADeclaration }
 
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.witness { Holds, Violates }
@@ -20,7 +20,7 @@ import v2.std.grammar {
   derive_grammar_relation_row_for_lhs
 }
 import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, LiteralPattern, ModeledLexRules, TokenRule }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetModel, TokenClassEmitTransform, EmitSpellingConstant, EmitLineBreaks, ProducedDeclUnwired, render_target_text
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -57,6 +57,7 @@ import v2.extdeps.languages.swift.syntax {
   SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl,
   SwiftSourceFile
 }
+import std.host_text { chars }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -295,7 +296,7 @@ fn swift_row_productions() -> List<FormalProduction> {
 
 // ── The target: fixed token spellings, the line token, the indent unit ──────────────────────
 fn swr_lex(c: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: c, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: c, pattern: LiteralPattern { text: chars(text: text) } }
 }
 
 fn swift_row_lex() -> LexRules {
@@ -376,6 +377,7 @@ fn swift_row_binding_spellings() -> Map<Symbol, String> {
 
 fn swift_row_target_model(row: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     bundle: swl_named_conj(name: ^target_model_edge_translation_rules, target: swift_row_rules(row: row)),
     lex: swift_row_lex(),
     binding_spellings: swift_row_binding_spellings(),
@@ -395,7 +397,7 @@ fn swift_row_rules(row: Node) -> Node {
 }
 
 fn swl_named_conj(name: Symbol, target: Node) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target }], occurrence_id: OccurrenceSynthetic }
+  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }], occurrence_id: OccurrenceSynthetic }
 }
 
 // ── Emission ──────────────────────────────────────────────────────────────────────────────────
@@ -425,7 +427,7 @@ fn swl_atom(s: Symbol) -> Node {
 fn swl_node(tag: Symbol, slots: List<Node>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: map(list_append(left: [swl_atom(s: tag)], right: slots), n => Edge { label: Positional, target: n }),
+    children: map(list_append(left: [swl_atom(s: tag)], right: slots), n => Edge { label: Positional, target: n, declaration: NotADeclaration }),
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -598,7 +600,7 @@ fn swl_escape_scalar(cp: Char) -> String {
 }
 
 fn swl_escape_text(s: String) -> String {
-  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, swl_escape_scalar(cp: cp)))
+  fold(chars(text: s), init: "", f: (acc, cp) => concat(acc, swl_escape_scalar(cp: cp)))
 }
 
 fn swl_segments(d: SwiftStringLiteralDelimiter, segments: List<SwiftStringSegment>) -> Node {

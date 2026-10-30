@@ -1,0 +1,296 @@
+module test.claim.home_serving_power_policy_witness
+
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.measure { Watt, watt, watt_count }
+import std.optional { Optional, Present, Absent }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+}
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { any_class_census, total_rows_census, census_verdict, census_verdict_all, census_exit, CensusVerdict }
+import gunbc.serving.home_serving_power_policy {
+  HomeServingPowerReading,
+  HomeServingPowerPolicy,
+  PowerPolicyUnread,
+  PowerPolicyRefused,
+  PowerPolicyAdmitted,
+  home_serving_power_policy,
+  home_serving_power_admission_tdp,
+  home_serving_power_admission_applied,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// EXECUTED EVIDENCE THAT THE HOME-SERVING POWER CEILING IS A WALL, NOT A COMMENT.
+//
+// WHAT WOULD LEAK WITHOUT IT. `gunbc.recurring_failure_mode`
+// `benchmark_warm_capacity_violation_read_as_engine_performance` states in its CEILING clause that
+// a capacity violation cannot become a perf claim "through the admitted receipt constructor" — and
+// the warm-standing module it governs has no such constructor: `GpuBenchWarmStanding` is an
+// unsealed coproduct, so a foreign module can write a funded arm literally today. The home-serving
+// field inherits that exposure the moment it pairs a card with a limit. So this file does not
+// restate the wall in prose; it pays for two properties prose cannot buy.
+//
+//   ONE — the funded arm carries a type that is `sole_constructor` with exactly one mint, and that
+//   mint admits exactly one declaration. A foreign module cannot populate the admission, and —
+//   because `admit_callers` compares caller COORDINATES with no definer exemption (measured in
+//   `v1_compiler_infer.rs::constructor_admission_diags_from_lookup`) — not even another declaration
+//   inside the defining module can. The probes below measure both directions, with the refusal and
+//   its absence as SEPARATE claims so a wall that refuses everything cannot pass as a wall that
+//   admits the right caller.
+//
+//   TWO — the fold's ordering is what it claims. An over-limit applied value beside an unread or
+//   ungrounded TDP must come back UNREAD, not REFUSED: a refusal asserts a ceiling nobody stated,
+//   which is the exact conflation the module exists to remove. Only over a grounded ceiling does
+//   refusal become the honest answer.
+//
+// WHAT IS DELIBERATELY NOT CLAIMED HERE.
+// - That the fleet contains any particular card. No row here states presence of a Pro 6000
+//   Workstation, Max-Q, or Pro 5000: there is no committed inventory, machine-intake, or NVML
+//   observation row naming an installed card in `dag/` (searched by identity at main), so presence
+//   is UNREAD and nothing below infers it. The figures are chosen to separate orderings, not to
+//   describe a machine. Card choice and limit choice are a separate operator decision.
+// - That the `ObservedByReceipt` arm of `CitedFigureStanding` is inhabited here. It is NOT, and
+//   cannot be from this module: `ObservedReceipt` is itself `sole_constructor` with a four-entry
+//   `admit_callers` roster naming four unrelated declarations, none of which is in this file, so
+//   minting one would be a refusal rather than a test. The fold still handles that arm, through
+//   the same shared body as the cited arm, and that sharing is argued by construction in the module
+//   (both grounded arms call one body) rather than witnessed by a value this file cannot legally
+//   build. Inhabiting it is the later reading change's act, which is also the trigger named in the
+//   module's frontier.
+//
+// WITNESS-STYLE BUDGET. The seal claims use the synthetic-module census idiom established by
+// `test.claim.admit_callers_roster_integrity_witness`: a `String` source is compiled in-process by
+// the `compile_dag_diagnostic_census` builtin — a builtin, so deliberately not imported — and its
+// rows are counted by diagnostic class. The builtin is a row of `builtin_function_registry`
+// keyed `"compile_dag_diagnostic_census"`, and per the multi-module fixture note above that
+// registry its imports resolve against `build_module_path_index_from_witness_roots`, which walks
+// the live checkout. That is why this file declares `ReadsLiveTree` even though no dag
+// code in it opens a file: the claims' truth depends on the checkout, so a green run means the
+// subject module as COMMITTED was seen, not that a string was echoed back. It is also why the
+// positive control below is load-bearing rather than decorative.
+//
+// WHY A GREEN RUN HERE CANNOT BE AN ARTIFACT OF AN UNRESOLVED NAME. This file was once shipped
+// calling two accessors it did not import, which is the shape that house history says passes green
+// forever. It does not pass here, and that was MEASURED rather than assumed: an undefined callee
+// substituted at the conflation site stops the whole run with `function '...' not found in scope`,
+// and an unresolved module import stops it with `unresolved import: module '...' not found`. Both
+// refused the run instead of reporting the claim as passing. So the claims below fail loudly if a
+// name stops resolving, and the conflation claim is reported as having evaluated (its step count is
+// non-trivial) rather than merely as present.
+
+// A ground for a cited figure: the datasheet that publishes the ceiling, the same locator
+// `extdeps/gpu/nvidia.dag` carries for the RTX PRO 6000 Workstation figures.
+data datasheet_ground: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "www.nvidia.com/content/dam/en-zz/Solutions/design-visualization/quadro-product-literature/workstation-datasheet-blackwell-rtx-pro6000-x-nvidia-us-3519208-web.pdf"
+    }
+  }
+}
+
+// A reading with NO warrant: a watt copied out of a datasheet with no transcription obligation.
+// This is the value that must never buy a funded fact.
+data ungrounded_ground: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "the applied limit of this card has not been read from the host it runs on"
+}
+
+// ---------------------------------------------------------------------------
+// THE FOLD'S ORDERING, measured.
+// ---------------------------------------------------------------------------
+
+data ceiling_600: Watt = watt(count: 600)
+data at_ceiling: Watt = watt(count: 600)
+data under_ceiling: Watt = watt(count: 500)
+data over_ceiling: Watt = watt(count: 601)
+
+fn reading(limit: Watt, standing: CitedFigureStanding) -> Optional<HomeServingPowerReading> =
+  Present { value: HomeServingPowerReading { limit: limit, standing: standing } }
+
+// Each question is answered from the policy coproduct itself. There is deliberately no shared
+// `is_...` chain that re-derives unread-versus-refused from a cause string: the arm IS the answer,
+// and these three matches are projections of it, not a second decision.
+fn is_unread(policy: HomeServingPowerPolicy) -> Bool {
+  match policy {
+    PowerPolicyUnread { cause: _ } => true
+    PowerPolicyRefused { cause: _ } => false
+    PowerPolicyAdmitted { admission: _ } => false
+  }
+}
+
+fn is_refused(policy: HomeServingPowerPolicy) -> Bool {
+  match policy {
+    PowerPolicyUnread { cause: _ } => false
+    PowerPolicyRefused { cause: _ } => true
+    PowerPolicyAdmitted { admission: _ } => false
+  }
+}
+
+fn is_admitted(policy: HomeServingPowerPolicy) -> Bool {
+  match policy {
+    PowerPolicyUnread { cause: _ } => false
+    PowerPolicyRefused { cause: _ } => false
+    PowerPolicyAdmitted { admission: _ } => true
+  }
+}
+
+// A missing ceiling is not a passed ceiling. Without the fold this is where an omitted field
+// silently becomes "no limit was exceeded".
+test fn an_absent_tdp_is_unread_rather_than_admitted() -> Bool {
+  is_unread(policy: home_serving_power_policy(tdp: Absent, applied: reading(limit: at_ceiling, standing: datasheet_ground)))
+}
+
+// THE ORDERING CLAIM, the one an untested fold gets wrong. The applied value is OVER the ceiling
+// AND the ceiling has no standing. Refusing here would assert a ceiling with no stated source — the
+// conflation this module exists to remove — so the ceiling is established first and the answer is
+// unread.
+test fn an_over_limit_applied_value_beside_an_uncited_tdp_is_unread_not_refused() -> Bool {
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: ungrounded_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground)))
+}
+
+test fn an_absent_applied_limit_beside_a_grounded_tdp_is_unread() -> Bool {
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: Absent))
+}
+
+// An applied limit nobody stands behind buys nothing even beside a real ceiling.
+test fn an_uncited_applied_limit_buys_no_admission() -> Bool {
+  is_unread(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: ungrounded_ground)))
+}
+
+// AT the ceiling is admitted: the refusal is strictly above it. Boundary pinned, not assumed.
+test fn an_applied_limit_equal_to_the_ceiling_buys_an_admission() -> Bool {
+  is_admitted(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: at_ceiling, standing: datasheet_ground)))
+}
+
+// One watt over, refused. Together with the claim above this pins the boundary at the ceiling
+// rather than somewhere above it; either one alone would pass under a fold that refused at 2x TDP.
+test fn one_watt_over_the_ceiling_is_refused() -> Bool {
+  is_refused(policy: home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: over_ceiling, standing: datasheet_ground)))
+}
+
+// THE CONFLATION GUARD, and the reason this file reads the admission back through its accessors.
+// A fold that collapsed the two figures into one number — the failure this whole module exists to
+// prevent, and the one that survives review because both read 600 for the Pro 6000 Workstation —
+// would still pass every arm above: each only asks WHICH arm came back. So the admitted admission
+// is read back here and the two figures must be the two DIFFERENT values that went in. A ceiling of
+// 600 with an applied limit of 500 is admitted (it is under the ceiling) and the two are distinct,
+// which is the only shape that can tell "kept apart" from "merged". The admission cannot be forged
+// to reach this line; it is the one the fold produced, and handing it to an accessor is legal
+// precisely because the seal blocks CONSTRUCTION, not use.
+test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool {
+  match home_serving_power_policy(tdp: reading(limit: ceiling_600, standing: datasheet_ground), applied: reading(limit: under_ceiling, standing: datasheet_ground)) {
+    PowerPolicyAdmitted { admission: a } =>
+      watt_count(w: home_serving_power_admission_tdp(admission: a)) == watt_count(w: ceiling_600)
+        && watt_count(w: home_serving_power_admission_applied(admission: a)) == watt_count(w: under_ceiling)
+        && watt_count(w: home_serving_power_admission_tdp(admission: a)) != watt_count(w: home_serving_power_admission_applied(admission: a))
+    PowerPolicyUnread { cause: _ } => false
+    PowerPolicyRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE SEAL, measured against synthetic sources rather than asserted.
+// ---------------------------------------------------------------------------
+
+// THE CENSUS REACHES THESE CLAIMS THROUGH THE SHARED PROBE ALGEBRA, and no answer here stands in for
+// an observation. Each claim below returns ProcessExit: an unrunnable census is CensusUnobserved
+// carrying the builtin's own cause text, which the claim returns as ExitFailure with code 2. State what
+// that buys TODAY, not what it will buy: the harness still renders any claim's ExitFailure as a FAIL
+// row, so a refused census and a genuine finding BOTH print FAIL -- the driver exits 1 either way --
+// and are separated only by the reason text and by the code the claim returned (2 for a refusal, 1 for
+// a finding) -- which is why the reason carries the cause verbatim. Mapping a returned code 2 onto a
+// UNOBSERVED verdict line is a named follow-up in claim_batch's own lane (on gunbc#14539's axis) and is
+// deliberately not done here.
+// What stood at this seam was a hand-written fold of the refusal arm onto `0 - 1`
+// beside a hand-written Bool "did it run" predicate, so "the census could not run" and "the census ran
+// and found nothing" shared one Int and the cause string was dropped on the floor. State it exactly,
+// because the honest version is narrower than it sounds: every path out of that refusal arm fed a `>= 1`
+// or an `== 0` behind a guarding `census_ran_on`, so all of them answered false and the claims FAILED
+// CLOSED -- no green was ever bought by a refusal. The defect was indistinguishability, not a wrong
+// verdict: a driver fault and a genuine defect printed the same one word, and an `== 0` conjunct is one
+// arithmetic slip from reading the other way. That collapse is one of the could-not-measure instances
+// Charter 4 census, and it is removed here rather than documented. The algebra is
+// gunbc.compile_census_probe (keen-owl-704, row 11) consumed rather than forked, per DESIGN §3; the
+// harness-side half (a code 2 printing as UNOBSERVED rather than FAIL) belongs to claim_batch's own
+// lane on gunbc#14539's axis, NOT to #14783, which converts the six consumer sites. Neither is waited
+// on here: these claims no longer answer false when they cannot run, which is the change this file makes.
+//
+// THE DRIVER IS PART OF THE EVIDENCE, named so any green here can be checked. Measured on this head:
+// driven through claim_batch with --source-root src/v1 among its roots, the census is refused outright
+// (SharedIndexSecondResidentPool -- the slot already holds ["dag", "src/v1", "src/v2"] while the claim
+// demands ["dag", "src/v2"]) and each census claim here returns ExitFailure code 2 with that cause
+// preserved verbatim, so the FAIL row names the refusal rather than a measured disagreement; under the
+// sanctioned driver -- claim_batch, roots dag and src/v2, run
+// from inside the checkout -- the census runs and all eleven pass. A red on this file is therefore
+// evidence only once its driver is named, and a run that prints no PASS/FAIL line is a refusal, not a
+// result.
+fn violation_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: any_class_census(source: source, wanted_class: wanted), holds: holds)
+}
+
+fn census_ran_verdict(source: String) -> CensusVerdict {
+  census_verdict(census: total_rows_census(source: source), holds: fn(n) { n >= 1 })
+}
+
+// A foreign module populating the sealed admission by literal. There is no second defect here: the
+// record is well-formed, every name resolves, the types line up. The ONLY reason this must refuse
+// is that `HomeServingPowerAdmission` is `sole_constructor`.
+data foreign_literal_source: String = "module probe_home_power_foreign\nimport std.measure { Watt }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerAdmission }\nfn forge(ceiling: Watt, limit: Watt, ground: CitedFigureStanding) -> HomeServingPowerAdmission = HomeServingPowerAdmission {\n  tdp_watts: ceiling,\n  tdp_standing: ground,\n  applied_watts: limit,\n  applied_standing: ground,\n}\n"
+
+test fn a_foreign_module_cannot_write_the_funded_admission_by_literal() -> ProcessExit {
+  census_exit(verdict: violation_verdict(source: foreign_literal_source, wanted: "SoleConstructorViolation", holds: fn(n) { n >= 1 }))
+}
+
+// The roster's other direction: a caller the roster does not name is refused even THROUGH the mint.
+// Without this the claim above would also pass under a wall that refused everything.
+data unlisted_caller_source: String = "module probe_home_power_unlisted\nimport std.measure { Watt }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerAdmission, home_serving_power_admission }\nfn forge_unlisted(ceiling: Watt, limit: Watt, ground: CitedFigureStanding) -> HomeServingPowerAdmission = home_serving_power_admission(\n  tdp_watts: ceiling,\n  tdp_standing: ground,\n  applied_watts: limit,\n  applied_standing: ground,\n)\n"
+
+test fn an_unlisted_caller_is_refused_by_the_roster() -> ProcessExit {
+  census_exit(verdict: violation_verdict(source: unlisted_caller_source, wanted: "ConstructorCallAdmissionRefused", holds: fn(n) { n >= 1 }))
+}
+
+// THE POSITIVE CONTROL, which keeps the two refusals above from being vacuous.
+//
+// WHAT THIS CONTROL HAD TO BECOME (review 82779). It used to assert only that the two seal classes
+// were absent here. That cannot do the named job: an unresolved import of the subject module is
+// emitted as a row of a DIFFERENT class (`UnresolvedImport`), so both seal counts stay zero and the
+// control goes green without the subject module ever having been resolved. `gunbc.compile_diagnostic_census`
+// warns against the obvious repair as well -- `census_total_count == 0` on an importing fixture is
+// permanently false because the row set is the whole imported closure, and §4b names a check whose
+// RED is unauthorable a decoration, not a weak wall. So the control is now two things the module
+// does certify: that the census ACTUALLY RAN on this source, and that it produced NO unresolved-import
+// row naming the subject module. Both key on rows the census itself emitted, and the arm below proves
+// the second one can go red.
+data admitted_call_source: String = "module probe_home_power_admitted_call\nimport std.measure { Watt, watt }\nimport std.optional { Present }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerReading, home_serving_power_policy }\nfn read_the_ceiling(ground: CitedFigureStanding) -> Bool =\n  match home_serving_power_policy(\n    tdp: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n    applied: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n  ) {\n    _ => false\n  }\n"
+
+test fn the_census_resolves_the_subject_module_so_the_refusals_are_not_vacuous() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran_verdict(source: admitted_call_source),
+    violation_verdict(source: admitted_call_source, wanted: "UnresolvedImport", holds: fn(n) { n == 0 }),
+    violation_verdict(source: admitted_call_source, wanted: "SoleConstructorViolation", holds: fn(n) { n == 0 }),
+    violation_verdict(source: admitted_call_source, wanted: "ConstructorCallAdmissionRefused", holds: fn(n) { n == 0 })
+  ])
+}
+
+// THE ARM THAT MAKES THE CONTROL DISCRIMINATING. §4b will not accept a green as evidence unless the
+// same instrument is shown able to go red on the forbidden state, and this control's forbidden state
+// is "the subject module never resolved". One token differs from the source above -- the imported
+// module path -- and the census must then report the failure. Measured first, then permanent: a probe
+// run established that an unresolvable import does reach the census as an `UnresolvedImport` row and
+// that the resolving source produces none, which is what makes the two counts above mean "resolved
+// and clean" rather than "never resolved". If resolution diagnostics ever stop reaching the census,
+// THIS claim goes red first and the control above stops being coverage it never earned.
+data unresolvable_import_source: String = "module probe_home_power_unresolvable\nimport std.measure { Watt, watt }\nimport std.optional { Present }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy_typo { HomeServingPowerReading, home_serving_power_policy }\nfn read_the_ceiling(ground: CitedFigureStanding) -> Bool =\n  match home_serving_power_policy(\n    tdp: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n    applied: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n  ) {\n    _ => false\n  }\n"
+
+test fn the_control_can_go_red_when_the_subject_module_stops_resolving() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran_verdict(source: unresolvable_import_source),
+    violation_verdict(source: unresolvable_import_source, wanted: "UnresolvedImport", holds: fn(n) { n >= 1 })
+  ])
+}

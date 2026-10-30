@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_serve_contract_widened_for_one_handler_refuses_every_other
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_serve_contract_widened_for_one_handler_refuses_every_other: RecurringFailureMode = RecurringFailureMode {
   identity: "a_serve_contract_widened_for_one_handler_refuses_every_other" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: the seed's `gunbc serve` hands every handler a named argument that only one handler declares. The interpreter binds named arguments by exact bijection -- an undeclared name is a call-contract refusal, not a dropped value -- so every handler lacking the parameter refuses every request. gunbc#12482 added peer_user for the fabric door's unix-socket handler and passed it unconditionally, under a seed comment asserting the opposite ('a handler that does not declare it is not handed it'), which nothing executed.",

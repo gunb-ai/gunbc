@@ -61,10 +61,10 @@ module gunbc.witness.compiler_gate_workflow
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
 import std.types { Bool, Int, List, String }
-import std.algebra { fold_list, list_append, list_map }
+import std.algebra { fold_list, list_append, list_map, list_find_first }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
-import std.optional { Present }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import std.optional { Absent, Optional, Present }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -90,7 +90,7 @@ import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
   SupersedeRunningForEvent, witness_floor_toolchain_step, witness_floor_build_step,
-  witness_toolchain_homes_isolated_guard_step, malloc_arena_max_env_key, malloc_arena_max_value,
+  witness_toolchain_homes_isolated_guard_step, witness_toolchain_homes_isolated_guard_step_under, malloc_arena_max_env_key, malloc_arena_max_value,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
@@ -124,6 +124,23 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership
 // it. witnesses.yml lost the member at 85c1356300c and fleet-desired has refused every push to main
 // since (8 runs, 2026-09-19T23:50Z onward) with RequiredCiEpochAbsent, against 52 consecutive
 // greens before it.
+import gunbc.witness.compiler_gate_contract_stamp {
+  compiler_gate_contract_stamp_env_key,
+  compiler_gate_contract_stamp_evidence_script_is_renderable,
+  compiler_gate_contract_stamp_evidence_step,
+  compiler_gate_contract_stamp_guard_step,
+  compiler_gate_contract_stamp_guard_script_is_renderable,
+  compiler_gate_contract_stamp_is_derived,
+  compiler_gate_contract_stamp_underived_reason,
+  // The three invariants the generation gate enforces. Called in the gate below and listed by name in its
+  // refusal, so the dependency is written down rather than left to universe-wide resolution.
+  compiler_gate_contract_stamp_literal_shape_holds,
+  compiler_gate_contract_stamp_preimage_discriminator_holds,
+  compiler_gate_contract_stamp_output_population_is_exact,
+  compiler_gate_contract_stamp_evidence_step_name,
+  compiler_gate_contract_stamp_step_name,
+  compiler_gate_contract_stamp_yaml_value
+}
 import gunbc.required_ci_contract_epoch {
   required_ci_contract_epoch_env_key,
   required_ci_contract_epoch_is_derived,
@@ -233,7 +250,7 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // repository, so a merge-blocking fact there is one the model cannot see or regenerate.
 
 // FORK CODE DOES NOT RUN ON THE FLEET. The clause is heal's authorship (gunbc.heal_workflow
-// heal_same_repository_clause), and the checkout below is an attacker-authored head sha on a runner
+// heal_same_repository_clause), and the checkout below is an attacker-authored tree (the merge ref carries the head's content) on a runner
 // that persists between jobs. The guard is scoped to pull_request events: merge_group and
 // workflow_dispatch carry no pull_request context, so an unscoped clause would read null and SKIP the
 // lane -- and a skipped required lane never reports, which stalls the merge queue for good. The
@@ -243,9 +260,16 @@ fn compiler_gate_fleet_job_condition() -> String {
   join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
 }
 
-// A pull-request run judges the pull request HEAD, not GitHub's merge result; the composed revision
-// is the merge_group run's subject. On push, merge_group and dispatch the expression is empty and
-// checkout falls back to the triggering sha.
+// A pull-request run judges GitHub's MERGE REF (github.sha is refs/pull/N/merge on pull_request): the
+// composed tree of the pull request and the base as of the event. It used to judge the PR head, on the
+// premise that the composed revision was the merge_group run's subject; main has no merge queue, so
+// nothing ever built the composed tree and two individually green pull requests broke main (#14539,
+// #14675). The merge ref is also the revision that supplies this workflow file, so the instruction and
+// the tree it runs are paired by construction (recurring_failure_mode
+// instruction_and_subject_resolved_from_different_revisions). THE RESIDUE: the merge ref is computed
+// when the event fires, so a commit landing on the base afterwards is not in it and does not retrigger
+// the run. This narrows the window from never-composed to composed-at-event-time; it does not close it
+// (rung: mitigatable). On push, merge_group and dispatch github.sha is already the triggering commit.
 fn compiler_gate_fleet_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout the commit this lane judges" },
@@ -272,6 +296,28 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
       step: compiler_gate_fleet_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout the commit this lane judges",
+    },
+    // THE STAMP GUARD IS THE SECOND STEP IN THE JOB, ahead of the toolchain install and of every step
+    // that invokes a binary built from this checkout. It belongs there because what it refuses -- a
+    // subject older than the instruction running it -- is a fact about the CHECKOUT, and the earlier it
+    // is refused, the less work is spent on a run that is about to be invalid. It runs no product and
+    // needs no toolchain, so nothing it requires is missing at this point.
+    CompilerGateBoundStep {
+      step: compiler_gate_contract_stamp_guard_step(),
+      role: capability_neutral,
+      step_name: compiler_gate_contract_stamp_step_name,
+    },
+    // THE EVIDENCE RUNS IN THE GATE, not in a terminal I happened to open. Review 82145 filed this
+    // as blocking and correct: `git grep -n run_evidence` matched only my own fixtures/README.md, so
+    // the RED and its controls were ATTESTED, not enrolled -- while DESIGN section 4b(4) requires the
+    // discriminating RED and its positive control to STAY ENROLLED. Placement is deliberate: right
+    // behind the guard it exercises, still before any binary is built, so it costs seconds and it
+    // still runs on a checkout that the guard alone would already have refused... which is why the
+    // harness reads the COMMITTED artifact rather than a working-tree edit.
+    CompilerGateBoundStep {
+      step: compiler_gate_contract_stamp_evidence_step(),
+      role: capability_neutral,
+      step_name: compiler_gate_contract_stamp_evidence_step_name,
     },
     CompilerGateBoundStep {
       step: toolchain_home_isolation_step(),
@@ -473,6 +519,31 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   )
 }
 
+// THE FLOOR A QUALIFICATION RUNS IS THIS JOB'S OWN WORK, NOT A SECOND SPELLING OF IT: the prelude and the subject
+// steps, which build the seed and run one `gunbc test` per emitted subject under the memory envelope. The checkout
+// is left out because a qualification job checks out its pinned revision with its own guard
+// (gunbc.runner.runner_qualification_floor_job), and the tail is left out because every tail step is conditioned
+// (parse-verdict restore and publish on main, the notice) and a qualification floor admits no step that can run past
+// a failure (gunbc.runner.runner_qualification_dispatch qualification_floor_admission).
+// THE CONTRACT-STAMP GUARD AND ITS EVIDENCE ARE LEFT OUT TOO, and not by carrying the stamp into another workflow:
+// gunbc.witness.compiler_gate_contract_stamp admits exactly three readers of the stamp, and the split it refuses (an
+// instruction and a subject from different revisions) cannot occur in a qualification job, whose workflow is read
+// from qualification/<attempt> at the pinned revision and whose guard checks out exactly that revision or refuses.
+// THE ISOLATED-HOMES WALL IS KEPT, UNCONDITIONED: the floor admits no step that can run past a failure, and in a job
+// where any failed step already fails the job the wall's !cancelled() buys nothing (gunbc.witness.witness_floor_workflow
+// witness_toolchain_homes_isolated_guard_step_under).
+fn compiler_gate_floor_steps_after_checkout() -> List<Step> {
+  list_map(
+    xs: filter(
+      list_map(xs: concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
+      s => s != compiler_gate_fleet_checkout_step()
+        && s != compiler_gate_contract_stamp_guard_step()
+        && s != compiler_gate_contract_stamp_evidence_step(),
+    ),
+    f: fn(s) { if s == witness_toolchain_homes_isolated_guard_step() { witness_toolchain_homes_isolated_guard_step_under(condition: none) } else { s } },
+  )
+}
+
 // Every declared ordinal carries a gated identity and receipts restore pair: the first ordinal whose
 // identity hit disables the later ones, and its receipts restore alone runs. The record step then
 // leaves the winning sha for the verb.
@@ -559,6 +630,13 @@ fn compiler_gate_emit_build_scripts_are_renderable() -> Bool {
       wrap_command_is_renderable(command: shell_command_render(command: emitted_subject_build_command(row: row))))
 }
 
+// THE REQUIRED JOB'S ENVIRONMENT, ONE DECLARATION: the allocator arena cap changes the memory a subject step uses,
+// so a qualification floor that measures this job's work must run under it too
+// (gunbc.runner.runner_qualification_floor_job).
+fn compiler_gate_required_job_env() -> List<YamlKeyValue> {
+  [kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))]
+}
+
 fn compiler_gate_required_job() -> Job {
   Job {
     id: compiler_gate_required_job_id,
@@ -567,11 +645,7 @@ fn compiler_gate_required_job() -> Job {
     environment: none,
     steps: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }),
     needs: [],
-    env: Present {
-      value: [
-        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
-      ]
-    },
+    env: Present { value: compiler_gate_required_job_env() },
     outputs: none,
     if_condition: Present { value: compiler_gate_fleet_job_condition() },
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
@@ -647,13 +721,88 @@ data compiler_gate_workflow: Workflow = Workflow {
   },
   env: Present { value: [
     kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-    kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: required_ci_contract_epoch_yaml_value()))
+    kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: required_ci_contract_epoch_yaml_value())),
+    // THE INVOCATION-CONTRACT STAMP, as a literal of the file GitHub EXECUTED. The generated guard step
+    // compares this against the copy committed in the tree it is judging; the two can differ only if the
+    // instruction and the subject came from different revisions
+    // (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm).
+    kv(key: (compiler_gate_contract_stamp_env_key as String), value: yaml_string(s: compiler_gate_contract_stamp_yaml_value()))
   ] },
   permissions: Present { value: compiler_gate_permissions },
   jobs: [compiler_gate_required_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: the required job's capability closure does not hold, a subject step's script is not renderable, the required job runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28), or the required CI obligation identities are duplicated. No workflow yaml was emitted. Fix the step roles in the job's bound steps, or put the job on gunbc_ci_selected_runner_spec."
+
+// THE GENERATION GATE, REPORTING WHICH CONJUNCT REFUSED.
+//
+// WHY THIS IS NOT AN `&&` CHAIN BEHIND ONE MESSAGE. The gate used to be nine predicates ANDed together in
+// an `if`, refusing with a single sentence that listed four *possible* causes. A refusal that cannot say
+// what it found is the located-diagnostic requirement failing at the level of the tool that enforces it:
+// each guess at the culprit costs a full remote regeneration, and "which of these nine" is not a question
+// a reader can answer from the output. So each predicate is paired with the name of the promise it keeps,
+// in the order they were evaluated before, and the first false one is returned by name -- the same order,
+// so nothing that used to pass now runs later or vice versa.
+//
+// Returns Absent when the gate holds, meaning the artifact may be emitted.
+fn compiler_gate_generation_gate_first_failure() -> Optional<String> {
+  let gates: List<CompilerGateGenerationGate> = [
+    CompilerGateGenerationGate {
+      name: "compiler_gate_emit_build_capability_closure_holds (a step lacks a capability its role requires)",
+      holds: compiler_gate_emit_build_capability_closure_holds()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_emit_build_scripts_are_renderable (a build step's script cannot be rendered)",
+      holds: compiler_gate_emit_build_scripts_are_renderable()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_merge_path_runs_on_the_fleet (the required job is on a hosted runner)",
+      holds: compiler_gate_merge_path_runs_on_the_fleet()
+    },
+    CompilerGateGenerationGate {
+      name: "required_ci_contract_epoch_is_derived (the epoch is authored, not derived)",
+      holds: required_ci_contract_epoch_is_derived()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_contract_stamp_is_derived (the stamp is not the fold of the invocation rows)",
+      holds: compiler_gate_contract_stamp_is_derived()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_contract_stamp_guard_script_is_renderable (the guard step cannot be built as nodes, or its reader program lost a property the fold depends on)",
+      holds: compiler_gate_contract_stamp_guard_script_is_renderable()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_contract_stamp_evidence_script_is_renderable (the evidence step cannot be built as nodes)",
+      holds: compiler_gate_contract_stamp_evidence_script_is_renderable()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_contract_stamp_literal_shape_holds (the stamp is not the one supported scalar form)",
+      holds: compiler_gate_contract_stamp_literal_shape_holds()
+    },
+    CompilerGateGenerationGate {
+      // THE CONTRACT'S OWN INVARIANTS, ENFORCED AT GENERATION. These three also exist as test fn claims,
+      // but a claim this branch proved is not enforcement: one of them asserted a 64-character stamp while
+      // the stamp is 16 -- red always -- and every heal stayed green because no lane on a PR run evaluates
+      // them. Generation is the only check a PR run cannot skip.
+      name: "compiler_gate_contract_stamp_preimage_discriminator_holds (mutating a producer does not move the stamp, or reordering does)",
+      holds: compiler_gate_contract_stamp_preimage_discriminator_holds()
+    },
+    CompilerGateGenerationGate {
+      name: "compiler_gate_contract_stamp_output_population_is_exact (the printed counts line and the stamped field rows disagree)",
+      holds: compiler_gate_contract_stamp_output_population_is_exact()
+    }
+  ]
+  let first_false = list_find_first(xs: gates, predicate: fn(g) { !g.holds })
+  return match first_false {
+    Present { value: g } => Present { value: g.name }
+    Absent => Absent
+  }
+}
+
+type CompilerGateGenerationGate {
+  name: String
+  holds: Bool
+}
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
@@ -668,17 +817,20 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_merge_path_runs_on_the_fleet() && required_ci_contract_epoch_is_derived() {
-            match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
-              EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
-              YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }
-            }
-          } else {
-            WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }
+          match compiler_gate_generation_gate_first_failure() {
+            Absent =>
+              match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
+                EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
+                YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }
+              }
+            Present { value: which } =>
+              WitnessFloorGenerationRefused {
+                reason: compiler_gate_capability_refusal_reason + " FIRST FAILING CONJUNCT: " + which
+              }
           }
       }
   }
   }
 }
 
-data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
+data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["sha"] }

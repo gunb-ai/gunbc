@@ -260,6 +260,18 @@ test fn ccr_filter_and_any_directions() -> Bool {
     && ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_any_shape"), want_right: false)
 }
 
+// (3e) MAP'S DIRECTION, read the way the roster allows before the Phase A binding frontier closes:
+// through the realized path, the same route ccr_filter_and_any_directions walks. The map-fixture claims
+// above (reads-a-field, binds-its-row, conses-onto-its-accumulator, loop-iterates-right-to-left) are
+// PRE-EXISTING RED on the collection-map binding frontier (they fail identically at the base sha and at
+// this head, and ccr_map_records_reading answers false when the fixture refuses rather than when a
+// direction is wrong), so they cannot discriminate the direction today. This claim is the green consumer
+// of the cons arm of callback_step_shape_iteration_direction: it measures red when that arm is flipped
+// to IteratesLeftToRight (the manager's residual-class flip run), and green at the unmutated sha.
+test fn ccr_map_direction_is_read_from_its_step_shape() -> Bool {
+  ccr_direction_is(d: fold_realized_path_iteration_direction(path: ccr_head_path(head: ^map)), want_right: true)
+}
+
 // (4) THE STRUCTURAL COST CONTROL: map's synthesized step body is a construct whose `tail` is the step's
 // OWN accumulator formal (declared position 0) -- one cell consed onto the carrier, O(1) per member, never
 // a snoc or append over it. This is the control that measures THIS lowering: no executor reads a

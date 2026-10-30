@@ -87,7 +87,7 @@ fn shell_binding_field_of_key(key: String) -> ShellBindingField? {
   else { optional_absent() }
 }
 
-// WHAT THE AUTHOR WRITES AT EACH FIELD. argv is the shared argv line (v2.std.operation_argv);
+// WHAT THE AUTHOR WRITES AT EACH FIELD. argv is the shared argv line (std.operation_argv);
 // stdin is Template<OperationInputName> (or a list of those). A new field must pick a contract.
 type ShellBindingFieldContract
   = ShellArgvContract

@@ -1,5 +1,6 @@
 module gunbc.source_layout
 
+import std.optional { Optional }
 import std.types { Bool, List, String }
 
 // THE REPOSITORY'S STORAGE POLICY (gunbc.plans.source_layout_authority, R5). Module `a.b.c` lives
@@ -43,6 +44,36 @@ fn layout_namespace_roots() -> List<LayoutNamespaceRoot> {
   ]
 }
 
+// THE NAME-TO-PATH MAPPING, written once: module `a.b.c` is stored at `<root(a)>/b/c.dag`, where
+// the namespace row names the tree and whether the namespace itself is elided from the relative
+// path. A module in no listed namespace lives in the default tree with its full name.
+fn layout_module_storage_path(module: String) -> Optional<String> {
+  let namespaces = layout_namespace_roots() |> map(r => r.namespace)
+  // A bare namespace, or a bare top-level name, has no file: refuse, never fabricate a path.
+  if !contains(module, ".") || namespaces |> any(n => n == module) {
+    Absent
+  } else {
+    let owning = filter(layout_namespace_roots(), r => starts_with(s: module, prefix: concat(r.namespace, ".")))
+    match owning.first() {
+      Absent => Present { value: concat(layout_tree_directory(tree: layout_default_tree()), concat("/", concat(replace(s: module, from: ".", to: "/"), ".dag"))) }
+      Present { value: r } => Present { value: concat(
+        layout_tree_directory(tree: r.tree),
+        concat(
+          "/",
+          concat(
+            replace(
+              s: if r.elides_namespace { substring(s: module, start: string_length(s: r.namespace) + 1, end: string_length(s: module)) } else { module },
+              from: ".",
+              to: "/"
+            ),
+            ".dag"
+          )
+        )
+      ) }
+    }
+  }
+}
+
 // THE GOVERNED ROOTS, written down: the layout check enumerates exactly these two tree
 // directories. src/v1 (the seed's own Rust crate and its mirrors), fixtures/ and test/ are outside
 // by design -- they hold no module the storage rule names, and a malformed non-module byte string
@@ -50,4 +81,31 @@ fn layout_namespace_roots() -> List<LayoutNamespaceRoot> {
 // policy, not something the check merely fails to look at.
 fn layout_governed_roots() -> List<String> {
   [layout_tree_directory(tree: LayoutTreeV2 {}), layout_tree_directory(tree: LayoutTreeDag {})]
+}
+
+// A NAMESPACE WHOSE ROSTER MODULE IS DERIVED, NOT STORED. A one-row-per-file ledger keeps each row in
+// its own module directly under `row_namespace`, and the list of them is a module with no file:
+// `<row_namespace>.roster`, contributed by source acquisition from the sibling modules that declare a
+// `row_type` row under their own stem (the rule, its names and its refusals are
+// v2.compiler.source_authority derived_roster_module and its neighbours; this row is the policy they
+// are handed, the same split as the namespace roots above). A file at the roster's storage path is
+// therefore never a source: it would be a second authority for the ledger's membership, which is
+// why acquisition refuses one it finds. For the two ledgers whose file an older seed wrote on every
+// walk (recurring_failure_mode, rung_drop), .gitignore and gunbc.repo_workspace also retire it;
+// gunbc.guarantee_stall's roster was a committed file that git removes on checkout, so it has no
+// such row.
+//
+// The policy states only what cannot be derived: which namespaces are ledgers, and the declared type
+// that selects a row. The roster's module name and declaration name follow from the namespace.
+type LayoutDerivedRoster {
+  row_namespace: String
+  row_type: String
+}
+
+fn layout_derived_rosters() -> List<LayoutDerivedRoster> {
+  [
+    LayoutDerivedRoster { row_namespace: "gunbc.recurring_failure_mode", row_type: "RecurringFailureMode" },
+    LayoutDerivedRoster { row_namespace: "gunbc.rung_drop", row_type: "RungDrop" },
+    LayoutDerivedRoster { row_namespace: "gunbc.guarantee_stall", row_type: "GuaranteeStall" }
+  ]
 }

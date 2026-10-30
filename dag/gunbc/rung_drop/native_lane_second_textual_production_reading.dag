@@ -1,7 +1,8 @@
 module gunbc.rung_drop.native_lane_second_textual_production_reading
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 // DECLARED 2026-09-12 (review 64571), NARROWED BY THE SOURCE LAYOUT CUTOVER. The v2-native route used to
@@ -30,22 +31,17 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // refused files only would satisfy a weaker sentence and leave the second reading standing for the
 // files whose refusals a census exists to report.
 
-data native_lane_second_textual_production_reading_population: List<String> = [
-  "v2.compiler.source_root_eval native_lane_declared_module_name — the textual reading of the `module` production",
-  "v2.compiler.source_root_eval native_refused_file_module — its consumer that names the module a refused file declares",
-  "v2.compiler.source_root_eval native_census_modules — its consumer that names the roster a census reports on",
-]
+data native_lane_second_textual_production_reading_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.compiler.source_root_eval native_lane_declared_module_name — the textual reading of the `module` production", tail: ["v2.compiler.source_root_eval native_refused_file_module — its consumer that names the module a refused file declares", "v2.compiler.source_root_eval native_census_modules — its consumer that names the roster a census reports on"] }
 
 data native_lane_second_textual_production_reading: RungDrop = RungDrop {
   identity: "native_lane_second_textual_production_reading" as NonEmptyStr,
   subject: "single authority over the `module` production, for the census route's file names",
   declared: "2026-09-12",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "the census route names each source by the name its population read bound it to, so no header text is read" },
-    population: native_lane_second_textual_production_reading_population,
+    population: Enumerated { members: native_lane_second_textual_production_reading_population },
     restoration_trigger: "The census and refused-file routes carry the module name the population read BOUND each source to (a file's name is its path's, source layout R5) instead of reading the `module` line again, so native_lane_declared_module_name is DELETED. That must be sufficient for BOTH consumers -- native_refused_file_module and native_census_modules -- including for a file whose front end refused: a header scan retained for refused files alone would leave the second reading alive for exactly the files whose refusals a census exists to report."
-  }
+  } }
 }

@@ -1,0 +1,36 @@
+module test.claim.gha_expression_logical_not_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalAnd, LogicalNot, FunctionCall, Cancelled, serialize_expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathUnmodeled, GithubPathResolution, Format, UnmodeledFormat, FormatTemplateNotLiteral }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE UNARY `!` (extdeps.github.expressions github_expression_operators_authority): it binds tighter
+// than comparison, so an atom operand renders bare and a comparison operand is grouped; under `&&` it
+// needs no group. Kept apart from test.claim.gha_expression_roundtrip, which does not resolve today
+// (it declares no imports).
+test fn logical_not_renders_with_upstream_precedence() -> Bool {
+  serialize_expression(expression: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }) == "!cancelled()"
+    && serialize_expression(expression: LogicalNot { operand: Equals { left: ContextAccess { context: Github, path: ["sha"] }, right: StringLiteral { value: "x" } } }) == "!(github.sha == 'x')"
+    && serialize_expression(expression: LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: StringLiteral { value: "y" } }) == "!cancelled() && 'y'"
+    && serialize_expression(expression: LogicalAnd { left: LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, right: Equals { left: ContextAccess { context: Github, path: ["sha"] }, right: StringLiteral { value: "x" } } }) == "!cancelled() && github.sha == 'x'"
+}
+
+fn none_modeled(path: List<String>) -> GithubPathResolution {
+  GithubPathUnmodeled
+}
+
+// EVALUATION: `!` negates truthiness, and an operand the evaluator refuses stays refused.
+test fn logical_not_evaluates_by_truthiness() -> Bool {
+  (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == "true"  ExpressionEvaluationRefused { cause: _ } => false })
+    && (match evaluate_expression(expression: LogicalNot { operand: StringLiteral { value: "x" } }, github_path: none_modeled) { ExpressionValue { value: v } => v == ""  ExpressionEvaluationRefused { cause: _ } => false })
+    && (match evaluate_expression(expression: LogicalNot { operand: ContextAccess { context: Github, path: ["sha"] } }, github_path: none_modeled) { ExpressionEvaluationRefused { cause: _ } => true  ExpressionValue { value: _ } => false })
+}
+
+// `format()` TEMPLATE: a `!` template is not a string literal, so the evaluator refuses it as
+// FormatTemplateNotLiteral (the sibling arms' cause) while it still serializes as the spec writes `!`.
+test fn logical_not_format_template_refuses_not_literal() -> Bool {
+  (match evaluate_expression(expression: FunctionCall { function: Format, args: [LogicalNot { operand: StringLiteral { value: "x" } }, StringLiteral { value: "a" }] }, github_path: none_modeled) { ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } } => true  ExpressionEvaluationRefused { cause: _ } => false  ExpressionValue { value: _ } => false })
+    && serialize_expression(expression: FunctionCall { function: Format, args: [LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }, StringLiteral { value: "a" }] }) == "format(!cancelled(), 'a')"
+}

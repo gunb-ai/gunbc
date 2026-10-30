@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.std.decl_index { DeclFact, FnItem }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   resolve_declaration_ref,
   resolve_declaration_ref_live,
   DeclarationRefAmbiguous,
@@ -65,7 +65,7 @@ test fn decl_ref_resolves_node_kind_authority() -> Bool {
     },
     pool_roots: witness_layer_roots
   ) {
-    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
+    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "v2.std.node.NodeKind"
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false
@@ -123,14 +123,14 @@ test fn decl_ref_refuses_declaration_absent() -> Bool {
 test fn decl_ref_refuses_ambiguous_binding() -> Bool {
   let facts = [
     DeclFact {
-      qualified_name: "std.node.g1_ambiguous",
+      qualified_name: "v2.std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
       node: enforcement_red_probe_body_leaf,
       rel_path: "synthetic/a.dag",
     },
     DeclFact {
-      qualified_name: "std.node.g1_ambiguous",
+      qualified_name: "v2.std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
       node: enforcement_red_probe_body_leaf,

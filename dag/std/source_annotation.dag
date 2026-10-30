@@ -1,6 +1,6 @@
 module std.source_annotation
 import std.optional { Absent, Present }
-import std.algebra { empty_map, map_insert, map_lookup, map_support_keys, list_snoc_item, list_sort_by_key, int_total_order, list_at_optional, length }
+import std.algebra { empty_map, map_insert, map_lookup, map_support_keys, list_snoc_item, list_sort_by_key, int_total_order, list_at_optional, length, collection_concat_shape, list_push }
 // The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.coercion { unicode_scalar_unfold }

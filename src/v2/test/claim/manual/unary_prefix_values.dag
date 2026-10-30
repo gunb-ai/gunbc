@@ -1,0 +1,126 @@
+module v2.test.claim.manual.unary_prefix_values
+
+// THE VALUE CHANNEL for the unary-prefix fix (lane adhoc-9102e2d6-92f; defect and cause at
+// gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator).
+//
+// A claim body is parsed by the v1 parser and evaluated by the v1 interpreter, so the arms below
+// ARE the interpreter's own reading of `-1 - 2`, `-a + b`, `!a && b` -- no host plumbing, no
+// second tree. Measured, not asserted (D2 lane, invocation 83b6b361-8dd2-475e-9aba-1e165f8c6c15,
+// and D5 for the shape channel): with the language mirrors' declared rows patched back to the
+// historical powers (prefix 12, `as` 13 -- the parser as it was at main), the THREE MINUS ARMS
+// refuse with the defect's own values -- `-1 - 2 = 1 (want -3)`, `-1 + 2 = -3 (want 1)`,
+// `-1 - 2 - 3 = 4 (want -6)` -- and with the declared rows at 18/19 the claim passes. That is the
+// "evaluates to -3 on the v1 interpreter" channel, run through the same executor every claim in
+// this repository runs through.
+//
+// THE BANG &&/|| ARMS ARE CONTROLS, NOT REDS (an earlier draft of this comment claimed the old
+// binding computed `!a && b` = true; it did not, and the correction is recorded here because the
+// claim must only advertise what was measured). The old prefix arm parsed at min_bp 12, and `&&` /
+// `||` carry left_bp 7 / 5 -- below 12 -- so the loop already stopped there: `(\!a) && b` was the
+// parse under BOTH bindings, and a=true,b=false computes false under both. The bang absorption the
+// defect class names happens against operators ABOVE the old 12 -- `\!a * b` (`*` left_bp 15) --
+// and it is pinned in the shape channel by unary_prefix_v1_v2_agreement's `!a * b` arm.
+//
+// The emitted-Rust channel is the text arm below: the emitter reads the SAME tree, so the emitted
+// program shows whether the parenthesization changed -- pre-fix `-1 - 2` emits the minus applied
+// to the whole `(1 - 2)` binop; post-fix it emits the binop over the negated literal.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+
+// THE ARMS. The three minus arms are the distinguishing ones (measured RED under the historical
+// binding, D2 invocation 83b6b361-8dd2-475e-9aba-1e165f8c6c15):
+//   -1 - 2      old: -(1 - 2) = 1    new: (-1) - 2 = -3
+//   -1 + 2      old: -(1 + 2) = -3   new: (-1) + 2 = 1
+//   -1 - 2 - 3  old: -((1 - 2) - 3) = 4   new: ((-1) - 2) - 3 = -6
+// The two bang arms compute the SAME (correct) value under both bindings -- `&&`/`||` sit below the
+// old gate 12, so they never absorbed; they stay as pins that the raised power did not regress the
+// cases that already worked:
+//   !a && b     (a,b = true,false)   both: (!true) && false = false
+//   !a || b     (a,b = true,true)    both: (!true) || true = true
+// Controls (same value both bindings -- they must stay true, the fix must not move them):
+//   -(1 - 2) == 1 (parenthesized), -1 * 2 == -2 (multiplication is unaffected in VALUE),
+//   -1 < 0, standalone -3 == -3.
+test fn unary_prefix_value_arms_hold() -> ProcessExit {
+  let a1 = -1 - 2
+  let b1 = -1 + 2
+  let t = true
+  let f = false
+  let c1 = !t && f
+  let c2 = !t || t
+  let d1 = -1 - 2 - 3
+  let p1 = -(1 - 2) == 1
+  let p2 = -1 * 2 == -2
+  let p3 = -1 < 0
+  let p4 = -3 == 0 - 3
+  let report = concat(
+    "-1 - 2 = ", to_string(value: a1), " (want -3); ",
+    "-1 + 2 = ", to_string(value: b1), " (want 1); ",
+    "!t && f = ", to_string(value: c1), " (want false); ",
+    "!t || t = ", to_string(value: c2), " (want true); ",
+    "-1 - 2 - 3 = ", to_string(value: d1), " (want -6; the old binding computes 4); ",
+    "controls -(1-2)==1: ", to_string(value: p1),
+    ", -1*2==-2: ", to_string(value: p2),
+    ", -1<0: ", to_string(value: p3),
+    ", -3==0-3: ", to_string(value: p4)
+  )
+  if a1 == -3 && b1 == 1 && c1 == false && c2 == true && d1 == -6 && p1 && p2 && p3 && p4 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("unary-prefix value arms refused: ", report))
+  }
+}
+
+// THE EMITTED-RUST CHANNEL: the emitter reads the same tree the parser built, so the emitted text
+// carries the same defect. The claim-facing oracle is compile_dag_rust_emit_check(source, path,
+// includes, excludes) -- a substring oracle over the emitted Rust (src/v1/stage0/src/
+// emitted_closure_compile_host.rs; the pattern is v2.test.claim.compilation_unit_witness).
+// Int unary/binary operators route through runtime helpers, NOT literal -/: an Int Neg emits
+// v1_rt::int_neg(x) and Sub emits v1_rt::int_sub(a, b) (src/v1/05_emit_rust.dag emit_typed_expr),
+// so the substrings below are the OBSERVED emission (windowed dump, BuildBuddy invocation 1568cdbd-614c-4486-8b2a-feee235f82f1):
+//   -1 - 2 - 3  ->  v1_rt::int_sub(v1_rt::int_sub(v1_rt::int_neg(1), 2), 3)   (fixed: neg on the 1)
+//   -(1 - 2 - 3)->  v1_rt::int_neg(v1_rt::int_sub(v1_rt::int_sub(1, 2), 3))   (bug: neg on the row)
+// Four poles, not two: the positive arms show the fixed tree's text occurs and the bug's text is
+// absent; the NON-VACUITY poles build the bug's very trees by explicit parentheses and show they
+// really do emit the refused text -- so the excludes are executed, not hand-derived. A check that
+// returned false because the fixture was REFUSED would fail the positive arms, so a green here is
+// evidence emission happened, not of a vacuous substring miss.
+
+fn emit_probe(module_name: String, emit_path: String, params: String, ret: String, body: String, includes: List<String>, excludes: List<String>) -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module ", module_name, "\n\nfn probe_case(", params, ") -> ", ret, " {\n  ", body, "\n}\n"),
+    emit_path,
+    includes,
+    excludes
+  )
+}
+
+test fn unary_prefix_emitted_text_follows_the_tree() -> ProcessExit {
+  let minus_fixed = emit_probe(
+    module_name: "probe.unary_prefix.minus", emit_path: "src/probe_unary_prefix_minus.rs", params: "", ret: "Int", body: "-1 - 2 - 3",
+    includes: ["int_sub(v1_rt::int_sub(v1_rt::int_neg(1), 2), 3)"], excludes: ["int_neg(v1_rt::int_sub(v1_rt::int_sub(1, 2), 3))"]
+  )
+  let minus_bug = emit_probe(
+    module_name: "probe.unary_prefix.minusbug", emit_path: "src/probe_unary_prefix_minusbug.rs", params: "", ret: "Int", body: "-(1 - 2 - 3)",
+    includes: ["int_neg(v1_rt::int_sub(v1_rt::int_sub(1, 2), 3))"], excludes: ["int_sub(v1_rt::int_sub(v1_rt::int_neg(1), 2), 3)"]
+  )
+  let bang_fixed = emit_probe(
+    module_name: "probe.unary_prefix.bang", emit_path: "src/probe_unary_prefix_bang.rs", params: "t: Bool, f: Bool", ret: "Bool", body: "!t && f && t",
+    includes: ["((!t.clone() && f.clone()) && t.clone())"], excludes: ["!((t.clone() && f.clone()) && t.clone())"]
+  )
+  let bang_bug = emit_probe(
+    module_name: "probe.unary_prefix.bangbug", emit_path: "src/probe_unary_prefix_bangbug.rs", params: "t: Bool, f: Bool", ret: "Bool", body: "!(t && f && t)",
+    includes: ["!((t.clone() && f.clone()) && t.clone())"], excludes: ["((!t.clone() && f.clone()) && t.clone())"]
+  )
+  if minus_fixed && minus_bug && bang_fixed && bang_bug {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "unary-prefix emitted-text refused: minus_fixed=", to_string(value: minus_fixed),
+      " minus_bug_pole=", to_string(value: minus_bug),
+      " bang_fixed=", to_string(value: bang_fixed),
+      " bang_bug_pole=", to_string(value: bang_bug)
+    ))
+  }
+}

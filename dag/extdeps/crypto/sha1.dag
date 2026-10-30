@@ -3,7 +3,7 @@ module extdeps.crypto.sha1
 import std.types { Int, List, String }
 import std.optional { Present }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_rotr }
+import std.machine_word { word32_and, word32_xor, word32_not, word32_add, word32_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.md_padding { md_append_octets, md_blocks_64 }

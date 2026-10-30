@@ -2,7 +2,9 @@
 // Source module: std.unicode.scalar
 
 use self::NotUnicodeScalar::*;
-pub use crate::std_algebra::{list_snoc_item, FreeMonoid};
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_join_shape, list_snoc_item, FreeMonoid,
+};
 pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_error_primitives::Result;
 use crate::std_error_primitives::Result::{Err, Ok};
@@ -66,7 +68,7 @@ pub fn not_unicode_scalar_code_point(n: Rc<NotUnicodeScalar>) -> i64 {
 }
 
 pub fn from_code_point(cp: i64) -> Rc<Result<String, Rc<NotUnicodeScalar>>> {
-    match (*scalar_of_code_point(cp.clone())).clone() {
+    match (*scalar_of_code_point(cp)).clone() {
         Result::Ok { value: c, .. } => Rc::new(Result::Ok {
             value: crate::std_coercion::unicode_scalar_fold(crate::std_algebra::list_snoc_item(
                 Rc::new(vec![]),

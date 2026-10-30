@@ -6,11 +6,13 @@ import std.nat { Nat }
 import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, serialize_json }
 import std.measure {
   MoneyAmountMicro,
   money_amount_micro,
   DecimalMoneyPerHourConversion,
   exact_decimal_to_money_per_hour_ceil,
+  ByteSize, Bandwidth, mebibyte_count, mebibyte_ceiling, bandwidth_count,
 }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -31,9 +33,11 @@ import extdeps.uri { Uri, Https }
 // closed enum here would assert a set the upstream does not state; the supplier layer therefore matches
 // only the one word it can ground ("nvidia" yields Cuda) and refuses every other or absent value by name.
 //
-// is_bid marks an interruptible (bid-priced) offer: search-offers `type` is ondemand | bid | reserved and
-// bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
-// on-demand one. Absence is an unread fact.
+// is_bid IS NOT READ AS INTERRUPTIBILITY. search-offers `type` is ondemand | bid | reserved and bid "may be
+// interrupted if outbid", so interruptibility is a fact of the SEARCH an offer was returned for. A live
+// read-only search on 2026-10-18 (type bid, from srv1) answered 63 offers all with is_bid false, and a running
+// interruptible instance also read is_bid false, so the field's meaning is unread here. Absence is an
+// unread fact too.
 //
 // MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float: search-offers min_bid, dph_total, storage_cost,
 // inet_up_cost and inet_down_cost arrive as JSON numbers. min_bid and dph_total convert with
@@ -116,6 +120,8 @@ type VastAiOffer {
   inet_down_cost: ExactDecimal
   gpu_ram: Int
   driver_version: String?
+  cuda_max_good: ExactDecimal?
+  inet_down: ExactDecimal?
 }
 
 // THE HOST-RESOURCE FIELDS OF THE SAME search-offers OFFER OBJECT, read 2026-10-17 from
@@ -200,6 +206,38 @@ fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourCo
   exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
 }
 
+// THE SEARCH QUERY: search-offers takes each filter as a field-keyed operator object in the POST body
+// ({"gpu_ram": {"gte": N}}, docs.vast.ai search-offers). Observed accepted on 2026-10-18 by a live
+// read-only search from srv1 under the operator's account, which answered 63 offers for these six
+// filters with type bid. The query is typed: sizes are ByteSize, the link rate is Bandwidth, and the CUDA
+// filter is a major version. cuda_max_good is the highest CUDA major the host driver supports. rentable is
+// always asked true: a non-rentable offer is never a candidate. Which values to ask is policy, never this
+// module's.
+type VastAiOfferQuery {
+  search_type: String
+  limit: Int
+  gpu_ram_min: ByteSize
+  cuda_max_good_min: Nat
+  cpu_ram_min: ByteSize
+  inet_down_min: Bandwidth
+  verified: Bool
+  num_gpus: Nat
+}
+
+// THE WIRE UNITS of Vast's search and offer vocabulary, converted only here: RAM counts are MB, taken as
+// mebibytes (the page prints MB without a basis; a 96 GiB PRO 6000 reads gpu_ram 97887, which fits either
+// basis, so the reading is the one vast_gpu_ram_bytes already uses), and inet_down is Mb/s, decimal
+// megabits. A minimum rounds UP so a filter never admits less than the typed policy asked for.
+data vast_ai_bits_per_megabit: Nat = 1000000
+
+fn vast_ai_wire_mb(b: ByteSize) -> Int {
+  mebibyte_count(m: mebibyte_ceiling(b: b))
+}
+
+fn vast_ai_wire_mbps(b: Bandwidth) -> Int {
+  (bandwidth_count(b: b) + vast_ai_bits_per_megabit - 1) / vast_ai_bits_per_megabit
+}
+
 type VastAiOffers {
   offers: List<VastAiOffer>
 }
@@ -217,15 +255,37 @@ service vast_ai.SearchOffers {
       api_key: Secret
       search_type: String
       limit: Int
+      // 🟡 feature:vast-search-wire-units dissolve-on: the REST transport encodes a typed ByteSize or
+      // Bandwidth input into a declared wire unit. Until then these three are the wire integers (MB, MB,
+      // Mb/s) of the POST body, produced only by vast_ai_wire_mb and vast_ai_wire_mbps from the typed
+      // VastAiOfferQuery here and, on Templates.Create, from the typed template spec; no module outside the
+      // typed callers spells them.
+      gpu_ram_min_mb: Int
+      cuda_max_good_min: Int
+      cpu_ram_min_mb: Int
+      inet_down_min_mbps: Int
+      verified: Bool
+      num_gpus: Int
     }
     output {
       offers: List<VastAiOffer> from "offers"
+      hosts: List<VastAiOfferHostResources> from "offers"
     }
     readonly
     transport rest {
       method: POST,
       path: "/bundles/",
-      body: { type: search_type, limit: limit }
+      body: {
+        type: search_type,
+        limit: limit,
+        gpu_ram: { gte: gpu_ram_min_mb },
+        cuda_max_good: { gte: cuda_max_good_min },
+        cpu_ram: { gte: cpu_ram_min_mb },
+        inet_down: { gte: inet_down_min_mbps },
+        verified: { eq: verified },
+        num_gpus: { eq: num_gpus },
+        rentable: { eq: true }
+      }
     }
     response {
       200 => VastAiOffers
@@ -243,7 +303,9 @@ data vast_ai_search_type_bid: String = "bid"
 data vast_ai_search_type_ondemand: String = "ondemand"
 data vast_ai_search_limit_default: Int = 100
 
-// ONE INSTANCE from GET /api/v1/instances. id is the contract (create-instance returns it as
+// ONE INSTANCE from GET /api/v1/instances/ (the trailing slash is the served path: a live flex_pass on srv1,
+// fleet-converge run 39214273788, read /api/v1/instances without it and the walk refused, while a manual
+// GET of /api/v1/instances/ on 2026-10-18 answered the account's instances). id is the contract (create-instance returns it as
 // new_contract). machine_id is the host the offer named. gpu_ram is MB. min_bid / dph_total are
 // ExactDecimal for the same reason offers are. actual_status is optional: the document types it
 // string | null. No create or destroy operation is declared in this module.
@@ -298,7 +360,7 @@ service vast_ai.Instances {
     readonly
     transport rest {
       method: GET,
-      path: "/instances",
+      path: "/instances/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
@@ -310,7 +372,8 @@ service vast_ai.Instances {
   }
 }
 
-// ONE CONTRACT CHARGE from GET /api/v0/charges. amount is ExactDecimal (the document's float).
+// ONE CONTRACT CHARGE from GET /api/v0/charges/ (the trailing slash is the served path: a live GET of
+// /api/v0/charges on 2026-10-18 answered 301 to /api/v0/charges/). amount is ExactDecimal (the document's float).
 // select_filters is the documented JSON string; day.gte and day.lte are required by the vendor.
 type VastAiChargeItem {
   start: Int
@@ -320,6 +383,16 @@ type VastAiChargeItem {
   description: String
 }
 
+// metadata is documented on the same page (template_id, label, endpoint_id, workergroup_id); only the two
+// an instance contract carries are read. Observed 2026-10-18 by a live read-only GET from srv1: an
+// instance row answered metadata {"template_id": <Int>, "label": "<the instance label>"}. label is the
+// label the instance carried, so a charge is attributable to an owner label without the instance still
+// existing. Absent metadata or label is an unread fact, never an owner.
+type VastAiChargeMetadata {
+  template_id: Int?
+  label: String?
+}
+
 type VastAiCharge {
   start: Int
   end: Int
@@ -327,6 +400,7 @@ type VastAiCharge {
   source: String
   description: String
   amount: ExactDecimal
+  metadata: VastAiChargeMetadata?
   items: List<VastAiChargeItem>
 }
 
@@ -384,6 +458,20 @@ type VastAiChargesDayRange {
   lte: Int
 }
 
+// The day range as the select_filters JSON the endpoint takes (observed accepted live 2026-10-18 from srv1).
+fn vast_ai_charges_day_filter(range: VastAiChargesDayRange) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "day", value: json_object(members: [
+      json_kv(key: "gte", value: json_int(n: range.gte)),
+      json_kv(key: "lte", value: json_int(n: range.lte)),
+    ])),
+  ]))
+}
+
+// An empty select_filters object: GET /instances answers every instance on the account (observed live
+// 2026-10-18 from srv1: total_instances counted instances under every label).
+data vast_ai_instances_unfiltered: String = serialize_json(v: json_object(members: []))
+
 type VastAiChargesRefusal
   = VastAiChargesMissingDateRange
   | VastAiChargesRefusedStatus { status: Int }
@@ -425,7 +513,7 @@ service vast_ai.Charges {
     readonly
     transport rest {
       method: GET,
-      path: "/charges",
+      path: "/charges/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
@@ -476,6 +564,13 @@ service vast_ai.Asks {
     auth_input: api_key
   }
 
+  // env is a STRING in Docker flag format ("-e NAME=value -p 8000:8000"), merged by key into the
+  // template's env with the request winning (docs.vast.ai create-instance, PUT /asks/{id}/). It is a
+  // Secret because the caller puts a per-rental password in it.
+  // runtype/args/onstart are the launch applied to THIS rent. Vast takes them per rent, and the args form
+  // has only ever been observed to execute per rent: an args command stored IN the template produced 50
+  // minutes of empty logs (template 782339), while this per-rent shape served in about 25 minutes
+  // (instance 57968351). The model is product.fabric.flex_vast_template flex_vast_rent_launch.
   operation Create {
     requires Network
     input {
@@ -485,6 +580,10 @@ service vast_ai.Asks {
       disk: Int
       template_hash_id: NonEmptyStr
       label: NonEmptyStr
+      env: Secret
+      runtype: String
+      args: List<String>
+      onstart: String
     }
     output {
       success: Bool from "success"
@@ -493,7 +592,7 @@ service vast_ai.Asks {
     transport rest {
       method: PUT,
       path: "/asks/\{offer_id\}/",
-      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label }
+      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label, env: env, runtype: runtype, args: args, onstart: onstart }
     }
     response {
       200 => VastAiCreateAskResult
@@ -560,6 +659,108 @@ service vast_ai.InstanceLifecycle {
       404 => VastAiApiError
       429 => VastAiApiError
       5xx => VastAiApiError
+    }
+  }
+}
+
+// TEMPLATES (docs.vast.ai create-template POST /api/v0/template; search-templates GET /api/v0/template).
+// create answers template.{id,name,hash_id}; the list answers id, name, image, and (read with
+// select_cols ["*"]) the rest. env is a Docker-flag STRING, not an object. The template this module
+// is asked to create is secret-free by its caller (product.fabric.flex_vast_template): env here is a
+// plain String, and the credential-bearing path is the per-create Secret on Asks.Create.
+type VastAiTemplateCreated {
+  id: Int
+  name: String
+  hash_id: String
+}
+
+type VastAiTemplateCreateResult {
+  success: Bool
+  msg: String
+  template: VastAiTemplateCreated
+}
+
+type VastAiTemplateRow {
+  id: Int
+  name: String
+  image: String
+  hash_id: String?
+  env: String?
+}
+
+type VastAiTemplateList {
+  success: Bool
+  templates: List<VastAiTemplateRow>
+}
+
+service vast_ai.Templates {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Create {
+    requires Network
+    input {
+      api_key: Secret
+      name: NonEmptyStr
+      image: NonEmptyStr
+      tag: NonEmptyStr
+      env: String
+      runtype: String
+      recommended_disk_space: Int
+      private: Bool
+      onstart: String
+      ssh_direct: Bool
+      jup_direct: Bool
+      use_jupyter_lab: Bool
+      // 🟡 feature:vast-search-wire-units dissolve-on: the same transport encoding as SearchOffers above;
+      // these three are the wire integers (MB, MB, Mb/s) of the template body, produced only by
+      // vast_ai_wire_mb and vast_ai_wire_mbps from the typed FlexTemplateSpec.
+      min_cuda_max_good: Int
+      min_cpu_ram_mb: Int
+      min_gpu_ram_mb: Int
+      min_inet_down_mbps: Int
+      verified_only: Bool
+    }
+    output {
+      template: VastAiTemplateCreated from "template"
+    }
+    transport rest {
+      method: POST,
+      path: "/template",
+      body: { name: name, image: image, tag: tag, env: env, runtype: runtype, recommended_disk_space: recommended_disk_space, private: private, onstart: onstart, ssh_direct: ssh_direct, jup_direct: jup_direct, use_jupyter_lab: use_jupyter_lab, extra_filters: { cuda_max_good: { gte: min_cuda_max_good }, cpu_ram: { gte: min_cpu_ram_mb }, gpu_ram: { gte: min_gpu_ram_mb }, inet_down: { gte: min_inet_down_mbps }, verified: { eq: verified_only } } }
+    }
+    response {
+      200 => VastAiTemplateCreateResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      429 => VastAiApiError
+    }
+  }
+
+  operation Search {
+    requires Network
+    input {
+      api_key: Secret
+      select_filters: String
+      select_cols: String
+    }
+    output {
+      templates: List<VastAiTemplateRow> from "templates"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/template",
+      query: { select_filters: select_filters, select_cols: select_cols }
+    }
+    response {
+      200 => VastAiTemplateList
+      400 => VastAiApiError
+      401 => VastAiApiError
+      429 => VastAiApiError
     }
   }
 }

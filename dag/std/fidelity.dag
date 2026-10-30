@@ -2,6 +2,7 @@ module std.fidelity
 
 import std.types { FermiDepth, List, Xs }
 import std.fermi { fermi_max_of }
+import std.algebra { collection_count_shape, collection_map_shape }
 
 type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
 

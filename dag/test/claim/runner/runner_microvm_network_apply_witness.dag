@@ -12,7 +12,7 @@ import gunbc.runner.runner_microvm_network_apply {
   runner_microvm_root_only_probe_argv,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }
-import gunbc.runner.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, runner_host_path_ancestors }
+import gunbc.runner.runner_host_file_converge { classify_root_only_paths, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, fleet_host_path_ancestors }
 import gunbc.file_access { path_ancestor_prefixes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -122,12 +122,12 @@ test fn the_shared_prefix_fold_excludes_the_leaf_and_applies_no_scope() -> Bool 
 }
 
 // AND THE /etc CALLER STILL FILTERS TO ITS OWN SCOPE, so consolidating the fold did not widen what
-// that module checks. The red is runner_host_path_ancestors starting to return /var or a bare
+// that module checks. The red is fleet_host_path_ancestors starting to return /var or a bare
 // prefix outside its write scope.
 test fn the_etc_caller_keeps_its_scope_filter_after_the_fold_moved() -> Bool {
-  runner_host_path_ancestors(path: "/etc/systemd/system/unit.service")
+  fleet_host_path_ancestors(path: "/etc/systemd/system/unit.service")
     == ["/etc", "/etc/systemd", "/etc/systemd/system"]
-    && runner_host_path_ancestors(path: "/var/lib/elsewhere/file") == []
+    && fleet_host_path_ancestors(path: "/var/lib/elsewhere/file") == []
 }
 
 
@@ -161,4 +161,15 @@ test fn local_network_apply_requires_root_on_the_selected_host() -> Bool {
       expected_revision: a_revision, checked_out_revision: a_revision))
     && !admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv1", effective_uid: "0",
       expected_revision: a_revision, checked_out_revision: another_revision))
+}
+
+// RED, through the real result-to-classifier path: a find that exited nonzero does not establish the staged
+// bytes root-only, whether it printed nothing or printed the path. Only a successful run that printed the
+// path does. (The apply fold sends every non-RootOnly reading to the uninstalled run, so the unobservable
+// reading refuses the install exactly as a mismatch does; the fail-open was the printed-path case.)
+test fn a_failed_root_only_find_does_not_authorise_the_install() -> Bool {
+  let p = "/var/lib/gunbc-microvm-network-stage/microvm.nft"
+  !path_metadata_ok(m: classify_root_only_paths(requested: [p], exit_code: 1, stdout: concat(p, "\n"), stderr: "find: warning"))
+    && !path_metadata_ok(m: classify_root_only_paths(requested: [p], exit_code: 1, stdout: "", stderr: "Permission denied"))
+    && path_metadata_ok(m: classify_root_only_paths(requested: [p], exit_code: 0, stdout: concat(p, "\n"), stderr: ""))
 }

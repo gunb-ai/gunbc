@@ -1,14 +1,16 @@
 module test.claim.dispatch_attempts_witness
 
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltAttempts, AttemptsObserved, AttemptsRefused,
   belt_attempts_json_value, belt_attempts_observed_json, belt_attempts_http_status,
   belt_spawn_session_uuid,
 }
+import gunbc.roadmap.roadmap_session_placement { SessionSlotRecordsRead, SessionSlotRecordsRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchAttemptRef, parse_dispatch_attempt_branch, dispatch_attempt_refs,
   git_for_each_ref_dispatch_argv, dispatch_attempt_key, dispatch_branch_name,
-  dispatch_worktree_path,
+  dispatch_worktree_path_for_instance,
 }
 import gunbc.roadmap.roadmap_component {
   dispatch_client_js_source,
@@ -69,7 +71,7 @@ test fn attempts_multi_line_output_parses() -> Bool {
 }
 
 test fn attempts_observed_projects_to_wire() -> Bool {
-  let j = belt_attempts_observed_json(a: AttemptsObserved { attempts: [attempt_fixture()] })
+  let j = belt_attempts_observed_json(a: AttemptsObserved { attempts: [attempt_fixture()] }, slots: SessionSlotRecordsRead { records: [], unreadable: [] })
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-attempts/v1\"")
     && string_contains(s: j, pattern: "\"attempts_refused\": false")
     && string_contains(s: j, pattern: "\"branch\": \"dispatch/5-regen-cutover-afeedfacefeedface\"")
@@ -81,9 +83,15 @@ test fn attempts_observed_projects_to_wire() -> Bool {
     && belt_attempts_http_status(a: AttemptsObserved { attempts: [] }) == 200
 }
 
+test fn attempts_slots_failure_is_loud_and_never_dropped() -> Bool {
+  let j = belt_attempts_observed_json(a: AttemptsObserved { attempts: [] }, slots: SessionSlotRecordsRead { records: [], unreadable: ["k: undecodable"] })
+  return string_contains(s: j, pattern: "\"slots\": []")
+    && string_contains(s: j, pattern: "k: undecodable")
+}
+
 test fn attempts_refusal_is_loud_on_the_wire() -> Bool {
   let a = AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
-  let j = belt_attempts_observed_json(a: a)
+  let j = belt_attempts_observed_json(a: a, slots: SessionSlotRecordsRefused { detail: "slot store unlistable" })
   return string_contains(s: j, pattern: "\"attempts_refused\": true")
     && string_contains(s: j, pattern: "unknowable")
     && belt_attempts_http_status(a: a) == 503
@@ -124,7 +132,7 @@ test fn belt_attempt_grain_holds() -> Bool {
   return k1 != k2
     && k1 == dispatch_attempt_key(node_id: n, ordinal: 1)
     && dispatch_branch_name(node_id: n, attempt_key: k1) != dispatch_branch_name(node_id: n, attempt_key: k2)
-    && dispatch_worktree_path(node_id: n, attempt_key: k1) != dispatch_worktree_path(node_id: n, attempt_key: k2)
+    && dispatch_worktree_path_for_instance(instance: srv1_live_dashboard_instance(), node_id: n, attempt_key: k1) != dispatch_worktree_path_for_instance(instance: srv1_live_dashboard_instance(), node_id: n, attempt_key: k2)
     && belt_spawn_session_uuid(node_id: n, attempt_key: k1) != belt_spawn_session_uuid(node_id: n, attempt_key: k2)
     && string_contains(s: dispatch_branch_name(node_id: n, attempt_key: k1), pattern: "dispatch/5-regen-cutover-a")
 }

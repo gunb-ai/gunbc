@@ -203,6 +203,16 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
   wire: "0.32",
 )
 
+// FIRMWARE IDENTITY 0.45.3: the build the BMC has run since the 2026-10-02 reflash. Only the IDENTITY
+// lives here, because which versions AMI ships is AMI's fact. What we established about this build — the
+// capability row, the run that exercised it, and how the version string came to be known (an operator
+// read of the web UI, not a machine read) — is a receipt in the observing layer, at
+// gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
+data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.45.3",
+)
+
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
@@ -216,6 +226,13 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial.
 // A firmware identity this row
 // does not catalog refuses rather than inheriting 0.32's numbers.
+// ON 0.45.3 ONLY 1 IS CATALOGUED, because only 1 has been read there: boot run 38789347052
+// (gunbc.host.bmc_release_capability_catalog megarac_run_38789347052_evidence, executed after the
+// 2026-10-02 reflash; artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-diagnostics.txt)
+// read redirection_status 1 on the started census session, three times. No committed 0.45.3 reading
+// shows 0 or 100, so they are NOT carried over from 0.32: a stopped or connecting session on 0.45.3
+// reads as an uncatalogued wire until a reading grounds it. Boot run 40038339650 read 19 on a
+// session left over from an earlier attempt; what 19 means is unread, and it stays uncatalogued.
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
@@ -241,10 +258,18 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
+  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3) {
+    let status = if wire == 1 {
+      RedirectionStartedConnectionAccepted
+    } else {
+      RedirectionWireUncatalogued { wire: wire }
+    }
+    RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
   }
 }
+
 
 // A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
 // presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are
@@ -437,3 +462,16 @@ service megarac.Media {
     }
   }
 }
+
+// THE RELEASE CAPABILITY CATALOG LIVES IN THE OBSERVING LAYER, at
+// gunbc.host.bmc_release_capability_catalog -- never here, and never in extdeps.bmc.capability either
+// (which models the PROTOCOL capability surface, not what a named build of ours established). Review
+// 83380. A capability row is not an AMI fact: it is what OUR
+// automation established about a build — which controls a named fleet-converge run of ours exercised,
+// where OUR artifacts landed, which PR of ours carried them, and whether a human read a web UI page.
+// DESIGN.md §3 puts observations this repository makes in the OBSERVING layer, "not facts of the
+// observed upstream", and a missing observation is a downstream coverage obligation, "never an
+// `Unobserved` property inside the upstream module" — so neither the rows, the run receipt, the version
+// standing, nor a 'not exercised at this build' default belongs here. What stays upstream is what AMI
+// actually states: the release identities (megarac_firmware_0_32, megarac_firmware_0_45_3) and the
+// protocol surface above. Review 81149, finding 1.

@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_st
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE STALL THE TRIGGER WALL LEAVES BEHIND, declared by the change that built the wall rather than
 // discovered later. `stall_trigger_admission` refuses a `NextRungTrigger` whose capability spells

@@ -1,0 +1,140 @@
+module test.claim.record_literal_names_a_union_type_witness
+
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR gunbc.recurring_failure_mode
+// a_record_literal_naming_a_union_type_is_accepted_at_typecheck, AND ITS CONTROLS.
+//
+// The red is the minimized shape of the specimen that reached EVAL: extdeps.systemd.systemd_run
+// SystemdRunProperty was a record until gunbc#13942 turned it into the union
+// NamedUnitSetting | EmptyCapabilityBoundingSet, and gunbc#14149 authored a literal naming the UNION
+// -- SystemdRunProperty { property: MemoryMax, value: "infinity" } -- which typechecked with 0
+// blocking errors and failed only at EVAL of //gunbc/instruments:compute-run-unit-cold (run
+// 38905139153) as a non-exhaustive pattern match. A value must inhabit its declared type (DESIGN
+// section 4b); a union's constructors are its arms, so the name the literal carries is asked one
+// question before any field is read: DOES THIS NAME CARRY A RECORD CONSTRUCTOR.
+// v1.compiler.infer record_lit_name_declares_union asks it, at the literal's name.
+//
+// Every fixture is a string handed to a nested compile: an inline red would be refused by the
+// compiler compiling this file. Fixture type names carry a Zz prefix because bare names resolve by
+// global uniqueness and could bind a corpus declaration instead of the fixture's own.
+
+// THE RED, at each position the specimen's literal reached typecheck in. `property` is a field of the
+// union's FIRST ARM, and the fields are complete for that arm: before the refusal existed, the union's
+// children were walked as if they were fields, so nothing here was missing and nothing was bogus --
+// the accepted program was accepted on a reading of the declaration that the declaration does not support.
+data zz_union_named_at_data: String = "module zz_union_probe_data\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzU { property: ZzA { x: 1 }, value: 2 }\n"
+
+data zz_union_named_at_return: String = "module zz_union_probe_ret\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\nfn zz_ret() -> ZzU { ZzU { property: ZzA { x: 1 }, value: 2 } }\n"
+
+data zz_union_named_at_list_element: String = "module zz_union_probe_list\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\nfn zz_props() -> List<ZzU> { [ZzU { property: ZzA { x: 1 }, value: 2 }] }\n"
+
+data zz_union_named_at_call_argument: String = "module zz_union_probe_call\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\nfn zz_take(property: List<ZzU>) -> Int { 1 }\nfn zz_call() -> Int { zz_take(property: [ZzU { property: ZzA { x: 1 }, value: 2 }]) }\n"
+
+// THE FIELD AXES ARE NOT THE QUESTION. The refusal cannot be reached by tightening the field walk: an
+// absent field and a field no arm declares were BOTH accepted before it (measured, 0 blocking),
+// because there is no record to have fields. Each keeps exactly one refusal -- the constructor
+// question -- and no second diagnostic about its fields, which would be a judgment about a record
+// that does not exist.
+data zz_union_named_missing_field: String = "module zz_union_probe_missing\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzU { property: ZzA { x: 1 } }\n"
+
+data zz_union_named_bogus_field: String = "module zz_union_probe_bogus\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzU { not_a_field_of_any_arm: 1 }\n"
+
+// AN ALIAS OF A UNION CARRIES NO MORE CONSTRUCTORS THAN THE UNION DOES. The name is spelled ZzT; the
+// answer is read off what ZzT is.
+data zz_union_named_through_alias: String = "module zz_union_probe_alias\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ntype ZzT = ZzU\ndata zz_d: ZzT = ZzT { property: ZzA { x: 1 }, value: 2 }\n"
+
+// THE POSITIVE CONTROLS: the two arms, constructed the way the declaration says. These are the
+// spelling the refusal names, and they must stay accepted -- a wall that refuses the union name and
+// then refuses its arms has replaced one authoring blockage with another.
+//
+// ONE CONTROL CANNOT LIVE HERE. The control that matters most for WHERE the name is resolved -- an
+// arm imported BY NAME whose name is also an unrelated union elsewhere in the pool, the collision
+// that refused dag/test/claim/workspace_commissioning_apply_readback_witness.dag before the helper
+// was narrowed to the module's own binding chain -- needs TWO modules and this probe compiles one
+// source string. It lives in src/v1/tests/src/record_literal_names_a_union_type_refusal_test.rs as
+// an_imported_variant_name_is_accepted_under_a_pool_collision, which builds three SourceFiles (arm
+// owner / colliding union / consumer that imports the first and not the second).
+data zz_variant_named_arm: String = "module zz_union_probe_named_arm\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzNamed { property: ZzA { x: 1 }, value: 2 }\n"
+
+data zz_variant_empty_arm: String = "module zz_union_probe_empty_arm\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzEmpty\n"
+
+// THE WALL IS NOT "AN UNKNOWN NAME" AND NOT "A RECORD". A name that resolves to nothing keeps the
+// refusal it already had (and does not gain this one); a record, and an alias of a record, stay
+// accepted -- so the new refusal fires on exactly the population it names.
+data zz_unknown_name: String = "module zz_union_probe_unknown\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ndata zz_d: Int = ZzNowhere { x: 1 }\n"
+
+data zz_record_still_accepted: String = "module zz_union_probe_record\ntype ZzA { x: Int }\ntype ZzU = ZzNamed { property: ZzA, value: Int } | ZzEmpty\ntype ZzAlias = ZzA\ndata zz_r: ZzA = ZzA { x: 1 }\ndata zz_a: ZzAlias = ZzA { x: 2 }\n"
+
+data zz_union_named_class: String = "TypeNameCarriesNoRecordConstructor"
+
+// THE RED: each position refused, exactly once, at the name the author wrote.
+test fn a_record_literal_naming_a_union_refuses_at_a_data_binding() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
+}
+
+test fn a_record_literal_naming_a_union_refuses_at_a_return() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_return, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
+}
+
+test fn a_record_literal_naming_a_union_refuses_at_a_list_element() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_list_element, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
+}
+
+test fn a_record_literal_naming_a_union_refuses_at_a_call_argument() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_call_argument, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
+}
+
+// THE ONE REFUSAL, NOT A CASCADE. The constructor question is asked before the field walk, so a
+// missing field or a field no arm declares does not add a second diagnostic: both stay at 1 while
+// they refuse, and the total blocking difference against an accepted arm is the single refusal.
+test fn the_constructor_question_is_asked_before_the_fields() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_union_named_missing_field, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_class_census(source: zz_union_named_bogus_field, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+  ])
+}
+
+test fn a_record_literal_naming_an_alias_of_a_union_refuses() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_through_alias, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
+}
+
+// THE CONTROLS, EACH BY THE DIFFERENCE AGAINST THE RED IT IS THE FIX OF: the accepted arm compiles
+// with 0 of this class AND 0 blocking in total, so the refusals above are the whole difference and
+// not a fixture that fails for some other reason.
+test fn the_fielded_arm_is_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_variant_named_arm, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_variant_named_arm), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn the_empty_arm_is_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_variant_empty_arm, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_variant_empty_arm), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_record_and_an_alias_of_a_record_are_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_record_still_accepted, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_record_still_accepted), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// AN UNRESOLVED NAME KEEPS ITS OWN REFUSAL AND DOES NOT GAIN THIS ONE: the new class answers the
+// constructor question of a name that DOES resolve to a declaration, and a name resolving to nothing
+// is refused by the unresolved diagnostic that already existed.
+test fn an_unknown_name_keeps_its_own_refusal() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_unknown_name, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_unknown_name), holds: fn(n) { n == 1 }),
+  ])
+}

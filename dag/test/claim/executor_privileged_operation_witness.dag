@@ -15,6 +15,7 @@ import gunbc.runner.runner_host_grants {
   runner_slot_grammar_dirs_to_bound,
   fabric_allocation_store_privileged_operations,
   runner_host_wide_privileged_operations,
+  runner_slot_retirement_mask_operations,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved }
@@ -23,7 +24,7 @@ import gunbc.fabric.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
-import gunbc.executor_privileged_operation { sudoers_argument_word }
+import gunbc.executor_privileged_operation { sudoers_argument_word, executor_managed_directory_mode }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -149,6 +150,8 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // every host's population -- the job user's readbacks only, reads by construction (that module
 // states why the installs stay off this roster). The sum above omitted it, so the row was red from
 // that landing by exactly that list's length. The term is that named list's length, not a literal.
+// The retirement mask grants (runner_slot_retirement_mask_operations, derived from host_maskable_units)
+// are one more named component of the roster, so the sum names them the same way.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
   let ds = fabric_cell_slice_desired_directives()
   let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
@@ -159,8 +162,9 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
   let allocation_store = fabric_allocation_store_privileged_operations(deploy: wt_srv3_deploy()).length()
   let host_wide = runner_host_wide_privileged_operations(deploy: wt_srv3_deploy()).length()
   let microvm_reads = microvm_network_granted_operations().length()
+  let retirement_masks = runner_slot_retirement_mask_operations(deploy: wt_srv3_deploy()).length()
   runner_host_privileged_operations(deploy: wt_srv3_deploy()).length()
-    == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store + microvm_reads
+    == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store + microvm_reads + retirement_masks
     && allocation_store == 2
     && fabric_cell_privileged_operations(deploy: wt_srv3_deploy()).length() == fabric_expected
     && activation == slots * 2
@@ -282,7 +286,7 @@ test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool {
 test fn witness_executed_command_is_the_granted_command() -> Bool {
   let slot = "/opt/actions-runner/srv3-09" as NonEmptyStr
   let job = "ghrunner" as NonEmptyStr
-  let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job)
+  let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job, mode: executor_managed_directory_mode)
   let op = RemoveDirectoryTree { path: slot }
   let argv = executor_privileged_operation_argv(op: op)
   executed.remove_command

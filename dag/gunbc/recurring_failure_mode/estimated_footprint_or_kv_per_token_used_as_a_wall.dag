@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.estimated_footprint_or_kv_per_token_used_as_a_wall
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data estimated_footprint_or_kv_per_token_used_as_a_wall: RecurringFailureMode = RecurringFailureMode {
   identity: "estimated_footprint_or_kv_per_token_used_as_a_wall" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: an estimated model footprint or KV-per-token figure is consumed as a hard fit wall. HARM: a launch that would have fit (or would not) is refused or admitted against a number nobody measured, and DESIGN 4d is violated: an inference is treated as a deduced fact. DISTINGUISHING FACT: vLLM 'Model loading took' is an allocation delta, not checkpoint tensor bytes; KV bytes per token are an observation of a launch, not a datasheet identity. SPECIMEN: 69 GiB estimated versus 80.1 GiB measured model-load allocation; 24.6 versus ~31 KB/token. RUNG FOUND AT: mitigatable, caught in design review 2026-10-12. CEILING: mechanically preventable once P3 receipts carry measured allocation and measured KV capacity and P4 fit reads those, never the estimate, as the wall. NEXT TRIGGER: P4 feasibility consumes observed model-load GPU allocation per rank and measured KV capacity. CONSUMPTION: P4 home-serving feasibility.",
   ],

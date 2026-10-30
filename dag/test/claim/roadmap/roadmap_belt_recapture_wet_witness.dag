@@ -5,7 +5,9 @@ module test.claim.roadmap.roadmap_belt_recapture_wet_witness
 // the candidate against that write's generation. A planted capture of the worker commit is
 // required for the mint to proceed; a clean checkout of a different commit refuses.
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
 import std.logic { Bool }
+import std.algebra { string_contains }
 import std.types { String, FilePath, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
@@ -18,11 +20,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_attempt_store_root { belt_attempt_member_path, belt_submission_store_slots }
 import gunbc.roadmap.roadmap_belt_actuate {
-  belt_scm_recapture, Recaptured, RecaptureRefused, RecapturePoisoned,
+  belt_scm_recapture, belt_commit_outcome_persist, BeltCommitOutcome, CommitSkipped, Recaptured, RecaptureRefused, RecapturePoisoned,
   belt_exec, ExecOk, ExecFailed, ExecRefused,
-  belt_attempt_submission_dir_for_instance,
   recapture_capture_absent_detail,
 }
 import gunbc.roadmap.roadmap_submission {
@@ -86,12 +88,17 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
   let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
   let _st = shell.Mkdir.Parents(path: state as FilePath)
-  let primed = run_git(dir: worktree, args: ["init", "-q"])
+  let seed = instance.repo_root as String
+  let _seed_dir = shell.Mkdir.Parents(path: seed as FilePath)
+  let primed = run_git(dir: seed, args: ["init", "-q"])
+    && run_git(dir: seed, args: ["config", "user.name", "witness"])
+    && run_git(dir: seed, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([seed, "/src.dag"], ""), content: "base").success
+    && run_git(dir: seed, args: ["add", "-A"])
+    && run_git(dir: seed, args: ["commit", "-q", "-m", "base"])
+    && run_git(dir: seed, args: ["worktree", "add", "-q", "-f", "-b", "witness", worktree])
     && run_git(dir: worktree, args: ["config", "user.name", "witness"])
     && run_git(dir: worktree, args: ["config", "user.email", "witness@invalid"])
-    && Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "base").success
-    && run_git(dir: worktree, args: ["add", "-A"])
-    && run_git(dir: worktree, args: ["commit", "-q", "-m", "base"])
   if !primed {
     ""
   } else {
@@ -105,10 +112,11 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
       && run_git(dir: worktree, args: ["commit", "-q", "-m", "worker"])
     if origin_ok && worker {
       let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
-      let submissions = belt_attempt_submission_dir_for_instance(
+      let submissions = belt_attempt_member_path(
         instance: instance,
         node_id: recapture_node as RoadmapNodeId,
         attempt_key: recapture_attempt,
+        member: belt_submission_store_slots.member,
       )
       let _sub = shell.Mkdir.Parents(path: submissions as FilePath)
       let capture = SubmissionCapture {
@@ -125,6 +133,18 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
       ).success
       if wrote && worker_sha != "" { worktree } else { "" }
     } else { "" }
+  }
+}
+
+fn commit_step_settled(instance: HostDashboardInstance) -> Bool {
+  match belt_commit_outcome_persist(
+    instance: instance,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+    outcome: CommitSkipped { node_id: recapture_node, reason: "witness" },
+  ) {
+    CommitSkipped { node_id: _, reason: _ } => true
+    _ => false
   }
 }
 
@@ -184,7 +204,7 @@ test fn a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_re
   let recorded = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
   let checked_out_base = worktree != "" && recorded != "" && run_git(dir: worktree, args: ["checkout", "-q", "HEAD~1"])
   let observed = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
-  let refused = checked_out_base && observed != "" && observed != recorded && match belt_scm_recapture(
+  let refused = checked_out_base && observed != "" && observed != recorded && commit_step_settled(instance: instance) && match belt_scm_recapture(
     instance: instance,
     project_key: recapture_node,
     node_id: recapture_node,
@@ -203,10 +223,11 @@ test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_re
   let worktree = plant_worktree(instance: instance)
   let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
   let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
-  let submissions = belt_attempt_submission_dir_for_instance(
+  let submissions = belt_attempt_member_path(
     instance: instance,
     node_id: recapture_node as RoadmapNodeId,
     attempt_key: recapture_attempt,
+    member: belt_submission_store_slots.member,
   )
   let misplaced = worktree != "" && worker_sha != "" && base_sha != "" && worker_sha != base_sha
     && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
@@ -221,7 +242,7 @@ test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_re
         submission: WorkerSubmission { readiness: SubmissionReady, explanation: "planted", limitations: "none" },
       }),
     ).success
-  let refused = misplaced && match belt_scm_recapture(
+  let refused = misplaced && commit_step_settled(instance: instance) && match belt_scm_recapture(
     instance: instance,
     project_key: recapture_node,
     node_id: recapture_node,
@@ -233,4 +254,85 @@ test fn a_capture_claiming_this_head_stored_under_another_basename_refuses_by_re
   }
   let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
   refused && cleaned.success
+}
+
+// THE TRUST WALL STAYS WITNESSED: a standalone `git init` checkout at the attempt's worktree path is
+// not the belt's linked worktree, so belt_commit_git_trust refuses it and the fold stops at its first
+// git step. The fixture the three claims above plant is a linked worktree precisely because of this.
+test fn a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall() -> Bool {
+  let instance = fresh_instance(tag: "standalone")
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+  )
+  let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
+  let primed = run_git(dir: worktree, args: ["init", "-q"])
+    && run_git(dir: worktree, args: ["config", "user.name", "witness"])
+    && run_git(dir: worktree, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "base").success
+    && run_git(dir: worktree, args: ["add", "-A"])
+    && run_git(dir: worktree, args: ["commit", "-q", "-m", "base"])
+  let refused = primed && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => string_contains(s: detail, pattern: "worktree gitfile is missing or unreadable")
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  refused && cleaned.success
+}
+
+// MUTATION CONTROL FOR THE TWO ABSENT-CAPTURE CLAIMS: the exact absent detail is earned by the commit
+// step's settlement OF THIS HEAD. A record settled at another head, or none, is a capture still owed,
+// a different refusal; so the claims above cannot pass by refusing for any reason at all.
+test fn a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent() -> Bool {
+  let instance = fresh_instance(tag: "other-head")
+  let worktree = plant_worktree(instance: instance)
+  let settled = worktree != "" && commit_step_settled(instance: instance)
+  let moved = settled && run_git(dir: worktree, args: ["checkout", "-q", "HEAD~1"])
+  let owed = moved && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => detail != recapture_capture_absent_detail && string_contains(s: detail, pattern: "still owed")
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  owed && cleaned.success
+}
+
+test fn no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent() -> Bool {
+  let instance = fresh_instance(tag: "no-record")
+  let worktree = plant_worktree(instance: instance)
+  let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let base_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD~1"])
+  let submissions = belt_attempt_member_path(
+    instance: instance,
+    node_id: recapture_node as RoadmapNodeId,
+    attempt_key: recapture_attempt,
+    member: belt_submission_store_slots.member,
+  )
+  let misplaced = worktree != "" && worker_sha != "" && base_sha != ""
+    && shell.Remove.FileForce(path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], "") as FilePath).success
+  let owed = misplaced && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } => detail != recapture_capture_absent_detail && string_contains(s: detail, pattern: "still owed")
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  owed && cleaned.success
 }

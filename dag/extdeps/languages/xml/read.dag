@@ -4,6 +4,7 @@ import std.types { String, Int, Bool, List }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "www.w3.org/TR/xml/" } }
 

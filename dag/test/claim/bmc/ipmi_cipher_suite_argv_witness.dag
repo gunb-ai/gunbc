@@ -1,0 +1,485 @@
+module test.claim.bmc.ipmi_cipher_suite_argv_witness
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.operation_argv { ArgvMaterialization, OperationInputBinding, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
+import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_supervisor_script, sol_hold_activate_script }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CIPHER SUITE BECAME AN INPUT OF EVERY LANPLUS OPERATION, AND MTCOLLINS1'S ARGV DID NOT MOVE (merry-fox-82's
+// ruling A, condition 2). Each operation of diagnostic.ipmi.Tool is materialized from its REAL declaration
+// (std.operation_argv shell_materialize_operation_argv reads dag/extdeps/bmc/ipmi.dag) with the suite mtcollins1's
+// route supplies, and compared word for word with the argv main rendered before the input existed: the literal is
+// main's template with the same bindings substituted, so it is an oracle independent of this change. The REDs
+// inject a suite on mtcollins1's route and require the argv to change, so the equality cannot hold vacuously.
+
+data ipmi_path: String = "dag/extdeps/bmc/ipmi.dag"
+data ipmi_service: String = "diagnostic.ipmi.Tool"
+
+// The spec's suite 3, from the table (IpmiCipherSuite has one constructor, the table's).
+fn suite_3() -> IpmiCipherSuite? {
+  ipmi_cipher_suite_of_id(id: 3)
+}
+
+// The suite each of mtcollins1's routes supplies: the bound-route chain reads its access observation, and the
+// run's row reads the same route observation. Both are its observed IPMI route's own.
+fn mtcollins1_observation_suite() -> IpmiCipherSuite? {
+  bmc_observation_ipmi_cipher_suite(observation: mtcollins1_access_observation)
+}
+
+fn mtcollins1_row_suite() -> IpmiCipherSuite? {
+  mtcollins1_boot_row_value.ipmi_cipher_suite
+}
+
+fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?) -> List<String> {
+  operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
+    ipmi_path,
+    ipmi_service,
+    operation,
+    bindings + [operation_argv_bind_text_list(name: "cipher_suite_argv", items: ipmi_cipher_suite_argv(suite: suite))]
+  ))
+}
+
+fn host() -> OperationInputBinding {
+  operation_argv_bind_text(name: "bmc_host", text: mtcollins1_endpoint.host as String)
+}
+
+fn bindings_sensor_list() -> List<OperationInputBinding> {
+  [
+    host(),
+  ]
+}
+
+data main_argv_sensor_list: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "sensor"]
+
+test fn sensor_list_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SensorList", bindings: bindings_sensor_list(), suite: mtcollins1_observation_suite()) == main_argv_sensor_list
+    && materialize(operation: "SensorList", bindings: bindings_sensor_list(), suite: mtcollins1_row_suite()) == main_argv_sensor_list
+}
+
+fn bindings_sdr_list() -> List<OperationInputBinding> {
+  [
+    host(),
+  ]
+}
+
+data main_argv_sdr_list: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "sdr", "elist"]
+
+test fn sdr_list_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SdrList", bindings: bindings_sdr_list(), suite: mtcollins1_observation_suite()) == main_argv_sdr_list
+    && materialize(operation: "SdrList", bindings: bindings_sdr_list(), suite: mtcollins1_row_suite()) == main_argv_sdr_list
+}
+
+fn bindings_sdr_type_list() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "sensor_type", text: "Fan"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_sdr_type_list: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "sdr", "type", "Fan"]
+
+test fn sdr_type_list_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SdrTypeList", bindings: bindings_sdr_type_list(), suite: mtcollins1_observation_suite()) == main_argv_sdr_type_list
+    && materialize(operation: "SdrTypeList", bindings: bindings_sdr_type_list(), suite: mtcollins1_row_suite()) == main_argv_sdr_type_list
+}
+
+fn bindings_sel_list() -> List<OperationInputBinding> {
+  [
+    host(),
+  ]
+}
+
+data main_argv_sel_list: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "sel", "elist"]
+
+test fn sel_list_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SelList", bindings: bindings_sel_list(), suite: mtcollins1_observation_suite()) == main_argv_sel_list
+    && materialize(operation: "SelList", bindings: bindings_sel_list(), suite: mtcollins1_row_suite()) == main_argv_sel_list
+}
+
+fn bindings_sel_list_authenticated() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_sel_list_authenticated: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "sel", "elist"]
+
+test fn sel_list_authenticated_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SelListAuthenticated", bindings: bindings_sel_list_authenticated(), suite: mtcollins1_observation_suite()) == main_argv_sel_list_authenticated
+    && materialize(operation: "SelListAuthenticated", bindings: bindings_sel_list_authenticated(), suite: mtcollins1_row_suite()) == main_argv_sel_list_authenticated
+}
+
+fn bindings_sdr_dump_authenticated() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "sdr_cache_file", text: "/run/gunbc/mtcollins1-bmc-password.sdr"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_sdr_dump_authenticated: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "sdr", "dump", "/run/gunbc/mtcollins1-bmc-password.sdr"]
+
+test fn sdr_dump_authenticated_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SdrDumpAuthenticated", bindings: bindings_sdr_dump_authenticated(), suite: mtcollins1_observation_suite()) == main_argv_sdr_dump_authenticated
+    && materialize(operation: "SdrDumpAuthenticated", bindings: bindings_sdr_dump_authenticated(), suite: mtcollins1_row_suite()) == main_argv_sdr_dump_authenticated
+}
+
+fn bindings_sel_list_authenticated_cached() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "sdr_cache_file", text: "/run/gunbc/mtcollins1-bmc-password.sdr"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_sel_list_authenticated_cached: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "-S", "/run/gunbc/mtcollins1-bmc-password.sdr", "sel", "elist"]
+
+test fn sel_list_authenticated_cached_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SelListAuthenticatedCached", bindings: bindings_sel_list_authenticated_cached(), suite: mtcollins1_observation_suite()) == main_argv_sel_list_authenticated_cached
+    && materialize(operation: "SelListAuthenticatedCached", bindings: bindings_sel_list_authenticated_cached(), suite: mtcollins1_row_suite()) == main_argv_sel_list_authenticated_cached
+}
+
+fn bindings_sdr_elist_authenticated_cached() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "sdr_cache_file", text: "/run/gunbc/mtcollins1-bmc-password.sdr"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_sdr_elist_authenticated_cached: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "-S", "/run/gunbc/mtcollins1-bmc-password.sdr", "sdr", "elist"]
+
+test fn sdr_elist_authenticated_cached_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SdrElistAuthenticatedCached", bindings: bindings_sdr_elist_authenticated_cached(), suite: mtcollins1_observation_suite()) == main_argv_sdr_elist_authenticated_cached
+    && materialize(operation: "SdrElistAuthenticatedCached", bindings: bindings_sdr_elist_authenticated_cached(), suite: mtcollins1_row_suite()) == main_argv_sdr_elist_authenticated_cached
+}
+
+fn bindings_master_write_read_authenticated() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "bus", text: "0x0b"),
+    operation_argv_bind_text(name: "slave_address", text: "0x9e"),
+    operation_argv_bind_text(name: "read_count", text: "0x01"),
+    operation_argv_bind_text(name: "write_first", text: "0x00"),
+    operation_argv_bind_text(name: "write_second", text: "0x01"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_master_write_read_authenticated: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "raw", "0x06", "0x52", "0x0b", "0x9e", "0x01", "0x00", "0x01"]
+
+test fn master_write_read_authenticated_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "MasterWriteReadAuthenticated", bindings: bindings_master_write_read_authenticated(), suite: mtcollins1_observation_suite()) == main_argv_master_write_read_authenticated
+    && materialize(operation: "MasterWriteReadAuthenticated", bindings: bindings_master_write_read_authenticated(), suite: mtcollins1_row_suite()) == main_argv_master_write_read_authenticated
+}
+
+fn bindings_chassis_boot_dev() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "device", text: "cdrom"),
+  ]
+}
+
+data main_argv_chassis_boot_dev: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "bootdev", "cdrom"]
+
+test fn chassis_boot_dev_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_dev
+    && materialize(operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), suite: mtcollins1_row_suite()) == main_argv_chassis_boot_dev
+}
+
+fn bindings_chassis_boot_dev_with_options() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "device", text: "cdrom"),
+    operation_argv_bind_text(name: "options", text: "efiboot"),
+  ]
+}
+
+data main_argv_chassis_boot_dev_with_options: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "bootdev", "cdrom", "options=efiboot"]
+
+test fn chassis_boot_dev_with_options_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_dev_with_options
+    && materialize(operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), suite: mtcollins1_row_suite()) == main_argv_chassis_boot_dev_with_options
+}
+
+fn bindings_sol_deactivate() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+  ]
+}
+
+data main_argv_sol_deactivate: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "sol", "deactivate"]
+
+test fn sol_deactivate_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "SolDeactivate", bindings: bindings_sol_deactivate(), suite: mtcollins1_observation_suite()) == main_argv_sol_deactivate
+    && materialize(operation: "SolDeactivate", bindings: bindings_sol_deactivate(), suite: mtcollins1_row_suite()) == main_argv_sol_deactivate
+}
+
+fn bindings_chassis_boot_param_get() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "parameter", text: "5"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_chassis_boot_param_get: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "bootparam", "get", "5"]
+
+test fn chassis_boot_param_get_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisBootParamGet", bindings: bindings_chassis_boot_param_get(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_param_get
+    && materialize(operation: "ChassisBootParamGet", bindings: bindings_chassis_boot_param_get(), suite: mtcollins1_row_suite()) == main_argv_chassis_boot_param_get
+}
+
+fn bindings_chassis_power_control() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "action", text: "on"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_chassis_power_control: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "power", "on"]
+
+test fn chassis_power_control_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisPowerControl", bindings: bindings_chassis_power_control(), suite: mtcollins1_observation_suite()) == main_argv_chassis_power_control
+    && materialize(operation: "ChassisPowerControl", bindings: bindings_chassis_power_control(), suite: mtcollins1_row_suite()) == main_argv_chassis_power_control
+}
+
+fn bindings_chassis_status() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_chassis_status: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "status"]
+
+test fn chassis_status_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisStatus", bindings: bindings_chassis_status(), suite: mtcollins1_observation_suite()) == main_argv_chassis_status
+    && materialize(operation: "ChassisStatus", bindings: bindings_chassis_status(), suite: mtcollins1_row_suite()) == main_argv_chassis_status
+}
+
+fn bindings_fru_print() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "fru_id", text: "0"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_fru_print: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "fru", "print", "0"]
+
+test fn fru_print_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "FruPrint", bindings: bindings_fru_print(), suite: mtcollins1_observation_suite()) == main_argv_fru_print
+    && materialize(operation: "FruPrint", bindings: bindings_fru_print(), suite: mtcollins1_row_suite()) == main_argv_fru_print
+}
+
+fn bindings_hpm_check() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_hpm_check: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "hpm", "check"]
+
+test fn hpm_check_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "HpmCheck", bindings: bindings_hpm_check(), suite: mtcollins1_observation_suite()) == main_argv_hpm_check
+    && materialize(operation: "HpmCheck", bindings: bindings_hpm_check(), suite: mtcollins1_row_suite()) == main_argv_hpm_check
+}
+
+fn bindings_mc_info() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_mc_info: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "info"]
+
+test fn mc_info_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_observation_suite()) == main_argv_mc_info
+    && materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_row_suite()) == main_argv_mc_info
+}
+
+// ── The suite each route supplies, and the renderer ─────────────────────────────────────────────
+
+test fn absent_renders_no_option_and_a_suite_renders_dash_c() -> Bool {
+  ipmi_cipher_suite_argv(suite: Absent) == [] && ipmi_cipher_suite_argv(suite: suite_3()) == ["-C", "3"]
+}
+
+// mtcollins1's IPMI route was exercised with no -C, so both chains that reach its calls supply none, and the run's
+// row reads the route observation rather than a second spelling of it.
+test fn both_mtcollins1_routes_supply_no_suite_and_agree() -> Bool {
+  mtcollins1_boot_control_route.route == IpmiLanplusRoute { cipher_suite: Absent }
+    && mtcollins1_observation_suite() == Absent
+    && mtcollins1_row_suite() == bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route)
+}
+
+// ── The suite type: the spec's IDs, as ipmitool implements the table ───────────────────────────
+
+test fn the_table_lists_ids_0_to_17_each_once_in_order() -> Bool {
+  map(ipmi_cipher_suite_table, s => s.id) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+}
+
+test fn suite_3_is_sha1_with_aes_and_suite_17_is_sha256_with_aes() -> Bool {
+  match ipmi_cipher_suite_of_id(id: 3) {
+    Absent => false
+    Present { value: s } => s.authentication == RakpHmacSha1 && s.integrity == HmacSha1_96 && s.confidentiality == AesCbc128
+  }
+    && match ipmi_cipher_suite_of_id(id: 17) {
+      Absent => false
+      Present { value: s } => s.authentication == RakpHmacSha256 && s.integrity == HmacSha256_128 && s.confidentiality == AesCbc128
+    }
+}
+
+// RED: an ID the table does not list has no suite, so no route can carry a guessed one.
+test fn an_id_outside_the_table_has_no_suite() -> Bool {
+  all([18, 19, 128, 255], id => match ipmi_cipher_suite_of_id(id: id) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+// ── REDs: a suite on the route must change the argv ─────────────────────────────────────────────
+
+type IpmiArgvRow { operation: String, bindings: List<OperationInputBinding>, main: List<String> }
+
+fn ipmi_argv_rows() -> List<IpmiArgvRow> {
+  [
+  IpmiArgvRow { operation: "SensorList", bindings: bindings_sensor_list(), main: main_argv_sensor_list },
+  IpmiArgvRow { operation: "SdrList", bindings: bindings_sdr_list(), main: main_argv_sdr_list },
+  IpmiArgvRow { operation: "SdrTypeList", bindings: bindings_sdr_type_list(), main: main_argv_sdr_type_list },
+  IpmiArgvRow { operation: "SelList", bindings: bindings_sel_list(), main: main_argv_sel_list },
+  IpmiArgvRow { operation: "SelListAuthenticated", bindings: bindings_sel_list_authenticated(), main: main_argv_sel_list_authenticated },
+  IpmiArgvRow { operation: "SdrDumpAuthenticated", bindings: bindings_sdr_dump_authenticated(), main: main_argv_sdr_dump_authenticated },
+  IpmiArgvRow { operation: "SelListAuthenticatedCached", bindings: bindings_sel_list_authenticated_cached(), main: main_argv_sel_list_authenticated_cached },
+  IpmiArgvRow { operation: "SdrElistAuthenticatedCached", bindings: bindings_sdr_elist_authenticated_cached(), main: main_argv_sdr_elist_authenticated_cached },
+  IpmiArgvRow { operation: "MasterWriteReadAuthenticated", bindings: bindings_master_write_read_authenticated(), main: main_argv_master_write_read_authenticated },
+  IpmiArgvRow { operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), main: main_argv_chassis_boot_dev },
+  IpmiArgvRow { operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), main: main_argv_chassis_boot_dev_with_options },
+  IpmiArgvRow { operation: "SolDeactivate", bindings: bindings_sol_deactivate(), main: main_argv_sol_deactivate },
+  IpmiArgvRow { operation: "ChassisBootParamGet", bindings: bindings_chassis_boot_param_get(), main: main_argv_chassis_boot_param_get },
+  IpmiArgvRow { operation: "ChassisPowerControl", bindings: bindings_chassis_power_control(), main: main_argv_chassis_power_control },
+  IpmiArgvRow { operation: "ChassisStatus", bindings: bindings_chassis_status(), main: main_argv_chassis_status },
+  IpmiArgvRow { operation: "FruPrint", bindings: bindings_fru_print(), main: main_argv_fru_print },
+  IpmiArgvRow { operation: "HpmCheck", bindings: bindings_hpm_check(), main: main_argv_hpm_check },
+  IpmiArgvRow { operation: "McInfo", bindings: bindings_mc_info(), main: main_argv_mc_info },
+  ]
+}
+
+// main's argv with "-C" and the suite immediately after "lanplus", the position the template splices it at.
+fn with_suite_after_lanplus(xs: List<String>, suite: String) -> List<String> {
+  flat_map(xs, w => if w == "lanplus" { [w, "-C", suite] } else { [w] })
+}
+
+test fn every_operation_renders_the_suite_after_lanplus_and_differs_from_main() -> Bool {
+  count(ipmi_argv_rows()) == 18
+    && all(ipmi_argv_rows(), r => {
+      let rendered = materialize(operation: r.operation, bindings: r.bindings, suite: suite_3())
+      rendered == with_suite_after_lanplus(xs: r.main, suite: "3") && rendered != r.main
+    })
+}
+
+// THE INJECTION ON MTCOLLINS1'S OWN ROUTE: its observed IPMI route, the same in every field except a suite, read
+// through the chain the bound-route callers use. The boot write, the power write and the SOL release all move.
+fn injected_route() -> BmcBootControlRouteObservation {
+  BmcBootControlRouteObservation {
+    route: IpmiLanplusRoute { cipher_suite: suite_3() },
+    raw_response: mtcollins1_boot_control_route.raw_response,
+    observed_at: mtcollins1_boot_control_route.observed_at,
+  }
+}
+
+fn injected_observation() -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: mtcollins1_access_observation.endpoint,
+    identity: mtcollins1_access_observation.identity,
+    discovered_surfaces: mtcollins1_access_observation.discovered_surfaces,
+    boot_control_routes: [injected_route()],
+    redfish_virtual_media_probe: mtcollins1_access_observation.redfish_virtual_media_probe,
+    successful_read_surfaces: mtcollins1_access_observation.successful_read_surfaces,
+    successful_write_surfaces: mtcollins1_access_observation.successful_write_surfaces,
+    raw_response: mtcollins1_access_observation.raw_response,
+    observed_at: mtcollins1_access_observation.observed_at,
+  }
+}
+
+test fn a_suite_injected_on_mtcollins1s_route_changes_its_boot_power_and_sol_argv() -> Bool {
+  let suite = bmc_observation_ipmi_cipher_suite(observation: injected_observation())
+  suite == suite_3()
+    && materialize(operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), suite: suite) != main_argv_chassis_boot_dev_with_options
+    && materialize(operation: "ChassisPowerControl", bindings: bindings_chassis_power_control(), suite: suite) != main_argv_chassis_power_control
+    && materialize(operation: "SolDeactivate", bindings: bindings_sol_deactivate(), suite: suite) == with_suite_after_lanplus(xs: main_argv_sol_deactivate, suite: "3")
+}
+
+// ── THE SOL HOLD: its hand-built script takes the suite through the same renderer ───────────────
+// main rendered mtcollins1_sol_hold_activate_script as this join: the literal text around "-I lanplus" is main's,
+// transcribed from origin/main's gunbc.machine_intake.sol_hold, and the supervisor body between them is the same
+// symbol main joined (this change does not touch it), so the comparison is byte for byte over the whole script.
+fn main_sol_hold_activate_script() -> String {
+  join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+}
+
+test fn the_sol_hold_script_is_mains_on_mtcollins1s_route() -> Bool {
+  mtcollins1_sol_hold_activate_script == main_sol_hold_activate_script()
+    && sol_hold_activate_script(suite: mtcollins1_observation_suite()) == main_sol_hold_activate_script()
+}
+
+// RED: a suite on the route puts "-C 3" right after "-I lanplus" in the hold's script, and nothing else moves.
+test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
+  let with_suite = sol_hold_activate_script(suite: bmc_observation_ipmi_cipher_suite(observation: injected_observation()))
+  with_suite != main_sol_hold_activate_script()
+    && with_suite == join(split(s: main_sol_hold_activate_script(), delimiter: " -I lanplus -U "), " -I lanplus -C 3 -U ")
+}

@@ -314,6 +314,27 @@ service git.Inspect {
     }
   }
 
+  // The index flag letter of one path (`git ls-files -v`): `H` is an ordinary tracked entry, a lowercase letter is
+  // assume-unchanged and `S` is skip-worktree, both of which make `git status` skip the worktree check for that path.
+  operation IndexFlagsIn {
+    requires opaque
+    input { repository_path: String, path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "ls-files", "-v", "-z", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { entries_nul: "", success: true, stderr: "" } "hermetic git.Inspect.IndexFlagsIn: no entry"
+    }
+  }
+
   operation MergeBase {
     requires opaque
     input { repository_path: String, left: GitRef, right: GitRef }

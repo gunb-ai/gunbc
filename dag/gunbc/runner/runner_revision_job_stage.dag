@@ -201,7 +201,7 @@ fn stage_verified_revision(
     StageNamedStep { step: "mkdir-source", command: mkdir_parents_command(path: source) },
     StageNamedStep { step: "extract-source-for-vendor", command: tar_extract_command(archive: tree_archive, into_directory: source, strip_components: 0) },
     StageNamedStep { step: "mkdir-vendor", command: mkdir_parents_command(path: vendor_dir) },
-    StageNamedStep { step: "cargo-vendor", command: cargo_vendor_command(manifest_path: concat(source, "/Cargo.toml"), output_dir: vendor_dir) },
+    StageNamedStep { step: "cargo-vendor", command: cargo_vendor_command(manifest_path: concat(source, "/Cargo.toml"), output_dir: vendor_dir, cargo_home: concat(staging_dir, "/cargo-home")) },
     StageNamedStep { step: "tar-vendor", command: tar_create_reproducible_command(archive: vendor_archive, from_directory: vendor_dir) },
   ]) {
   Present { value: r } => RevisionJobStageRefused { refusal: r }

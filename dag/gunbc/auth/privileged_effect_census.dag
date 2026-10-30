@@ -11,18 +11,33 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes }
+import std.scoped_authorization { AuthorizationScope }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
-import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
+import std.human_intervention { HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client_intervention }
+import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention, cloudflare_account_allocation_intervention }
+import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
+import gunbc.review_sheet_operator { shared_drive_create_intervention, spreadsheet_create_intervention }
+import gunbc.review_sheet_federation { review_sheet_writer_token_creator_intervention, review_sheet_converge_principal_set }
+import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
+import gunbc.fleet.mtcollins_firmware_converge { mtcollins1_ac_power_cycle_effect }
+import gunbc.host.anchored_host_transport { anchored_host_key_scan_effect }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.auth.approval_ntfy_deployment {
+  approval_ntfy_account_intervention, approval_ntfy_server_install_intervention,
+  approval_ntfy_publisher_token_mint_intervention, approval_ntfy_subscriber_grant_intervention,
+}
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
@@ -32,16 +47,19 @@ import gunbc.auth.managed_host_boot_federation {
 import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
+import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
-  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential,
+  MintedCredentialReach, MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential, MintsHostRootReach,
   ReversibleByReapply, IrreversibleEffect,
-  BillsExternally, NoBillingConsequence,
+  BillsExternally, NoBillingConsequence, BillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
+  EntailedByApprovedConvergence, ConvergenceRoot, convergence_lineage_root,
   InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
-  OperatorOwnSession,
+  OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
@@ -77,6 +95,13 @@ import gunbc.auth.authorization_pattern_selection {
 //   RealizedUnauthorized -- the site performs the effect under no credential that names it: the
 //     write reaches its store on the executor's host access alone. It matches no pattern, so a row
 //     realizing it is red unless it states why and what retires the reason.
+//   RealizedUnderApprovedConvergence -- the site performs the effect inside the attempt that claimed
+//     the operator's approval of its lineage root, and only after std.scoped_authorization authorize
+//     admits the effect's own scopes against that grant. The first site is the microVM controller
+//     install (gunbc.live_deploy.apply microvm_controller_install_wet): it re-reads the decision of
+//     the job's gate (gunbc.fleet.srv1_root_mutation_approval_run srv1_root_mutation_inherited_grant),
+//     refuses unless the grant covers microvm_controller_install_root_scopes, and performs every
+//     elevated leg as the fleet administrator over its SSH edge, never under a job-user grant.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -86,8 +111,10 @@ type RealizedAuthorization
   | RealizedRunSelected
   | RealizedApprovalCapability
   | RealizedHumanStep
+  | RealizedAdministratorEdge
   | RealizedOperatorSession { arm: OperatorSessionArm }
   | RealizedUnauthorized
+  | RealizedUnderApprovedConvergence
 
 // A REASON IS A STATEMENT PLUS THE CONDITION UNDER WHICH IT STOPS BEING ONE. A bare string moved a
 // site out of the debt roster for as long as anyone left it there (review 68720): no bound, no
@@ -132,6 +159,8 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
       }
     OperatorApprovedCapability =>
       match realized {
@@ -141,6 +170,8 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
       }
     HumanOnlyStep { step: _ } =>
       match realized {
@@ -150,6 +181,19 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedApprovalCapability => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
+      }
+    AdministratorEdge =>
+      match realized {
+        RealizedAdministratorEdge => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
+        RealizedUnderApprovedConvergence => false
       }
     OperatorOwnSession =>
       match realized {
@@ -159,6 +203,19 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedApprovalCapability => false
         RealizedHumanStep => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+        RealizedUnderApprovedConvergence => false
+      }
+    ApprovedConvergenceGrant =>
+      match realized {
+        RealizedUnderApprovedConvergence => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
       }
   }
 }
@@ -225,6 +282,105 @@ fn recurring_credential_read(subject: NonEmptyStr) -> PrivilegedEffect {
   }
 }
 
+// THE BMC EXPORT HOST'S READER ROWS (gunbc.host.export_host_reader_converge): root writes under /etc/ssh, a
+// system account and an sshd reload on srv2. FleetOnce (set up once, re-applied on a key rotation),
+// reversible (the rollback removes the drop-in; the account and key file are removable rows), and host-root
+// reach a human can attend, so the selection is the operator-approved capability (gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). It is realized as every fleet host file converge is: a
+// fleet-converge dispatch at main over the administrator edge, which diverges with the reason below.
+data export_host_rows_beside_unlanded_host_file_adapter: DivergenceReason = DivergenceReason {
+  statement: "the approval broker has no authority adapter that applies a fleet host's declared file rows under a redeemed capability, so the export host's reader rows are applied by a fleet-converge dispatch at main over the administrator edge, the route every fleet host file converge already takes; the dispatch is the operator's, and the rows are the reviewed main tree's" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an authority adapter, registered against gunbc.auth.approval_device_redemption redeem_device_over_store, that applies a FleetHostFileDesired row set and its sshd validate/reload/readback/rollback fold under a redeemed ApprovalCapability bound to the rows' digest, so the converge requests the capability (gunbc.auth.access_request) instead of running on the dispatch alone. NOT satisfied by an environment reviewer gate" as NonEmptyStr),
+}
+
+// THE LIVE READER PROBE (gunbc.host.boot_medium_reader_probe): the reader account authenticates with its own
+// forced-command key and runs ONLY sha256sum of the pinned file -- anything else reaches nothing, which is the
+// RED the receipt must show -- and the probe then asks, in that same session, what the account can reach
+// (sudo -n true, a read of /srv/bmc) and expects those refusals. It writes nothing on the host; its one cloud
+// read is the reader key's pinned version, held by the fleet identity through the accessor row. EveryOperator
+// Request: each dispatch is a request, and the reading is a fresh one.
+fn boot_medium_reader_probe_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "on the BMC export host, as the unprivileged boot-medium-reader account through its forced-command key: authenticate, run the forced sha256sum, and test in that session what the account can reach -- sudo -n true and a read of /srv/bmc -- expecting both to refuse" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names an SSH login as an unprivileged fleet account; the fleet principal reads the reader key version under the accessor grant, and the account itself is the subject of the observation" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn export_host_reader_rows_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "on the BMC export host, as its administrator: create the unprivileged boot-medium-reader account, write its root-owned authorized_keys file forced to one sha256sum, add an sshd_config.d AuthorizedKeysFile drop-in, validate with sshd -t and sshd -T, reload ssh, read back a fresh fleet-automation login, and roll the drop-in back if that login fails" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// THE BOOT MEDIUM READER KEY'S MINT (gunbc.host.boot_medium_reader_key_mint). FleetOnce: one key for the
+// export host, minted again only to rotate it, which also makes it reversible. Its reach is one resource:
+// the key is authorized on the export host forced to a single sha256sum of the served link
+// (gunbc.host.boot_medium_reader_key), so MintsResourceScopedCredential. A human can attend it and owes no
+// witness, and the fleet identity at main is bindable, so the selection is the federated grant: the run
+// adds the version under its versionAdder cell, whose binding is the converge's approved apply.
+fn boot_medium_reader_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "as the fleet identity at main, generate an ed25519 keypair in the run and add its private half as a version of boot-medium-reader-ssh-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// MTCOLLINS1'S SSH HOST KEY MINT (gunbc.host.mtcollins1_ssh_host_key_mint), WHICH REPLACED A HUMAN SHELL
+// STEP (gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation). THIS ROW IS THE RECORD OF
+// THAT CHANGE, which is why it is written against the new site rather than edited in place: the census is
+// what an auditor reads to ask "who can mint a fleet credential, and how", and a row that had quietly been a
+// human step last quarter and now reads as a federated grant would be a census that cannot be audited.
+//
+// WHAT THE RETIRED ROW SAID, AND WHY THE SELECTION FLIPPED. The scaffold (anchored_host_key_mint_effect,
+// retired with the runbook's Step 1) was IRREVERSIBLE with a loss named, and irreversibility is what made
+// select_authorization_pattern pick OperatorApprovedCapability: an irreversible effect with no witness
+// discharge demands a human who consented to THIS effect. The irreversibility was a property of the HUMAN
+// PROCESS, not of the key. A person holding the only copy in RAM, with no model, no receipt and no way to
+// know whether the upload landed, really can lose a key nobody else can reproduce -- so a human had to be the
+// one who agreed to the risk. Under the mint, that ignorance is gone: the run either NAMED A VERSION (then the
+// version exists in Secret Manager and is recoverable by reading it) or NAMED NONE (then nothing was ever
+// created, and a re-dispatch mints a fresh pair into a fresh create-only tmpfs directory). Either way the
+// anchor row is simply re-pinned from the receipt, so the effect is FleetOnce and ReversibleByReapply, the
+// same shape the reader key's mint has -- and with the workload identity bindable and no witness owed, the
+// selection computes to the federated grant rather than being asserted as one.
+//
+// THE REACH IS ONE RESOURCE, and it is worth being precise because this is a HOST key: the private half
+// impersonates mtcollins1's sshd to anything that has pinned its anchor, which is a fleet of clients this
+// repository owns and no one else's. It reaches no user account, no other host and no other secret --
+// AddVersion on exactly this row, granted by a row of gunbc.auth.fleet_secret_accessor_roster and converged by
+// gunbc.auth.gcp_iam_converge, never by a console edit.
+fn mtcollins1_host_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "as the fleet identity at main, generate the stable ed25519 host keypair for mtcollins1 in a create-only tmpfs directory and add its private half as a version of mtcollins1-ssh-host-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // A one-off accessor-cell grant (getIamPolicy + setIamPolicy on one secret).
 fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
@@ -267,6 +423,68 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
   decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
 ]
+
+// THE TWO IN-BAND RECOVERY WRITES, CLASSIFIED. Both are DeviceOnce: each actuation is one physical
+// occasion at one chassis, not a recurring control-plane operation, and neither is a read.
+//
+// THE PASSWORD WRITE, CLASSIFIED BY WHAT IT ACTUALLY DOES. Its subject says the write happens "so an
+// authenticated in-band session can be opened", and that sentence is the classification: the write puts a
+// password into one controller's ADMINISTRATOR account and thereby brings a device-scoped credential into
+// existence. So minted_reach is MintsResourceScopedCredential, not MintsNoCredential -- it was the row
+// that was wrong, not its `realized` field, and making the profile honest is what makes the
+// operator-approved capability the pattern selection derives rather than a grant the row then has to
+// explain away (DESIGN §3b: a divergence with no reason is the only red, because it forks the authority).
+//
+// ReversibleByReapply would have been the comfortable choice and is false here, for the same reason
+// route_qualification_effect above is classified irreversible: writing a password that the run then hands
+// to nobody, over a channel with no credential on either side, leaves an enabled account holding a secret
+// the run never stored. Setting the password again does not close the window in which anything on that
+// host's IPMI queue could have read it; the account's later removal by the reset is a different actuation,
+// not a reapply. So: irreversible, undischarged, which forces a witness -- and OperatorApprovedCapability
+// is what the selection admits for a witnessed, attended, device-scoped write.
+//
+// WHY "no -I option" IS GONE FROM THIS SENTENCE. ipmitool does not run with no interface: it defaults to
+// `open` (upstream configure.ac DEFAULT_INTF_NO_ENV), which is the OpenIPMI driver over /dev/ipmi0. The
+// passwordlessness that matters is that no credential appears on the command line and no network
+// authentication happens -- not the absence of an option, which was never true. Likewise the in-band
+// transport is named by its arm in extdeps.bmc.ipmi (InBandHostTransport), and SSIF is recorded where it
+// is a fact: the kernel module under /dev/ipmi0 in the capture, not the interface ipmitool was told to use.
+fn recovery_in_band_set_user_password_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "from the rescue host OS, over the in-band host interface (/dev/ipmi0, ipmi_ssif behind it, with no credential on the command line and no network authentication), write one temporary password to the BMC's ADMINISTRATOR account, so an authenticated in-band session can be opened against a controller whose existing password is unknown" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "an enabled ADMINISTRATOR account left holding a password this run never stored; the exposure window is not undone by setting the password again, and its later removal is a separate actuation rather than a reapply" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// The reset is the destructive half, and its classification is what decides the authorization pattern.
+// ResetType=ResetAll -- the DMTF-published parameter name for this action, declared in
+// extdeps/bmc/redfish -- restores every user account, every password and the network
+// configuration to factory state on a board being brought into the fleet rather than serviced: nothing
+// re-applies the prior user table, so the loss is not undone by a reapply. Irreversible, therefore
+// OperatorApprovedCapability -- the operator approval on this write is not a courtesy, it is what the
+// characteristics force.
+fn recovery_manager_reset_to_defaults_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "against the BMC controller over Redfish, POST Manager.ResetToDefaults with ResetType=ResetAll, returning every account, password and the user table to factory state, on a board being brought into the fleet rather than serviced" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "the prior user table and every password on the controller: a reset to factory state cannot be reapplied to bring them back, which is exactly why this write cannot be used to install a credential of our own" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
 
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
 // recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
@@ -312,8 +530,9 @@ fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
 // opens is not undone by a reapply (artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, steps
 // b1 and b1r). It applies a credential to one controller account, so its reach is one resource. No
 // dispatched run carries it: in this cut it is modeled, with a dry realization only. The realization
-// takes an operator-approved capability (gunbc.auth.approval_broker Redemption) bound to the exact
-// controller, build and request, which is what the selection is expected to return.
+// takes the operator's go through gunbc.auth.approval_gate, a std.scoped_authorization grant whose
+// subject (gunbc.machine_intake.bmc_rotation_route BmcAccountWriteApproval) is the exact controller,
+// build, request and purpose, which is what the selection is expected to return.
 fn route_qualification_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "qualify a BMC account-write route: execute one account-write request on one controller at one firmware build and read it back" as NonEmptyStr,
@@ -453,7 +672,49 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
   },
 ]
 
+// THE RULING THE RECOVERY RESET IS ACTUATED UNDER. The destructive half of bringing a locked BMC back
+// is not a standing the route carries of its own: it runs under a named operator ruling covering
+// exactly the reset site, and a RecoveryInBandRoute carries that ruling's declaration reference
+// (RecoveryInBandRoute::operator_approval) instead of a boolean saying "approved". The effect is
+// irreversible, which is what makes selection demand an approval rather than a federation grant; the
+// ruling's words state the terms the approval is filed against. No per-instance hold is claimed, so
+// this is an operator ruling and not a discharge: the route's own readback law stays in the recovery
+// module, where the standing that needs it is minted.
+data recovery_reset_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  // THE CHANNEL EACH WRITE TRAVELS IS STATED, BECAUSE THE TWO WRITES DO NOT TRAVEL THE SAME ONE. The
+  // captured bytes are the authority here, not convenience: 01_summary.txt records the reset as
+  // `POST .../Actions/Manager.ResetToDefaults` against the BMC, whose firmware required the body
+  // parameter spelled `ResetToDefaultsType` where DMTF publishes `ResetType` (01_summary.txt records both the
+  // 400 for the published spelling and the 200 for its own). That mismatch is a REPORTED OBSERVATION about
+  // this specimen and is quoted here as one; the spelling the interface publishes is unchanged by it (§3: an
+  // observation this repository makes is a receipt downstream, never a property of the upstream). The
+  // reset went to the controller's own LAN address (192.168.1.250 per the capture), so the reset went out-of-band over the management
+  // interface, and only the temporary password write used the in-band SSIF channel (01_summary.txt's
+  // "PRIVILEGED WRITE 1 -- set temp admin password over the in-band SSIF channel"). §4d: "Do not assert as
+  // deduced what is only inferred" -- and this text is what a per-effect operator approval is FILED
+  // AGAINST, so scoping the wipe to a channel it never used would have the operator approve a different
+  // actuation from the one being admitted. §3: the ruling and the effect row it governs may not name
+  // different channels for the same write.
+  ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetType=ResetAll, the arm DMTF publishes as returning every account and password to factory state) issued over the BMC's out-of-band management interface, one unit at a time, under a per-effect operator approval filed against this ruling; the in-band system interface is used only to write the temporary Administrator password, never for the reset; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
+  effect_subject: "recovery reset: Redfish Manager.ResetToDefaults ResetType=ResetAll over the BMC's out-of-band management interface, on one arrival unit's BMC controller" as NonEmptyStr,
+  // THE HOLD IS THE SEALED PROOF, NOT THE ACQUIRE FUNCTION. Both other interlocked rulings in this file
+  // name gunbc.host.managed_host_unit_hold::UnitHoldProof, and the premise below says so: the two
+  // admission gates refuse unless the UnitHoldProof they are handed names the same unit. Naming
+  // unit_hold_acquire here would have the ruling interlock a call site, which is what the refusal
+  // position is for (the mtcollins rows put unit_hold_acquire in `refusal:`); the witness claim
+  // the_reset_interlock_rosters_no_root_the_fold_cannot_show reads this field as the proof type and was
+  // red, correctly.
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
+}
+
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    hold: privileged_effect_interlock_hold(interlock: recovery_reset_operator_ruling.interlock),
+    refusal: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    premise: "WHEN A ROOT EXISTS IT MUST ACQUIRE THE HOLD BEFORE EITHER WRITE. The two admission gates refuse unless the UnitHoldProof they are handed names the SAME unit as the recovery subject, so a ResetAll cannot be actuated on a chassis another run is driving. No production root is rostered, because none exists yet: converge_in_band_recovery receives both admissions as PARAMETERS and calls neither gunbc.host.managed_host_unit_hold's acquire nor either admission, so rostering it as a hold-owning root would be the census attesting to a pairing the code does not perform. The obligation is rostered as a frontier row -- gunbc.machine_intake.bmc_recovery_route_frontier's bmc_recovery_route_pairing_frontier_rows, whose bound trigger is the fold that pairs subject, hold proof and admission -- and the roster is filled in when that fold lands. This follows the runner_qualification_dispatch precedent, which rostered an empty root list for the same reason and named its owed root in the premise" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     hold: privileged_effect_interlock_hold(interlock: runner_lifecycle_operator_ruling.interlock),
@@ -523,6 +784,7 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
   flat_map(privileged_effect_census, row =>
     match row.effect.witness_discharge {
       NoWitnessDischarge => []
+      EntailedByApprovedConvergence { root: _, required_scopes: _ } => []
       StandingRulingUnderInterlock { ruling: r } =>
         match ruling_discharge_interlock_defect(site_ref: row.site, ruling: r) {
           Absent => []
@@ -536,6 +798,7 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
 fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
   match v.effect.witness_discharge {
     NoWitnessDischarge => false
+    EntailedByApprovedConvergence { root: _, required_scopes: _ } => false
     StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_operator_ruling.ruling_text as String)
   }
 }
@@ -552,6 +815,22 @@ fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
   let rostered = map(privileged_effect_census, row => row.site)
   filter(map(privileged_effect_interlocks, i => i.site), s => !declaration_ref_in_list(target: s, refs: rostered))
+}
+
+// AN APPROVAL IS INHERITED ONLY FROM A ROSTERED ROW (operator ruling 2026-10-25,
+// gunbc.design_ruling the_initial_convergence_is_the_only_approval). That the root is something the
+// operator approves -- its own selection is OperatorApprovedCapability and it inherits nothing itself --
+// is decided by the selection (authorization_pattern_selection inheritance_admission) and refused there.
+// What only the census can see is that the root's site is one of its rows, so a root that names no
+// rostered site is a defect at the inheriting row. The census is a parameter so a fixture roster can
+// author the red.
+fn convergence_lineage_defects(census: List<PrivilegedEffectSite>) -> List<DeclarationRef> {
+  flat_map(census, row =>
+    match convergence_lineage_root(e: row.effect) {
+      Absent => []
+      Present { value: root } =>
+        if any(census, r => declaration_ref_eq(a: r.site, b: root.site)) { [] } else { [row.site] }
+    })
 }
 
 // THE DIVERGENCE REASONS THAT RECUR, each stated once with its dissolution.
@@ -579,8 +858,25 @@ data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceRe
 
 // STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
 // approval loop stops having a provisioned submission MAC key to bootstrap.
+// THE GUNBAI-CI APP KEY IS A CEREMONY TRUST ROOT (gunbc.auth.gcp_iam_trust_roots gate_app_root_reason,
+// ceremony OrgAdminAppKeyAccessConverge), so its binder is the ceremony's and no approval adapter may
+// replace it: the dissolution is the gate App decision, not an adapter landing.
+data gate_app_key_ceremony_trust_root: DivergenceReason = DivergenceReason {
+  statement: "the gunbai-ci App private key may answer the gcp-iam-bootstrap deployment protection rule, so it is a ceremony trust root and only the first-time root ceremony binds its accessor cell; an approval-gated route binding it could open the gate it answers" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "gunbc.auth.deployment_gate_authorization names the gate App on main; if that App is not gunbai-ci, this key leaves gunbc.auth.gcp_iam_trust_roots and its cell joins the converge's grant sets, and this row's site is deleted" as NonEmptyStr),
+}
+
+// THE ROOT CEREMONY IS STRUCTURALLY THE OPERATOR'S: it binds the identities and cells every approval
+// is checked against or answered by (gunbc.auth.gcp_iam_trust_roots IamBootstrapApply), so no
+// approval-gated route may perform it; it binds only root cells (gunbc.auth.gcp_iam_bootstrap_model
+// iam_bootstrap_root_ceremony_bindings), and every other cell is the delta's.
+data iam_bootstrap_root_ceremony_residual: DivergenceReason = DivergenceReason {
+  statement: "the first-time root ceremony binds the cells that verify and answer approvals, so it cannot itself run under an approval; it binds only root cells, never a delta cell" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "residual by construction (gunbc.auth.gcp_iam_bootstrap header); it narrows, cell by cell, as a root cell gains a tag-conditioned deny the delta identity cannot cross (gunbc.rung_drop gcp_iam_bootstrap_trust_root_wall_in_code)" as NonEmptyStr),
+}
+
 data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
-  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr,
+  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17. All three are ceremony trust roots (gunbc.auth.gcp_iam_trust_roots, ceremony ApprovalMacKeyProvision), so no approval-gated route may bind their readers" as NonEmptyStr,
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref")),
 }
 
@@ -605,8 +901,8 @@ data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
 // std.scoped_authorization authorize over the authorizations it is handed, and its production list is empty, so nothing files an
 // AccessRequest or redeems an ApprovalCapability for this effect yet; claiming the selected pattern as realized would be the inflation §4b(1) forbids.
 data rented_host_permit_unredeemed: DivergenceReason = DivergenceReason {
-  statement: "gunbc.serving.rented_host_grant rented_host_permit authorizes the rented-host SSH effect against caller-supplied ScopedAuthorizations (rented_host_authorizations is empty in production); no AccessRequest is filed and no ApprovalCapability is redeemed through gunbc.auth.approval_broker redeem_capability, so the selected OperatorApprovedCapability pattern is not the one the site enforces; production stays fail-closed only because the authorization population is empty and the clock is unread, so a change that supplies a usable authorization or a clock reading before approval filing and redemption land makes this site enforce the wrong pattern" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "the rental-record handover (C4b) files an AccessRequest for the rented-host SSH effect and the permit is minted only from a capability redeemed through gunbc.auth.approval_broker redeem_capability, so rented_host_authorizations is derived from a redemption rather than supplied" as NonEmptyStr),
+  statement: "gunbc.serving.rented_host_grant rented_host_permit authorizes the rented-host SSH effect against caller-supplied ScopedAuthorizations (rented_host_authorizations is empty in production); no AccessRequest is filed and no ApprovalCapability is redeemed through gunbc.auth.approval_device_redemption redeem_device_over_store, so the selected OperatorApprovedCapability pattern is not the one the site enforces; production stays fail-closed only because the authorization population is empty and the clock is unread, so a change that supplies a usable authorization or a clock reading before approval filing and redemption land makes this site enforce the wrong pattern" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "the rental-record handover (C4b) files an AccessRequest for the rented-host SSH effect and the permit is minted only from a capability redeemed through gunbc.auth.approval_device_redemption redeem_device_over_store, so rented_host_authorizations is derived from a redemption rather than supplied" as NonEmptyStr),
 }
 
 // THE FABRIC STORE'S PROTECTED HEADS ARE WRITTEN UNDER HOST ACCESS ALONE (operator ruling A,
@@ -743,27 +1039,310 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
   }
 }
 
+// ── THE srv1 JOB USER'S WHOLE-BINARY SUDO GRANTS (gunbc.plans.srv1_deploy_principal_split) ─────────
+// Each row below is an effect the deploy performs through ghrunner's whole-binary NOPASSWD sudo
+// (gunbc.ci.ci_deploy_sudoers rendering gunbc.fleet.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants).
+// The effect is characterized by the reach IT needs, not by the reach of the grant that happens to
+// carry it; the grant is what makes the realization RealizedUnauthorized (no credential names the
+// effect) and is the divergence this reason states. One reason covers the rows because one
+// transition retires them all.
+data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
+  statement: "the effect runs under the CI job user's path-only whole-binary sudo grant, which is root-equivalent and held by the account every srv1 job runs as, so the effect is authorized by no credential that names it (rung drop the_job_user_holds_a_path_unrestricted_root_grant)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy's host-root effects run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, under the grant gunbc.fleet.srv1_root_mutation_approval_run admits for that job, each effect's scopes admitted with std.scoped_authorization authorize before writing and reads it back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval), and the whole-binary rows are deleted from ci_runner_sudo_binaries. SUFFICIENT FOR overlaying the host-root rows as RealizedUnderApprovedConvergence and the argv-pinned per-unit rows as RealizedFederatedGrant. Their lineage root, srv1_root_mutation_approval_row, realizes RealizedApprovalCapability (operator ruling 2026-10-26, gunbc.design_ruling srv1_root_mutation_approval_is_filed_by_the_job), so what remains is the per-effect authorize inside the job and the deletion of the whole-binary rows" as NonEmptyStr),
+}
+
+// THE CONTROLLER INSTALL HAS NO GRANT AT ALL, which is not the whole-binary case: dd and install into
+// /etc/systemd/system are named by no rendered or live sudoers line, so the effect is refused at its
+// first write (recurring failure mode a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize,
+// run 39284886844). Granting it to the job user would make that account root-equivalent.
+// THE srv1 ROOT WRITES ARE ENTAILED BY THE ROOT-MUTATION JOB THE OPERATOR APPROVES. They recur on every
+// provision, so they cannot each ask for a tap, and before the 2026-10-25 ruling that left only the
+// administrator edge. Under the ruling the operator approves the job's convergence once and each of these
+// writes inherits that approval when it is sufficient, so the lineage root is the per-dispatch approval
+// row, which selects OperatorApprovedCapability.
+//
+// The per-dispatch gate (operator ruling 2026-10-26, gunbc.design_ruling
+// srv1_root_mutation_approval_is_filed_by_the_job): the first step of each srv1 root-mutation job files
+// one access request with the broker and the job proceeds only on the operator's device-redeemed
+// approval of it (gunbc.fleet.srv1_root_mutation_approval_run). The scopes it requests are the root's
+// approved_scopes below, one value. The srv1-production environment carries only its main-only branch
+// rule (the operator removed its required reviewer on 2026-10-28, gunbc.auth.github_deployment_environment);
+// applying that rule is its own row below. The row is ONE value, rostered in the census and
+// carried as the root, so the root's characteristics are the row's by construction.
+data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
+  site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
+  effect: PrivilegedEffect {
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  },
+  realized: RealizedApprovalCapability,
+  divergence_reason: none,
+}
+
+data srv1_root_mutation_approval_root: ConvergenceRoot = ConvergenceRoot {
+  site: srv1_root_mutation_approval_row.site,
+  effect: srv1_root_mutation_approval_row.effect,
+  approved_scopes: srv1_root_mutation_approved_scopes,
+}
+
+fn srv1_host_root_effect(subject: NonEmptyStr, required: List<AuthorizationScope>) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: EntailedByApprovedConvergence { root: srv1_root_mutation_approval_root, required_scopes: required },
+  }
+}
+
+// ── THE MANUAL-STEP CENSUS (gunbc node adhoc-28759c44-922) ───────────────────────────────────
+// Sites where the effect has an API or a modeled member and is nevertheless performed by an
+// operator's hand today. The selection asks for the approval route (or the administrator edge);
+// what is realized is a person following an instruction. Each reason names the capability whose
+// arrival moves the site onto the route, so the divergence is counted and retired by its trigger.
+data manual_api_effect_beside_unlanded_approval_adapter: DivergenceReason = DivergenceReason {
+  statement: "the effect has an API surface, but the approval loop has no authority adapter that performs it under a redeemed capability, so an operator performs it by hand in their own session and the instruction text is the only record that it happened (completion_evidence is NoDischargeSiteModeled or a dashboard act no fold observes)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an authority adapter, registered against gunbc.auth.approval_device_redemption redeem_device_over_store, that performs this one effect under a redeemed ApprovalCapability and reads the result back, so the step's entry point requests the capability (gunbc.auth.access_request) instead of emitting an instruction. NOT satisfied by modeling the instruction, nor by a converge member that applies without post-apply readback" as NonEmptyStr),
+}
+
+data review_sheet_writer_cell_outside_the_converge_projects: DivergenceReason = DivergenceReason {
+  statement: "the cell sits on review-sheet-writer's policy in gunbai-sheets, and every role the approval-gated IAM converge and its bootstrap delta hold is a project custom role of the fleet secrets project, which cannot be bound on a resource in another project; so no approval route reaches it, and the operator writes it once in their own session (stern-ram-763, 2026-10-25: chosen over giving iam-converge standing reach into gunbai-sheets)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an approval-gated route whose actuator may write the writer's policy without standing project reach in gunbai-sheets -- an organization-level custom role bound on that one account, or an authority adapter under a redeemed ApprovalCapability -- that writes this one cell and reads it back under an independent observer" as NonEmptyStr),
+}
+
+fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: step.frequency,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// THE srv1 ROOT STEPS THE OPERATOR RUNS BY HAND AND THE PER-DISPATCH ENVIRONMENT GATE. Operator ruling
+// 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action): host-root reach that a
+// human can attend is approved through the broker route alone, so each row selects
+// OperatorApprovedCapability and diverges because the realization is a person or a GitHub click.
+data srv1_root_step_by_hand_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the effect is a host-root write on srv1 that the operator performs by hand over ssh from rendered instructions; the operator ruling of 2026-10-22 names the approval broker route as its only approval, and no authority adapter requests a capability for it, so the instruction text is the only record that it happened" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the step's entry point files an access_request (gunbc.auth.access_request) for its re-derived effect and the host-root write executes only on a redeemed ApprovalCapability (gunbc.auth.approval_device_redemption redeem_device_over_store) delivered by the iOS approval app, with post-apply readback. NOT satisfied by modeling the instruction or by the administrator edge" as NonEmptyStr),
+}
+
+// THE FLEET HOST FILE CONVERGE (gunbc.runner.runner_host_file_converge). Its root writes -- the teardown and
+// depriv drop-ins, the needrestart deferral, the unit fragment, the slot caps and the job user's sudoers, each
+// with mode and owner readback -- and the cap bracket's mask, restart and release run as the declared
+// administrator (gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal) over the fleet SSH edge.
+// The fleet key reaches the job only through the fleet identity, whose pins are reviewed main and
+// workflow_dispatch (gunbc.auth.oidc_claim_pins fleet_converge_workflow_claim_pins), and the mode is not a
+// run-scoped branch mode (gunbc.auth.branch_dispatch_federation run_scoped_modes), so what is realized is the
+// administrator edge as pattern_label states it. The mode is reached only by a workflow_dispatch in which the
+// operator names the host (gunbc.fleet.fleet_converge_workflow fleet_converge_runner_host_file_step), so the
+// effect is EveryOperatorRequest: a human attends every instance. Under the 2026-10-22 ruling the selection
+// therefore names the approval capability and not the edge, and the row diverges. The edge predates the
+// ruling; this states the gap and does not change the realization.
+data fleet_host_file_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the fleet host file converge writes root-evaluated files and masks, restarts and re-admits runner slots as the administrator over the fleet SSH edge, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the host, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the runner_host_file_converge mode files an access_request (gunbc.auth.access_request) for its re-derived per-host write and actuation set and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_device_redemption redeem_device_over_store), with the existing post-apply readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone. A converge that stops being operator-dispatched and runs unattended on every provision is a different effect: its frequency changes, the selection re-derives the edge, and this reason no longer applies" as NonEmptyStr),
+}
+
+// THE SITE PXE EDGE CONVERGE (gunbc.fleet.site_pxe_edge_converge), absent from this census until the x86 install
+// surface made it larger: it already installed dnsmasq-base, wrote the edge config and unit and activated them,
+// and now also writes the rendered loader configuration, per-host install files under the TFTP and HTTP roots,
+// and an HTTP unit bound to srv4's onboarding address. Same shape as the fleet host file converge: a
+// workflow_dispatch naming srv4, the administrator over the fleet SSH edge, a human attending each instance, and
+// therefore the same divergence from the approval-capability selection under the 2026-10-22 ruling.
+data site_pxe_edge_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the site PXE edge converge installs dnsmasq-base and writes and activates the edge's dnsmasq and HTTP units, its rendered loader configuration and each admitted host's install files on srv4 as the administrator over the fleet SSH edge, under a key released only to a main-pinned dispatch naming srv4; a human attends every instance, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for such an effect, which no adapter requests here" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the site_pxe_edge_converge apply mode files an access_request (gunbc.auth.access_request) for its re-derived srv4 write and activation set and executes it only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback of files, units, served digests and the HTTP listening socket. NOT satisfied by a GitHub environment reviewer gate or by a merry-fox-82 relay alone." as NonEmptyStr),
+}
+
+data host_primary_network_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the primary network converge replaces a fleet host's /etc/netplan inside a netplan try and writes cloud-init's network switch, as the administrator over the fleet SSH edge from an observer host, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the target and the observer, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the host_primary_network_converge mode files an access_request (gunbc.auth.access_request) for its staged files and its netplan try on the named target and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), keeping its fresh-connection readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
+}
+
+fn fleet_host_root_effect_on_dispatch(subject: NonEmptyStr) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn manual_operator_api_effect(subject: NonEmptyStr, step: HumanIntervention, cause: NonEmptyStr, reach: MintedCredentialReach) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: step.frequency,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: cause },
+    minted_reach: reach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// A step with no API. Frequency is read from the intervention the corpus already models, and the
+// cause and billing are the caller's facts: a console act and a billed dashboard signup are different
+// effects, so neither is fixed here.
+fn manual_no_api_effect(subject: NonEmptyStr, step: HumanIntervention, cause: NonEmptyStr, billing: BillingConsequence) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: step.frequency,
+    reversibility: ReversibleByReapply,
+    surface: HumanSurfaceOnly { step: step },
+    workload_identity: WorkloadIdentityUnbindable { cause: cause },
+    minted_reach: MintsNoCredential,
+    billing: billing,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> PrivilegedEffect {
+  manual_no_api_effect(subject: subject, step: step, cause: "the act happens at the machine's console; no API reaches it" as NonEmptyStr, billing: NoBillingConsequence)
+}
+
 data privileged_effect_census: List<PrivilegedEffectSite> = [
-  PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_account_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_server_install_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_subscriber_grant_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  srv1_root_mutation_approval_row,
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
-  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
+
+  // THE RUNNER-RETIREMENT MASK. `systemctl mask --now` of one runner unit inside the operator's authorized
+  // interruption scope is reversible (unmask), recurs on every provision whose transition requires the retiree,
+  // and mints one exact-unit sudoers line. select_authorization_pattern selects FederatedScopedGrant: the
+  // ghrunner grant is derived from the same conjunction the apply masks from
+  // (gunbc.runner.runner_host_grants runner_slot_retirement_mask_operations), so the grant set and the mask set
+  // are one fact. The operator's 2026-10-16 interruption authorization is the scope, not a per-effect witness.
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+    site: site(module_path: "gunbc.runner.runner_slot_provision", decl_name: "retirement_mask_line"),
     effect: PrivilegedEffect {
-      subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
+      subject: "on every provision whose transition requires a runner unit retired and whose operator interruption authorization covers it, mask --now that one unit" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on the host, the dispatched fleet-converge apply's host principal" as NonEmptyStr },
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, as the administrator over the fleet SSH edge: create the deploy slot's job account when the host has a deploy slot and getent finds it absent, and read it back; when a deploy slot's tree is owned by any other uid, drain and mask that slot, remove its whole tree and re-extract the pinned, digest-verified runner archive as the deploy account (fetched as root into a fresh root-owned stage in the host-state tree, so nothing else can replace it between the digest check and the extract), and read the owner back; write what differs among the host's declared root-evaluated files (systemd drop-ins and unit fragment, needrestart conf.d, the job user's sudoers, slot cap drop-ins) with owner and mode readback, daemon-reload, and drain, mask, restart and re-admit runner slots inside the cap bracket" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: fleet_host_file_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_converge_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming srv4, as the administrator over the fleet SSH edge: install dnsmasq-base if absent; when the x86 chain is withheld only on its members, fetch the chain's amd64 ISO from Canonical into a staging directory beside the HTTP root, verify it there against the SHA256SUMS digest (removing it on disagreement), publish it by hard link and rename over the served name only once it agrees, loop-mount it read-only, unpack the pool .debs after verifying them against Packages, and install and re-verify each pinned member under the TFTP root (removing any that disagree); write what differs among the edge's ProxyDHCP config and unit, the rendered loader configuration in the TFTP root, each admitted install binding's grub.cfg-01-<mac> and NoCloud seed, and the HTTP unit bound to srv4's onboarding address; daemon-reload, enable and restart both units; read back files, served digests and the listening socket" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: site_pxe_edge_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.host_primary_network_apply", decl_name: "host_primary_network_converge_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one target host and an observer, as the administrator over the fleet SSH edge from the observer: write cloud-init's network switch and the staged netplan population with owner and mode readback, then replace /etc/netplan inside a netplan try that is confirmed only by a fresh-connection readback and otherwise reverts" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: host_primary_network_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_cap_release_ci_wet"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "after the converge step of the same dispatch, whatever its fate, as the administrator over the fleet SSH edge: unmask and start the runner slots the cap bracket owes back and read each back as admitting" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: fleet_host_file_converge_edge_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_install_command"),
+    effect: srv1_host_root_effect(subject: "install a staged unit or file under /etc or /usr/local as root (live_deploy preamble, dashboard_deploy, approval_broker_dark_install)" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"])]),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
+    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice, dispatch grant, release locus and revision-job state as root, then check the grant and reload the manager (host_effect_apply MicrovmControllerInstall; run 39284886844 was refused at 'controller slice unit (stage)' under the job user's sudo)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
+    realized: RealizedUnderApprovedConvergence,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_visudo_check_command"),
+    effect: srv1_host_root_effect(subject: "validate and install a sudoers drop-in as root, including the grant that authorizes the installer (visudo -cf, install into /etc/sudoers.d)" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc", "sudoers.d"])]),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.ci.ci_deploy_access", decl_name: "deploy_access_apt_get_privileged_command"),
+    effect: srv1_host_root_effect(subject: "install host packages as root (apt-get)" as NonEmptyStr, required: [srv1_root_apt_get_scope]),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "systemctl_restart_command"),
+    effect: PrivilegedEffect {
+      subject: "daemon-reload, enable, start, restart or stop one named unit the deploy owns" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on the host, the dispatched deploy's host principal" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
+    effect: PrivilegedEffect {
+      subject: "reset-failed and start the one system path unit a stalled spool tripped: the belt-exit path unit (belt_exit_stall_release_cli) or the attempt-unit drain path unit (attempt_unit_stall_release_cli), one effect, one site" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the operator's host principal running the release verb" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
@@ -820,6 +1399,51 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
     effect: PrivilegedEffect {
       subject: "on every slot exit, delete the slot's JIT runner registration from the organization under the controller's installation token and confirm it absent from the organization's runner listing, pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
+    effect: PrivilegedEffect {
+      subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot reads boot_id over a HostBoundTransport it is handed, whose host is derived from the transport's address; no run holds a host-authenticated transport to mtcollins1 until one is supplied from an executed selection), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key"),
+    effect: PrivilegedEffect {
+      subject: "in the service_runner_lost_boot_sweep_dry_run fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token that reads the organization runner listing for the dry run's plan; no registration is deleted and the key is removed on every arm",
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
+    effect: PrivilegedEffect {
+      subject: "in the qualification_attempt fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token the qualification route's own sites then use (the JIT mint, the ref pin, the floor dispatch, the deregistration and the unpin, each rowed at its own site); the key is removed on every arm; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -901,6 +1525,24 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.export_host_reader_converge", decl_name: "export_host_reader_converge_wet"),
+    effect: export_host_reader_rows_effect(),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: export_host_rows_beside_unlanded_host_file_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.boot_medium_reader_probe", decl_name: "boot_medium_reader_probe_wet"),
+    effect: boot_medium_reader_probe_effect(),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_mint_wet"),
+    effect: boot_medium_reader_key_mint_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.hetzner_cloud_server_control", decl_name: "read"),
     effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run attempt (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's Read-only API token (Hetzner refuses it any write) and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
     realized: RealizedFederatedGrant,
@@ -969,6 +1611,29 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
+  // THE TWO IN-BAND RECOVERY WRITES (gunbc.machine_intake.bmc_recovery_route). A locked BMC is
+  // brought back by two writes made from the machine's own rescue OS, and both are classified here
+  // rather than described in prose: the temporary Administrator password that makes an authenticated
+  // in-band session possible, and the ResetToDefaults that wipes the unknown password. The reset is
+  // the destructive half -- ResetAll returns every account, every password and the user table to
+  // factory state on a board being inducted. Both rows realize the operator-approved capability, but for
+  // DIFFERENT forces that each row states in its own profile: the reset by its irreversibility, the
+  // password write by the credential it brings into existence and cannot withdraw by reapplying. Neither
+  // row is claiming a pattern the other's effect forced. recovery_reset_operator_ruling states the ruling
+  // the run acts under; the recovery route refuses its handoff without the post-reset readback (its own
+  // domain law), so neither row can realize a pattern its effect rules out.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
+    effect: recovery_in_band_set_user_password_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    effect: recovery_manager_reset_to_defaults_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
     effect: mtjade1_arrival_archive_effect(),
@@ -996,7 +1661,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, bind who may act as it, and its version-pinned accessor cells" as NonEmptyStr,
+      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, and bind who may act as it; its version-pinned accessor cells are the converge's (no secret IAM written here)" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1030,27 +1695,30 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
-    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys, the OpenRouter free-tier key" as NonEmptyStr),
+    site: site(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_bootstrap_apply"),
+    effect: PrivilegedEffect {
+      subject: "the first-time root ceremony: project roles and cells, the converge, observe and bootstrap identities' own pools, accounts and trust, the deny policies, and the root secret cells (iam-observe's read of the submission MAC key); never a delta cell" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
-    effect: accessor_grant(subject: "spark administrator password accessor cell (interactive entry)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+    divergence_reason: Present { value: iam_bootstrap_root_ceremony_residual },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"),
     effect: accessor_grant(subject: "gunbai-ci App key accessor cell" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+    divergence_reason: Present { value: gate_app_key_ceremony_trust_root },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "heal_publisher_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create the heal publisher's pool, provider and service account, then bind its one accessor cell" as NonEmptyStr,
+      subject: "create the heal publisher's pool, provider and service account, and bind who may act as it; its accessor cell is the converge's (no secret IAM written here)" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1065,7 +1733,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"),
     effect: PrivilegedEffect {
-      subject: "create the two approval MAC key secrets, add their first versions, bind their accessor cells" as NonEmptyStr,
+      subject: "create the three approval MAC key secrets (capability, submission, store receipt), add their first versions, bind their accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1163,7 +1831,16 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.assimilate.bmc_bootstrap_provision", decl_name: "bmc_bootstrap_provision_srv3"),
-    effect: accessor_grant(subject: "srv3 BMC secret IAM bindings, written on every run (the known converge bypass)" as NonEmptyStr),
+    effect: PrivilegedEffect {
+      subject: "create the BMC assimilator's service account, WIF pool and provider; no secret IAM (its cells are the converge's, from the declarer's signed grants)" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: Present { value: eager_bootstrap_fork_declared },
   },
@@ -1245,6 +1922,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
+    realized: RealizedFederatedGrant,
+    divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
+  },
+  // MIRRORS gcp_iam_converge_apply_wet AND DIVERGES IN THE SAME SHAPE, not a realization of (b): the
+  // selection's OperatorApprovedCapability is "one capability bound to that request's revision
+  // (approval_capability), redeemed once (approval_broker), the effect executed by the authority
+  // adapter under ITS identity". This site files and is tapped like (b), but no capability is
+  // redeemed through the broker; the job's own federated token, minted after its reviewed code admits
+  // the recorded approval, performs the effect. That is the converge's realization and its reason.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"),
+    effect: bootstrap_delta_privileged_effect,
     realized: RealizedFederatedGrant,
     divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
   },
@@ -1347,6 +2036,131 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.roadmap.attempt_system_unit_launch", decl_name: "attempt_system_unit_launch_cli"),
     effect: attempt_system_unit_privileged_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  // ── MANUAL-STEP ROWS (node adhoc-28759c44-922) ───────────────────────────────────────
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.secret_provision", decl_name: "gcp_fleet_secrets_wif_binding_intervention"),
+    effect: manual_operator_api_effect(step: gcp_fleet_secrets_wif_binding_intervention(), subject: "establish the GitHub Actions workload-identity binding to the fleet automation service account on the fleet secrets project" as NonEmptyStr, cause: "setIamPolicy on the fleet secrets project is held by the grant administrator alone (gunbc.spark.bootstrap_provision no_principal_can_both_grant_and_read)" as NonEmptyStr, reach: MintsProjectWideCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_bootstrap_custody_intervention"),
+    effect: manual_operator_api_effect(step: cloudflare_bootstrap_custody_intervention(), subject: "place the dashboard-acquired Cloudflare account bootstrap token into Secret Manager as a pinned version" as NonEmptyStr, cause: "the token exists only in the operator's hands until placed, and no fleet principal holds Secret Manager create/addVersion for this secret" as NonEmptyStr, reach: MintsAccountWideCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_operator", decl_name: "shared_drive_create_intervention"),
+    effect: manual_operator_api_effect(step: shared_drive_create_intervention(), subject: "create the shared drive that holds the review sheets" as NonEmptyStr, cause: "the drive is owned by the operator's Workspace account; the writer service account is the principal being granted into it" as NonEmptyStr, reach: MintsNoCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_operator", decl_name: "spreadsheet_create_intervention"),
+    effect: manual_operator_api_effect(step: spreadsheet_create_intervention(), subject: "create the buyer review Google Sheet under the operator's account" as NonEmptyStr, cause: "the sheet is owned by the operator's Workspace account; the writer service account is the principal being granted onto it" as NonEmptyStr, reach: MintsNoCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_federation", decl_name: "review_sheet_writer_token_creator_intervention"),
+    effect: manual_operator_api_effect(step: review_sheet_writer_token_creator_intervention(), subject: "grant review-sheet-converge roles/iam.serviceAccountTokenCreator on review-sheet-writer, the one cell the federated review-sheet converge delegates through" as NonEmptyStr, cause: "the cell is in gunbai-sheets, outside every project the approval-gated IAM converge can bind a role in" as NonEmptyStr, reach: MintsResourceScopedCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: review_sheet_writer_cell_outside_the_converge_projects },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.review_sheet_converge_cli", decl_name: "converge_drive_half_cli"),
+    effect: PrivilegedEffect {
+      subject: "converge every review sheet kind on the shared drive -- create the marked spreadsheet, its tabs, header and rows, and formatting -- as review-sheet-writer, every write read back" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: review_sheet_converge_principal_set() as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_publisher_token_mint_intervention"),
+    effect: manual_operator_api_effect(step: approval_ntfy_publisher_token_mint_intervention(), subject: "create the ntfy publisher user, issue its access token on srv1 and add it as a Secret Manager version of approval-ntfy-publisher-token" as NonEmptyStr, cause: "the token does not exist until a person creates it on the ntfy server, and no fleet principal holds Secret Manager addVersion for this secret" as NonEmptyStr, reach: MintsResourceScopedCredential),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.github_deployment_environment", decl_name: "srv1_production_protection_standing"),
+    // No HumanIntervention models this setting (the standing is Unobserved), so the frequency has no
+    // authority to be read from; it is stated here as the one fact this row owns.
+    effect: PrivilegedEffect {
+      subject: "apply the srv1-production environment protection (deployment branch rule main only) in GitHub repository settings" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "environment protection is a repository-admin setting; no fleet principal holds repository administration, and no fold observes its standing" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_account_allocation_intervention"),
+    effect: manual_no_api_effect(subject: "create the Cloudflare account that owns the fleet's R2 storage, billed to the LLC" as NonEmptyStr, step: cloudflare_account_allocation_intervention(), cause: "Cloudflare account creation is a dashboard signup; no API creates an account" as NonEmptyStr, billing: BillsExternally),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.tracker_web_oauth_client", decl_name: "approve_ios_oauth_client_intervention"),
+    effect: manual_no_api_effect(subject: "create the approve-ios iOS OAuth client in the gunbc-tracker Auth Platform project" as NonEmptyStr, step: approve_ios_oauth_client_intervention(), cause: "Auth Platform OAuth client registration has no write API; the client is created in the Cloud console" as NonEmptyStr, billing: NoBillingConsequence),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "spark_pxe_firmware_enablement_intervention"),
+    effect: manual_physical_effect(subject: "at a Spark unit console, enroll the signed bootloader and enable PXE under UEFI Network Stack Configuration" as NonEmptyStr, step: spark_pxe_firmware_enablement_intervention()),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "mtcollins1_ac_power_cycle_effect"),
+    effect: mtcollins1_ac_power_cycle_effect,
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  // The gated mtcollins1 host-key readback scan (the read that discharges the trust anchor's read
+  // obligation on a live boot). Its ONLY surface is the named human step -- merry-fox-82's go, relayed
+  // by snappy-koi-83 -- and no workflow dispatches it, so the fold selects HumanOnlyStep and the row
+  // realizes it with no divergence. The scan itself offers no credential to the host: ssh-keyscan is an
+  // anonymous read; the token-source resolution it executes is cited, not minted, and mints no reach.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
+    effect: anchored_host_key_scan_effect(host: operator_host_mtcollins1),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  // MTCOLLINS1'S SSH HOST KEY MINT, WHICH WAS A HUMAN STEP UNTIL 2026-10-28. The row beside it read
+  // (gunbc.host.anchored_host_transport, anchored_host_key_mint_intervention) with RealizedHumanStep and the
+  // divergence reason manual_api_effect_beside_unlanded_approval_adapter, and that reason named the capability
+  // whose arrival would retire it: orchestration-to-shell emission, so the mint could become a dispatch
+  // instead of a paste. It landed -- as something better than the reason anticipated, a mint (
+  // gunbc.host.fleet_keypair_mint, this key and the boot medium reader key as its two rows) rather than a
+  // rendered script -- so the effect is no longer realized by a person following an instruction but by the
+  // run's own federated identity under a converged versionAdder cell.
+  //
+  // THE ROW IS WRITTEN AGAINST THE NEW SITE AND NOT EDITED IN PLACE, because the census is the audit record of
+  // who can mint a fleet credential and how; a row that was a human step last quarter and now reads as a
+  // federated grant, with nothing saying so, is a census that cannot be audited. Why the SELECTION flipped
+  // (OperatorApprovedCapability -> the federated grant) is argued once, at mtcollins1_host_key_mint_effect: the
+  // irreversibility that forced a human's consent was a property of the human process, not of the key. See
+  // also gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet"),
+    effect: mtcollins1_host_key_mint_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
@@ -1481,4 +2295,27 @@ data human_intervention_frequency_frontier_rows: List<FrontierRow> = [
       description: "NAMED CAPABILITY: HumanInterventionFrequency is split into the two questions it conflates, so burden multiplicity and attendance premise are separate declared facts and every consumer names which one it reads. SUFFICIENT FOR a privileged-effect row and the human step it embeds to agree by construction rather than by a stated divergence, and for select_authorization_pattern to evaluate unattended_required against the attendance fact instead of against a multiplicity count. NOT satisfied by adopting the step's value on this row, which would assert that an effect GitHub requires an owner to perform must run unattended; nor by widening divergence_reason, which carries realized-vs-selected and answers a different question"
     )
   )
+]
+
+// ── THE SECRET-IAM WRITER CENSUS (gunbc#14360, side chat, 2026-10-19) ──────────────────────────
+// Every executing route that reaches gcp.SecretManager.SetSecretIamPolicy, directly or through the
+// gunbc.auth.gcp_secret_access secret_access_reconcile_* / secret_access_ensure_* family, classified
+// as the converge, the delta apply or a trust-root ceremony. CUT routes are absent: their legs were
+// deleted (gunbc.assimilate.bmc_bootstrap_provision's secret-policy leg, gunbc.auth.heal_publisher_provision
+// grant_secret_reads, gunbc.auth.secret_access_admission secret_access_ensure_admitted). This list is
+// hand-enumerated by writer; its next rung is gunbc.recurring_failure_mode
+// a_secret_iam_cell_declarer_outside_a_hand_listed_universe (declarers AND writers).
+type SecretIamWriterArm
+  = SecretIamWriterConverge
+  | SecretIamWriterDeltaApply
+  | SecretIamWriterTrustRootCeremony { ceremony: TrustRootCeremony }
+
+type SecretIamWriter { site: DeclarationRef, arm: SecretIamWriterArm }
+
+data secret_iam_writer_census: List<SecretIamWriter> = [
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"), arm: SecretIamWriterConverge },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"), arm: SecretIamWriterDeltaApply },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_bootstrap_apply"), arm: SecretIamWriterTrustRootCeremony { ceremony: IamBootstrapApply } },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"), arm: SecretIamWriterTrustRootCeremony { ceremony: ApprovalMacKeyProvision } },
+  SecretIamWriter { site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"), arm: SecretIamWriterTrustRootCeremony { ceremony: OrgAdminAppKeyAccessConverge } },
 ]

@@ -1,0 +1,385 @@
+module extdeps.libxcrypt.crypt_scheme
+
+// THE SHA-512 CRYPT STORAGE FORMAT — the shape a hashed-passphrase string must have in order to be one. These
+// widths, this alphabet and this cost spelling are libxcrypt's facts, not this repository's: they are set by the
+// implementation that parses and verifies the string, and a value outside them is not a strict-but-valid digest,
+// it is a string that implementation will refuse when the board tries to authenticate with it. DESIGN §3 'External
+// upstream decomposition' gives each independently versioned product its own extdeps shelf; these figures
+// previously sat inside gunbc.provisioning.ubuntu_autoinstall_seed, where they read as seed policy (review 81975).
+//
+// WHY THIS SHELF AND NOT extdeps/glibc. The "$6$" scheme was written by Ulrich Drepper for GNU libc — crypt(5)
+// says so — but the code that will check the string on an installed board is libxcrypt's: Ubuntu 24.04's
+// crypt(3) is libcrypt1 4.4.36-4build1 (the arm64 pool at ports.ubuntu.com publishes exactly that version of
+// the libcrypt1 udeb and deb), and glibc's libcrypt now delegates to it. Releases, versions and the document
+// cited below all belong to better82/libxcrypt, so that is the subject and the citation here.
+// extdeps/glibc exists and holds ldconfig — a different product fact with a different upstream, and a row there
+// would be a wrong shelf rather than a tidy one.
+//
+// TWO RULES RUN, AND A SEED MUST ENFORCE BOTH. libxcrypt validates the whole setting string with a SHARED check
+// (lib/crypt.c, check_badsalt_chars at v4.4.36, the release Noble ships) BEFORE it dispatches to the sha512crypt
+// parser, and the shared
+// check is stricter about characters than the scheme's own salt class is: it refuses any byte at or below
+// 0x20, at or above 0x7f, and the five characters ! * : ; \ — anywhere in the setting, digest field included.
+// Checking a candidate against the scheme row ALONE is unsound in the direction that hurts a headless board:
+// "$6$saltsalt$…!" passes the 86-character base64 alphabet test only if the '!' is not noticed, and the board
+// then carries a shadow entry its own crypt(3) refuses to verify — an install that reports success and a root
+// account nobody can open, found out at the only console the machine has. So both rules are modelled, and
+// accepted means BOTH accept (see shared_restriction; the consumer that composes the two is a single function,
+// gunbc.provisioning.ubuntu_autoinstall_seed (singular), admin_digest_refusal).
+//
+// WHAT IS *NOT* UPSTREAM, AND SO IS NOT CLAIMED HERE. The four-segment / five-segment grammar (splitting on '$'),
+// which refusal fires first, and the refusal type itself are the consumer's parsing convenience and stay in the
+// consumer. Nothing here decides whether a credential is good ENOUGH for a seed; that is policy, and policy parked
+// next to an upstream table gets mistaken for the table.
+//
+// THE FRONTIER, NAMED: one row, because one scheme is admitted. A second scheme (yescrypt's "$y$", scrypt's "$7$")
+// is an added ROW READ FROM ITS OWN .hash LINE, never a copied width — crypt(5) gives yescrypt a 43-character
+// final field and scrypt an 11-to-97-character salt, so a width copied from the row below would refuse every valid
+// digest of that scheme. Nothing branches on scheme today, so no consumer can ask for one.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { CharacterCount, character_count, measure_le }
+import std.optional { Optional, Absent, Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ExternalModelScope, ExternalSubjectRef, cited_figure_read_obligation }
+import extdeps.uri { Https, Uri }
+
+// Read in full during this change AT THE VERSION THIS DISTRO SHIPS, not at whatever HEAD says: the consumer's
+// digests are verified by that release and not by a later one. The artifact is the mdoc source of crypt(5); the
+// fact below is its sha512crypt `.hash` line.
+//
+// WHY v4.4.36 AND NOT v4.4.38 — and why the earlier answer here was wrong. An earlier revision of this row cited
+// v4.4.38 because 1:4.4.38-1 is what `dpkg -l` prints inside the CI image; but that is the image's Debian
+// libcrypt1, and an arm64 Noble install resolves libcrypt1 4.4.36-4build1 from the Ubuntu pool (verified in
+// ubuntu-ports pool/main/libx/libxcrypt/, which publishes exactly that .deb and .udeb). Citing the newest release
+// while shipping an older one is how a figure stays "cited" after the thing it describes has changed. crypt.5 at
+// v4.4.36 was then fetched and diffed against v4.4.38: the sha512crypt `.hash` row and the shared printable-ASCII
+// restriction quoted below are byte-identical, so the citation now names the release the board actually runs and
+// the equality is stated rather than assumed. A future requirement to track a newer release adds a row here, not a
+// silent version bump.
+//
+// ONE VERIFICATION TRAP WORTH NAMING, BECAUSE IT COST THIS MODULE A ROUND. When the package list was challenged,
+// the quick check was to fetch each package's page on the Ubuntu package site — and it answers HTTP 200 for names
+// that do not exist at all, including three invented ones this module had been shipping. A check that reports
+// "verified" for a fabricated input is worse than no check, because it converts an unverified claim into an
+// apparently verified one and the reader cannot tell the two apart. The authority that does answer is the release
+// index itself (ports.ubuntu.com noble main+universe Packages, 69,641 names for arm64), where the invented names
+// are simply absent. Ask an index that has to enumerate, never a search page that can say "no results" politely.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/doc/crypt.5"
+  }
+}
+
+// THE SHARED PRE-SCHEME CHECK IS ITS OWN AUTHORITY, separate from the document. crypt.5 states the restriction
+// this row models, but the ORDER that makes it load-bearing — the check runs over the WHOLE setting string before
+// any scheme parser is consulted — is only in libxcrypt's source. Citing the document for that would attribute a
+// claim to a page that does not make it. Same release as above, for the same reason.
+data extdeps_libxcrypt_crypt_c_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/lib/crypt.c"
+  }
+}
+
+// THE COST FIELD'S PARSER, ITS OWN AUTHORITY. Whether "rounds=" is recognised at its actual position and whether
+// the whole cost field is validated are questions about lib/crypt-sha512.c, not about the man page's grammar row.
+data extdeps_libxcrypt_sha512_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/besser82/libxcrypt/v4.4.36/lib/crypt-sha512.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.libxcrypt.crypt_scheme",
+      decl_name: "CryptSchemeFormat",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ONE `.hash` LINE, ONE ROW, so a reviewer can check the row against the line without transcribing anything:
+//   .hash "$6$" "\$6\$ (rounds=[1-9][0-9]+\$)? [^$:\r\n]{1,16} \$ [./0-9A-Za-z]{86}"  unlimited 8 512 512
+//                                                               "6 to 96"  "1000 to 999,999,999"
+// Each field is the SEPARATED spelling rather than the verbatim regex: the '$' characters are delimiters the
+// consumer's parser walks by splitting on them, and re-storing them beside the semantic axes would create a second
+// spelling free to drift.
+//
+// CLOSED, AND WHY THE SALT AND THE DIGEST ARE DIFFERENT KINDS ON PURPOSE. The salt is bounded by a FORBIDDEN set,
+// because that is what its class says — any character except '$', ':', CR and LF. Modelling it as an allowed
+// alphabet was a real defect, found by reading this line: it refused "$6$sa!tsalt$…", a string libxcrypt accepts
+// and shadow would store, and a false refusal on a board with no console is discovered only when nobody can log in.
+// The digest, conversely, IS an allowed alphabet, because its class is the 64-character base64-crypt set. Carrying
+// both kinds is what lets each check be exactly as wide as its authority and no wider; collapsing them into one
+// "crypt alphabet" makes one of the two checks wrong, and only one direction of that is ever visible at runtime.
+type CryptSchemeFormat = Sha512CryptFormat {
+  // The token between the first pair of delimiters.
+  scheme_token: NonEmptyStr,
+  // The literal that introduces the optional cost field.
+  cost_marker: NonEmptyStr,
+  // Characters the salt may not contain. '$' is unreachable through the consumer's split-on-'$' walk and is
+  // carried anyway: it is part of the upstream rule, and a consumer that parses without splitting needs it.
+  salt_forbidden_characters: List<NonEmptyStr>,
+  // The salt's width, from {1,16}. The table's "Salt size: 6 to 96" bits is the same rule at 6 bits per
+  // character. A COUNT, not a bare Int: std.measure already owns the Count axis and CharacterCount is its
+  // character-count sibling, so re-minting an Int here would grow the corpus by re-invention (DESIGN §2) and
+  // would let a bit-width be compared against a character-width without anything noticing.
+  salt_least_characters: CharacterCount,
+  salt_greatest_characters: CharacterCount,
+  // The digest's class and its width, from [./0-9A-Za-z]{86}. Exactly 86, not a floor: shorter is a truncated
+  // digest and longer is not this format at all.
+  digest_alphabet: List<NonEmptyStr>,
+  digest_exact_characters: CharacterCount,
+  // THE COST FIELD'S DOCUMENTED RANGE, expressed as DIGIT COUNTS because both bounds are powers of ten: every
+  // [1-9][0-9]+ string of 4..9 digits lies inside 1000..999,999,999, and no 2..3-digit or 10+-digit one does. So
+  // the range is decidable from the width alone — no arithmetic on the value and no numeral parser to get wrong.
+  cost_least_digits: CharacterCount,
+  cost_greatest_digits: CharacterCount,
+  // THE STANDING TRAVELS WITH THE FIGURES. A field and not a comment, so a consumer cannot take the numbers as
+  // deduced truth after the citation has rotted: DESIGN §4d separates a cited wall from a typed bet consumed as
+  // fact, and that distinction only survives editing if it is in the type.
+  figure_standing: CitedFigureStanding,
+}
+
+data sha512_crypt_format: CryptSchemeFormat = Sha512CryptFormat {
+  scheme_token: "6",
+  cost_marker: "rounds=",
+  salt_forbidden_characters: ["$", ":", "\r", "\n"],
+  salt_least_characters: character_count(count: 1),
+  salt_greatest_characters: character_count(count: 16),
+  digest_alphabet: [
+    ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+    "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+    "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+  ],
+  digest_exact_characters: character_count(count: 86),
+  cost_least_digits: character_count(count: 4),
+  cost_greatest_digits: character_count(count: 9),
+  figure_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+// THE SALT CHECK, AS ITS CLASS IS WRITTEN: a character scan against the forbidden set, so a legal-but-unusual
+// salt ("sa!tsalt", "a:b" if it were not for the colon rule) is ADMITTED, which an allowed-alphabet check got
+// wrong in the dangerous direction. Total over the text — the same shape as std.types' hex check — rather than a
+// predicate over a sum type.
+fn salt_holds_only_admitted_characters(salt: String) -> Bool {
+  fold(
+    sha512_crypt_format.salt_forbidden_characters,
+    init: true,
+    f: (clean, character) => clean && !salt.contains(character as String),
+  )
+}
+
+// THE DIGEST CHECK: strip every character the cited class admits, then demand nothing is left. Stripping a list
+// that is CITED rather than one re-typed at the call site is what keeps the accepted set from silently widening
+// when the row is edited. '.' and '/' both occur in real digests, so an alphabet missing either refuses valid
+// credentials — the worse direction to be wrong in for a headless install.
+fn digest_characters_are_admitted(digest: String) -> Bool {
+  fold(
+    sha512_crypt_format.digest_alphabet,
+    init: digest,
+    f: (remaining, character) => replace(remaining, character as String, ""),
+  )
+    == ""
+}
+
+// THE COST CLASS, `[1-9][0-9]+`, plus its documented 1000..999,999,999 range — and the whole conjunction is
+// decidable from the TEXT, which is why it lives here rather than in a numeral parser:
+//   * width within the digit bounds (both powers of ten, so width alone decides the value range),
+//   * every character a digit (strip the ten digits, demand nothing is left),
+//   * the FIRST character non-zero (so "rounds=05000" is malformed, not a slower-but-valid cost),
+//   * and width >= 2 from the '+' is implied by cost_least_digits, not spelled again.
+// Enumerations checked rather than a range asserted: "rounds=5" and "rounds=abc" are malformed rather than
+// silently parsed into a number a range check would then accept.
+fn cost_field_is_well_formed(digits: String) -> Bool {
+  let digit_width = character_count(count: digits.length())
+  match measure_le(a: sha512_crypt_format.cost_least_digits, b: digit_width)
+    && measure_le(a: digit_width, b: sha512_crypt_format.cost_greatest_digits)
+  {
+    False => false
+    True =>
+      match fold(
+        cost_trailing_digit_characters(),
+        init: digits,
+        f: (remaining, character) => replace(remaining, character as String, ""),
+      ) == "" {
+        False => false
+        True =>
+          fold(
+            cost_leading_digit_characters(),
+            init: false,
+            f: (found, character) => found || (character as String) == digits.substring(start: 0, end: 1),
+          )
+      }
+  }
+}
+
+// THE SECOND RULE, WHICH THE SCHEME ROW CANNOT CARRY. Before any scheme parser sees the setting, libxcrypt scans
+// the WHOLE string — prefix, cost, salt and digest alike — and refuses it unless every byte is printable ASCII and
+// none of the five characters ! * : ; \ appears anywhere. Both halves of that are in the document, in the paragraph
+// above the table this row was read from: "passphrases should always be entirely printable ASCII characters, and
+// do not contain any whitespace or the characters : ; * ! or \", and the source implements it as
+// check_badsalt_chars (byte <= 0x20, byte >= 0x7f, then strcspn against those five), called BEFORE the hash
+// function is dispatched. It is modelled as an ALLOWED ALPHABET — the printable range minus the five reserved
+// characters, 89 of them — rather than as a forbidden set, because the rule's two halves are a range test and a
+// strcspn together: a forbidden-set spelling of just the five characters would silently admit space, tab, DEL and
+// every high byte, which the range test refuses.
+//
+// WHY THIS IS A SEPARATE RECORD AND NOT TWO MORE FIELDS ON CryptSchemeFormat. The scheme row is one upstream line
+// with one grammar; this rule belongs to no scheme at all — the same scan gates yescrypt, bcrypt and every other
+// row of that table. Folding it into the sha512crypt row would make a future yescrypt row re-state it, and the
+// moment the two copies disagree the composed check becomes ambiguous. Adding a scheme adds a row to the table,
+// not a copy of this record.
+//
+// WHY CONSUMERS MAY NOT SKIP IT. A candidate that satisfies the scheme row but not this one is exactly the
+// failure this cut exists to prevent: the seed admits a digest, shadow stores it, and the board's own crypt(3)
+// refuses to verify it. That surfaces as an install that reported success and a root account nobody can open, on
+// a machine whose only console is the BMC. So accepted means BOTH rules accept — the consumer that composes both is gunbc.provisioning.ubuntu_autoinstall_seed (singular), admin_digest_refusal.
+type CryptSharedRestriction = PrintableAsciiMinusReserved {
+  // The five characters the document names, and the ONLY character list this record carries.
+  //
+  // WHY THERE IS NO ALLOWED-ALPHABET FIELD HERE. An earlier shape of this record carried, beside this list, an
+  // 89-entry list of the characters the rule admits. It was deleted rather than kept-and-checked, for three
+  // reasons that are each a rule of this repository:
+  //   1. The admission rule is already here, in the two halves the library itself tests: the printable range in
+  //      shared_restriction_character_is_printable (the byte <= 0x20 / >= 0x7f test), and this list for the
+  //      strcspn. A third field spelling their intersection is a second representation of one fact (DESIGN
+  //      section 3: "each fact lives in exactly one place"; section 5: a check that restates a constraint the
+  //      model carries is that constraint twice).
+  //   2. Nothing read it. The comments claimed a witness swept allowed == printable minus reserved; no such
+  //      sweep existed, so it was a row no fold reads — section 3c's dangling red, the one thing that is red
+  //      however well modelled.
+  //   3. It had already drifted: the transcription admitted "*", ":" and ";", three members of the reserved
+  //      half beside it, so one record asserted a character both allowed and refused. A copy that must be
+  //      swept to stay true is a copy that will be wrong between sweeps.
+  // FUTURE REQUIREMENT: a caller that needs the enumerated alphabet (a UI, a fuzzer seed corpus) derives it
+  // from these two halves at the call site; add a fn, never a field.
+  reserved_characters: List<NonEmptyStr>,
+  // Standing for the character rule itself. The rule is documented (crypt.5, the paragraph above the table), so
+  // this is a citation and not a transcription — but it points at the document that states it, not the table row.
+  rule_standing: CitedFigureStanding,
+  // The ORDER claim, which the document does not make and the source does: the scan runs before the scheme
+  // dispatch. Carried as its own authority so the composition is traceable to code and not to prose.
+  ordering_authority: ExternalAuthority,
+}
+
+data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReserved {
+  // The reserved five, transcribed from the crypt(5) sentence quoted in the header comment above. This is the
+  // only character list here: which characters are ALLOWED is not stored, because it is a consequence — the
+  // printable range, tested in shared_restriction_character_is_printable, minus this list. Storing the
+  // consequence beside its causes is how this row once came to admit "*", ":" and ";", which this very list
+  // refuses; the two halves of one rule contradicted each other and only a sweep of the derived copy would
+  // have noticed, and no sweep existed.
+  reserved_characters: ["!", "*", ":", ";", "\\"],
+  rule_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+  ordering_authority: extdeps_libxcrypt_crypt_c_anchor,
+}
+
+// THE SHARED SCAN, written the way the source is written: ONE PASS OVER THE WHOLE CANDIDATE, and every character
+// in it has to satisfy the shared predicate. The predicate has exactly the two clauses the source has — the
+// character is in the printable range, and the character is not one of the five reserved — and it is applied per
+// CHARACTER, by iterating the candidate, which is upstream's shape (crypt.c walks the setting with strcspn and an
+// explicit range test). The clause pair is what decides: a fold over a stored alphabet is only as honest as the
+// transcription of that alphabet, and an earlier shape of this record was caught carrying "*" ":" ";" in its
+// allowed half while listing those same characters as reserved. No alphabet is stored here, so there is nothing
+// to transcribe and nothing to drift; what is checked is the predicate itself, which the witness sweeps over the
+// reserved five and over the printable endpoints (test.claim.ubuntu_autoinstall_seed_witness).
+//
+// WHY A CANDIDATE-DRIVEN SCAN MATTERS MORE THAN AN ALPHABET-DRIVEN ONE: a fold over a forbidden set asks "did the
+// candidate contain any of these five?" — which is silent about the byte nobody transcribed, including every byte
+// outside printable ASCII. That is how a setting carrying a space, a newline, or 0x80 can be admitted by a shelf
+// that believes it refuses them. A pass over the candidate asks the only question that has no such blind spot.
+//
+// THIS IS A PRIMITIVE AND NOT A PARSER. It asks one character question about one field, which is upstream's
+// question and therefore belongs on this shelf. Deciding WHICH field a candidate's bytes are — where a cost ends
+// and a salt begins, whether a delimiter is legal at a given position — is the policy this repository applies to a
+// seed, and it lives in the consuming module beside the other admission rules. The order the two rules run in is
+// recorded there too, in the order upstream runs them, because a candidate that breaks both has to be reported
+// once and the first diagnosis decides whether an operator re-derives a hash or fixes a mirror.
+fn shared_restriction_rejects(candidate: String) -> Bool {
+  match crypt_shared_restriction {
+    PrintableAsciiMinusReserved {
+      reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+    } => !(
+      candidate |> chars |> all(c => shared_restriction_character_is_printable(code: c))
+    )
+      || reserved.any(r => candidate.contains(needle: r as String))
+  }
+}
+
+// THE PRINTABLE CLAUSE, spelled as the range the source tests rather than as membership in a transcription. 33 is
+// '!' (the lowest printable byte that is not space) and 126 is '~'; space (32), tab, newline, DEL (127) and every
+// high byte fail here, which is upstream's "no whitespace, no high bytes" in one arithmetic statement. Written in
+// decimal because this language has no hex integer literal — the values are named here so a reader can check them
+// against the byte range in crypt.5 rather than against a bare number.
+fn shared_restriction_character_is_printable(code: Int) -> Bool {
+  code >= 33 && code <= 126
+}
+
+// THE FIVE RESERVED CHARACTERS, exposed for two named readers, both of which go RED if this list loses a member:
+// test.claim.ubuntu_autoinstall_seed_witness's sweep drives EVERY member of this list through the scan at two
+// positions (salt and digest) and refuses to pass on an empty list, so dropping a character here is caught by the
+// rule itself rather than by which characters someone thought to write into a fixture; and the consuming module's
+// refusal names the character it caught, which is the difference between an operator re-deriving a hash and an
+// operator reading libxcrypt. The admitted side is swept too — the upper endpoint '~' is asserted admitted in a
+// salt — so narrowing the printable half is caught as well.
+fn crypt_reserved_characters() -> List<NonEmptyStr> {
+  match crypt_shared_restriction {
+    PrintableAsciiMinusReserved {
+      reserved_characters: reserved, rule_standing: _, ordering_authority: _,
+    } => reserved
+  }
+}
+
+// WHAT THE SEED MUST DO WITH BOTH RULES, stated once so a consumer cannot claim it "checks libxcrypt" while
+// checking only the scheme. Each arm names the rule and the authority that grounds it; the door in the consuming
+// module walks them in this order, and the witness asserts that the order is the source's order.
+type CryptAcceptanceRule = SharedReservedCharacterScan { authority: ExternalAuthority } | SchemeFormatRules { authority: ExternalAuthority }
+
+data crypt_acceptance_rules: List<CryptAcceptanceRule> = [
+  SharedReservedCharacterScan { authority: extdeps_libxcrypt_crypt_c_anchor },
+  SchemeFormatRules { authority: extdeps_external_authority_anchor },
+]
+
+
+// THE COST FIELD'S TWO DIGIT CLASSES, from the same line, as data so the class is cited rather than inferred from
+// a regex fragment someone transcribed. Consumed by cost_field_is_well_formed; the split into two lists is what
+// keeps a leading zero and an internal zero distinguishable, which one list could not express.
+fn cost_leading_digit_characters() -> List<NonEmptyStr> {
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+}
+
+fn cost_trailing_digit_characters() -> List<NonEmptyStr> {
+  ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+}
+
+// THE OBLIGATION, READ OUT OF THE STANDING. Absent means the figures are cited and a consumer may rely on them;
+// Present means somebody owes a read before they are believed. The language's absence type rather than an empty
+// string, so "no obligation" cannot be confused with "obligation nobody wrote down".
+fn sha512_crypt_figure_read_obligation() -> Optional<NonEmptyStr> {
+  cited_figure_read_obligation(standing: sha512_crypt_format.figure_standing)
+}
+
+// EVERY HASHING METHOD'S PREFIX, as crypt.5 at v4.4.36 lists them under AVAILABLE HASHING METHODS (the module
+// anchor): yescrypt "$y$", gost-yescrypt "$gy$", scrypt "$7$", bcrypt "$2b$" (its format admits 2a, 2b, 2x and 2y),
+// sha512crypt "$6$", sha256crypt "$5$", sha1crypt "$sha1", SunMD5 "$md5", md5crypt "$1$" and NT "$3$"; bsdicrypt is
+// "_" followed by 19 characters of [./0-9A-Za-z]. bigcrypt and descrypt have NO prefix -- their hashes are bare runs
+// of [./0-9A-Za-z] -- so a string's shape cannot tell them from ordinary text, and they are not classified here; a
+// consumer that must refuse every hash has to refuse the FIELD that would carry one, not rely on the shape.
+data crypt_hashing_method_prefixes: List<NonEmptyStr> = ["$y$", "$gy$", "$7$", "$2a$", "$2b$", "$2x$", "$2y$", "$6$", "$5$", "$sha1", "$md5", "$1$", "$3$"]
+
+fn crypt_bsdicrypt_shaped(text: String) -> Bool {
+  length(text) == 20 && starts_with(s: text, prefix: "_") && digest_characters_are_admitted(digest: substring(s: text, start: 1, end: 20))
+}
+
+fn crypt_hash_shaped(text: String) -> Bool {
+  any(crypt_hashing_method_prefixes, p => starts_with(s: text, prefix: p as String)) || crypt_bsdicrypt_shaped(text: text)
+}

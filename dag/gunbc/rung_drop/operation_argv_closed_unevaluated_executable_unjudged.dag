@@ -1,0 +1,74 @@
+module gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// The executable-position wall of shell_materialize_operation_argv judged a string-literal argv[0].
+// gunbc#14174 moved executables to the ProgramIdentity catalog (a call such as sshpass_program()),
+// which the seed materializer cannot evaluate: its InterpContext holds only the entry's import
+// closure. The population is census-classified at row identity in
+// test.claim.operation_argv_corpus_witness (operation_argv_closed_unevaluated_executable_operations).
+data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop {
+  identity: "operation_argv_closed_unevaluated_executable_unjudged" as NonEmptyStr,
+
+  subject: "the executable-position wall of shell_materialize_operation_argv over operations whose argv[0] is a closed zero-input expression the materializer does not evaluate (in the corpus, ProgramIdentity catalog calls; the classifier does not check the callee)",
+
+  declared: "2026-10-20",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "gunbc#14174 moved executables from string literals to the ProgramIdentity catalog (cataloged_program); the wall still judges only literals" },
+    population: population_from_list(xs: [
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RunCommand",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ReadFile",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ResolvePath",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ParentDirectory",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SystemdIsActive",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SystemdRestart",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ZoneFailsafe",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorServices",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorValue",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorWarningLow",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SensorCriticalLow",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanMinimumDuty",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanZoneFailsafeDuty",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanSensorFailsafeDuty",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanPositiveHysteresis",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanNegativeHysteresis",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanReadingCount",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanOutputCount",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanReadingAt",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanOutputAt",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanControllerCount",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanControllerNameAt",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanInputCountAt",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanInputAt",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanConfigValidate",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FanConfigVerify",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathIsWritable",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathExists",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.PathIsNonemptyFile",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.DiskUsageKib",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.FileSha256",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.UtcTimestamp",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.MakeDirectoryParents",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.MakeDirectory",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RemoveDirectory",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RemoveFile",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.CopyFilePreservingMetadata",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RenameReplace",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.SynchronizeFilesystems",
+      "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.WaitSeconds",
+      "dag/extdeps/ssh/password_session.dag ssh.PasswordSsh.CopyFile",
+      "dag/extdeps/ssh/password_session.dag ssh.PasswordFileSsh.ExecPortableWordsWithStdin",
+      "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet",
+      "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedPostJson",
+      "dag/extdeps/tools/openssl.dag openssl.Dgst.SignSha256Hex",
+      "dag/extdeps/tools/openssl.dag openssl.Enc.Aes256CtrPassphrase",
+      "dag/gunbc/auth/approval_apns_publish.dag apns.Http2.Send",
+    ]),
+    restoration_trigger: "argv materialization evaluates closed argv elements over the declaring module's closure, in the native v2 materializer, not the seed. Observed at retirement: the population rows materialize or are refused by the wall on the evaluated value, and operation_argv_closed_unevaluated_executable_operations is empty."
+  } }
+}

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.optional_equality_answers_by_representation
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_equality_answers_by_representation: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_equality_answers_by_representation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: `xs.first() == Present { value: X }` answers false when the list's first element is X. Two optionals compared, both meaning Present X, and the interpreter answers unequal. The comparison is T? == T?, so the wall of optional_compared_with_required_value (EqualityOptionalityMismatch, gunbc#13179) admits it, correctly: it has one meaning.",
@@ -19,6 +21,7 @@ data optional_equality_answers_by_representation: RecurringFailureMode = Recurri
     "2026-10-09, PR #13607: the ETHTOOL_GCHANNELS reply decoder compared numbers.first() against Present containing the command string. The live ABI probe returned the correct nine u32s, and all numeric checks passed, but the valid-reply witness failed because this comparison answered false for 60 against Present 60. The decoder follows the existing match discipline; its positive count, wrong-command, malformed and foreign-interface controls remain enrolled. This repairs that consumer, not the seed's known representation divergence.",
 
     "RUNG FOUND AT: below the ladder on the interpretation path. CEILING: 4. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: one authority for `first` from which the interpreter and the emitted realization are both derived, so the interpreter's `first` yields the modeled optional on every route (method form and pipe form). When it lands, both enrolled reds (this one and interpreter_first_returns_the_modeled_optional) pass, their roster rows are deleted, and the claims remain as regression controls (DESIGN 4b(4)). Until then, the interim discipline at a `first` read is to match on the optional.",
+    "2026-10-17, S0 of the nameless-type-leaf program: the same fork on the TYPE axis. `T?` (the payload type carrying CardOptional) and the std.optional coproduct `Optional<P>` are one type, and v1.compiler.infer_types node_type_compatible answered false for the pair, so `let c: T? = if n == 0 { Absent } else { <Optional<T>> }` (std.source_annotation annotation_gap_in) was refused once a bare Absent took its expected `T?`. REPAIR AT THE COMPARISON AUTHORITY, NOT THE JOIN: node_type_compatible relates a CardOptional leaf to Optional<P> exactly when P is identical to the leaf's required form (applied_argument_types_identical, identity not compatibility). S0 repairs T?/Optional<P> compatibility at the shared comparison authority. Mixed application-versus-non-application equality remains unsupported and returns false regardless of attached resolution. No expansion-recovery or positional fallback remains. Supporting that equality requires retained instantiation evidence, deferred until a consumer needs it. NEXT RUNG, A: a retained-instantiation carrier on the generic expansion (generic_declaration_application would keep the arguments, the arm would compare them directly); TRIGGER: a consumer needs application-vs-expansion equality (the #14152 census admitted 0 of 104 Coproduct-vs-Node rows, so none does today). EVIDENCE BY EXECUTION: test.claim.optional_leaf_instance_join_witness is true on the repaired mirror and false against main's, and its refusal twin (payload String against Int?) still refuses. Self-host closure and binary are byte-identical to main under the relation.",
   ],
 
   evidence: [
@@ -27,5 +30,6 @@ data optional_equality_answers_by_representation: RecurringFailureMode = Recurri
     DeclarationRef { module_path: "test.claim.optional_equality_by_representation", decl_name: "a_present_first_equals_its_present_literal", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.optional_equality_by_representation", decl_name: "a_match_on_the_present_first_reads_its_value", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.os_install_actuator_selection", decl_name: "srv3_os_install_actuator_host_selected_because_requirements_and_policy", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.optional_leaf_instance_join_witness", decl_name: "an_optional_leaf_joins_the_optional_instance_at_the_same_payload_and_only_that", field: WholeDeclaration },
   ],
 }

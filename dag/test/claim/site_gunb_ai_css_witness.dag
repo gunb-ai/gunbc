@@ -1,0 +1,91 @@
+module test.claim.site_gunb_ai_css_witness
+
+// §5 — the executed witness for gunbc.site.gunb_ai_css. render_sheet produces the bytes sheet_write
+// writes, and the parity claim compares them to dag/test/fixture/gunb_ai/live_site.css, a committed
+// copy of gunb.ai's served assets/site.css (fetched 2026-10-19). The oracle is outside this repo's
+// model, which is what stops the typed rows from agreeing with themselves.
+//
+// The sheet is complete: the parity claim is byte equality with the served file.
+//
+// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
+//
+// Red controls are run against the compiler and reported in the PR body, not here.
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.list { distinct_by_key }
+import extdeps.languages.css.values { css_hsl_wire, css_number_wire, css_px, css_ch }
+import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css, moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.scale { LengthValue, measure_prose }
+import gunbc.design.gunb_ai_live_scale { live_measure_scale_length, live_gap_md, live_gap_xs, live_measure_title, live_scale_departures }
+import gunbc.site.gunb_ai_tokens { gap_md, gap_xs, gap_sm, site_measure_prose }
+import gunbc.site.gunb_ai_css { render_sheet }
+
+data served_sheet_path: String = "dag/test/fixture/gunb_ai/live_site.css"
+
+fn served_sheet() -> String {
+  let read = Filesystem.Read(path: served_sheet_path)
+  if read.success { read.content } else { "" }
+}
+
+fn rendered_sheet() -> String {
+  render_sheet()
+}
+
+// The parity claim. The fixture is checked non-empty first (a missing file reads "" and a render
+// that is also "" would equal it).
+test fn witness_generated_sheet_equals_the_served_sheet() -> Bool {
+  string_contains(s: served_sheet(), pattern: "/* ╔══ TOKENS ")
+    && rendered_sheet() == served_sheet()
+}
+
+// Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
+// thousandths, so each digit-count branch is exercised by a served value.
+test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
+  css_number_wire(milli: 400) == "0.4"
+    && css_number_wire(milli: 850) == "0.85"
+    && css_number_wire(milli: 56000) == "56"
+    && css_number_wire(milli: 140) == "0.14"
+    && css_number_wire(milli: 80) == "0.08"
+    && css_number_wire(milli: 5) == "0.005"
+    && css_number_wire(milli: 2500) == "2.5"
+    && css_number_wire(milli: -40) == "-0.04"
+}
+
+// Every colour in the served :root block comes out of gunb_ai_hues, and the alpha-bearing ones are
+// spelled hsla (the alpha arm), the rest hsl.
+test fn witness_every_live_colour_token_is_in_the_served_sheet_as_its_wire() -> Bool {
+  all(live_color_tokens, t => string_contains(s: served_sheet(), pattern: join(["--", t.name, ":"], ""))
+    && string_contains(s: served_sheet(), pattern: css_hsl_wire(c: live_token_css(t: t))))
+}
+
+// Review 82669: the Srgb8 swatches are derived from the live hsl parameters. The expected triples are
+// the literals the swatches held before the derivation (an independent referent: they were typed from
+// the palette, not computed), so a wrong hsl->srgb8 conversion is red here.
+test fn witness_swatches_derive_from_live_hsl_parameters() -> Bool {
+  moss.color == Srgb8 { r: 78, g: 166, b: 99 }
+    && moss_deep.color == Srgb8 { r: 59, g: 125, b: 74 }
+    && clay.color == Srgb8 { r: 166, g: 83, b: 78 }
+    && brass_deep.color == Srgb8 { r: 131, g: 114, b: 73 }
+    && near_black.color == Srgb8 { r: 13, g: 13, b: 13 }
+    && sand.color == Srgb8 { r: 206, g: 197, b: 182 }
+    && warm_white.color == Srgb8 { r: 244, g: 241, b: 236 }
+}
+
+// A site token either matches a departure row or derives from its live value; a fractional pixel with
+// no row refuses. Supplied values: gap-md derives (1.25rem = 20px), gap-xs/gap-sm resolve to their
+// departure rows (6.4px and 13.6px are fractional, so derivation would refuse), and every departure key
+// is unique so the roster lookup cannot take a silently-last row.
+test fn witness_live_scale_tokens_derive_or_match_a_departure() -> Bool {
+  gap_md.value == LengthValue { length: css_px(n: 20) }
+    && gap_xs.value == LengthValue { length: css_px(n: 6) }
+    && gap_sm.value == LengthValue { length: css_px(n: 14) }
+    && site_measure_prose.value == measure_prose.value
+    && live_measure_scale_length(m: live_gap_xs) == Absent
+    && live_measure_scale_length(m: live_gap_md) == Present { value: css_px(n: 20) }
+    && live_measure_scale_length(m: live_measure_title) == Present { value: css_ch(n: 16) }
+    && distinct_by_key(live_scale_departures, key: fn(d) { d.live_name }).length() == live_scale_departures.length()
+}

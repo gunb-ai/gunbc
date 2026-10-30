@@ -10,7 +10,7 @@ import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set, 
 import gunbc.auth.heal_publisher_provision {
   SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
   subject_creation, create_if, heal_publisher_impersonation_cell, impersonation_binding_present,
-  DedicatedFederation, heal_publisher_dedicated_federation,
+  DedicatedFederation, heal_publisher_dedicated_federation, FederationPermissionDenied,
   PoolReading, PoolObservedAbsent, PoolObserved, ProvidersReading, ProvidersObserved, ProvidersUnreadable,
   AccountObservedAbsent, AccountObserved,
   FederationClassification, FederationClassified, FederationUnclassified,
@@ -117,6 +117,7 @@ fn declared_pool(f: DedicatedFederation) -> PoolReading {
 fn classified(c: FederationClassification) -> Bool {
   match c {
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } => true
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => false
     FederationUnclassified { reasons: _ } => false
   }
 }
@@ -124,6 +125,7 @@ fn classified(c: FederationClassification) -> Bool {
 fn unclassified_naming(c: FederationClassification, pattern: String) -> Bool {
   match c {
     FederationUnclassified { reasons: rs } => string_contains(s: join(rs, "; "), pattern: pattern)
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => false
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } => false
   }
 }
@@ -132,6 +134,7 @@ fn unclassified_naming(c: FederationClassification, pattern: String) -> Bool {
 test fn witness_nothing_present_classifies_as_create_all() -> Bool {
   match classify_dedicated_federation(f: heal(), pool: PoolObservedAbsent, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
     FederationClassified { create_pool: a, create_provider: b, create_account: c } => a && b && c
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => false
     FederationUnclassified { reasons: _ } => false
   }
 }

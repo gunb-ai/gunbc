@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_slot_family_charged_a_cpu_share_it_is_not_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_slot_family_charged_a_cpu_share_it_is_not_capped_to: RecurringFailureMode = RecurringFailureMode {
   identity: "a_slot_family_charged_a_cpu_share_it_is_not_capped_to" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: gunbc.ci.ci_runner_placement host_cpu_allocation divides a host's runner threads by the committed width, which counts the fabric execution slots (gunbc.runner.runner_slot_allocation fabric_execution_slot_identities: srv1-13, srv3/srv4 slots 6 and 7), while those slots' slices render gunbc.runner.runner_slot_desired gunbc_runner_slot_cpu_quota = SlotCpuQuotaUnbounded. The fold reserves a share for a family that is not held to it, so the host's CPU is not conserved: a busy fabric cell can take the threads the runner slots' quotas were sized against.",

@@ -1,5 +1,6 @@
 module v2.test.claim.tokenize.source_text_ingress
 import std.optional { Absent, Optional, Present }
+import std.host_text { chars }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -46,22 +47,22 @@ data ingress_ascii_structural: v2.std.text.String = Cons { head: 97, tail: Cons 
 
 test fn source_text_ingress_converts_at_scalar_grain() -> Bool {
 
-  let ascii_agrees = is_prefix_of(prefix: chars(s: ingress_ascii_host), xs: ingress_ascii_structural, eq: fn(a, b) { a == b })
-    && length(xs: chars(s: ingress_ascii_host)) == 2
+  let ascii_agrees = is_prefix_of(prefix: chars(text: ingress_ascii_host), xs: ingress_ascii_structural, eq: fn(a, b) { a == b })
+    && length(xs: chars(text: ingress_ascii_host)) == 2
 
-  let non_ascii_scalar = match list_head(xs: chars(s: ingress_non_ascii_host)) {
+  let non_ascii_scalar = match list_head(xs: chars(text: ingress_non_ascii_host)) {
     Present { value: c } => c == 233
     Absent => false
   }
-  let non_ascii_length = length(xs: chars(s: ingress_non_ascii_host)) == 1
+  let non_ascii_length = length(xs: chars(text: ingress_non_ascii_host)) == 1
 
-  let astral_scalar = match list_head(xs: chars(s: ingress_astral_host)) {
+  let astral_scalar = match list_head(xs: chars(text: ingress_astral_host)) {
     Present { value: c } => c == 128512
     Absent => false
   }
-  let astral_length = length(xs: chars(s: ingress_astral_host)) == 1
+  let astral_length = length(xs: chars(text: ingress_astral_host)) == 1
 
-  let empty_is_identity = is_empty(xs: chars(s: ingress_empty_host))
+  let empty_is_identity = is_empty(xs: chars(text: ingress_empty_host))
 
   ascii_agrees && non_ascii_scalar && non_ascii_length && astral_scalar && astral_length && empty_is_identity
 }

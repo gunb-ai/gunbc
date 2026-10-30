@@ -3,6 +3,7 @@ module extdeps.tools.grep
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { NonEmptyStr, Bool, Unit, List, String }
+import std.algebra { list_flat_map }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -44,4 +45,29 @@ service grep.Grep {
 // names a transport refuses to carry.
 fn grep_fixed_string_in_tree_argv(pattern: NonEmptyStr, file_name: NonEmptyStr, root: NonEmptyStr) -> List<String> {
   ["grep", "-r", "-H", "-F", pattern as String, concat("--include=", file_name as String), root as String]
+}
+
+// EVERY NONEMPTY LINE OF THE NAMED FILES UNDER A TREE, as `path:line` rows. `-E .` matches any line
+// holding a character, so a cgroup interface file that holds one value prints exactly one row per file,
+// keyed by the file's real path -- including a systemd-escaped one, which is printed output here and
+// never an argv word. The same walk as grep_fixed_string_in_tree_argv with a pattern that selects the
+// file's content rather than a needle.
+fn grep_nonempty_lines_in_tree_argv(file_names: List<NonEmptyStr>, root: NonEmptyStr) -> List<String> {
+  concat(["grep", "-r", "-H", "-E", "."], concat(map(file_names, n => concat("--include=", n as String)), [root as String]))
+}
+
+// WHICH OF THE NAMED FILES HOLD ANY OF THE FIXED STRINGS. grep(1): `-l` prints the name of each file with a
+// match instead of the lines, `-F` reads every pattern as a fixed string, and each `-e` adds one. Exit 0:
+// some file matched (names printed); 1: none matched; 2: an error, which includes a named file that could
+// not be read, so an unread file is never reported as a non-match. `--` ends the options, so a path
+// cannot be read as one.
+fn grep_files_with_fixed_strings_argv(patterns: List<NonEmptyStr>, paths: List<NonEmptyStr>) -> List<String> {
+  concat(concat(["grep", "-l", "-F"], list_flat_map(patterns, p => ["-e", p as String])), concat(["--"], map(paths, p => p as String)))
+}
+
+// THE LINES, NOT JUST THE FILE NAMES, of every file that holds a fixed string. `-H` forces the file-name
+// prefix even for one operand, `-e` takes the pattern so one beginning with `-` is not an option, and
+// exit 1 (no match) is a normal answer for a caller asking whether a row exists.
+fn grep_fixed_string_lines_in_files_argv(pattern: NonEmptyStr, paths: List<NonEmptyStr>) -> List<String> {
+  concat(["grep", "-H", "-F", "-e", pattern as String, "--"], map(paths, p => p as String))
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling: RecurringFailureMode = RecurringFailureMode {
   identity: "a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a rule is applied at the site that prompted it and not its sibling: an author states or receives a rule while repairing one arm, applies it correctly THERE, and leaves a structurally identical arm beside it unchanged -- with no reason for the difference. The invalid state is a program in which one arm enforces a rule and its sibling does not, where nothing about either arm explains why. The harm is not the unenforced arm alone: THE ENFORCED ARM MAKES THE UNENFORCED ONE LOOK COVERED, so a reader who checks the first stops looking, and the class survives every repair of its own instances.",

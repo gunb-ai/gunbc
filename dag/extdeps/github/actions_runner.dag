@@ -22,7 +22,7 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import extdeps.languages.json.emit { JsonString }
+import extdeps.languages.json.emit { JsonString, JsonValue }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -197,6 +197,29 @@ fn actions_runner_jitconfig_env_name() -> String {
 data actions_runner_listener_relative_path: String = "/bin/Runner.Listener"
 data actions_runner_listener_run_verb: String = "run"
 
+// WHERE THE LISTENER WRITES, which is under ONE root derived from where its binary sits. src/Runner.Common/
+// HostContext.cs (v2.337.0) GetDirectory: Bin = the directory of the running assembly, Root = Directory.
+// GetParent(Bin), Work = Root + the settings WorkFolder (default "_work"), Diag = Root/_diag, Externals =
+// Root/externals; GetConfigFile maps the runner settings to Root/.runner, the credential to Root/.credentials
+// and its RSA parameters to Root/.credentials_rsaparams. The decoded JIT config is written to those same
+// files, so two listeners started from ONE bin directory share every one of them: the second overwrites
+// the first's registration and its jobs' working tree.
+//
+// THE ONLY ISOLATION THE LISTENER OFFERS IS A DISTINCT BIN DIRECTORY, because Root is computed from it and
+// no flag or environment variable moves it. A consumer that runs concurrent listeners gives each its own
+// copy of the layout, rooted at a distinct path.
+data actions_runner_work_folder_name: String = "_work"
+data actions_runner_diag_folder_name: String = "_diag"
+data actions_runner_credentials_file_name: String = ".credentials"
+data actions_runner_credentials_rsaparams_file_name: String = ".credentials_rsaparams"
+
+fn actions_runner_state_paths(root: NonEmptyStr) -> List<String> {
+  map(
+    [actions_runner_registration_file_name, actions_runner_credentials_file_name, actions_runner_credentials_rsaparams_file_name, actions_runner_work_folder_name, actions_runner_diag_folder_name],
+    n => concat(concat(root as String, "/"), n)
+  )
+}
+
 // THE LISTENER'S OWN READINESS LINE. src/Runner.Listener/Runner.cs writes
 // `{DateTime.UtcNow:u}: Listening for Jobs` to its terminal once its session is established. The
 // timestamp prefix varies, so the stable part is this suffix.
@@ -225,10 +248,52 @@ type ActionsRunnerRegistration
   | ActionsRunnerRegistrationEphemeral
 
 type ActionsRunnerRegistrationRead
-  = ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistration }
+  = ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistration, agent_name: ActionsRunnerRegistrationAgentName }
   | ActionsRunnerRegistrationUnreadable { reason: String }
 
+// THE NAME THE LISTENER REGISTERED UNDER, read out of the same file as its lifetime. A fleet listener
+// registers through a JIT mint (gunbc.runner.runner_jit_mint), and every mint suffixes the slot's
+// prefix: srv3-02 becomes srv3-02-1792728034-201414, and the suffix changes again on the next job. So
+// the slot's own name is NEVER the name on the roster, and no prefix of it identifies a CURRENT
+// registration -- an earlier mint shares the prefix. This member is the whole of what the file can say
+// about WHO is registered, which is why it is read here rather than by anyone re-parsing this file.
+//
+// ABSENT IS ITS OWN ANSWER. The runner binary writes this member on both registration paths, so a
+// file that parses as an object and carries no readable AgentName is not a file whose name happens to
+// be unknown -- the file disagrees with the release's own shape, and nothing may be joined on it. It
+// is NOT coerced to the slot's name, to empty, or to a wildcard: the caller refuses by name.
+type ActionsRunnerRegistrationAgentName
+  = AgentNameRead { value: NonEmptyStr }
+  | AgentNameAbsent
+  | AgentNameUnreadable { reason: String }
+
 data actions_runner_registration_ephemeral_member: String = "Ephemeral"
+data actions_runner_registration_agent_name_member: String = "AgentName"
+
+// AgentName is read from the parsed document by its OWN function, so a malformed AgentName can never be
+// laundered by a well-formed Ephemeral: each decoded branch computes agent_name independently and an
+// absent/empty/non-string/duplicated AgentName is its own typed answer.
+//
+// The converse does NOT hold, and saying so here rather than claiming a symmetry the code does not have:
+// actions_runner_registration_decode inspects Ephemeral FIRST, so a document whose Ephemeral is malformed,
+// non-string, duplicated, or whose JSON is not an object at all returns ActionsRunnerRegistrationUnreadable
+// WITHOUT AgentName being read. Ephemeral can therefore hide AgentName; AgentName cannot hide Ephemeral.
+// That is the fail-closed direction -- an unreadable file refuses either way -- but it means "unreadable for
+// both reasons" would overstate what a single call computes.
+fn actions_runner_registration_agent_name_of(doc: JsonValue) -> ActionsRunnerRegistrationAgentName {
+  match json_object_unique_member(v: doc, key: actions_runner_registration_agent_name_member) {
+    JsonMemberFound { value: JsonString { value: name } } =>
+      if name == "" {
+        AgentNameUnreadable { reason: ".runner AgentName is empty" }
+      } else {
+        AgentNameRead { value: name as NonEmptyStr }
+      }
+    JsonMemberFound { value: _ } => AgentNameUnreadable { reason: ".runner AgentName is not a string" }
+    JsonMemberAbsent => AgentNameAbsent
+    JsonMemberDuplicated { count: _ } => AgentNameUnreadable { reason: ".runner AgentName is duplicated" }
+    JsonMemberNotAnObject => AgentNameUnreadable { reason: ".runner AgentName: .runner is not a JSON object" }
+  }
+}
 
 fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationRead {
   match parse_json_document(s: raw) {
@@ -238,14 +303,14 @@ fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationR
       match json_object_unique_member(v: doc, key: actions_runner_registration_ephemeral_member) {
         JsonMemberFound { value: JsonString { value: flag } } =>
           if flag == "True" {
-            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral }
+            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: actions_runner_registration_agent_name_of(doc: doc) }
           } else if flag == "False" {
-            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
+            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: actions_runner_registration_agent_name_of(doc: doc) }
           } else {
             ActionsRunnerRegistrationUnreadable { reason: concat(".runner Ephemeral is outside True/False: ", flag) }
           }
         JsonMemberFound { value: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is not a string" }
-        JsonMemberAbsent => ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
+        JsonMemberAbsent => ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: actions_runner_registration_agent_name_of(doc: doc) }
         JsonMemberDuplicated { count: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is duplicated" }
         JsonMemberNotAnObject => ActionsRunnerRegistrationUnreadable { reason: ".runner is not a JSON object" }
       }
@@ -255,7 +320,7 @@ fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationR
 data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -323,7 +388,7 @@ fn actions_runner_slot_extract_script(
 data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }

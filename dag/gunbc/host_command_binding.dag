@@ -11,7 +11,7 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, ssh_target_wire }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file, typed_remote_file_write_seal,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
   RemoteFileModeOwnerReadWriteWorldRead, RemoteFileAsSessionPrincipal,
@@ -147,6 +147,7 @@ fn host_write_file(host: CommandHost, path: NonEmptyStr, content: String, scope_
         admission: typed_remote_file_write_seal(path: path as String, content: content, allowed_scope: FileTreeScope { root_path: scope_root }),
         mode: RemoteFileModeOwnerReadWriteWorldRead,
         privilege: RemoteFileAsSessionPrincipal,
+        validation: NoValidation,
       ) {
         TypedRemoteFileConverged { converged: _ } => HostFileWritten
         TypedRemoteFileConvergenceRefused { step: s, reason: r } =>

@@ -60,6 +60,13 @@ fn find_first_rejected_url(node: Fragment) -> RejectedUrl? {
   match node {
     FragmentText { content: _ } => Absent
     RawNode { content: _ } => Absent
+    // A comment holds no attribute and is never parsed as markup, so it can carry no reference for
+    // the guard to reject.
+    MarkupComment { body: _ } => Absent
+    // The root is WALKED, not skipped. A Document is how a whole page reaches this guard, so
+    // returning Absent here would leave every page unguarded — and a guard that quietly passes the
+    // one node shape a page is built from is worse than a guard that does not exist, because the
+    // call site looks like it checked. Only the root needs the walk: a doctype carries no attribute.
     Element { tag: _, attributes, children } => {
       let from_attr = fold(attributes,
         init: Absent,

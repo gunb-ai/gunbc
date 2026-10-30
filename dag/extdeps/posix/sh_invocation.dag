@@ -98,15 +98,28 @@ fn posix_sh_program_command(script: String) -> ArgvCommand {
 // literals `sh` and the path, and the script's content is never re-parsed as a word. A caller that
 // holds its script as a verified file belongs here; a caller holding it as a string belongs to the
 // shell -> dag lane's debt, as above.
+// THE WORDS OF "run this script file", WITHOUT the program identity attached. The reason this is split
+// out is elevation: a converge that installs packages has to run its staged script as root, and the
+// elevated wrappers take WORDS, not an ArgvCommand. Handing the words to one of those wrappers after
+// re-spelling "sh" at the call site would put a second spelling of the interpreter in the fleet, and a
+// call site that typed "bash" there would quietly change which shell parses the script — a difference
+// that shows up as a syntax error only on the host that has no bash. ONE NAME ROW below feeds both this
+// and the ArgvCommand form, so they cannot drift.
+fn posix_sh_script_argv(path: NonEmptyStr) -> List<String> {
+  [posix_sh_program_name as String, path as String]
+}
+
+data posix_sh_program_name: NonEmptyStr = "sh"
+
 fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: posix_sh_program(), arguments: [path as String])
+  argv_command(program: posix_sh_program(), arguments: posix_sh_script_argv(path: path))
 }
 
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
+fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: posix_sh_program_name)
 
 // EXPORT ONE VARIABLE FROM A FILE, THEN EXEC A COMMAND (POSIX sh: command substitution, export,
 // exec). The value is read by the shell itself and placed only in the exec'd command's environment;
@@ -203,27 +216,51 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
   }
 }
 
-fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
+// THE ONE EXPORT-THEN-EXEC BODY, over where the value is read from. The source word list is the only
+// difference between a value held in a file and one arriving on stdin; the exit-on-unreadable arm,
+// the export and the exec of the remaining argv are the same statements either way.
+fn posix_sh_export_then_exec_program(name: PosixShellName, read_words: List<Node>, middle: List<Node>) -> Outcome<String> {
   let spelling = name.spelling as String
   bash_emit_stmts(
     statements: concat(concat([
       bash_build_or_else(
         left: bash_build_assign(
           name: spelling,
-          value: bash_build_word_cmdsubst(
-            body: bash_build_command_with_words(
-              words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
-            ),
-          ),
+          value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: read_words)),
         ),
         right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unreadable_exit)),
       ),
-    ], posix_sh_export_remove_statements(disposition: disposition)), [
+    ], middle), [
       bash_build_command_from_lits(lits: ["export", spelling]),
       bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
     ]),
     set_e: false,
   )
+}
+
+fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
+  posix_sh_export_then_exec_program(
+    name: name,
+    read_words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
+    middle: posix_sh_export_remove_statements(disposition: disposition),
+  )
+}
+
+// THE VALUE ARRIVES ON STDIN AND TOUCHES NO FILE. The caller pipes the value in over a stdin-carrying
+// exec (gunbc.host.host_effect_realize run_argv_stdin_over_host_effect_transport), so it is in neither
+// the argv (gunbc.credential_argv_exposure) nor any path on disk; the child holds it only in its
+// environment. Nothing is removed because nothing was written.
+fn posix_sh_export_from_stdin_then_exec_command(name: PosixShellName, command: List<String>) -> PosixShExportExecCommand {
+  match posix_sh_export_then_exec_program(name: name, read_words: [bash_build_word_lit(text: "cat")], middle: []) {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShExportExecReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: concat(["-c", program, "sh"], command),
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
 }
 
 type PosixShExportExecCommand

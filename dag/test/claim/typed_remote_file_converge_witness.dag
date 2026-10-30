@@ -5,6 +5,8 @@ import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualif
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.file_access { FileTreeScope }
 import std.materialization_ladder { string_list_contains }
+import std.measure { second }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
@@ -32,6 +34,16 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_compare_argv,
   classify_typed_remote_file_comparison,
   converge_typed_remote_file,
+  typed_remote_file_pre_compare_steps,
+  RemoteFileValidation,
+  NoValidation,
+  VisudoCheck,
+  DestinationUnchangedUntilRename,
+  RemoteFileLock,
+  NoFileLock,
+  FleetHostLock,
+  typed_remote_file_locked_step_argv,
+  RemoteFileModeOwnerGroupRead,
   TypedRemoteFileConvergence,
   TypedRemoteFileConverged,
   TypedRemoteFileConvergenceRefused,
@@ -92,7 +104,7 @@ test fn fresh_staging_unlinks_before_dd() -> Bool {
     Absent => false
     Present { value: w } => {
       let steps = typed_remote_file_fresh_staging_steps(write: w)
-      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite)
+      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite, validation: NoValidation)
       map(steps, s => s.step) == ["unlink-staging", "stage"]
         && map(steps, s => s.argv) == [
           typed_remote_file_unlink_staging_argv(write: w),
@@ -108,7 +120,7 @@ test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool {
     Absent => false
     Present { value: w } => {
       let argv = typed_remote_file_stage_argv(write: w)
-      argv == ["dd", "status=none", concat("of=", typed_remote_file_staging_path(write: w))]
+      argv == ["dd", "status=none", "conv=fsync", concat("of=", typed_remote_file_staging_path(write: w))]
     }
   }
 }
@@ -331,6 +343,7 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
             admission: TypedRemoteFileWriteAdmitted { write: w },
             mode: RemoteFileModeOwnerReadWrite,
             privilege: RemoteFileAsSessionPrincipal,
+            validation: NoValidation,
           ) {
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))
@@ -342,5 +355,172 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
         Absent => false
       }
     Absent => false
+  }
+}
+
+// ── Validation before install (visudo on the STAGING path) ────────────────────────────────────────
+
+// RED: a visudo failure must refuse BEFORE the rename. converge stops at the first failing step, so the
+// property is the ORDER: `validate` precedes `rename`, and it names the staged file, never the
+// destination. A validator pointed at the destination would judge the OLD bytes and pass.
+test fn visudo_validates_the_staged_file_before_the_rename() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let steps = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerGroupRead, validation: VisudoCheck)
+      let names = map(steps, s => s.step)
+      let validate = filter(steps, s => s.step == "validate")
+      names == ["unlink-staging", "stage", "mode", "validate", "rename"]
+        && map(validate, s => s.argv) == [["/usr/sbin/visudo", "-cf", typed_remote_file_staging_path(write: w)]]
+        && !string_list_contains(xs: fold(validate, init: [], f: (acc, s) => concat(acc, s.argv)), wanted: subject_path as String)
+    }
+  }
+}
+
+// The default is unchanged: no validator step appears for any caller that did not ask for one.
+test fn no_validation_adds_no_step() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      map(typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite, validation: NoValidation), s => s.step)
+        == ["unlink-staging", "stage", "mode", "rename"]
+  }
+}
+
+// RED: a readback that is not the rendered content refuses with the compare step named.
+test fn a_sudoers_readback_mismatch_refuses_at_compare() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      (match classify_typed_remote_file_comparison(write: w, compare_exit_code: 1, compare_stderr: "") {
+        ComparisonDiffers { reason: _ } => true
+        ComparisonIdentical => false
+        ComparisonUnavailable { reason: _ } => false
+      })
+        && (match classify_typed_remote_file_comparison(write: w, compare_exit_code: 2, compare_stderr: "sudo: a password is required") {
+          ComparisonUnavailable { reason: _ } => true
+          ComparisonIdentical => false
+          ComparisonDiffers { reason: _ } => false
+        })
+  }
+}
+
+// ── THE FLEET-LOCKED ROUTE ─────────────────────────────────────────────────────────────────────────
+// A whole-file write of /etc/subuid or /etc/subgid is taken under the fleet host lock, and the only claim
+// worth having is the SHAPE of the command that takes it: flock(1) on the FLEET generation lock, with the
+// step as its trailing command, INSIDE the elevated argv. Each of those is a separate failure if it is
+// wrong -- a lock file of our own invents serialization, a lock outside sudo cannot open a root-owned lock
+// file, and a lock that wraps nothing serializes nothing. So they are pinned here, word by word.
+
+test fn the_locked_route_wraps_the_step_as_flocks_trailing_command() -> Bool {
+  typed_remote_file_locked_step_argv(
+    lock: FleetHostLock {
+      lock_path: fleet_generation_lock as NonEmptyStr,
+      wait: second(count: 120),
+      conflict_exit_code: 75,
+    },
+    privilege: RemoteFileViaNonInteractiveSudo,
+    argv: ["dd", "status=none", "conv=fsync", "of=/etc/subuid.gunbc-staging"],
+  ) == [
+    "/usr/bin/sudo", "-n",
+    "/usr/bin/flock", "--exclusive", "--wait", "120", "--conflict-exit-code", "75",
+    fleet_generation_lock,
+    "dd", "status=none", "conv=fsync", "of=/etc/subuid.gunbc-staging",
+  ]
+}
+
+// THE LOCK IS THE FLEET LOCK, NOT A LOCK OF OURS. A path this witness had to be told about would pass every
+// other assertion here while serializing against nothing, so the expected argv has to name the SAME path the
+// fleet converge apply flocks -- read from that module, not retyped.
+test fn the_locked_route_flocks_the_fleet_generation_lock_path() -> Bool {
+  let wrapped = typed_remote_file_locked_step_argv(
+    lock: FleetHostLock {
+      lock_path: fleet_generation_lock as NonEmptyStr,
+      wait: second(count: 120),
+      conflict_exit_code: 75,
+    },
+    privilege: RemoteFileViaNonInteractiveSudo,
+    argv: ["true"],
+  )
+  string_list_contains(xs: wrapped, wanted: fleet_generation_lock)
+    && string_list_contains(xs: wrapped, wanted: "/usr/bin/flock")
+}
+
+// The lock-less route stays lock-less: the same step, unwrapped. That is what makes the locked route a
+// choice rather than a default nobody can get out of.
+test fn the_unlocked_route_adds_no_flock_at_all() -> Bool {
+  typed_remote_file_locked_step_argv(
+    lock: NoFileLock,
+    privilege: RemoteFileViaNonInteractiveSudo,
+    argv: ["mv", "-f", "/etc/subuid.gunbc-staging", "/etc/subuid"],
+  ) == ["/usr/bin/sudo", "-n", "mv", "-f", "/etc/subuid.gunbc-staging", "/etc/subuid"]
+}
+
+// ── THE RE-READ COMPARE ────────────────────────────────────────────────────────────────────────────
+// THE STEP THAT STANDS BETWEEN A RENDER AND A STALE LOCK HOLDER. It runs after staging and chmod and
+// BEFORE the rename, and it compares the DESTINATION -- not the staged file -- against the bytes the render
+// was made against. Both halves matter: a check that ran after the rename would be confirming its own
+// damage, and a check of the staged file would be comparing our bytes against our bytes.
+
+fn subordinate_validation() -> RemoteFileValidation {
+  DestinationUnchangedUntilRename { expected: "ghrunner:100000:65536" }
+}
+
+test fn the_re_read_compare_runs_before_the_rename() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      // Every step name that appears BEFORE the rename, collected by stopping the accumulator there.
+      let before = fold(
+        typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWriteWorldRead, validation: subordinate_validation()),
+        init: [],
+        f: (acc, st) => if st.step == "rename" { acc } else { append(acc, st.step) })
+      string_list_contains(xs: before, wanted: "re-read-compare")
+        && string_list_contains(xs: before, wanted: "stage")
+    }
+  }
+}
+
+// The compare reads the DESTINATION, not the staging file: a comparison against our own staged bytes is
+// the tautology this witness exists to rule out.
+test fn the_re_read_compare_checks_the_destination_against_the_bytes_it_was_made_against() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      match typed_remote_file_pre_compare_steps(
+        write: w, mode: RemoteFileModeOwnerReadWriteWorldRead, validation: subordinate_validation()).any(
+          st => st.step == "re-read-compare") {
+        false => false
+        true =>
+          match typed_remote_file_pre_compare_steps(
+            write: w, mode: RemoteFileModeOwnerReadWriteWorldRead, validation: subordinate_validation()).first() {
+            Absent => false
+            Present { value: _ } =>
+              // Locate the step by its name and read both halves of what it must carry.
+              fold(
+                typed_remote_file_pre_compare_steps(
+                  write: w, mode: RemoteFileModeOwnerReadWriteWorldRead, validation: subordinate_validation()),
+                init: false,
+                f: (found, st) =>
+                  found || (st.step == "re-read-compare"
+                    && st.stdin_payload == "ghrunner:100000:65536"
+                    && string_list_contains(xs: st.argv, wanted: subject_path as String)
+                    && !string_list_contains(xs: st.argv, wanted: typed_remote_file_staging_path(write: w)))
+              )
+          }
+      }
+  }
+}
+
+// With no validation asked for, no compare step exists: the pre-rename check is something a caller opts
+// INTO, and the visudo route is unaffected by its presence.
+test fn an_unvalidated_write_has_no_re_read_compare_step() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      !fold(
+        typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation),
+        init: false,
+        f: (found, st) => found || st.step == "re-read-compare")
   }
 }

@@ -28,6 +28,20 @@ type DesignRuling {
   provenance: String
 }
 
+data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
+  decided: "2026-10-28",
+  section: "3",
+  provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
+}
+
+data one_serving_context_cap: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_serving_context_cap"),
+  decided: "2026-10-30",
+  section: "3",
+  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -47,6 +61,27 @@ data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   decided: "2026-09-19",
   section: "3b",
   provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
+}
+
+data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
+  decided: "2026-10-22",
+  section: "3b",
+  provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
+}
+
+data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
+  decided: "2026-10-25",
+  section: "3b",
+  provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
+}
+
+data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
+  decided: "2026-10-26",
+  section: "3b",
+  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
@@ -168,6 +203,20 @@ data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
 }
 
+data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "where_refinements_retire_for_checked_constructors"),
+  decided: "2026-10-02",
+  section: "4",
+  provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
+}
+
+data literal_only_refinement_judgment_is_interim: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim"),
+  decided: "2026-10-23",
+  section: "4",
+  provenance: "Operator decision, 2026-10-23, relayed by keen-heron-809 (Manager 3, N7 infer wall) to Seat 17: a one-obligation-per-literal judgment is admitted as an INTERIM exception to where_refinements_retire_for_checked_constructors. A literal at a call argument or record field whose declared type is a where-refinement of the literal's own type is admitted by v2.compiler.infer and owed to v2.compiler.refinement_discharge, the one judge; non-literals still refuse. It is a declared scaffold, gunbc.rung_drop literal_only_where_refinement_judgment, and the PR states the divergence. Retirement trigger: the NonEmptyStr structural cut lands, sufficient for no where-refinement clause to reach infer; the demand producer and post-pass are then deleted with the clause.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -273,6 +322,44 @@ data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
 }
 
+// THE INSTRUMENT FLEET RUNS IN PARALLEL; THE EDGE THE OLD GROUP IMPOSED IS NOT RESTORED AND IS NOT
+// MISSED. Recorded here because the change that took the global instrument queue apart is authorized
+// by nothing else. The operator rejected (2026-10-21, on #14613) the premise that removing the global
+// group loses a guarantee: isolation between jobs is the SLOT's job (gunbc.runner.runner_slot_desired
+// + gunbc.host.memory_envelope), and a concurrency group never isolated anything -- it only serialized
+// dispatches. So no rung drop stands here for a "lost upper edge", because there was no edge worth
+// having. Where isolation genuinely fails today -- the live unit shape drifting from the declared slot
+// shape, above all MemorySwapMax -- is a fleet-convergence class of its own and is filed as
+// gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot, not as
+// a queue compensation.
+data instrument_measurement_queues_run_in_parallel: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_measurement_queues_run_in_parallel"),
+  decided: "2026-10-20",
+  section: "Building & checks",
+  provenance: "Operator, to bright-swift-151 via warm-wolf-570: approved PARALLEL measurement queues. The single 'instrument-dispatch-queued' concurrency group put every instrument dispatch behind one run; key the group per dispatch so unrelated measurements run in parallel while one label on one ref still cannot run twice. Carried with the approval, stated at what the head holds (reworded 2026-10-21 on the #14613 review, which found this clause claiming more than the head does): no new job; each run refuses before the prelude when its granted cgroup bound is under its demand row -- the guard step reads the least numeric memory.high/memory.max on its own cgroup path plus MemTotal (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_guard_statements), so the refusal is on memory.high/memory.max, not on an OOM kill after the fact; the swap bound is OBSERVED ONLY -- the same step reads and prints memory.swap.max, and a refusal on swap is an outstanding rung, not a held guarantee. OPERATOR ISOLATION RULING, 2026-10-21 on #14613, recorded in this provenance because DesignRuling carries no other field (schema: reference, decided, section, provenance): the premise that removing the global group LOSES a guarantee is REJECTED. Work isolation is the authority -- 'a job shouldn't have to worry about what is running on the machine' -- and a concurrency group never provided isolation, it only serialized dispatches. What keeps one instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue: gunbc.runner.runner_slot_desired declares the per-slot shape (memory_max 23622320128, memory_high 22548578304, MemorySwapMax 0, TasksMax 16384) and gunbc.host.memory_envelope gives it teeth -- memory.high throttles early, memory.max refuses late, MemorySwapMax 0 means an overrun is refused rather than silently swapped. So this ruling restores NO upper edge on concurrent instrument occupancy and no such edge is missed. WHAT DOES NOT HOLD TODAY is a different class and is filed as its own ledger row rather than as a queue compensation: the live fleet does not match the declared slot shape (an operator reading of srv3-20 and srv3-01 gave memory.high 26843545600, memory.max 27917287424 and MemorySwapMax 34359738368 -- the first two match the competing floor-pinned values in gunbc.floor.floor_demand rather than the slot row, and the swap is 32 GiB where the slot declares zero), so the swap half of the isolation story is not enforced on those hosts. See gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.",
+}
+
+data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
+  decided: "2026-10-23",
+  section: "3",
+  provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
+}
+
+// THE DRAIN BOUND IS DERIVED, NOT RATIFIED AS A NUMBER (2026-10-23). The row at
+// gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
+// (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
+// the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
+// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
+// was exceeded' while honest work ran.
+data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
+  decided: "2026-10-23",
+  section: "Self-hosting and the fleet",
+  provenance: "Operator ruling 2026-10-23, relayed by sleek-owl-397: wait_bound in gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy is DERIVED from the declared job timeouts of the fleet-targeted generated workflows (90 min today, plus the poll interval); it replaces the 2700s literal. The population rule was ruled by clever-crane-830 the same day: a job is in the fold iff its runner selects the fleet pool AND its workflow's modeled trigger set holds an autonomous trigger (push, pull_request, schedule, merge_group, workflow_call, workflow_run) — the work GitHub can park on a slot with no operator at the keyboard. Dispatch-only fleet jobs (instrument-dispatch, fleet-converge's build) are excluded by the same predicate, with the residual declared: if one is running when a drain starts it can exceed the bound and the bracket refuses typed (caps withheld), fail-closed, the dispatching operator owning the sequencing. The fold lives at gunbc.runner.runner_fleet_job_timeout_census; the control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if a population member's declared timeout exceeds the bound.",
+}
+
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
@@ -280,9 +367,215 @@ data flex_operator_template_v2: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.",
 }
 
+data flex_first_recipe_is_flash_next: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
+  decided: "2026-10-18",
+  section: "3d",
+  provenance: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.",
+}
+
+data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
+  decided: "2026-10-18",
+  section: "3b",
+  provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
+}
+
+data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker"),
+  decided: "2026-10-21",
+  section: "4b",
+  provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
+}
+
+data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
+}
+
+data pattern_atom_naming_a_visible_value_is_never_a_binder: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pattern_atom_naming_a_visible_value_is_never_a_binder"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): a bare atom in pattern position is a binder unless it names something the arm can already see, and then it never silently shadows it. A pattern atom naming a frame value refuses with one cause covering both readings (rename to bind, or compare with an equality guard), replacing binder_hides_visible_value for pattern atoms at either pattern position; a pattern atom naming a module-level value refuses only for a `data` constant, since a module function stays admitted exactly as root shadowing always allowed. It is decided at v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, with the module-level half in resolve_pattern_atom_names_module_value.",
+}
+
+data unread_catch_all_binder_refuses: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "unread_catch_all_binder_refuses"),
+  decided: "2026-10-25",
+  section: "5",
+  provenance: "Ruling by tidy-ant-251 (Manager 1), 2026-10-25, on the bare-atom match-arm binding work (gunbc#15125): with a bare arm atom now binding its arm, an arm that never reads its own catch-all binder is a mistake the author should hear about, not a binding that silently exists — it refuses at resolve, and the remedy the refusal names is to write `_`. Decided at v2.compiler.resolve resolve_catch_all_binder_read_gate; the widening-over-a-nullary companion refusal lives at v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary.",
+}
+
+data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cross_tree_admission_is_namespace_membership"),
+  decided: "2026-10-25",
+  section: "3",
+  provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
+}
+
+// WHY A HUMAN ONCE PASTED ssh-keygen FOR THIS KEY AND NO LONGER DOES. The boot medium reader key already had
+// an approval-free mint (gunbc.host.boot_medium_reader_key_mint); mtcollins1's SSH host key had Step 1 of a
+// runbook and a laptop terminal (gunbc.host.anchored_host_transport anchored_host_key_mint_intervention,
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md). The asymmetry had no reason behind it, and the ruling
+// removed the human step rather than the workflow: minting a fleet keypair is ordinary account creation, so
+// it belongs to the converged path like any other account, and a step that only a named person can perform is
+// an availability defect as well as an authority one -- the key cannot be minted while that person is
+// unavailable, and the fleet cannot boot.
+//
+// WHAT THE RULING DOES NOT LICENSE, and this is half of it. Removing the human does not remove the human's
+// JUDGMENT: Q1 still holds (the private half exists only in a tmpfs directory the run created and then
+// removes, and then in Secret Manager via stdin -- never argv, log or disk), the mint dispatch itself stays an
+// OPERATOR GO, and the mint is delivered as ONE policy with two rows rather than as a second implementation,
+// per 6b's root generalization -- the reason a copy was refused is that the copy is where "the private half
+// never leaves tmpfs" would quietly lose its findmnt read.
+data the_mint_of_a_fleet_ssh_keypair_is_account_creation: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_mint_of_a_fleet_ssh_keypair_is_account_creation"),
+  decided: "2026-10-28",
+  section: "Self-hosting and the fleet",
+  provenance: "Operator ruling 2026-10-28, relayed by merry-fox-82, on why mtcollins1's SSH host key was minted by a human shell while the boot medium reader key had an approval-free workflow mint: \"i don't see why a human needs to do this - this seems just like normal account creation\". Applied in gunbc.host.fleet_keypair_mint (one keypair-mint policy, parameterized by the secret row) with both consumers as rows of it: gunbc.host.boot_medium_reader_key_mint and gunbc.host.mtcollins1_ssh_host_key_mint. The runbook's human Step 1 and the modeled scaffold anchored_host_key_mint_shell_bash / anchored_host_key_mint_intervention are retired by it -- the scaffold's own anchored_host_key_mint_shell_bash_emit_dissolution_trigger named exactly this dispatch. The minting identity's secretVersionAdder arrives as a row of gunbc.auth.fleet_secret_accessor_roster converged by gunbc.auth.gcp_iam_converge, never as a hand-edited policy. Conditions the ruling does not relax: Q1 (the private half exists only in a create-only 0700 tmpfs directory the run created, then in Secret Manager via request stdin -- never argv, log or durable path), the fleet-converge mint dispatch remains an operator go, and the mint is delivered as one policy with two rows rather than a second implementation (6b root generalization).",
+}
+
+data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
+  decided: "2026-10-25",
+  section: "Building & checks",
+  provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
+}
+
+data a16_rear_clearance_and_sides_are_operator_declared_bounds: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_and_sides_are_operator_declared_bounds"),
+  decided: "2026-10-26",
+  section: "4d",
+  provenance: "Operator, 2026-10-26, to session snappy-boar-382, on the A16 duct: 'i would put 70mm for now - its like 73mm but i want to be conservative' and, asked about the space beside the card row, 'yes, you can assume more than enough space on the sides, 70mm is fine'. Recorded verbatim, and read as what they are: two AUTHORED limits, not two measurements. The rear reading is 'like 73', offered as rough, and the operator deliberately wrote 70 under it -- so 70 is the design's allowance and never a report of the chassis; the side word has no reading behind it at all, only 'more than enough'. product.printed_chassis.chassis_clearances carries that standing as DeclaredConservativeByOperator, forging neither CaliperByOperator nor an observation receipt for it, and product.printed_chassis.card_cooling_route finish admits a route whose need is under such a bound, as RouteAdmittedOnOperatorBound. Admitting on the bound is this ruling, and so is printing on it -- the operator answered 'can we print' with these same two figures, the exposure they accepted is one PLA plate, and the fit print is the instrument that catches a wrong allowance, so chassis_clearances gap_may_be_printed_on is true for a declared standing. What printing on it does NOT buy is epistemic standing: gap_is_measured stays false, remeasure_before_print still lists the reading as owed, and a spoken estimate -- a guess about a fact that nobody has ruled on -- still refuses the print. A declared bound is a decision with an owner, not an observation, and 4d is satisfied by keeping that difference in the types rather than by refusing to act on the decision. 4d cuts both ways here: promoting either figure to a measurement would assert as deduced what is only the operator's word, and declining to build on a bound the operator explicitly gave would forbid more of the world than the cited variables support.",
+}
+
+data a16_power_keepout_is_crossed_and_the_latch_may_be_cut: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_power_keepout_is_crossed_and_the_latch_may_be_cut"),
+  decided: "2026-10-26",
+  section: "4d",
+  provenance: "Operator, 2026-10-26, to session snappy-boar-382, answering the A16 keep-out crossing this repository reported (product.printed_chassis.gpu_duct plane_on_end_housing_clears_keepout, which says the flat-on-end housing cannot be placed clear of the 8-pin power keep-out on this card: the housing's near end would sit 94.4 mm along the end face while the face is clear only to 71.84 mm -- 22.56 mm of housing lying over the band, and 26.28 mm once the collector's printed shoulder is counted, which is what product.printed_chassis.gpu_duct plane_on_end_keepout_crossing derives): 'could we try both? keep in mind that power cable has a latch that holds it usually - its probably not necessary, but it extends into the port, so it may conflict with a plugged in a16 / I can just cut it probably for now, but i can measure whatever you want'. Read as what it is: a ruling that the flat-on-end home is admitted DESPITE the crossing, on the operator's own account of the obstacle -- the latch is the thing in the way, it is 'probably not necessary', and they will cut it if needed. The fit print is the instrument that settles whether the crossing is real, and the operator offered the measurement rather than being refused the build. This is not a finding that the housing clears the keep-out -- it does not, on this card, and that row stays false -- and not a claim about where the latch sits on the card or how much the cable body needs beyond the latch (the latch itself was read later, at 3 mm, and is carried as an operator-reported estimate in product.printed_chassis.chassis_clearances power_connector_latch). It is permission, with the operator's name on it, to spend a crossing that would otherwise forbid the print.",
+}
+
+data a16_beside_the_card_is_the_chosen_home: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_beside_the_card_is_the_chosen_home"),
+  decided: "2026-10-26",
+  section: "4d",
+  provenance: "Operator, 2026-10-26, to session snappy-boar-382, asked which home to build first: 'i would do beside the card please'. That makes the beside-the-row home the primary design and leaves the flat-on-plug-end home admitted as it already was under the 2026-10-26 declared bounds. A choice of which design to build is an operator decision and this row is where it is recorded; whether the chosen home FITS is not decided here -- it is derived in product.printed_chassis.card_cooling_route from the gap rows, and as of the 2026-10-27 readings it refuses (the housing needs 98.4 mm across the free lane and the widest reading beside the row is '60mm until it touches the heatsink'). A preference for a home is not an admission of it, and this row does not make one fit.",
+}
+
+data a16_chassis_readings_of_2026_10_27_are_operator_reported: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_chassis_readings_of_2026_10_27_are_operator_reported"),
+  decided: "2026-10-27",
+  section: "4d",
+  provenance: "Operator, 2026-10-27, to session snappy-boar-382, asked to measure the chassis, giving six figures this repository asked for: 'the plug latch is 3mm', 'between the two cards is 46mm', 'the outer side of one card there are only a few mm til one edge of the chassis', 'The outer edge of the other card has 60mm until it touches the heatsink', 'There is 70mm between each card to the front of the chassis fans.', 'from floor to t he lid is 120mm', plus the fact that this chassis holds TWO cards. Ruled here, because the standing of a number is a decision and not a fact: these are OPERATOR-REPORTED and rough, carried verbatim as EstimatedByOperator in product.printed_chassis.chassis_clearances -- neither CaliperByOperator nor an observation receipt, and NOT DeclaredConservativeByOperator. That last distinction is the ruling's substance. The 2026-10-26 figures were AUTHORED allowances ('i would put 70mm for now - its like 73mm but i want to be conservative'), which is why they admit and print; these are reports of what someone saw, which is why they admit nothing, and why chassis_clearances gap_room_um turns a spoken estimate into room only after taking that estimate's own width off its face value. Two consequences are ruled rather than left to each caller: a gap given as 'a few mm' is carried at ZERO with a 3 mm width, because the only reading of it that does not invent room spends none (outer_side_at_the_wall), and the 120 mm is floor-to-lid at an unnamed place rather than deck-to-lid behind the plug ends, which is the one place the over-the-row home needs it -- so it constrains that home without settling it. 4d is satisfied on both sides: no reading here is promoted to an instrument's standing, and no home is refused on the strength of a width when the failure is tens of millimetres wide.",
+}
+
+// The span behind the plug end has now been spoken by the operator twice, three days apart, ten millimetres
+// apart. The newer figure is the one geometry is checked against, and this ruling says so -- because the
+// design had been admitted on the older one, and silently retiring the number a design was admitted on is
+// the exact failure §5 calls a hard reject.
+//
+// What the ruling does NOT do is widen the newer figure's width to cover the disagreement. 60 mm read by eye
+// is carried at 59 mm, one millimetre of width, the same width as the operator's other uninstrumented
+// readings at this scale. The 10 mm between the two readings is evidence about which to trust, and it is
+// recorded here as a disagreement; it is not a licence to turn a 60 into a 50, which would have thrown away
+// room the chassis actually has in order to express a doubt that taking the tightest reading already
+// expresses. The 2026-10-26 declaration is NOT retired: it remains what authorizes the print, and
+// RouteAdmittedOnOperatorBound now carries the two rows separately (on_bound / governed_by) precisely so a
+// report cannot blur "allowed to print" into "measured to fit".
+data a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'. The earlier allowance it corrects was 'i would put 70mm for now - its like 73mm but i want to be conservative' (2026-10-26, recorded in a16_rear_clearance_and_sides_are_operator_declared_bounds). WHAT IT DECIDES: The rear-of-plug-end span is carried as BOTH readings -- card_end_rear_fan_clearance (declared 70, an authored allowance) and card_end_to_chassis_fan_2026_10_29 (read 60, at 1 mm of width) -- and whatever is tightest after each one's own width governs the geometry, which today is 59 mm. The declared allowance keeps its separate standing as what authorizes the print. Neither reading is promoted to a measurement. WHAT IT DOES NOT SETTLE: Which of the two figures is closer to the truth. Both are uninstrumented; the 10 mm between them is the size of that open question, and a caliper across the span settles it. It also does not settle which face of the 120 mm fan the operator judged from (rear_fan_face_ambiguity), which is worth up to a few more millimetres.",
+}
+
+// The reading the duct was still owed. Until 2026-10-29 the relief window over the 8-pin band could only be
+// published as a BOUNDARY ("the home refuses past 25.5 mm of protrusion") because nothing had read what the
+// plugged connector actually sticks out. The operator has now read it, and the check became a check: the
+// reading goes in, an admit/refuse comes out (card_cooling_route plugged_head_admits).
+//
+// The second half of the same sentence is carried as a keep-out rather than a clearance. 'the cable bends
+// almost as soon as it leaves the head' tells us WHERE the volume is -- behind the end, around the cable's
+// exit -- and not how deep it is. A cable that turns immediately and meets plastic does not fail at
+// assembly; it fails when the cable is dressed, or it strains the connector quietly for months. So the head
+// is recorded as read and the bend is recorded as owed (cable_bend_keepout), and the fit print is told to
+// look at the bend specifically.
+data a16_plugged_head_is_read_and_its_cable_bend_is_owed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_plugged_head_is_read_and_its_cable_bend_is_owed"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'. This answers the reading a16_latch_is_accommodated_not_cut left open. WHAT IT DECIDES: The plugged 8-pin head is carried at 6 mm with 1 mm of width on it (power_connector_head_protrusion), worst case 7 mm, and it fits the relief window with 18.5 mm to spare against the 25.5 mm the governing rear room allows. The relief cut stays; no standoff is built, because the same arithmetic still puts a standoff at zero millimetres. WHAT IT DOES NOT SETTLE: The cable's turn. 'almost as soon as' locates the keep-out and does not size it, so cable_bend_keepout stays NeedsMeasurement and the fit print -- dressed cable, plugged in, in the chassis -- is the instrument.",
+}
+
+// The cable's turn, read at the machine 2026-10-29, and what the geometry could answer without it.
+//
+// The operator read the DIRECTION and not the depth: the cable bends sideways, in the plane of the card end,
+// not back toward the fan. That re-points the keep-out at the duct's side rather than its back, and the
+// question becomes one the model can answer for itself -- is there printed material anywhere along that path?
+// The answer is per-surface, because what is in the path changes with depth, and the model says which surface
+// (card_cooling_route cable_bend_path). Across the connector's own band the relief cut removes the shoulder
+// floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at
+// 7 mm worst case, so there is NO PRINTED WALL for the turn to hit: that half of the keep-out is discharged by
+// geometry, without a reading, which is what §5 asks for when geometry can answer.
+//
+// What the same reading exposed is not a wall in plastic at all. The plugged head's 7 mm reaches past the
+// blower's bottom face, which starts 4 mm behind the end face across that same strip: 3 mm of head inside
+// 3 mm of fan. Deepening the relief cannot clear it -- cutting plastic deeper into the pocket does not move
+// the fan, it only moves plastic away from where the fan already is. So it is reported, with the instrument
+// that settles it named (the fit print, plugged in), and the standoff that WOULD clear it is derived as
+// 3 mm and confirmed to fit the rear room, but not built: a print that comes back 1 mm clear and a print that
+// comes back crushed 3 mm into the housing call for different next parts, and printing the current geometry is
+// what says which.
+data a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead"),
+  decided: "2026-10-29",
+  section: "4d",
+  provenance: "Operator, 2026-10-29, to session snappy-boar-382 via wise-bat-528: 'the cable bends SIDEWAYS as it leaves the head, in the plane of the card end, not back toward the fan. The depth behind the end hasn't been measured.' Direction taken as operator-reported, not calipered. WHAT IT DECIDES: the cable's turn needs no clearance from printed material -- the relief cut opens the shoulder floor across the connector band from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head at 7 mm worst case -- so cable_bend_keepout is discharged against plastic by geometry, and the depth reading is no longer what gates the print. WHAT IT DOES NOT SETTLE: the head against the blower. The head reaches 7 mm behind the end face and the blower's housing begins 4 mm behind it across the same strip, so 3 mm of head sits inside 3 mm of fan; whether they actually meet is a fit-print observation, plugged in. Also unresolved: a cable that dips as it runs inboard would be shallower than 7 mm and hits the relief's inboard edge instead -- cable_bend_path names that surface, and the operator's own account ('in the plane of the card end') is what argues it stays level.",
+}
+
+data a16_end_cap_scroll_is_the_operators_reference_design: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_end_cap_scroll_is_the_operators_reference_design"),
+  decided: "2026-10-27",
+  section: "4d",
+  provenance: "Operator, 2026-10-27, to session snappy-boar-382, proposing the shape the A16 cooling should take, and naming it as a reference rather than a part to buy (an end-cap scroll: a small centrifugal blower at the card's plug end with its wheel axis perpendicular to the card face, taking air in sideways, and a short curved scroll turning the flow straight into the heatsink's end; wheel diameter about the card height, staying roughly within card height, a little behind the end and a little to one side). Ruled here because it settles which SHAPE the design is allowed to pursue, which is the operator's call, and because the shape came from a picture the operator chose, not from a catalogue: there is no vendor, no model and no datasheet behind it, so it is carried in product.printed_chassis.card_cooling_route as a hypothetical planform named for what it is (hypothetical_blower_shape) -- a shape the corpus may reason about and may not buy, and any real blower eventually chosen arrives with its own citation obligations in the extdeps.fans pattern. The reference is a preference between shapes and nothing more: it does not admit the home, and the scroll's envelope, its largest wheel that fits the measured gaps, and the airflow it must deliver are derived in card_cooling_route, not assumed here.",
+}
+
+data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
+  decided: "2026-10-28",
+  section: "Building & checks",
+  provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
+}
+
+// The follow-on ruling to a16_power_keepout_is_crossed_and_the_latch_may_be_cut. The first ruling admitted
+// the crossing on the operator's offer to cut the latch; this one withdraws the need to cut anything, and
+// says what the part must do instead. Recorded as RELAYED, because the wording below is wise-bat-528's relay
+// of the operator's answer and not a sentence the operator typed -- the operator's own words on this object
+// remain the two quoted in chassis_clearances power_connector_latch ("the plug latch is 3mm") and in the
+// crossing ruling above ("I can just cut it probably for now, but i can measure whatever you want").
+data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_latch_is_accommodated_not_cut"),
+  decided: "2026-10-28",
+  section: "4d",
+  provenance: "Operator ruling relayed by wise-bat-528 on 2026-10-28, answering this repository's report that the shoulder's floor lies over the 8-pin band: 'Don't require cutting the latch -- make the flat-on-end duct ACCOMMODATE the plugged 8-pin + its 3 mm latch (e.g. a notch/relief in the shroud around the connector band, or a standoff that lifts the blower clear of the plugged plug within the 70 mm rear bound -- your call, derived not guessed)'. What was built, and how it was derived rather than chosen: the stack behind the end spends two wall plates (2 * 2 = 4 mm) before the housing pocket, and the latch must be assumed to reach 4 mm (3 mm read by eye on 2026-10-27 plus this repository's 1 mm width on a by-eye figure of a small feature), so the floor and the latch meet flush at zero clearance -- a relief cut is needed on these readings even though the latch is small. product.printed_chassis.gpu_duct plane_on_end_connector_relief therefore removes the floor across the connector's own keep-out footprint, so the plugged header and its latch sit in a cleared window and nothing has to be cut. The alternative the ruling offered -- a standoff -- was computed and NOT built, because at the readings on file the lift needed is zero millimetres; the same arithmetic gives the home its limit, which is plane_on_end_max_admissible_protrusion at 36.5 mm (floor 4 mm + the 32.5 mm the declared 70 mm bound leaves after the 37.5 mm stack), beyond which relief cannot help and the home refuses. What this ruling does NOT establish: how far the plugged cable body itself protrudes before it bends, which has never been read (the operator offered exactly that measurement: 'i can measure whatever you want'). It is the one reading that could still refuse this home, and the fit print plugged is the instrument that catches it.",
+}
+
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    the_mint_of_a_fleet_ssh_keypair_is_account_creation,
+    macos_operator_terminal_runs_without_a_memory_bound,
+    cross_tree_admission_is_namespace_membership,
+    native_claim_route_admits_the_docker_cli,
+    emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
+    runner_listener_admission_is_mask_roster_and_no_worker,
+    runner_host_sudoers_is_installed,
+    flex_first_recipe_is_flash_next,
     conformance_needs_attention,
     consumption_interrogated_separately,
     epistemic_humility_is_symmetric,
@@ -290,6 +583,9 @@ fn design_rulings() -> List<DesignRuling> {
     root_generalization_closes_breadth,
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
+    one_approval_route_for_every_privileged_action,
+    the_initial_convergence_is_the_only_approval,
+    srv1_root_mutation_approval_is_filed_by_the_job,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
@@ -303,6 +599,8 @@ fn design_rulings() -> List<DesignRuling> {
     explicit_present_is_the_authoring_policy,
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
+    where_refinements_retire_for_checked_constructors,
+    literal_only_refinement_judgment_is_interim,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
@@ -318,6 +616,22 @@ fn design_rulings() -> List<DesignRuling> {
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
+    instrument_measurement_queues_run_in_parallel,
+    approval_enrolment_is_google_sign_in,
+    drain_wait_bound_is_derived_from_declared_job_timeouts,
+    a16_rear_clearance_and_sides_are_operator_declared_bounds,
+    a16_power_keepout_is_crossed_and_the_latch_may_be_cut,
+    a16_latch_is_accommodated_not_cut,
+    a16_beside_the_card_is_the_chosen_home,
+    a16_chassis_readings_of_2026_10_27_are_operator_reported,
+    a16_end_cap_scroll_is_the_operators_reference_design,
+    a16_rear_clearance_was_re_read_tighter_and_the_tighter_governs,
+    a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead,
+    a16_plugged_head_is_read_and_its_cable_bend_is_owed,
+    pattern_atom_naming_a_visible_value_is_never_a_binder,
+    unread_catch_all_binder_refuses,
+    bmc_secure_goes_live_per_controller_family,
+    one_serving_context_cap,
   ]
 }
 

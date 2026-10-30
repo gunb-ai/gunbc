@@ -33,8 +33,7 @@ import std.optional { Absent, optional_absent, optional_present, Present }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode, is_empty_conj_root }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Atom, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.text { String }
 import v2.std.verification {
   BoolWitnessClaim,
@@ -485,7 +484,7 @@ fn vacuity_stmt_seq_is_single_statement(stmt_seq: Node) -> Bool {
 }
 
 fn vacuity_transform_operator_symbol_optional(transform: Node) -> Symbol? {
-  match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: transform), index: 0) {
     Absent => optional_absent()
     Present { value: op_node } =>
       match node_atom_identity_optional(node: op_node) {
@@ -511,10 +510,10 @@ fn vacuity_operand_provenance_from_node(node: Node) -> TestClaimOperandProvenanc
 
 fn vacuity_bool_witness_body_evidence(transform: Node) -> VacuityEvidence {
   if vacuity_transform_is_equality(transform: transform) {
-    match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
+    match list_at_optional(xs: positional_child_target_nodes(node: transform), index: 1) {
       Absent => Unknown
       Present { value: lhs } =>
-        match list_at_optional(xs: node_positional_child_targets(node: transform), index: 2) {
+        match list_at_optional(xs: positional_child_target_nodes(node: transform), index: 2) {
           Absent => Unknown
           Present { value: rhs } =>
             classify_vacuity_same_eval_record(

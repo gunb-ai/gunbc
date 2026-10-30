@@ -1,13 +1,14 @@
 module gunbc.fabric.fabric_allocation_store_substrate
 
 import std.types { String, Bool, NonEmptyStr }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store_path, fabric_allocation_namespace_path, fabric_allocation_namespace_slots, fabric_allocation_store_slots }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fabric.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.posix.path_ownership { posix_owner_spec_equal }
 import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence }
 import extdeps.access.posix { FileMode, file_mode_octal }
-import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import gunbc.managed_directory { declared_directory_mode }
 
 // The store root is durable control-plane substrate, not an incidental directory created by a
 // reservation. The CAS realization explicitly refuses a missing root and never removes one.
@@ -39,15 +40,15 @@ type AllocationStoreSubstrateSpec {
 
 fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
   AllocationStoreSubstrateSpec {
-    path: fabric_control_plane_store_root(),
-    namespace_path: "/var/lib/gunbc/fabric" as NonEmptyStr,
-    presence_ancestor: "/var/lib/gunbc" as NonEmptyStr,
-    presence_parent_entry: "fabric" as NonEmptyStr,
-    presence_target_entry: "allocation" as NonEmptyStr,
+    path: fabric_allocation_store_path(tree: host_state_tree()),
+    namespace_path: fabric_allocation_namespace_path(tree: host_state_tree()),
+    presence_ancestor: host_state_tree_path(tree: host_state_tree()),
+    presence_parent_entry: fabric_allocation_namespace_slots.member,
+    presence_target_entry: fabric_allocation_store_slots.member,
     owner: CellSubstrateRootOwned,
-    mode: declared_directory_mode(m: DirectoryOwnerOnly),
+    mode: declared_directory_mode(m: fabric_allocation_store_slots.mode),
     namespace_owner: CellSubstrateRootOwned,
-    namespace_mode: declared_directory_mode(m: DirectoryOwnerOnly),
+    namespace_mode: declared_directory_mode(m: fabric_allocation_namespace_slots.mode),
     writer_standing: AllocationStoreRootWriterOnly {
       live_caller: "gunbc.instruments.fabric_control_plane_live_probe under EUID 0" as NonEmptyStr,
       rederive_trigger: "a non-root production reservation caller is modeled" as NonEmptyStr,

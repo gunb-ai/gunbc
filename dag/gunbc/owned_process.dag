@@ -7,10 +7,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, proc_pid_stat_start_time }
+import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time }
 import gunbc.machine_intake.sol_hold
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // A BACKGROUND PROCESS THIS RUN STARTED, OWNED BY (pid, start time). The launch publishes
 // "<pid> <starttime>" (proc(5) field 22 at spawn, written to a temporary name and renamed) beside the
@@ -108,7 +106,9 @@ fn owned_process_standing_of(record_read_ok: Bool, record: String, stat_read_ok:
           match proc_pid_stat_start_time(content: stat) {
             StartTimeObserved { ticks_since_boot: t } =>
               if to_string(t) == s { OwnedRunning { pid: p, start_time: s } } else { OwnedForeign { pid: p, observed_start: to_string(t) } }
-            _ => OwnedUnparseable { pid: p, detail: "the stat has no parseable start time" }
+            StartTimeCommUnterminated => OwnedUnparseable { pid: p, detail: "the stat's comm field has no closing parenthesis" }
+            StartTimeFieldAbsent { fields_after_comm: n } => OwnedUnparseable { pid: p, detail: concat("the stat has only ", concat(to_string(n), " fields after comm, too few to hold a start time")) }
+            StartTimeUnparseable { field: f } => OwnedUnparseable { pid: p, detail: concat("the stat's start time field is not an integer: ", f) }
           }
         }
     }
@@ -174,6 +174,3 @@ fn owned_release_text(r: OwnedRelease) -> String {
   }
 }
 
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "owned_process_standing_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-]

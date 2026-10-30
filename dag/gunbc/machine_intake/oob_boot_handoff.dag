@@ -17,6 +17,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_verb,
 }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection,
   ipmi_boot_device_label,
@@ -29,14 +30,20 @@ import extdeps.bmc.ipmi_boot_selection {
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
+  bmc_observation_ipmi_cipher_suite,
 }
 import extdeps.bmc.capability {
   BmcFirmwareReleaseCapabilityRow,
   BmcFirmwareReleaseIdentity,
   CapabilityBootSourceOverride,
   CapabilityPowerControl,
-  bmc_firmware_release_identity_eq,
   release_row_has_capability,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityKnown,
+  MegaRacReleaseCapabilityUncatalogued,
+  MegaRacReleaseCapabilityAmbiguous,
+  megarac_release_capability_row_for,
 }
 
 // THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
@@ -67,11 +74,12 @@ import extdeps.bmc.capability {
 // serving IPMI, so a route-shaped admission would have to enumerate absent Redfish locators, and a
 // capability-shaped one simply reads what was measured.
 type OobBootHandoffAdmission
-  = OobHandoffAdmitted { route: BmcAccessRoute }
+  = OobHandoffAdmitted { route: BmcAccessRoute, capability_row: BmcFirmwareReleaseCapabilityRow }
   | OobHandoffRouteUnobserved
   | OobHandoffBootSourceOverrideUnavailable
   | OobHandoffPowerControlUnavailable
-  | OobHandoffFirmwareMismatch { observed: BmcFirmwareReleaseIdentity, capability: BmcFirmwareReleaseIdentity }
+  | OobHandoffRowUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+  | OobHandoffRowAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
 
 // The first boot-control route the observation carries, as an Option. The list is folded rather than
 // pattern-matched because the surface grammar admits no list patterns — measured, not assumed: a
@@ -95,13 +103,14 @@ fn first_observed_boot_control_route(observation: BmcAccessObservation) -> BmcAc
 // probed this controller yet and the repair is an intake attempt, not a catalog edit. Collapsing
 // them would be the state-space conflation DESIGN's failure-mode list names — one symbol standing
 // for conditions whose remedies point at different people.
-fn oob_boot_handoff_admission(
+// The fold over an ALREADY-RESOLVED release capability row. Split out from the public admission so the
+// discriminating probe can drive the same fold with a deliberately empty row; it takes the row the
+// catalog holds for the observed build, so there is no separate per-unit row to drift from.
+fn oob_boot_handoff_admission_for_row(
   observation: BmcAccessObservation,
   capability_row: BmcFirmwareReleaseCapabilityRow,
 ) -> OobBootHandoffAdmission {
-  if bmc_firmware_release_identity_eq(a: observation.identity.firmware, b: capability_row.firmware) == false {
-    OobHandoffFirmwareMismatch { observed: observation.identity.firmware, capability: capability_row.firmware }
-  } else if release_row_has_capability(row: capability_row, cap: CapabilityBootSourceOverride) == false {
+  if release_row_has_capability(row: capability_row, cap: CapabilityBootSourceOverride) == false {
     OobHandoffBootSourceOverrideUnavailable
   } else {
     if release_row_has_capability(row: capability_row, cap: CapabilityPowerControl) == false {
@@ -109,21 +118,72 @@ fn oob_boot_handoff_admission(
     } else {
       match first_observed_boot_control_route(observation: observation) {
         Absent => OobHandoffRouteUnobserved
-        Present { value: route } => OobHandoffAdmitted { route: route }
+        // THE PAIRING, AT THE MINT: an admitted handoff carries the row its capability questions were
+        // answered from. A pairing claim reaches the release handoff admission CONSUMES by identity,
+        // and restoring an observation-firmware lookup at this layer makes that claim fail by giving the
+        // admitted handoff a row that is not the one the boot was admitted on.
+        Present { value: route } => OobHandoffAdmitted { route: route, capability_row: capability_row }
       }
     }
   }
 }
 
+// THE OBSERVATION-ANSWERING ENTRY IS DELETED. It resolved the row from observation.identity.firmware,
+// which is the PROBED receipt, and every live consumer reached it with a route observation -- so the
+// handoff answered "can this controller drive a boot?" from whatever release was current when the
+// controller was first probed. After the 0.32 -> 0.45.3 reflash it kept consulting 0.32 while the
+// boot itself had been admitted on 0.45.3 (the side-chat blocker). What a restored lookup goes red
+// against is the EXECUTED-ROUTE pair w_the_executed_boot_route_consumes_the_current_release_identity
+// and w_the_identity_the_executed_route_reported_came_from_writing_the_controller: they run the
+// production boot under the frame and read the identity OUT of the result the handoff returned, so a
+// defect that resolves the row from the observation's probed firmware INSIDE this fn changes the
+// identity the route hands out and takes them down. A claim-supplied admission cannot see that defect,
+// which is exactly why the fold is reached only through the executed route. The one fold is
+// oob_boot_handoff_admission_for_row: the caller hands the row the boot decision was made from. A caller
+// that genuinely wants the catalog by probed version -- the coverage probe below -- asks the catalog
+// ITSELF (megarac_release_capability_row_for) and says so in its name; it is a coverage diagnostic, not
+// a live capability decision.
+
 // WHETHER AN ADMISSION ADMITS, as its own fn so the handoff's guard is one named question rather
 // than a match inlined into an effect sequence.
+// THE ONLY ROUTE TO A REPORTED-ISSUE OUTCOME, and the fold decides whether it exists. A control is
+// reportable as issued only against the release the ADMISSION consumed, so the identity is read out of
+// the admit arm and cannot be supplied by anyone. The refusal arms answer with the refusal they were
+// handed rather than inventing an identity: a caller that skipped the admission check gets the honest
+// answer, which is that nothing was admitted. This is where a stale release becomes visible -- the
+// outcome says out loud which row the executed route consulted.
+fn boot_control_issuance(
+  admission: OobBootHandoffAdmission,
+  device: NonEmptyStr,
+  action: OobPowerAction,
+) -> OobBootHandoffOutcome {
+  match admission {
+    OobHandoffAdmitted { route: _, capability_row: row } =>
+      BootControlIssued {
+        selected: device,
+        power: observed_power_transition(action: action),
+        admitted: row.firmware,
+      }
+    OobHandoffRouteUnobserved => BootHandoffNotAdmitted { admission: OobHandoffRouteUnobserved }
+    OobHandoffBootSourceOverrideUnavailable =>
+      BootHandoffNotAdmitted { admission: OobHandoffBootSourceOverrideUnavailable }
+    OobHandoffPowerControlUnavailable =>
+      BootHandoffNotAdmitted { admission: OobHandoffPowerControlUnavailable }
+    OobHandoffRowUncatalogued { firmware: f } =>
+      BootHandoffNotAdmitted { admission: OobHandoffRowUncatalogued { firmware: f } }
+    OobHandoffRowAmbiguous { firmware: f, count: c } =>
+      BootHandoffNotAdmitted { admission: OobHandoffRowAmbiguous { firmware: f, count: c } }
+  }
+}
+
 fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
   match admission {
-    OobHandoffAdmitted { route: _ } => true
+    OobHandoffAdmitted { route: _, capability_row: _ } => true
     OobHandoffRouteUnobserved => false
     OobHandoffBootSourceOverrideUnavailable => false
     OobHandoffPowerControlUnavailable => false
-    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+    OobHandoffRowUncatalogued { firmware: _ } => false
+    OobHandoffRowAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -141,7 +201,7 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
 // state to select from), PowerCommandRefused had its request rejected, and PowerCommandAcceptedNoTransition
 // had its request ACCEPTED while the chassis never showed the transition within the bound.
 type OobBootHandoffOutcome
-  = BootControlIssued { selected: NonEmptyStr, power: ObservedPowerTransition }
+  = BootControlIssued { selected: NonEmptyStr, power: ObservedPowerTransition, admitted: BmcFirmwareReleaseIdentity }
   | BootSelectionRefused
   | BootSelectionNotApplied { requested: NonEmptyStr, readback: String }
   | BootSelectionUnverifiable { requested: NonEmptyStr, readback: String }
@@ -361,13 +421,14 @@ fn oob_power_readback_allowance() -> Second {
     + (second_count(s: oob_ipmi_read_ceiling()) as Int))
 }
 
-fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation {
+fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ChassisPowerObservation {
   status = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   return chassis_observation(success: status.success, stdout: status.stdout)
 }
@@ -378,9 +439,10 @@ fn oob_power_readback_poll(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
-  let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
+  let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   return match power_readback_step(progress: progress, sample: sample) {
     PowerTransitionObserved => PowerReadbackObserved
     PowerTransitionPending { progress: next } =>
@@ -393,6 +455,7 @@ fn oob_power_readback_poll(
           password_file: password_file,
           progress: next,
           samples_remaining: samples_remaining - 1,
+          cipher_suite: cipher_suite,
         )
       }
   }
@@ -404,6 +467,7 @@ fn oob_power_readback_continue(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
   let waited = sleep_delay_seconds_second_carrier_projection(duration: oob_power_readback_interval)
@@ -413,6 +477,7 @@ fn oob_power_readback_continue(
     password_file: password_file,
     progress: progress,
     samples_remaining: samples_remaining,
+    cipher_suite: cipher_suite,
   )
 }
 
@@ -421,12 +486,14 @@ fn oob_power_action_after_confirmed_selection(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   device: NonEmptyStr,
+  admission: OobBootHandoffAdmission,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
   ]
 {
-  let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
+  let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   return match oob_power_action_selection(observed: before) {
     PowerActionUnselectable { observed_state: o } => PowerStateReadFailed { selected: device, observed_state: o }
     PowerActionSelected { action: action } =>
@@ -436,6 +503,8 @@ fn oob_power_action_after_confirmed_selection(
         password_file: password_file,
         device: device,
         action: action,
+        admission: admission,
+        cipher_suite: cipher_suite,
       )
   }
 }
@@ -446,6 +515,8 @@ fn oob_power_actuate_and_read_back(
   password_file: NonEmptyStr,
   device: NonEmptyStr,
   action: OobPowerAction,
+  admission: OobBootHandoffAdmission,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
@@ -456,6 +527,9 @@ fn oob_power_actuate_and_read_back(
     username: username,
     password_file: password_file,
     action: oob_power_action_verb(action: action),
+    deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if control.success == false {
     return PowerCommandRefused { selected: device, action: action }
@@ -466,8 +540,10 @@ fn oob_power_actuate_and_read_back(
     password_file: password_file,
     progress: power_readback_start(action: action),
     samples_remaining: oob_power_readback_samples,
+    cipher_suite: cipher_suite,
   ) {
-    PowerReadbackObserved => BootControlIssued { selected: device, power: observed_power_transition(action: action) }
+    // THE ISSUE IS MINTED THROUGH THE FOLD'S OWN ADMISSION, never by spelling an outcome.
+    PowerReadbackObserved => boot_control_issuance(admission: admission, device: device, action: action)
     PowerReadbackExhausted { progress: pr, last_observed: o } =>
       PowerCommandAcceptedNoTransition { selected: device, action: action, progress: pr, last_observed: o }
   }
@@ -486,21 +562,33 @@ fn oob_power_actuate_and_read_back(
 // is rotated DURING converge, so the value behind this path changes mid-program while the path does not.
 fn oob_boot_handoff(
   observation: BmcAccessObservation,
-  capability_row: BmcFirmwareReleaseCapabilityRow,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   selection: IpmiBootSelection,
+  // THE ROW THE BOOT ADMISSION WAS DECIDED ON, carried from the admitted subject. The observation
+  // keeps its own facts -- endpoint, route, receipt binding -- and answers NO capability question
+  // here: its identity.firmware records what was PROBED at intake, which after a reflash is the
+  // wrong release. Feeding it to the catalog at this layer is the side-chat defect (boot admitted
+  // on 0.45.3, handoff consulting the historical 0.32 row). The caller passes the row it was handed
+  // by admit_boot_subject / admit_reset_subject; it cannot re-resolve one without deliberately
+  // discarding the subject's own.
+  capability_row: BmcFirmwareReleaseCapabilityRow,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
   ]
 {
-  let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
+  let admission = oob_boot_handoff_admission_for_row(observation: observation, capability_row: capability_row)
   if oob_handoff_is_admitted(admission: admission) == false {
     return BootHandoffNotAdmitted { admission: admission }
   }
+  // THE ADMISSION TRAVELS WITH THE ROUTE to the step that reports an issued control, so the outcome
+  // names the release the FOLD consumed. A claim can then ask the executed route which release it read
+  // instead of trusting the value the claim handed in; the fold stays the one decision authority and
+  // nothing downstream re-derives one.
   let bmc_host = observation.endpoint.host
+  let cipher_suite = bmc_observation_ipmi_cipher_suite(observation: observation)
   let device = ipmi_boot_device_label(device: selection.device)
 
   set = diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
@@ -509,6 +597,7 @@ fn oob_boot_handoff(
     password_file: password_file,
     device: device,
     options: ipmi_boot_selection_options_token(selection: selection),
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if set.success == false {
     return BootSelectionRefused
@@ -521,6 +610,7 @@ fn oob_boot_handoff(
     parameter: "5",
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if readback.success == false {
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
@@ -537,6 +627,8 @@ fn oob_boot_handoff(
         username: username,
         password_file: password_file,
         device: device,
+        admission: admission,
+        cipher_suite: cipher_suite,
       )
   }
 }

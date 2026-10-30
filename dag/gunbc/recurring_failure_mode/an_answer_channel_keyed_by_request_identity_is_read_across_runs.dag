@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.an_answer_channel_keyed_by_request_identity_is_read_across_runs
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, AtCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data an_answer_channel_keyed_by_request_identity_is_read_across_runs: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_answer_channel_keyed_by_request_identity_is_read_across_runs" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "the decode refuses an answer whose echoed request body differs; the invalid read has no accepted path, though the form of an answer stays writable" as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: a durable, root-owned answer channel keyed only by (node, attempt key) is read by a later request for the same key, so the previous request's outcome is returned as this one's. answers/<entry> outlives the request that produced it.",
+    "RECEIPT, srv1 lab 2026-10-21 (review of #14619): the wet launcher cells use fixed keys, so a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher (answer arrives AND refused AND marker absent) could pass on the previous run's Refused without the new request being processed. Production retries of one attempt key have the same exposure.",
+    "DISTINGUISHING FACTS: the answer file's mtime precedes the request's; two runs of one cell read one answer.",
+    "HARM: a launch outcome (Started or Refused) attributed to a request that was never answered; a RED that cannot fail.",
+    "RUNG FOUND AT: silent wrongness. CURRENT RUNG: structurally guaranteed at the decode: attempt_system_unit_decode_answer returns Missing unless the answer echoes the exact request body, and the body carries a per-instance nonce (the belt passes the slot generation). RED as fixture source: an answer echoing a different body reads Missing. RESIDUAL: an answer written before any body was read (claim failure, unreadable body) echoes nothing and is never matched, so such a request reads as Pending until recovery settles it; declared, not minted.",
+    "CEILING: structurally guaranteed. No further trigger beyond the residual's retirement (a claim-failure answer that carries the entry identity).",
+  ],
+  evidence: [],
+}

@@ -5,7 +5,6 @@ use self::CheckedInt::*;
 use self::CheckedIntOperands::*;
 use self::CheckedNat::*;
 use self::IntegerArithmeticOperation::*;
-use self::PrefixedLineNat::*;
 pub use crate::std_nat::Nat;
 pub use crate::std_optional::Optional;
 use crate::v1_rt;
@@ -45,6 +44,39 @@ pub enum CheckedIntOperands {
 pub struct IntegerOverflow {
     pub operation: IntegerArithmeticOperation,
     pub operands: Rc<CheckedIntOperands>,
+}
+
+pub fn integer_overflow_text(cause: Rc<IntegerOverflow>) -> String {
+    {
+        let operation = match cause.operation.clone() {
+            IntegerArithmeticOperation::IntegerAdd => "addition".to_string(),
+            IntegerArithmeticOperation::IntegerSubtract => "subtraction".to_string(),
+            IntegerArithmeticOperation::IntegerMultiply => "multiplication".to_string(),
+            IntegerArithmeticOperation::IntegerNegate => "negation".to_string(),
+        };
+        match (*cause.operands.clone()).clone() {
+            CheckedIntOperands::UnaryOperand { value: v, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(operation.clone(), " of ".to_string()),
+                    (v.clone()).to_string(),
+                ),
+                " overflows Int".to_string(),
+            ),
+            CheckedIntOperands::BinaryOperands { lhs: l, rhs: r, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(operation.clone(), " of ".to_string()),
+                            (l.clone()).to_string(),
+                        ),
+                        " and ".to_string(),
+                    ),
+                    (r.clone()).to_string(),
+                ),
+                " overflows Int".to_string(),
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -284,52 +316,6 @@ pub fn checked_int_to_nat(n: i64) -> Option<Nat> {
             CheckedNat::CheckedNatOverflow { cause: _, .. } => std::option::Option::None,
             CheckedNat::CheckedNatReady { value: v, .. } => Some(v.clone()),
         }
-    }
-}
-
-pub fn nat_from_last_space_token(line: String) -> Option<Nat> {
-    {
-        let last = Rc::new(
-            line.clone()
-                .split(&" ".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold("".to_string(), |_acc: String, p: String| p.clone());
-        match v1_rt::parse_int(last.clone()) {
-            std::option::Option::None => std::option::Option::None,
-            Some(n) => checked_int_to_nat(n.clone()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum PrefixedLineNat {
-    PrefixedLineMiss,
-    PrefixedLineNatUnreadable,
-    PrefixedLineNat { value: i64 },
-}
-impl PrefixedLineNat {
-    pub fn value(&self) -> i64 {
-        match self {
-            PrefixedLineNat::PrefixedLineMiss => panic!("no value on unit variant"),
-            PrefixedLineNat::PrefixedLineNatUnreadable => panic!("no value on unit variant"),
-            PrefixedLineNat::PrefixedLineNat { value: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-pub fn prefixed_line_last_space_nat(line: String, prefix: String) -> Rc<PrefixedLineNat> {
-    if v1_rt::starts_with(line.clone(), prefix.clone()) {
-        match nat_from_last_space_token(line.clone()) {
-            std::option::Option::None => Rc::new(PrefixedLineNat::PrefixedLineNatUnreadable),
-            Some(n) => Rc::new(PrefixedLineNat::PrefixedLineNat { value: n.clone() }),
-        }
-    } else {
-        Rc::new(PrefixedLineNat::PrefixedLineMiss)
     }
 }
 

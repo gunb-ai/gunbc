@@ -1,0 +1,115 @@
+module v2.cli.parse_verdict_invocation
+
+import std.types { String, List }
+import std.algebra { list_map }
+
+// THE ONE DECLARATION OF HOW THE WHOLE-POPULATION WALKS ARE INVOKED.
+//
+// WHY A LEAF MODULE, EXACTLY LIKE v2.cli.population_verb_names: the verb spellings once lived in
+// v2.cli.compile_cli, and every other consumer had to choose between importing that whole closure or
+// minting a second copy. These spellings had the same problem in a worse form. `--compiler`,
+// `--reuse-from`, `--write-identity` and `--receipts` were spelled in v2.cli.compile_cli (where they are
+// PARSED), re-spelled by hand in gunbc.parse_verdict_restore and gunbc.parse_verdict_publish (where the
+// commands are EMITTED), and re-spelled a THIRD time by gunbc.witness.compiler_gate_contract_stamp,
+// whose content hash CERTIFIES the invocation. Three copies is a silent divergence waiting to happen:
+// rename an option in the parser and the emitted command and the certifying hash would go on agreeing
+// with each other and both be wrong, and the guard would pass the stale subject -- the exact failure
+// this module exists to close, reproduced inside the mitigation.
+//
+// WHAT IS DECLARED AND WHAT IS NOT. The declaration is the SHAPE of each invocation: the verb, the
+// options, and their order. The VALUES of those options (working directory, identity blob path, receipts
+// path, source roots) stay with the modules that own them. Hashing a path literal into a contract about
+// option names would widen the preimage into data that moves for unrelated reasons, and the point of the
+// stamp is that a main change touching no invoked contract does not move it.
+
+data cli_option_compiler: String = "--compiler"
+
+data cli_option_reuse_from: String = "--reuse-from"
+
+data cli_option_write_identity: String = "--write-identity"
+
+data cli_option_receipts: String = "--receipts"
+
+data cli_option_source_root: String = "--source-root"
+
+// ONE POSITION IN A WALK INVOCATION: an option from THIS module bound to a value from its owner. Built
+// by the producers, rendered by this module, so the option spelling has exactly one source and the
+// rendering has exactly one implementation.
+type ParseVerdictInvocationArg {
+  option: String
+  value: String
+}
+
+// NO OPTION LIST IS DECLARED HERE ANY MORE, AND THAT IS THE POINT.
+//
+// These two lists used to be spelled here while the PRODUCERS (gunbc.parse_verdict_restore,
+// gunbc.parse_verdict_publish) built their own argument lists for the command. The command was rendered
+// from the producers' lists and the stamp hashed THESE, so the two were two facts kept in agreement by
+// attention -- and the attention went elsewhere: deleting cli_option_reuse_from from the real producer
+// changed the emitted command and left the stamp exactly where it was, which is the whole purpose of the
+// stamp defeated by the module that carries it. A list describing an invocation, written somewhere other
+// than where the invocation is built, is only as trustworthy as whoever typed it.
+//
+// The producers' argument lists are now the single population: the command renders from them, and the
+// stamp reads them (see compiler_gate_invocation_argv_rows in
+// gunbc.witness.compiler_gate_contract_stamp). The option TOKENS below stay, because they are the
+// spellings both sides need; what is gone is any list that claims which options a walk takes.
+//
+// The order the command passes options in is still contract, because it comes from the order the
+// producer lists its arguments in -- one list, one order, read by both consumers.
+
+// THE RENDERING, once: " --opt value" per argument, in order. Both the emitted command and the contract
+// material go through this, which is what makes them two renderings of one fact rather than two facts
+// kept in agreement by attention.
+fn parse_verdict_invocation_args_text(args: List<ParseVerdictInvocationArg>) -> String {
+  join(list_map(xs: args, f: fn(a) { join([" ", a.option, " ", a.value], "") }), "")
+}
+
+// A WHOLE WALK INVOCATION: bin, verb, the declared arguments in order, then whatever tail the caller
+// owns. For both walks today the tail is the repeated --source-root, whose VALUES come from the source
+// authority and are deliberately outside the declaration.
+// THE COMMAND, RENDERED FROM THE ONE POPULATION. There is no `tail` parameter: the parameter used to be
+// filled by a hand-rendered " --source-root <root>" string built outside the argument list, which put an
+// option every walk receives outside the shape the stamp certifies. A renderer with a tail slot invites a
+// caller to put contract in it; the argument list is now the whole of what is passed, so the stamp and the
+// command read the same list and there is nowhere to hang an unstamped option.
+fn parse_verdict_invocation_command(
+  bin: String,
+  verb: String,
+  args: List<ParseVerdictInvocationArg>
+) -> String {
+  join([bin, " ", verb, parse_verdict_invocation_args_text(args: args)], "")
+}
+
+// THE OPTION SEQUENCE A PRODUCER ACTUALLY PASSED, in the order it passed them. Read by the stamp, so the
+// contract identity of a walk is the sequence the walk really receives rather than a description of it.
+fn parse_verdict_invocation_arg_options(args: List<ParseVerdictInvocationArg>) -> List<String> {
+  list_map(xs: args, f: fn(a) { a.option })
+}
+
+// THE REPEATED SOURCE-ROOT TAIL, Spelled ONCE. The token used to be typed inside source_root_argv() in
+// gunbc.parse_verdict_publish, as the literal " --source-root " -- outside every declared argument list,
+// so no stamped shape contained it. The walk cannot run without it (a missing root is the loud form of
+// this failure class), so an option the invocation always passes was absent from the contract the stamp
+// certifies. Producers now build these AS ARGUMENTS and render them through parse_verdict_invocation_args_text,
+// so the token has one home and the stamp sees the option.
+//
+// THE VALUES ARE ARGUMENTS TOO, and deliberately do NOT enter the contract identity:
+// parse_verdict_invocation_contract_row keeps only verbs and option tokens, so a new source root being
+// enrolled moves the emitted command without moving the stamp. Roots are inputs the caller owns; the
+// SHAPE of what is passed is the contract.
+fn parse_verdict_invocation_source_root_args(roots: List<String>) -> List<ParseVerdictInvocationArg> {
+  list_map(
+    xs: roots,
+    f: fn(root) { ParseVerdictInvocationArg { option: cli_option_source_root, value: root } }
+  )
+}
+
+// THE INVOCATION'S CONTRACT IDENTITY: verb plus option sequence, as one canonical row. This is what the
+// stamp hashes -- never the rendered values, and never any workflow text.
+fn parse_verdict_invocation_contract_row(
+  verb: String,
+  args: List<ParseVerdictInvocationArg>
+) -> String {
+  join([verb, " ", join(parse_verdict_invocation_arg_options(args: args), " ")], "")
+}

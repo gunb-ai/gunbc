@@ -1,10 +1,10 @@
 module v2.std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup }
+import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup, collection_concat_shape }
 
 import std.types { Map, List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import std.optional { Optional, optional_absent, optional_present }
 
@@ -54,9 +54,9 @@ fn kind_node(kind: Kind) -> Node {
 // node is grounded because this module is its declared authority (v2.compiler.infer
 // algebra_ref_is_grounded), exactly as a structural type is grounded by its formation.
 fn kind_denoted_by_node(n: Node) -> Optional<Kind> {
-  if n == kind_node(kind: TypeDenotationKind) {
+  if node_equal_ignoring_provenance(a: n, b: kind_node(kind: TypeDenotationKind)) {
     optional_present(value: TypeDenotationKind)
-  } else if n == kind_node(kind: TypeFactKind) {
+  } else if node_equal_ignoring_provenance(a: n, b: kind_node(kind: TypeFactKind)) {
     optional_present(value: TypeFactKind)
   } else {
     optional_absent()
@@ -111,7 +111,7 @@ fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
     NamedChildFound { target: subject } =>
       filter(
         xs: roster_member_nodes(root: record),
-        predicate: fn(member) { !(member == record) && !(member == subject) }
+        predicate: fn(member) { !node_same_occurrence(a: member, b: record) && !node_same_occurrence(a: member, b: subject) }
       )
     NamedChildMissing => []
     NamedChildAmbiguous => []

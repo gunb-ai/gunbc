@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.round_trip_claim_passes_on_emitted_text_rere
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data round_trip_claim_passes_on_emitted_text_reread_as_another_construct: RecurringFailureMode = RecurringFailureMode {
   identity: "round_trip_claim_passes_on_emitted_text_reread_as_another_construct" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a round-trip claim passes because malformed emitted text is re-read as a DIFFERENT valid construct** (INVALID STATE: an emit -> text -> ingest claim whose assertion is satisfied by a tree the emitter did not write.) The emitted text is wrong, the reader ACCEPTS it as something else, and the claim asks only a property both trees have: that the text parses, that a count is at least one, that no refusal fired. HARM: the claim is green, its assertion is true, and it establishes nothing about the round trip (DESIGN 3: the designed fixture reaching the same verdict through a different mechanism). Every later claim built on the same renderer inherits the pass.",

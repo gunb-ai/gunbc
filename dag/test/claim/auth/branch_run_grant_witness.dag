@@ -1,5 +1,6 @@
 module test.claim.auth.branch_run_grant_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
@@ -19,7 +20,7 @@ import gunbc.auth.branch_dispatch_federation {
   mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_boot_credential_source,
   boot_credential_effect, boot_credential_source_from_selection, boot_credential_source_from_pattern,
   ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceSelected, BootCredentialSourceRefused,
-  BootCredentialStanding, run_scoped_federation_named,
+  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, run_scoped_account_id,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -27,9 +28,10 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
 import gunbc.auth.branch_run_grant {
-  BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
-  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
+  BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
+  plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
+import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -59,7 +61,7 @@ fn a_run(id: Int, attempt: Int, path: String, event: String, done: Bool) -> Work
 
 fn facts(attempt: Int, created_at: Timestamp) -> BranchRunFacts {
   BranchRunFacts {
-    run_id: 7, run_attempt: attempt, mode: "hetzner_cloud_server_read", branch: "work/cax-onboard",
+    run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: attempt, mode: "hetzner_cloud_server_read", branch: "work/cax-onboard",
     head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, dispatched_by: "operator", created_at: created_at,
   }
 }
@@ -108,23 +110,23 @@ test fn the_converge_provisions_the_account_without_touching_its_policy() -> Boo
 
 // THE CELL NAMES ONE RUN ATTEMPT AND EXPIRES; attempt 2 of the same run is a different principal.
 test fn the_cell_names_one_attempt_and_expires() -> Bool {
-  let c = branch_run_impersonation_cell(run_id: 37879231670, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
-  c.member == branch_run_principal_set(run_id: 37879231670, run_attempt: 1)
+  let c = branch_run_impersonation_cell(run_id: GitHubWorkflowRunId { value: 37879231670 }, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
+  c.member == branch_run_principal_set(run_id: GitHubWorkflowRunId { value: 37879231670 }, run_attempt: 1)
     && c.member.ends_with("/workloadIdentityPools/github-fleet-converge-dispatch/attribute.run/37879231670-1")
-    && c.member != branch_run_principal_set(run_id: 37879231670, run_attempt: 2)
+    && c.member != branch_run_principal_set(run_id: GitHubWorkflowRunId { value: 37879231670 }, run_attempt: 2)
     && match c.condition { Present { value: k } => k.expression == "request.time < timestamp('2026-10-09T05:00:00Z')" && k.title == "gunbc-branch-run-37879231670-1"  Absent => false }
 }
 
 // ONLY A LIVE DISPATCH OF fleet-converge, AT THE ATTEMPT ASKED ABOUT, IS ADMITTED; its facts are GitHub's.
 test fn only_a_live_fleet_converge_dispatch_at_the_asked_attempt_is_admitted() -> Bool {
-  match judge_branch_run(run_id: 7, run_attempt: 1, run: a_run(id: 7, attempt: 1, path: fleet_converge_path, event: "workflow_dispatch", done: false)) {
+  match judge_branch_run(run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 1, run: a_run(id: 7, attempt: 1, path: fleet_converge_path, event: "workflow_dispatch", done: false)) {
     BranchRunAdmitted { facts: r } => r.branch == "work/cax-onboard" && r.dispatched_by == "operator" && r.mode == "hetzner_cloud_server_read" && r.run_attempt == 1
     BranchRunRefused { reason: _ } => false
   }
 }
 
 fn refused(run_attempt: Int, r: WorkflowRun) -> Bool {
-  match judge_branch_run(run_id: 7, run_attempt: run_attempt, run: r) {
+  match judge_branch_run(run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: run_attempt, run: r) {
     BranchRunRefused { reason: _ } => true
     BranchRunAdmitted { facts: _ } => false
   }
@@ -143,7 +145,7 @@ test fn anything_but_the_live_asked_attempt_is_refused() -> Bool {
 // grant for attempt 2 is not held: it plans its own add, which needs its own approval.
 test fn a_rerun_attempt_needs_its_own_grant() -> Bool {
   let f = hetzner_cloud_control_federation()
-  let first = branch_run_impersonation_cell(run_id: 7, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
+  let first = branch_run_impersonation_cell(run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
   match plan_branch_run_grant(f: f, run: facts(attempt: 2, created_at: "2026-10-09T04:10:00Z"), expires_at: "2026-10-09T05:10:00Z", reading: PolicyObserved { policy: policy(cells: [first], etag: "e1") }) {
     BranchRunGrantPlanned { grant: g } => g.cell.member != first.member && g.pruned.length() == 0
     _ => false
@@ -154,8 +156,8 @@ test fn a_rerun_attempt_needs_its_own_grant() -> Bool {
 // the apply writes exactly that against the approved etag.
 test fn the_grant_prunes_lapsed_cells_and_preserves_the_rest() -> Bool {
   let f = hetzner_cloud_control_federation()
-  let lapsed = branch_run_impersonation_cell(run_id: 5, run_attempt: 1, expires_at: "2026-10-09T03:00:00Z")
-  let live = branch_run_impersonation_cell(run_id: 6, run_attempt: 1, expires_at: "2026-10-09T04:30:00Z")
+  let lapsed = branch_run_impersonation_cell(run_id: GitHubWorkflowRunId { value: 5 }, run_attempt: 1, expires_at: "2026-10-09T03:00:00Z")
+  let live = branch_run_impersonation_cell(run_id: GitHubWorkflowRunId { value: 6 }, run_attempt: 1, expires_at: "2026-10-09T04:30:00Z")
   let foreign = GcpIamBindingCell { role: "roles/iam.serviceAccountTokenCreator", member: "user:operator@example.com", condition: none }
   let observed = policy(cells: [lapsed, live, foreign], etag: "e1")
   match plan_branch_run_grant(f: f, run: facts(attempt: 1, created_at: "2026-10-09T04:00:00Z"), expires_at: "2026-10-09T05:00:00Z", reading: PolicyObserved { policy: observed }) {
@@ -177,7 +179,7 @@ test fn the_grant_prunes_lapsed_cells_and_preserves_the_rest() -> Bool {
 // THE RUN'S CELL ALREADY PRESENT HOLDS; AN OWNED CELL WHOSE EXPIRY THIS MODULE DID NOT WRITE REFUSES.
 test fn a_present_cell_holds_and_an_unjudgeable_owned_cell_refuses() -> Bool {
   let f = hetzner_cloud_control_federation()
-  let mine = branch_run_impersonation_cell(run_id: 7, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
+  let mine = branch_run_impersonation_cell(run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 1, expires_at: "2026-10-09T05:00:00Z")
   let odd = GcpIamBindingCell { role: mine.role, member: "principalSet://x", condition: Present { value: IamCondition { title: "gunbc-branch-run-9-1", description: none, expression: "true" } } }
   (match plan_branch_run_grant(f: f, run: facts(attempt: 1, created_at: "2026-10-09T04:00:00Z"), expires_at: "2026-10-09T05:00:00Z", reading: PolicyObserved { policy: policy(cells: [mine], etag: "e1") }) {
     BranchRunGrantHeld { run: _ } => true
@@ -193,19 +195,47 @@ test fn a_present_cell_holds_and_an_unjudgeable_owned_cell_refuses() -> Bool {
 // non-main boot run maps to mtcollins1-boot-run; the hetzner read mode is eligible on any ref.
 test fn boot_mode_eligibility_follows_the_credential_selection_by_ref() -> Bool {
   match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "main") { Present { value: _ } => false  Absent => true }
-    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (m.account_id as String) == "mtcollins1-boot-run"  Absent => false }
-    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "mtcollins1-boot-run"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "hetzner-cloud-control"  Absent => false }
     && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "work/x") { Present { value: _ } => true  Absent => false }
-    && match run_scoped_mode_eligible(mode: "apply", branch: "work/x") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_eligible(mode: "microvm_network_apply", branch: "work/x") { Present { value: _ } => false  Absent => true }
+}
+
+// THE FLEET-IDENTITY ROWS ARE GRANTED ONLY OFF MAIN (main signs in through the main-only pool), each to
+// its own account; plan reuses the standing fleet account, apply gets its own.
+test fn fleet_identity_modes_are_granted_off_main_only() -> Bool {
+  all(["plan", "apply"], mode =>
+    match run_scoped_mode_eligible(mode: mode, branch: "main") { Present { value: _ } => false  Absent => true }
+      && match run_scoped_mode_eligible(mode: mode, branch: "work/x") { Present { value: _ } => true  Absent => false })
+    && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-cloud-convergence"  Absent => false }
+    && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-apply-run"  Absent => false }
+    // dashboard_deploy is deliberately not a row (its job holds no credential, so a grant would gate nothing IAM enforces).
+    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => false  Absent => true }
+}
+
+// RED: every row resolves to a federation (a row without one would be a grant nothing can plan), the
+// new accounts hold no standing impersonation and are converge targets, and the plan row's account is
+// not a second converge target.
+test fn every_row_resolves_and_the_new_accounts_have_no_standing_way_in() -> Bool {
+  all(run_scoped_modes(), r => match run_scoped_federation_named(account_id: run_scoped_account_id(m: r) as String) { Present { value: _ } => true  Absent => false })
+    && all(["fleet-apply-run"], id =>
+      match run_scoped_federation_named(account_id: id) {
+        Absent => false
+        Present { value: f } => impersonation_cells(f: f).length() == 0
+          && match standing_principal_set(f: f) { Present { value: _ } => false  Absent => true }
+          && any(gcp_iam_converge_targets, t => (t.service_account as String) == (f.service_account as String))
+          && all(f.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key")
+      })
+    && count(filter(gcp_iam_converge_targets, t => (t.service_account_id as String) == "fleet-cloud-convergence")) == 1
 }
 
 // MAIN'S TABLE DECIDES THE ACCOUNT: the read mode maps to hetzner-cloud-control, anything else to nothing.
 test fn only_a_declared_mode_reaches_a_declared_account() -> Bool {
   mode_of_run_title(title: title) == "hetzner_cloud_server_read"
-    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
-    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (m.account_id as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
-    && match run_scoped_mode_named(mode: "apply") { Present { value: _ } => false  Absent => true }
-    && match run_scoped_federation_named(account_id: "fleet-cloud-convergence") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (run_scoped_account_id(m: m) as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
+    && match run_scoped_mode_named(mode: "microvm_network_apply") { Present { value: _ } => false  Absent => true }
 }
 
 fn grant_secret_versions(grants: List<SecretAccessGrant>) -> List<String> {
@@ -292,10 +322,11 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
 
 // THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
 test fn the_run_key_parses_only_its_own_shape() -> Bool {
-  match parse_branch_run_key(key: "37879231670-2") { Present { value: k } => k.run_id == 37879231670 && k.run_attempt == 2  Absent => false }
+  match parse_branch_run_key(key: "37879231670-2") { Present { value: k } => k.run_id.value == 37879231670 && k.run_attempt == 2  Absent => false }
     && match parse_branch_run_key(key: "37879231670") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "a-1") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-0") { Present { value: _ } => false  Absent => true }
+    && match parse_branch_run_key(key: "0-1") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-1-2") { Present { value: _ } => false  Absent => true }
 }
 

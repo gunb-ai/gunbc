@@ -1,0 +1,86 @@
+module test.claim.gcp_iam_bootstrap_journal_first_use_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
+}
+import gunbc.auth.gcp_iam_bootstrap {
+  IamBootstrapStage, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapJournalBucket,
+  iam_bootstrap_stages, iam_bootstrap_stage_admitted, iam_bootstrap_stage_wire,
+  JournalBucketIdentity, JournalBucketAdmitted, JournalBucketMismatch, journal_bucket_identity,
+  iam_bootstrap_journal_bucket_services, iam_bootstrap_required_services,
+}
+import gunbc.auth.gcp_iam_bootstrap_journal { journal_answer_names_request }
+import extdeps.cloud.gcp.gcp { gcp_service_api_id }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE JOURNAL'S FIRST USE AND ITS IDENTITY (side chat on gunbc#14360, round 7) ──────────────
+
+// BLOCKER 1. The bucket is a STAGE before the capabilities stage, not an incidental row at the end of a
+// roster the pool initializer reads first: the stage order and the admission both require it.
+fn comes_before(first: IamBootstrapStage, second: IamBootstrapStage) -> Bool {
+  let w1 = iam_bootstrap_stage_wire(stage: first)
+  let w2 = iam_bootstrap_stage_wire(stage: second)
+  let walk = fold(iam_bootstrap_stages, init: "none", f: (acc, s) => if acc != "none" { acc } else if iam_bootstrap_stage_wire(stage: s) == w1 { "first" } else if iam_bootstrap_stage_wire(stage: s) == w2 { "second" } else { "none" })
+  walk == "first"
+}
+
+test fn the_journal_bucket_exists_before_any_capability_reads_it() -> Bool {
+  comes_before(first: BootstrapJournalBucket, second: BootstrapCapabilities)
+    && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup])
+    && iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket])
+}
+
+// BLOCKER 2. A bucket is the journal only when its project, location and access model are the declared
+// ones; the declared location row is spelled as the API answers it.
+fn admitted(i: JournalBucketIdentity) -> Bool {
+  match i { JournalBucketAdmitted => true  JournalBucketMismatch { reason: _ } => false }
+}
+
+fn declared_location_as_answered() -> String { iam_bootstrap_journal_bucket_location as String }
+
+test fn only_the_declared_bucket_is_admitted_as_the_journal() -> Bool {
+  let b = iam_bootstrap_journal_bucket
+  let pn = Present { value: fleet_secrets_project_number }
+  let loc = Present { value: declared_location_as_answered() }
+  let pap = Present { value: iam_bootstrap_journal_bucket_public_access_prevention as String }
+  admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: pn, location: loc, uniform_access: Present { value: true }, public_access_prevention: pap))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: pn, location: loc, uniform_access: Present { value: false }, public_access_prevention: pap))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: pn, location: loc, uniform_access: Present { value: true }, public_access_prevention: Present { value: "inherited" }))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: pn, location: Present { value: "EU" }, uniform_access: Present { value: true }, public_access_prevention: pap))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: Present { value: "999999999999" }, location: loc, uniform_access: Present { value: true }, public_access_prevention: pap))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: "someone-elses-bucket", project_number: pn, location: loc, uniform_access: Present { value: true }, public_access_prevention: pap))
+    && !admitted(i: journal_bucket_identity(bucket: b, name: b as String, project_number: Absent, location: loc, uniform_access: Present { value: true }, public_access_prevention: pap))
+}
+
+// BLOCKER 3. A store answer counts only for the slot it was asked about: an insert or 412 metadata naming
+// another object or another bucket refuses.
+test fn a_journal_answer_naming_another_slot_refuses() -> Bool {
+  let b = iam_bootstrap_journal_bucket
+  let o = "pool-first-publication--x--once--election" as NonEmptyStr
+  journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: b as String, answered_object: o as String)
+    && !journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: b as String, answered_object: "pool-first-publication--y--once--election")
+    && !journal_answer_names_request(requested_bucket: b, requested_object: o, answered_bucket: "another-bucket", answered_object: o as String)
+}
+
+// THE ROOT BOOTSTRAP ENABLES EVERY SERVICE THE JOURNAL-BUCKET STAGE CALLS, so first use needs no manual
+// enablement; the stage's other services stay admitted beside it.
+test fn the_root_bootstrap_enables_the_journal_buckets_services() -> Bool {
+  count(iam_bootstrap_journal_bucket_services) > 0
+    && all(iam_bootstrap_journal_bucket_services, svc => any(iam_bootstrap_required_services, r => r == gcp_service_api_id(service: svc)))
+    && any(iam_bootstrap_required_services, r => r == "iam.googleapis.com")
+    && any(iam_bootstrap_required_services, r => r == "secretmanager.googleapis.com")
+}
+
+// The journal bucket binds the custom roles gunbcIamBootstrapJournal and gunbcIamObserveBucket,
+// which the roles stage creates; on 2026-10-28 (receipt iam-ceremony-20261028T123903Z) the bucket
+// stage ran first and GCP answered 400 "Role ... does not exist in the resource's hierarchy".
+test fn the_journal_bucket_waits_for_the_roles_it_binds() -> Bool {
+  comes_before(first: BootstrapRoles, second: BootstrapJournalBucket)
+    && !iam_bootstrap_stage_admitted(stage: BootstrapJournalBucket, completed: [BootstrapServices, BootstrapIdentities])
+    && iam_bootstrap_stage_admitted(stage: BootstrapJournalBucket, completed: [BootstrapServices, BootstrapIdentities, BootstrapRoles])
+}

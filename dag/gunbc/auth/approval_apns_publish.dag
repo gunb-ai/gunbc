@@ -1,0 +1,627 @@
+module gunbc.auth.approval_apns_publish
+
+import std.types { NonEmptyStr, String, Int, List, Bool, Unit, EpochSecs }
+import std.optional { Absent, Present }
+import std.algebra { trim, length }
+import std.decl_ref { decl_ref }
+import std.measure { Second, second, second_count, byte_size_count }
+import std.resources { Network }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.tools { CliTool }
+import extdeps.tools.curl {
+  curl_program, curl_cli_tool, CurlConfigLine, CurlConfigFlag, CurlConfigValue, curl_config_text,
+  curl_http_code_after_newline_write_out_format, curl_dumped_response, curl_dumped_header,
+  CurlWroteHttpStatus, CurlWroteNoHttpStatus,
+}
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
+import extdeps.languages.json.emit { JsonString }
+import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.auth.jws {
+  JwsEs256, jws_signing_input, JwsEncoded, JwsEncodeNotOctets, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
+  JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
+}
+import extdeps.apple.apns {
+  ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsTopic, ApnsCollapseId, apns_collapse_id_max_size, apns_payload_max_size,
+  apns_provider_token_max_age, apns_provider_token_min_refresh, apns_provider_token_claims_json,
+  ApnsRequest, ApnsAps, ApnsAlert, PushTypeAlert, PriorityImmediate, InterruptionActive,
+  ApnsHeader, apns_request_url, apns_request_headers, apns_authorization_header, apns_id_header_name, apns_payload_json,
+  ApnsSendOutcome, apns_send_outcome_of,
+}
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.jws_signer_realize { jws_sign }
+import gunbc.host.host_cli_dependency { first_absent_host_cli_dependency }
+import gunbc.durable_cas_file_store {
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  cas_generation_window, CasGenerationWindow,
+  CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
+}
+import std.durable_compare_and_set {
+  cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasOutcome,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasReadableSlot, CasSlotObservation,
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+}
+import gunbc.host_state_root { host_state_tree }
+import gunbc.auth.approval_app_attest_config { approval_app_bundle_id }
+import gunbc.auth.approval_decision_store { approval_google_approver_emails }
+import gunbc.auth.approval_google_enrolment { GoogleEnrolmentActive, GoogleEnrolmentAbsent, GoogleEnrolmentRevoked, GoogleEnrolmentUnreadable, email_on_roster }
+import gunbc.auth.approval_device_wire {
+  PushRegistration, ApnsRegistration, FcmRegistration, ApprovalPushHint, approval_push_alert_title, approval_push_custom_keys,
+}
+import gunbc.auth.approval_device_redemption {
+  ApprovalDeviceStore, approval_device_store, ApprovalDeviceStoreReady, ApprovalDeviceStoreUnready,
+  observe_device_windowed_slot, commit_device_windowed_slot, list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused,
+  observe_push_registration, PushRegistrationAbsent, PushRegistrationStored, PushRegistrationUnreadable,
+  PushProviderOutcome, PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
+  push_outcome_of_apns,
+}
+
+// THE BROKER'S APNs PUBLISH: a filed request wakes every enrolled approver's phone through Apple's
+// push service, the one notification route (ruling gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). extdeps.apple.apns owns the interface -- hosts,
+// headers, payload, provider token, status table -- and this module owns what extdeps may not:
+// which key, which team, where the key lives, which devices, and the TRANSPORT. It is apart from the
+// filing fold so the fold receives what was read rather than reading it.
+//
+// THE PUSH WAKES; IT DOES NOT CARRY THE DECISION (gunbc.auth.approval_device_wire ApprovalPushHint).
+// The alert is generic and the one custom key is the escalation id -- a locator, never a capability.
+// The phone reads the request and its capabilities over the assertion-authenticated read route.
+
+// ── The provider ─────────────────────────────────────────────────────────────────────────────
+// The .p8 auth key lives in Secret Manager (gunbai-secrets), pinned so a rotation is a reviewed
+// change rather than a silent swap, and reaches srv1 as an operator-only file through
+// gunbc.fleet.host_credential_custody_converge ApprovalApnsAuthKey; its accessor row is
+// gunbc.auth.fleet_secret_accessor_roster approval_apns_auth_key_accessor_row. The broker runs as the
+// operator account, and openssl reads the file itself, so the key never enters the evaluator.
+data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-apns-auth-key"),
+  version: "1",
+)
+
+data approval_apns_auth_key: JwsSigningKeyRef = HostKeyFile { path: "/etc/gunbc-approval-apns/auth-key.p8" }
+
+// NOT SECRETS, so not in Secret Manager: the key's id is printed beside it in Apple Developer > Keys
+// (supplied by the operator, 2026-10-25), and the team id is the account's Membership Team ID
+// (supplied 2026-09-22). The team id is the same characters as the App Attest App ID prefix
+// (gunbc.auth.approval_app_attest_config) but a different fact -- extdeps.apple.app_attest AppIdPrefix
+// says why -- so it is its own row rather than a cast of that one.
+data approval_apns_provider: ApnsProviderIdentity = ApnsProviderIdentity {
+  team_id: "72HGYAMBVQ" as AppleTeamId,
+  key_id: "FTXPF2UJ65" as ApnsKeyId,
+}
+
+// ── The provider token ───────────────────────────────────────────────────────────────────────
+// APPLE BOUNDS THE TOKEN FROM BOTH SIDES (extdeps.apple.apns apns_provider_token_max_age and
+// apns_provider_token_min_refresh): older than an hour is refused, and refreshing more than once in
+// twenty minutes is refused too. So the token is minted once and REUSED while its age plus the
+// refresh floor is still inside the maximum age: it never outlives the hour, and two mints are always
+// at least max_age - min_refresh apart, which is longer than the refresh floor. Both bounds are
+// Apple's Second rows and the comparison stays in Seconds; the window is derived, not chosen.
+
+// THE CACHE IS A WINDOWED CAS SLOT IN THE DEVICE STORE, for the reason the push registration is one:
+// its only fact is its head. CAS is what makes "at most one mint per window" hold across concurrent
+// filings -- a filing that loses the publish race uses the winner's token instead of minting a second
+// -- where a last-write-wins file would let two mints land inside one refresh floor.
+data approval_apns_provider_token_key: NonEmptyStr = "apns-provider-token"
+data approval_apns_provider_token_window_k: Int = 2
+data approval_apns_provider_token_record: NonEmptyStr = "gunbc.apns-provider-token.v1"
+
+type CachedProviderToken {
+  issued_at: EpochSecs
+  provider: ApnsProviderIdentity
+  jwt: JwtCompactSerialization
+}
+
+// One field per line; none of the fields can carry a newline (the ids are config rows, the JWT is
+// base64url and dots), so the rendering is injective.
+fn cached_provider_token_text(t: CachedProviderToken) -> NonEmptyStr {
+  join([approval_apns_provider_token_record as String, to_string(t.issued_at), t.provider.key_id as String, t.provider.team_id as String, t.jwt as String], "\n") as NonEmptyStr
+}
+
+fn parse_cached_provider_token(text: String) -> CachedProviderToken? {
+  let fields = split(s: text, delimiter: "\n")
+  if length(fields) != 5 { none }
+  else {
+    match fields.get(index: 0) {
+      Absent => none
+      Present { value: record } =>
+        if record != (approval_apns_provider_token_record as String) { none }
+        else { cached_provider_token_fields(fields: fields) }
+    }
+  }
+}
+
+fn cached_provider_token_fields(fields: List<String>) -> CachedProviderToken? {
+  match fields.get(index: 1) {
+    Absent => none
+    Present { value: iat_text } => match parse_int(s: iat_text) {
+      Absent => none
+      Present { value: iat } => if iat < 0 { none } else { match fields.get(index: 2) {
+        Absent => none
+        Present { value: kid } => match fields.get(index: 3) {
+          Absent => none
+          Present { value: iss } => match fields.get(index: 4) {
+            Absent => none
+            Present { value: jwt } =>
+              if kid == "" || iss == "" || jwt == "" { none }
+              else { Present { value: CachedProviderToken {
+                issued_at: iat,
+                provider: ApnsProviderIdentity { team_id: iss as AppleTeamId, key_id: kid as ApnsKeyId },
+                jwt: jwt as JwtCompactSerialization,
+              } } }
+          }
+        }
+      } }
+    }
+  }
+}
+
+// THE TOKEN'S AGE as a Second; none when the token claims an issue time after now (a clock that
+// stepped back), which refuses reuse rather than trusting a future iat.
+fn provider_token_age(t: CachedProviderToken, now: EpochSecs) -> Second? {
+  match checked_int_to_nat(n: now - t.issued_at) {
+    Absent => none
+    Present { value: n } => Present { value: second(count: n) }
+  }
+}
+
+// A token is reused only for the provider it was minted for (a changed key id or team is a different
+// token, never a stale one served), only once issued, and only while age + min_refresh < max_age.
+fn provider_token_reusable(t: CachedProviderToken, provider: ApnsProviderIdentity, now: EpochSecs) -> Bool {
+  (t.provider.key_id as String) == (provider.key_id as String)
+    && (t.provider.team_id as String) == (provider.team_id as String)
+    && match provider_token_age(t: t, now: now) {
+      Absent => false
+      Present { value: age } => second_count(age) + second_count(apns_provider_token_min_refresh) < second_count(apns_provider_token_max_age)
+    }
+}
+
+type ApnsProviderToken
+  = ApnsProviderTokenReady { token: JwtCompactSerialization }
+  | ApnsProviderTokenUnavailable { detail: String }
+
+// THE MINT: the JWS signing input over Apple's claims, signed ES256 by the modeled signer
+// (gunbc.jws_signer_realize jws_sign: openssl over the host key file, DER read to R || S).
+fn mint_apns_provider_token(provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
+  match jws_signing_input(alg: JwsEs256, kid: Present { value: provider.key_id as NonEmptyStr }, payload_json: apns_provider_token_claims_json(identity: provider, issued_at: now)) {
+    JwsEncodeNotOctets { observed: o } => ApnsProviderTokenUnavailable { detail: concat("the provider token's signing input carried a member outside octet range: ", to_string(o)) }
+    JwsEncoded { text: input } =>
+      match jws_sign(alg: JwsEs256, signing_input: input as NonEmptyStr, key: key) {
+        JwsSignRefused { detail: d } => ApnsProviderTokenUnavailable { detail: concat("the provider token was not signed: ", d) }
+        JwsSigned { signature: sig } =>
+          match jws_compact_serialization(signing_input: input as NonEmptyStr, signature: sig) {
+            JwsSignatureNotOctets { observed: o } => ApnsProviderTokenUnavailable { detail: concat("the signer returned a member outside octet range: ", to_string(o)) }
+            JwsSerialized { jwt: jwt } => ApnsProviderTokenReady { token: jwt }
+          }
+      }
+  }
+}
+
+fn provider_token_window() -> CasGenerationWindow? {
+  match cas_generation_window(k: approval_apns_provider_token_window_k) {
+    CasGenerationWindowAdmitted { window: w } => Present { value: w }
+    CasGenerationWindowTooNarrow { k: _ } => none
+  }
+}
+
+fn observe_apns_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
+  observe_device_windowed_slot(devices: devices, key: approval_apns_provider_token_key, window: window)
+}
+
+type ProviderTokenPublish
+  = ProviderTokenPublished
+  | ProviderTokenRaced { observed: CasReadableSlot<NonEmptyStr> }
+  | ProviderTokenPublishRefused { detail: String }
+
+fn publish_apns_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow, expected: CasExpectation, t: CachedProviderToken) -> ProviderTokenPublish {
+  match admit_cas_attempt_for_derived_payload(key: approval_apns_provider_token_key, expected: expected, proposed: cached_provider_token_text(t: t)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => ProviderTokenPublishRefused { detail: "the provider token key is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: v } =>
+      match commit_device_windowed_slot(devices: devices, verified: v, window: window) {
+        CasCommitted { committed: _ } => ProviderTokenPublished
+        CasPreconditionFailed { expected: _, observed: o } => ProviderTokenRaced { observed: o }
+        CasStoreRefused { cause: _ } => ProviderTokenPublishRefused { detail: "the device store refused the provider token" }
+      }
+  }
+}
+
+fn cached_token_in(slot: CasReadableSlot<NonEmptyStr>) -> CachedProviderToken? {
+  match slot {
+    CasReadableAbsent => none
+    CasReadablePresent { version: v } => parse_cached_provider_token(text: v.value as String)
+  }
+}
+
+// REUSE, OR MINT ONCE AND PUBLISH FROM WHAT WAS READ. A lost publish rereads nothing: the CAS answer
+// carries the winner, and the winner's token is used when it is reusable. A minted token whose
+// publish was refused is NOT sent -- an unrecorded token is exactly the second mint the window exists
+// to prevent.
+fn apns_provider_token_at(devices: ApprovalDeviceStore, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
+  match provider_token_window() {
+    Absent => ApnsProviderTokenUnavailable { detail: "the provider token window is narrower than the store admits" }
+    Present { value: w } =>
+      match observe_apns_provider_token(devices: devices, window: w) {
+        CasObservedUnreadable { cause: c } => ApnsProviderTokenUnavailable { detail: concat("provider token slot unreadable: ", cas_unreadable_slot_detail(cause: c)) }
+        CasObservedReadable { readable: r } => {
+          let expected = match r {
+            CasReadableAbsent => ExpectSlotAbsent
+            CasReadablePresent { version: v } => ExpectSlotGeneration { generation: v.generation }
+          }
+          match cached_token_in(slot: r) {
+            Present { value: t } =>
+              if provider_token_reusable(t: t, provider: provider, now: now) { ApnsProviderTokenReady { token: t.jwt } }
+              else { mint_and_publish_provider_token(devices: devices, window: w, expected: expected, provider: provider, key: key, now: now) }
+            Absent => mint_and_publish_provider_token(devices: devices, window: w, expected: expected, provider: provider, key: key, now: now)
+          }
+        }
+      }
+  }
+}
+
+fn mint_and_publish_provider_token(devices: ApprovalDeviceStore, window: CasGenerationWindow, expected: CasExpectation, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
+  match mint_apns_provider_token(provider: provider, key: key, now: now) {
+    ApnsProviderTokenUnavailable { detail: d } => ApnsProviderTokenUnavailable { detail: d }
+    ApnsProviderTokenReady { token: jwt } =>
+      match publish_apns_provider_token(devices: devices, window: window, expected: expected, t: CachedProviderToken { issued_at: now, provider: provider, jwt: jwt }) {
+        ProviderTokenPublished => ApnsProviderTokenReady { token: jwt }
+        ProviderTokenPublishRefused { detail: d } => ApnsProviderTokenUnavailable { detail: d }
+        ProviderTokenRaced { observed: o } =>
+          match cached_token_in(slot: o) {
+            Present { value: t } =>
+              if provider_token_reusable(t: t, provider: provider, now: now) { ApnsProviderTokenReady { token: t.jwt } }
+              else { ApnsProviderTokenUnavailable { detail: "a concurrent filing replaced the provider token with one this filing cannot reuse" } }
+            Absent => ApnsProviderTokenUnavailable { detail: "a concurrent filing won the provider token slot and it does not read as a token" }
+          }
+      }
+  }
+}
+
+// ── The sender ───────────────────────────────────────────────────────────────────────────────
+// WHAT THE BROKER READS BEFORE IT CAN SEND: curl on PATH, the clock, and a provider token. Read by the
+// handler and handed to the filing fold, exactly as the ntfy publisher token is, so a witness supplies
+// a sender and the fold still runs THROUGH the send.
+data apns_sender_host_cli_requirements: List<CliTool> = [curl_cli_tool]
+
+type ApnsSender
+  = ApnsSenderReady { token: JwtCompactSerialization }
+  | ApnsSenderUnavailable { detail: String }
+
+fn read_apns_sender() -> ApnsSender admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
+] {
+  match first_absent_host_cli_dependency(tools: apns_sender_host_cli_requirements) {
+    Present { value: absence } => ApnsSenderUnavailable { detail: join(["APNs transport tool ", absence.tool as String, " is absent: ", absence.hint], "") }
+    Absent =>
+      match clock_unix_millis_read() {
+        ClockUnixMillisRefused { detail: d } => ApnsSenderUnavailable { detail: concat("the host clock refused, so no provider token can be dated: ", d) }
+        ClockUnixMillisObserved { millis: ms } =>
+          match approval_device_store(tree: host_state_tree()) {
+            ApprovalDeviceStoreUnready { detail: d } => ApnsSenderUnavailable { detail: concat("the provider token's store is unready: ", d) }
+            ApprovalDeviceStoreReady { store: devices } =>
+              match apns_provider_token_at(devices: devices, provider: approval_apns_provider, key: approval_apns_auth_key, now: epoch_secs_of_millis(millis: ms)) {
+                ApnsProviderTokenReady { token: t } => ApnsSenderReady { token: t }
+                ApnsProviderTokenUnavailable { detail: d } => ApnsSenderUnavailable { detail: d }
+              }
+          }
+      }
+  }
+}
+
+// ── The targets ──────────────────────────────────────────────────────────────────────────────
+// EVERY ACTIVE ENROLMENT OF AN APPROVER, with its stored registration. Not the decision's subject --
+// any enrolled approver may decide -- and never a revoked enrolment, whatever token it left behind.
+// An enrolment with no registration, or one whose registration does not read, is NAMED in the answer
+// rather than skipped, so "nobody was notified" can be told from "nobody could be".
+type DevicePushTarget {
+  enrollment_id: NonEmptyStr
+  registration: PushRegistration
+}
+
+type DevicePushTargets
+  = DevicePushTargetsListed { targets: List<DevicePushTarget>, unregistered: List<NonEmptyStr>, unreadable: List<NonEmptyStr> }
+  | DevicePushTargetsRefused { detail: String }
+
+type DevicePushTargetRead
+  = DevicePushTargetFound { target: DevicePushTarget }
+  | DevicePushTargetUnregistered { enrollment_id: NonEmptyStr }
+  | DevicePushTargetUnreadable { detail: NonEmptyStr }
+  | DevicePushNotATarget
+
+fn device_push_targets_at(devices: ApprovalDeviceStore, approvers: List<NonEmptyStr>) -> DevicePushTargets {
+  match list_google_enrolments(devices: devices) {
+    GoogleEnrolmentListingRefused { detail: d } => DevicePushTargetsRefused { detail: d as String }
+    GoogleEnrolmentsListed { slots: slots } => {
+      let reads = map(slots, slot => match slot {
+        GoogleEnrolmentActive { enrollment: e } =>
+          if !email_on_roster(email: e.google_email, roster: approvers) { DevicePushNotATarget }
+          else {
+            match observe_push_registration(devices: devices, enrollment_id: e.enrollment_id) {
+              PushRegistrationAbsent => DevicePushTargetUnregistered { enrollment_id: e.enrollment_id }
+              PushRegistrationUnreadable { detail: d } => DevicePushTargetUnreadable { detail: d }
+              PushRegistrationStored { registration: reg, generation: _ } => DevicePushTargetFound { target: DevicePushTarget { enrollment_id: e.enrollment_id, registration: reg } }
+            }
+          }
+        GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => DevicePushNotATarget
+        GoogleEnrolmentAbsent => DevicePushNotATarget
+        GoogleEnrolmentUnreadable { detail: d } => DevicePushTargetUnreadable { detail: d }
+      })
+      DevicePushTargetsListed {
+        targets: flat_map(reads, r => match r { DevicePushTargetFound { target: t } => [t]  DevicePushTargetUnregistered { enrollment_id: _ } => []  DevicePushTargetUnreadable { detail: _ } => []  DevicePushNotATarget => [] }),
+        unregistered: flat_map(reads, r => match r { DevicePushTargetUnregistered { enrollment_id: i } => [i]  DevicePushTargetFound { target: _ } => []  DevicePushTargetUnreadable { detail: _ } => []  DevicePushNotATarget => [] }),
+        unreadable: flat_map(reads, r => match r { DevicePushTargetUnreadable { detail: d } => [d]  DevicePushTargetFound { target: _ } => []  DevicePushTargetUnregistered { enrollment_id: _ } => []  DevicePushNotATarget => [] }),
+      }
+    }
+  }
+}
+
+fn read_device_push_targets() -> DevicePushTargets admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
+] {
+  match approval_device_store(tree: host_state_tree()) {
+    ApprovalDeviceStoreUnready { detail: d } => DevicePushTargetsRefused { detail: d }
+    ApprovalDeviceStoreReady { store: devices } => device_push_targets_at(devices: devices, approvers: approval_google_approver_emails)
+  }
+}
+
+// ── The notice ───────────────────────────────────────────────────────────────────────────────
+// WHAT A PUSH SAYS, and both notices are generic: Apple sees every alert, so nothing in one names a
+// request, a requester or an account. The locator is the push's one custom key
+// (gunbc.auth.approval_device_wire ApprovalPushHint) AND its collapse id, so a re-sent notice replaces
+// its own alert rather than stacking a second.
+type DevicePushNotice {
+  locator: NonEmptyStr
+  title: NonEmptyStr
+  body: NonEmptyStr
+}
+
+data approval_push_alert_body: NonEmptyStr = "A request is waiting for your decision in Approve."
+
+fn approval_request_push_notice(escalation_id: NonEmptyStr) -> DevicePushNotice {
+  DevicePushNotice { locator: escalation_id, title: approval_push_alert_title, body: approval_push_alert_body }
+}
+
+// THE NEW-DEVICE NOTICE (gunbc.auth.approval_device_routes publish_new_device_notice): the enrolled
+// devices learn that another one joined, keyed by the new enrolment so a resent enrolment collapses.
+data new_device_push_alert_title: NonEmptyStr = "New approval device enrolled"
+data new_device_push_alert_body: NonEmptyStr = "Another device was enrolled to approve requests. Revoke it from the devices list if this was not you."
+
+fn new_device_push_notice(enrollment_id: NonEmptyStr) -> DevicePushNotice {
+  DevicePushNotice { locator: enrollment_id, title: new_device_push_alert_title, body: new_device_push_alert_body }
+}
+
+// ── The request ──────────────────────────────────────────────────────────────────────────────
+// Alert, immediately, active (not time-sensitive: that level needs an entitlement this app does not
+// declare, and Apple downgrades it silently without one).
+
+type ApprovalPushRequest
+  = ApprovalPushRequestReady { request: ApnsRequest }
+  | ApprovalPushRequestRefused { detail: NonEmptyStr }
+
+fn utf8_octet_count(s: String) -> Int {
+  length(bytes_octets(b: utf8_encode_bytes(s: s)))
+}
+
+// THE REGISTRATION'S TOPIC MUST BE THIS APP'S BUNDLE: the phone presents it, and a registration that
+// names another topic is not an address this broker sends approval wakeups to. The environment is the
+// registration's, because it is a fact of how the installed build was signed (extdeps.apple.apns
+// ApnsEnvironment), never a server preference.
+fn approval_push_request(registration: PushRegistration, notice: DevicePushNotice) -> ApprovalPushRequest {
+  match registration {
+    FcmRegistration { project: _, token: _ } => ApprovalPushRequestRefused { detail: "an FCM registration has no publish here (gunbc.auth.approval_device_redemption android_realization_frontier)" }
+    ApnsRegistration { environment: env, topic: topic, token: token } =>
+      if (topic as String) != (approval_app_bundle_id as String) { ApprovalPushRequestRefused { detail: join(["the registration's topic ", topic as String, " is not this app's bundle ", approval_app_bundle_id as String], "") as NonEmptyStr } }
+      else if utf8_octet_count(s: notice.locator as String) > byte_size_count(apns_collapse_id_max_size) { ApprovalPushRequestRefused { detail: "the notice's locator is longer than APNs admits for a collapse id" } }
+      else {
+        let request = ApnsRequest {
+          environment: env,
+          device_token: token,
+          topic: topic,
+          push_type: PushTypeAlert,
+          priority: PriorityImmediate,
+          collapse_id: notice.locator as ApnsCollapseId,
+          aps: ApnsAps {
+            alert: ApnsAlert { title: notice.title, subtitle: none, body: notice.body },
+            mutable_content: false,
+            interruption_level: InterruptionActive,
+            category: none,
+          },
+          custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: notice.locator }),
+        }
+        if utf8_octet_count(s: apns_payload_json(r: request)) > byte_size_count(apns_payload_max_size) { ApprovalPushRequestRefused { detail: "the payload is larger than APNs admits" } }
+        else { ApprovalPushRequestReady { request: request } }
+      }
+  }
+}
+
+// ── The transport: curl over HTTP/2 ──────────────────────────────────────────────────────────
+// APNs SPEAKS ONLY HTTP/2, and the seed interpreter's rest transport is HTTP/1.1 (ureq), so the send
+// is curl with --http2 -- a host binary the broker host already carries and host_cli_dependency
+// enrolls -- not a `transport rest` operation that would be refused by Apple at the protocol layer.
+// ARGV IS `curl --config -` AND NOTHING ELSE: the URL, the bearer provider token, the headers and the
+// body travel on stdin (extdeps.tools.curl CurlConfigLine), so the credential is never an argv word.
+// The answer is curl's dumped head, body and status (extdeps.tools.curl curl_dumped_response), read
+// into the rest transport's RestResult -- the same HTTP outcome, realized by another client -- and
+// folded by extdeps.apple.apns apns_send_outcome_of, never re-classified here.
+data approval_apns_connect_bound: Second = second(count: 10)
+data approval_apns_request_bound: Second = second(count: 30)
+
+// The hermetic send is Apple's 200 shape and nothing else: a head carrying an apns-id that a live
+// APNs id (a UUID) cannot spell, an empty body, the status line curl writes last.
+data hermetic_apns_id: String = "hermetic-mock-apns-id"
+data hermetic_apns_send_stdout: String = "HTTP/2 200\napns-id: hermetic-mock-apns-id\n\n\n200"
+
+service apns.Http2 {
+  operation Send {
+    requires Network
+    input { config: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [curl_program().invocation, "--config", "-"]
+      stdin: config
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { exit_code: 0, stdout: hermetic_apns_send_stdout, stderr: "" } "hermetic APNs 200: a head with the fixture apns-id, an empty body, then curl's status line"
+    }
+  }
+}
+
+fn apns_curl_config(r: ApnsRequest, token: JwtCompactSerialization) -> NonEmptyStr {
+  let headers = concat(apns_request_headers(r: r), [apns_authorization_header(token: token)])
+  curl_config_text(lines: concat(
+    [
+      CurlConfigValue { option: "url", value: apns_request_url(r: r) as String },
+      CurlConfigFlag { option: "http2" },
+      CurlConfigFlag { option: "silent" },
+      CurlConfigFlag { option: "show-error" },
+      CurlConfigValue { option: "connect-timeout", value: to_string(second_count(approval_apns_connect_bound)) },
+      CurlConfigValue { option: "max-time", value: to_string(second_count(approval_apns_request_bound)) },
+      CurlConfigValue { option: "dump-header", value: "-" },
+      CurlConfigValue { option: "write-out", value: curl_http_code_after_newline_write_out_format },
+      CurlConfigValue { option: "data-binary", value: apns_payload_json(r: r) },
+    ],
+    map(headers, h => CurlConfigValue { option: "header", value: join([h.name as String, ": ", h.value as String], "") }),
+  )) as NonEmptyStr
+}
+
+// Apple's refusal body is { "reason": ... }; the reason is what a reader acts on, so it is lifted out
+// when the body is that shape and the body is kept whole when it is not.
+fn apns_refusal_reason(body: String) -> String {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => body
+    JsonDocumentParsed { value: v } => match json_object_unique_member(v: v, key: "reason") {
+      JsonMemberFound { value: JsonString { value: r } } => r
+      JsonMemberFound { value: _ } => body
+      JsonMemberAbsent => body
+      JsonMemberDuplicated { count: _ } => body
+      JsonMemberNotAnObject => body
+    }
+  }
+}
+
+fn apns_rest_result_of(exit_code: Int, stdout: String, stderr: String) -> RestResult<String> {
+  if exit_code != 0 {
+    RestRefused { refusal: RestTransportRefused { cause: join(["curl exit ", to_string(exit_code), ": ", trim(s: stderr)], "") as NonEmptyStr } }
+  } else {
+    let dumped = curl_dumped_response(stdout: stdout)
+    match dumped.status {
+      CurlWroteNoHttpStatus { cause: c } => RestRefused { refusal: RestTransportRefused { cause: c } }
+      CurlWroteHttpStatus { status: s } =>
+        if (s as Int) == 200 {
+          // APNs names every accepted request by its apns-id; a 200 without one is not an acceptance
+          // this module can name, so it is the transport's undecodable answer, never an empty id.
+          match curl_dumped_header(header_lines: dumped.header_lines, lowercase_name: apns_id_header_name) {
+            Absent => RestRefused { refusal: RestBodyUndecodable { status: s, cause: "accepted response carried no apns-id header" } }
+            Present { value: id } =>
+              if id == "" { RestRefused { refusal: RestBodyUndecodable { status: s, cause: "accepted response carried an empty apns-id header" } } }
+              else { RestAnswered { answer: id } }
+          }
+        } else {
+          RestRefused { refusal: RestStatusRefused { status: s, body: apns_refusal_reason(body: dumped.body) } }
+        }
+    }
+  }
+}
+
+fn send_apns(r: ApnsRequest, token: JwtCompactSerialization) -> ApnsSendOutcome {
+  let sent = apns.Http2.Send(config: apns_curl_config(r: r, token: token))
+  apns_send_outcome_of(rest: apns_rest_result_of(exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.stderr))
+}
+
+// ── The fan-out ──────────────────────────────────────────────────────────────────────────────
+type DevicePushOutcome
+  = DevicePushSent { enrollment_id: NonEmptyStr, outcome: PushProviderOutcome }
+  | DevicePushNotSent { enrollment_id: NonEmptyStr, detail: NonEmptyStr }
+
+// NO RECIPIENT IS ITS OWN ARM, apart from a failure to attempt: the first device to enrol has no
+// other device to tell, which the new-device notice must be able to say without refusing the
+// enrolment, while an approval filing reads the same arm as "nobody was woken".
+type DeviceNotification
+  = DeviceNotificationAttempted { outcomes: List<DevicePushOutcome>, unregistered: List<NonEmptyStr>, unreadable: List<NonEmptyStr> }
+  | DeviceNotificationNoRecipient { unregistered: List<NonEmptyStr>, unreadable: List<NonEmptyStr> }
+  | DeviceNotificationNotAttempted { detail: String }
+
+fn notify_devices(targets: DevicePushTargets, sender: ApnsSender, notice: DevicePushNotice) -> DeviceNotification {
+  match targets {
+    DevicePushTargetsRefused { detail: d } => DeviceNotificationNotAttempted { detail: concat("the enrolled devices could not be listed: ", d) }
+    DevicePushTargetsListed { targets: ts, unregistered: un, unreadable: ur } =>
+      if length(ts) == 0 {
+        DeviceNotificationNoRecipient { unregistered: un, unreadable: ur }
+      } else {
+        match sender {
+          ApnsSenderUnavailable { detail: d } => DeviceNotificationNotAttempted { detail: concat("the APNs sender is unavailable: ", d) }
+          ApnsSenderReady { token: token } =>
+            DeviceNotificationAttempted {
+              outcomes: map(ts, t => match approval_push_request(registration: t.registration, notice: notice) {
+                ApprovalPushRequestRefused { detail: d } => DevicePushNotSent { enrollment_id: t.enrollment_id, detail: d }
+                ApprovalPushRequestReady { request: r } => DevicePushSent { enrollment_id: t.enrollment_id, outcome: push_outcome_of_apns(o: send_apns(r: r, token: token)) }
+              }),
+              unregistered: un,
+              unreadable: ur,
+            }
+        }
+      }
+  }
+}
+
+fn device_push_outcome_accepted(o: DevicePushOutcome) -> Bool {
+  match o {
+    DevicePushSent { enrollment_id: _, outcome: p } => match p {
+      PushProviderAccepted { provider: _, receipt: _ } => true
+      PushProviderRefused { provider: _, status: _, detail: _, retryable: _ } => false
+      PushRegistrationInvalid { provider: _, detail: _ } => false
+      PushProviderUnreached { provider: _, cause: _ } => false
+      PushProviderUndecodable { provider: _, status: _, cause: _ } => false
+    }
+    DevicePushNotSent { enrollment_id: _, detail: _ } => false
+  }
+}
+
+fn device_push_outcome_sentence(o: DevicePushOutcome) -> String {
+  match o {
+    DevicePushNotSent { enrollment_id: e, detail: d } => join([e as String, ": not sent: ", d as String], "")
+    DevicePushSent { enrollment_id: e, outcome: p } => join([e as String, ": ", match p {
+      PushProviderAccepted { provider: _, receipt: r } => join(["accepted (apns-id ", r as String, ")"], "")
+      PushProviderRefused { provider: _, status: s, detail: d, retryable: r } => join(["refused ", to_string(s), " ", d, if r { " (retryable)" } else { "" }], "")
+      PushRegistrationInvalid { provider: _, detail: d } => join(["the token is no longer registered (", d, "); the app re-presents one on launch"], "")
+      PushProviderUnreached { provider: _, cause: c } => concat("APNs unreached: ", c)
+      PushProviderUndecodable { provider: _, status: s, cause: c } => join(["APNs answer undecodable (", to_string(s), "): ", c], "")
+    }], "")
+  }
+}
+
+// THE SENTENCE A FILER READS: every device's outcome by enrolment id, and the unregistered and
+// unreadable enrolments by count, so a partial delivery is never reported as a whole one.
+fn device_notification_sentence(n: DeviceNotification) -> String {
+  match n {
+    DeviceNotificationNotAttempted { detail: d } => concat("device push not attempted: ", d)
+    DeviceNotificationNoRecipient { unregistered: un, unreadable: ur } =>
+      join(["no enrolled approver device has a push registration (", to_string(length(un)), " unregistered, ", to_string(length(ur)), " unreadable)"], "")
+    DeviceNotificationAttempted { outcomes: os, unregistered: un, unreadable: ur } =>
+      join([
+        "device push ", to_string(length(filter(os, o => device_push_outcome_accepted(o: o)))), "/", to_string(length(os)), " accepted: ",
+        join(map(os, o => device_push_outcome_sentence(o: o)), "; "),
+        if length(un) == 0 { "" } else { join([" (", to_string(length(un)), " enrolled device(s) without a registration)"], "") },
+        if length(ur) == 0 { "" } else { join([" (", to_string(length(ur)), " enrolment(s) unreadable: ", join(map(ur, d => d as String), "; "), ")"], "") },
+      ], "")
+  }
+}
+
+fn device_notification_reached_anyone(n: DeviceNotification) -> Bool {
+  match n {
+    DeviceNotificationNotAttempted { detail: _ } => false
+    DeviceNotificationNoRecipient { unregistered: _, unreadable: _ } => false
+    DeviceNotificationAttempted { outcomes: os, unregistered: _, unreadable: _ } => any(os, o => device_push_outcome_accepted(o: o))
+  }
+}

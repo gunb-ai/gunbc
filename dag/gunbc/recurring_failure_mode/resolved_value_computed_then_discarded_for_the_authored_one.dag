@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.resolved_value_computed_then_discarded_for_t
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data resolved_value_computed_then_discarded_for_the_authored_one: RecurringFailureMode = RecurringFailureMode {
   identity: "resolved_value_computed_then_discarded_for_the_authored_one" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a phase computes the resolved form of a value, keeps only a by-product of it (its diagnostics), and rebuilds its output from the AUTHORED input** (the phase's result is structurally indistinguishable from a resolved one, so every consumer downstream reads an unresolved value as if the phase had run on it).",

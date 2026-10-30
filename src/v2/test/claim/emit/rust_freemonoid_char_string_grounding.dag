@@ -23,6 +23,7 @@ import v2.std.node {
   TypeNode,
   Instantiation,
   content_hash,
+  NotADeclaration
 }
 import v2.std.text { String }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -36,8 +37,8 @@ fn fmc_freemonoid_char_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: char_kernel_type_node() }
+      Edge { label: Positional, target: target_carrier_free_monoid_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: char_kernel_type_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

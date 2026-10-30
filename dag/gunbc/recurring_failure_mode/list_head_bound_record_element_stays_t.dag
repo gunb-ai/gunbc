@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.list_head_bound_record_element_stays_t
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data list_head_bound_record_element_stays_t: RecurringFailureMode = RecurringFailureMode {
   identity: "list_head_bound_record_element_stays_t" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**CLASS: list_head / list_tail bind a record element as T, so a field read on that binder is unwritable.** INVALID STATE: `match list_head(xs: alts) { HeadFound { value: alt } => alt.tree }` where `alts: List<PreparedExprFold>` typechecks as `no field 'tree' on type 'T'`. The same field read is writable on a function parameter of that record type, and `fold_list` `cons: fn(acc, p) { p.name }` over `root.productions` instantiates (v2.compiler.parse `compute_grammar_first_analysis_given`).",

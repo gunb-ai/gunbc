@@ -39,6 +39,7 @@ import std.algebra {
   collection_count_shape,
   collection_fold_shape,
   collection_map_shape,
+  contains,
   template_accumulator_position,
   template_receiver_position,
   template_step_position,
@@ -62,7 +63,7 @@ import std.algebra {
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 
-import v2.std.node {
+import v2.std.node { NotADeclaration, positional_child_target_nodes,
   Atom,
   Bind,
   BinderStructureEdge,
@@ -90,13 +91,12 @@ import v2.std.node {
   arrow_body_target_lookup,
   Ambiguous,
   Arrow,
-  Occupancy,
   Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string, declaration_denotation_of_type }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
 import v2.std.type_binder { type_param_names, type_params_edge, type_binder_set_children }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -237,22 +237,72 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // copies it (no snoc, no append), which is the template's ShapeIterateBody at linear cost (DESIGN
 // section 6).
 //
-// THE STEP SHAPE PER OPERATION IS AUTHORED, ONE ARM PER ROW, AND THAT IS A DECLARED FRONTIER, exactly
-// as the corpus declarations' slots above are: the template row carries the operation's signature and
-// cost, not a body. Its trigger is a realization body readable off the row.
+// THE STEP SHAPE PER OPERATION WAS A DECLARED FRONTIER -- one arm per row, authored in the builder and a
+// second, unlinked arm in the direction reader -- and its trigger was "a realization body readable off
+// the row." THAT TRIGGER IS MET: the step shape is now ONE ROW PER REALIZATION, read by a TOTAL match (callback_step_row), and
+// both the builder (v2.compiler.body_lowering_fold body_lower_callback_step_body, which constructs the
+// step body FROM the shape arm) and the direction (callback_step_shape_iteration_direction, the one
+// total match over CallbackStepShape) READ that row. The contradiction class -- a cons-shaped step
+// declared to iterate left to right -- has no constructor: the direction is read from the shape, never
+// carried beside it -- construction over validation, DESIGN section 5 (gunbc.recurring_failure_mode
+// fold_realized_loop_carries_no_iteration_direction is the failure home and records the rung).
 //
 // filter and any were the std.algebra declarations of those names; they are RETIRED onto these rows
 // (calm-boar-904, ruling B': the roster row is the one typing authority for a collection operation), the
 // declarations deleted and their imports dropped by v2.workflow.source_reference_repoint's retire-member mode.
 // WHAT IS NOT HERE, BY NAME: flat_map (its step is
-// itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). Their rows
-// are named in std.algebra and their calls stay unrealized; gunbc.recurring_failure_mode
+// itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). sort_by is a
+// primitive-call row below -- TYPED by its row like concat and count, its key callable framed at the carrier's
+// generator and its SortKey instantiated per call -- but, like flat_map, not REALIZED: the call carries no
+// denotation, so a consumer that must execute it refuses at its own gate. gunbc.recurring_failure_mode
 // collection_callback_operation_unrealized_in_v2_lowering is the counted frontier with each trigger.
 type CallbackRealization
   = CallbackMapsToCons
   | CallbackAllByAnd
   | CallbackFiltersByCondition
   | CallbackAnyByOr
+
+// THE CANONICAL SHAPE OF A SYNTHESIZED CALLBACK STEP, one arm per construction the synthesis performs:
+// cons the callback's result on the carrier (map), keep the member under the condition (filter), join
+// the result into the accumulator with a Bool operator (all with &&, any with ||). The operator is a
+// field, so the join's identity is carried where it differs, and there is no arm spelling a
+// contradiction: a cons step cannot say it iterates left to right, because no cons arm carries a
+// direction at all.
+type CallbackStepShape
+  = StepConsOfCallbackResult
+  | StepKeepsMemberUnderCondition
+  | StepAccBoolJoined { operator: Symbol }
+
+// THE CANONICAL SHAPE OF A SYNTHESIZED CALLBACK INIT: the empty carrier (map, filter cons onto it) or a
+// Bool literal (all starts at true, any at false). The kind is the fact; which literal, where it matters,
+// is a field -- not a symbol the builder compares against.
+type CallbackInitShape
+  = InitEmptyCarrier
+  | InitBoolLiteral { value: Symbol }
+
+// THE ONE ROW PER CALLBACK REALIZATION, keyed on the realization identity (a sum member, never a string),
+// carrying the init slot and the synthesized step's shape. THE MATCH IS TOTAL AND THAT IS THE WALL: a
+// realization the sum declares but this function has no row for does not COMPILE (v2.compiler.infer
+// infer_match_non_exhaustive refuses the non-exhaustive arm set), so a rowless realization is not a
+// runtime refusal to remember -- it is unwritable, and no coverage claim over a population is needed to
+// keep the two sides in step (DESIGN section 5, construction over validation: exhaustiveness is
+// checked by the compiler, so a missing row is unwritable rather than policed). v2.compiler.body_lowering_fold body_lower_callback_step_body CONSTRUCTS the step body
+// from step_shape -- each shape arm builds its body, so there is no free choice left between what a step
+// is and what order it claims to visit in -- and callback_step_shape_iteration_direction is the one
+// total match reading the direction off the shape.
+type CallbackStepRow {
+  init: CallbackInitShape
+  step_shape: CallbackStepShape
+}
+
+fn callback_step_row(r: CallbackRealization) -> CallbackStepRow {
+  match r {
+    CallbackMapsToCons => CallbackStepRow { init: InitEmptyCarrier, step_shape: StepConsOfCallbackResult }
+    CallbackAllByAnd => CallbackStepRow { init: InitBoolLiteral { value: ^dag_token_kw_true }, step_shape: StepAccBoolJoined { operator: ^dag_token_and_and } }
+    CallbackFiltersByCondition => CallbackStepRow { init: InitEmptyCarrier, step_shape: StepKeepsMemberUnderCondition }
+    CallbackAnyByOr => CallbackStepRow { init: InitBoolLiteral { value: ^dag_token_kw_false }, step_shape: StepAccBoolJoined { operator: ^dag_token_or_or } }
+  }
+}
 
 // A ROSTER ROW IS EITHER REALIZED AS A FOLD (an authored or synthesized step over the one Loop encoding)
 // or IS A PRIMITIVE CALL: concat is not an iteration, so its call stays a call, its unbound bare head
@@ -374,7 +424,7 @@ fn collection_roster_carrier_type() -> Node {
 fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
-    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()) }]
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()), declaration: NotADeclaration }]
   )
 }
 
@@ -398,25 +448,79 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
     OptionalOf { inner: _ } => optional_absent()
     WitnessOf { inner: _ } => optional_absent()
     TupleOf { first: _, second: _ } => optional_absent()
-    CallableOf { params: _, return_type: _ } => optional_absent()
-    AlgebraTypeVariable { id: _ } => optional_absent()
+    CallableOf { params: ps, return_type: r } =>
+      match fold(ps, init: optional_present(value: Empty), f: fn(acc, p) {
+        match acc {
+          Absent => acc
+          Present { value: types } =>
+            match collection_roster_template_type(t: p) {
+              Absent => optional_absent()
+              Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
+            }
+        }
+      }) {
+        Absent => optional_absent()
+        Present { value: domain_types } =>
+          match collection_roster_template_type(t: r) {
+            Absent => optional_absent()
+            Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type()))
+          }
+      }
+    AlgebraTypeVariable { id: v } => optional_present(value: collection_roster_type_variable(id: v))
   }
+}
+
+fn collection_roster_template_types(ts: List<AlgebraTypeTemplate>) -> Optional<List<Node>> {
+  fold(ts, init: optional_present(value: Empty), f: fn(acc, t) {
+    match acc {
+      Absent => acc
+      Present { value: types } =>
+        match collection_roster_template_type(t: t) {
+          Absent => optional_absent()
+          Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
+        }
+    }
+  })
+}
+
+// A ROW'S OWN TYPE VARIABLE IS A TYPE PARAMETER OF THE SIGNATURE THE ROW IS READ AS. `sort_by`'s callable returns
+// AlgebraTypeVariable "SortKey": the key's type is whatever the key callable produces, fixed per call. So the
+// variable is bound in the signature's binder set beside the carrier and its generator, and each use instantiates
+// it through the ordinary generic application route -- the instance lands in the call's InferredFacts.type_instances
+// like any other parameter's. The variable's identity is the row's own spelling: a signature's binders are local
+// to it, so two rows naming one spelling are two signatures, never one variable.
+fn collection_roster_type_variable(id: String) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: id) } }, children: [])
+}
+
+fn collection_roster_template_variables(t: AlgebraTypeTemplate, seen: List<String>) -> List<String> {
+  match t {
+    AlgebraTypeVariable { id: v } => if contains(xs: seen, item: v, eq: fn(a, b) { a == b }) { seen } else { list_snoc_item(xs: seen, item: v) }
+    CallableOf { params: ps, return_type: r } =>
+      collection_roster_template_variables(t: r, seen: fold(ps, init: seen, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
+    ReceiverSelf => seen
+    ReceiverElement => seen
+    ReceiverKey => seen
+    ReceiverValue => seen
+    NamedTemplate { name: _ } => seen
+    ContainerOf { source: _, element: _ } => seen
+    OptionalOf { inner: _ } => seen
+    WitnessOf { inner: _ } => seen
+    TupleOf { first: _, second: _ } => seen
+  }
+}
+
+fn collection_roster_signature_variable_binders(t: AlgebraFieldTemplate) -> List<Edge> {
+  let ids = collection_roster_template_variables(t: t.return_type, seen: fold(t.param_types, init: Empty, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
+  fold(ids, init: Empty, f: fn(acc, id) {
+    list_snoc_item(xs: acc, item: Edge { label: Authored { name: symbol_intern_lexeme(lexeme: id) }, target: collection_roster_type_variable(id: id), declaration: NotADeclaration })
+  })
 }
 
 fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node> {
   match row.form {
     RosterFreeMonoidPrimitiveCall =>
-      let domain = fold(row.template.param_types, init: optional_present(value: Empty), f: fn(acc, t) {
-        match acc {
-          Absent => acc
-          Present { value: types } =>
-            match collection_roster_template_type(t: t) {
-              Absent => optional_absent()
-              Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
-            }
-        }
-      })
-      match domain {
+      match collection_roster_template_types(ts: row.template.param_types) {
         Absent => optional_absent()
         Present { value: domain_types } =>
           match collection_roster_template_type(t: row.template.return_type) {
@@ -425,7 +529,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
               let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_carrier_type())
+                children: type_binder_set_children(binders: concat([Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder(), declaration: NotADeclaration }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type(), declaration: NotADeclaration }], collection_roster_signature_variable_binders(t: row.template)), source: collection_roster_carrier_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }
@@ -1193,24 +1297,42 @@ fn fold_roster_row_is_at(path: String) -> Bool {
 // order cannot be read off the encoding's structure; it is read off the realized declaration the Loop
 // already carries (^loop_realized_declaration_edge), through this one derivation, and an executor of a
 // fold-realized Loop must ask it. An authored fold step is a left fold, and fold_list is too;
-// fold_list_right is the right fold. A synthesized step's order is owned by the synthesis that built it:
-// map conses each result onto the carrier, which is order-preserving ONLY when the members are visited
-// right to left, so its row says so; all joins with &&, whose result is the same in either order, and is
-// declared left to right with the fold it is written beside.
+// fold_list_right is the right fold. A synthesized step's order is READ FROM THE SHAPE the synthesis
+// builds (callback_step_row): a cons-shaped step preserves order only when the members are visited
+// right to left; a join's result is the same in either order and is declared left to right with the fold
+// it is written beside. This ONE total match over CallbackStepShape is the only place a callback
+// direction is spelled -- the shape and the direction are not two facts a later reader must be told to
+// keep in step, because the direction is read off the shape, never carried beside it.
 type FoldIterationDirection
   = IteratesLeftToRight
   | IteratesRightToLeft
 
-fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
-  match r {
-    CallbackMapsToCons => IteratesRightToLeft
-    CallbackAllByAnd => IteratesLeftToRight
-    CallbackFiltersByCondition => IteratesRightToLeft
-    CallbackAnyByOr => IteratesLeftToRight
+// THE ONE SHAPE -> DIRECTION MATCH. Its correctness is exercised by execution, not by a fixture:
+// ccr_map_direction_is_read_from_its_step_shape measures red when the cons arm of this match is
+// flipped and green at the unmutated sha, and ccr_filter_and_any_directions covers the keep and join
+// arms through the realized path (execution, not fixture, is the evidence for a total match's correctness;
+// the flip runs, with shas, are recorded on gunbc.recurring_failure_mode
+// fold_realized_loop_carries_no_iteration_direction).
+// The map-fixture claims (ccr_map_loop_iterates_right_to_left and siblings) are pre-existing red on the
+// collection-map binding frontier and cannot discriminate this match (review 82832 on the PR, 2026-10-19).
+fn callback_step_shape_iteration_direction(s: CallbackStepShape) -> FoldIterationDirection {
+  match s {
+    StepConsOfCallbackResult => IteratesRightToLeft
+    StepKeepsMemberUnderCondition => IteratesRightToLeft
+    StepAccBoolJoined { operator: _ } => IteratesLeftToRight
   }
 }
 
-// Absent for a primitive-call row: it is no Loop, so it has no visiting order.
+// The realization's direction is read through its step row. The reading is TOTAL because the row is
+// total: callback_step_row has no missing arm to write (infer_match_non_exhaustive refuses one), so there
+// is no absent row to default (DESIGN section 5: the total match makes the default unwritable).
+fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
+  callback_step_shape_iteration_direction(s: callback_step_row(r: r).step_shape)
+}
+
+// Absent for a primitive-call row: it is no Loop, so it has no visiting order. The callback arm is
+// always Present -- the row and its direction are total (callback_step_row) -- and an authored step is a
+// left fold; Absent means a bug-shaped absence (a roster form with no direction never reads as one).
 fn fold_roster_form_iteration_direction(f: CollectionRosterForm) -> Optional<FoldIterationDirection> {
   match f {
     RosterAuthoredStep => optional_present(value: IteratesLeftToRight)
@@ -1274,23 +1396,18 @@ fn fold_realized_member_role(realized: Node) -> Optional<FoldMemberRole> {
 // is not one of these, or is not an instantiation at all -- is Absent, and the caller must say so rather
 // than guess a member.
 fn fold_collection_member_type(domain_type: Node) -> Optional<Node> {
-  let args = node_positional_child_targets(node: domain_type)
-  if fold_node_is_instantiation(n: domain_type) && length(xs: args) == 2 {
-    match list_at_optional(xs: args, index: 0) {
-      Absent => optional_absent()
-      Present { value: head } =>
-        match declaration_reference_path_optional(node: head) {
-          Absent => optional_absent()
-          Present { value: path } =>
-            if qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
-              list_at_optional(xs: args, index: 1)
-            } else {
-              optional_absent()
-            }
+  match declaration_denotation_of_type(t: domain_type) {
+    Absent => optional_absent()
+    Present { value: denotation } =>
+      if qualified_name_to_dotted_string(qn: denotation.declaration) == "std.algebra.FreeMonoid" {
+        match denotation.type_arguments {
+          Cons { head: member, tail: Empty } => optional_present(value: member)
+          Cons { head: _, tail: _ } => optional_absent()
+          Empty => optional_absent()
         }
-    }
-  } else {
-    optional_absent()
+      } else {
+        optional_absent()
+      }
   }
 }
 
@@ -1301,7 +1418,6 @@ fn fold_node_is_instantiation(n: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     ComputationNode { behavior: _ } => false
   }
 }
@@ -1331,7 +1447,7 @@ fn fold_step_formal_at(step: Node, position: Int) -> Optional<FoldMemberFormal> 
       match list_at_optional(xs: labels, index: position) {
         Absent => optional_absent()
         Present { value: label } =>
-          match list_at_optional(xs: node_positional_child_targets(node: step), index: 0) {
+          match list_at_optional(xs: positional_child_target_nodes(node: step), index: 0) {
             Absent => optional_absent()
             Present { value: domain } =>
               fold_list(xs: domain.children, empty: optional_absent(), cons: fn(acc, e) {
@@ -1371,7 +1487,7 @@ fn fold_step_body_node(step: Node) -> Optional<Node> {
 // The step's DECLARED return, when the author wrote one: position 1 of the Arrow, unless it is one of the
 // step's own fresh variables (an unwritten return is minted as one), in which case nothing was declared.
 fn fold_step_declared_return(step: Node) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: step), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: step), index: 1) {
     Present { value: declared } =>
       if fold_type_is_variable_of(t: declared, step: step) { optional_absent() } else { optional_present(value: declared) }
     Absent => optional_absent()
@@ -1380,7 +1496,7 @@ fn fold_step_declared_return(step: Node) -> Optional<Node> {
 
 // The step callable of a fold encoding's Loop: its one positional child.
 fn fold_loop_step(loop_node: Node) -> Optional<Node> {
-  let positional = node_positional_child_targets(node: loop_node)
+  let positional = positional_child_target_nodes(node: loop_node)
   if length(xs: positional) == 1 { list_at_optional(xs: positional, index: 0) } else { optional_absent() }
 }
 
@@ -1399,11 +1515,11 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
     body_binding: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
-        Edge { label: Positional, target: operands.step },
-        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
-        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
-        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
-        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
+        Edge { label: Positional, target: operands.step, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom(), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head, declaration: NotADeclaration }
       ]
     )
   )
@@ -1413,7 +1529,7 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
 fn fold_recurrence_loop(encoding: Node) -> Optional<Node> {
   match encoding.kind {
     ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 2) {
         Present { value: body } =>
           match body.kind {
             ComputationNode { behavior: Loop } => optional_present(value: body)

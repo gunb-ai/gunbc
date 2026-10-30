@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.dashboard_endpoint_ownership_authored_indepe
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data dashboard_endpoint_ownership_authored_independently: RecurringFailureMode = RecurringFailureMode {
   identity: "dashboard_endpoint_ownership_authored_independently" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: dashboard instances independently author host_identity and listen_port; two distinct instances can claim the same endpoint while their ids, repository roots, host-lookup subjects and owned paths satisfy the population law. HARM: the declared roster admits a port collision, and a launch-time port override can serve one instance's page under another instance's identity. RECOGNITION RULE: a resource-ownership law over a complete roster must cover the resource being exclusively claimed, not only the owners' names and paths.",
     "SPECIMEN: gunbc#10980 merged with srv2-lab-v1-deletion and srv2-deploy both declaring srv2:18082. The existing population witness omitted the endpoint axis entirely. RUNG FOUND AT: outside the ladder for endpoint collisions. The endpoint uniqueness conjunct and enrolled same-host/same-port refusal control make this mechanically preventable at the declared-roster witness boundary; they do not establish runtime ownership or prevent independently authored constructors.",

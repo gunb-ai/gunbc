@@ -82,6 +82,7 @@ data all_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
   account_events: Present { value: [RedfishLogEntry { id: 7, severity: "OK", message: "session opened" }] },
   virtual_media: Present { value: [RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "bmc" }, media_id: "CD1" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }] },
   sensors: Present { value: [RedfishTelemetryPoint { name: "CPU0 Temp", kind: RedfishTemperatureCelsius, reading: RedfishReadingValue { whole: 41 }, health: RedfishHealthOk, state: RedfishStateEnabled }] },
+  ipmi_sdr: none,
 }
 
 fn world_all_surfaces() -> BmcWorld {
@@ -95,7 +96,7 @@ fn sel_world() -> BmcWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: sel_records,
     sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: bmc_record_surfaces_unmodeled,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: bmc_record_surfaces_unmodeled, redfish_accounts: w.redfish_accounts,
   }
 }
 
@@ -129,6 +130,7 @@ data empty_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
   account_events: Present { value: [] },
   virtual_media: Present { value: [] },
   sensors: Present { value: [] },
+  ipmi_sdr: none,
 }
 
 fn prior_life_minimal_dry_world() -> DryPriorLifeWorld {
@@ -137,7 +139,7 @@ fn prior_life_minimal_dry_world() -> DryPriorLifeWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: one_sel_record,
     sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces, redfish_accounts: w.redfish_accounts,
   }
   dry_world(bmc: with_sel, store: empty_store)
 }
@@ -198,6 +200,7 @@ test fn w_one_unmodeled_carrier_is_a_typed_gap_that_refuses() -> Bool {
     account_events: all_surfaces.account_events,
     virtual_media: all_surfaces.virtual_media,
     sensors: none,
+    ipmi_sdr: none,
   }
   match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: dry_world(bmc: bmc_with_record_surfaces(world: sel_world(), surfaces: no_sensors), store: empty_store)).outcome {
     PriorLifeArchiveRefused { cause: c } =>
@@ -295,6 +298,7 @@ fn world_with_log(entries: List<RedfishLogEntry>) -> BmcWorld {
     account_events: all_surfaces.account_events,
     virtual_media: all_surfaces.virtual_media,
     sensors: all_surfaces.sensors,
+    ipmi_sdr: all_surfaces.ipmi_sdr,
   })
 }
 
@@ -306,6 +310,7 @@ fn world_with_media(member: RedfishVirtualMediaObservation) -> BmcWorld {
     account_events: all_surfaces.account_events,
     virtual_media: Present { value: [member] },
     sensors: all_surfaces.sensors,
+    ipmi_sdr: all_surfaces.ipmi_sdr,
   })
 }
 

@@ -2,14 +2,13 @@ module v2.compiler.reference_site_collector
 
 import std.types { List, Map }
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_head, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
 
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
 import v2.std.node {
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -23,13 +22,18 @@ import v2.std.node {
   EdgeLabel,
   StructuralLabel,
 }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name {
-  optional_declaration_identity,
   QualifiedName,
   qualified_name_from_node,
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  ReferencePosition,
+  ValuePosition
+}
+import v2.compiler.occurrence_role { reference_position_step }
 import v2.compiler.lexical_scope {
   ChildSeesNoValues,
   ChildSeesParentValues,
@@ -37,6 +41,9 @@ import v2.compiler.lexical_scope {
   ChildSeesParentValuesAndUndecided,
   ChildSeesParentValuesBeyondCurrentArm,
   ChildValueScope,
+  arrow_slot,
+  arrow_slot_is_carried,
+  child_is_declaring_occurrence,
   child_value_scope,
   declaration_names_value,
   module_root_bindings,
@@ -164,6 +171,7 @@ import v2.extdeps.languages.dag {
 fn reference_sites_in_edge(
   acc: ScopedReferenceSiteCollection,
   position: List<EdgeLabel>,
+  issued: ReferencePosition,
   scope: SiteScope,
   edge: Edge
 ) -> ScopedReferenceSiteCollection {
@@ -175,18 +183,22 @@ fn reference_sites_in_edge(
         reference_sites_in_node(
           acc: acc,
           position: list_snoc_item(xs: position, item: edge.label),
-          scope: scope,
+          issued: issued,
+            scope: scope,
           node: edge.target
         )
       }
     StructuralLabel { label: _ } =>
-      if dag_surface_module_header_metadata_edge(e: edge) {
+      // A slot resolve carries unchanged (v2.compiler.lexical_scope arrow_slot_is_carried: the declared
+      // order, the contract metadata) is never resolved, so it is not a mention and demands no module.
+      if dag_surface_module_header_metadata_edge(e: edge) || arrow_slot_is_carried(slot: arrow_slot(e: edge, ordinal: 0)) {
         acc
       } else {
         reference_sites_in_node(
           acc: acc,
           position: list_snoc_item(xs: position, item: edge.label),
-          scope: scope,
+          issued: issued,
+            scope: scope,
           node: edge.target
         )
       }
@@ -194,6 +206,7 @@ fn reference_sites_in_edge(
       reference_sites_in_node(
         acc: acc,
         position: position,
+        issued: issued,
         scope: scope,
         node: edge.target
       )
@@ -245,21 +258,31 @@ fn site_names_added(names: List<Symbol>, to: Map<Symbol, Symbol>) -> Map<Symbol,
 fn reference_sites_in_children(
   acc: ScopedReferenceSiteCollection,
   position: List<EdgeLabel>,
+  issued: ReferencePosition,
   scope: SiteScope,
   node: Node
 ) -> ScopedReferenceSiteCollection {
   let frame = node_value_frame(n: node)
   fold(node.children, init: SiteChildWalk { acc: acc, ordinal: 0, positional_ordinal: 0 }, f: fn(walk, edge) {
     SiteChildWalk {
-      acc: reference_sites_in_edge(
+      acc: if child_is_declaring_occurrence(frame: frame, edge: edge, positional_ordinal: walk.positional_ordinal) {
+        walk.acc
+      } else {
+      reference_sites_in_edge(
         acc: walk.acc,
         position: position,
+        // ONE STEP OF THE SOLE POSITION AUTHORITY, taken as the walk descends: the issuer gets the
+        // parent, the edge and the walk's own ordinal -- the same three facts child_value_scope is
+        // handed one line below -- and decides the child's position from the slot table, then the
+        // marker, then the inherited answer. The collector passes facts and decides nothing.
+        issued: reference_position_step(inherited: issued, parent: node, edge: edge, ordinal: walk.ordinal),
         scope: site_scope_of_child(
           scope: scope,
           seen: child_value_scope(frame: frame, edge: edge, ordinal: walk.ordinal, positional_ordinal: walk.positional_ordinal)
         ),
         edge: edge
-      ),
+      )
+      },
       ordinal: walk.ordinal + 1,
       positional_ordinal: match edge.label {
         Positional => walk.positional_ordinal + 1
@@ -273,10 +296,20 @@ fn reference_sites_in_children(
 fn collection_snoc_site(
   acc: ScopedReferenceSiteCollection,
   scope: SiteScope,
+  position: ReferencePosition,
+  occurrence: NodeOccurrenceIdentity,
   site: ReferenceSite
 ) -> ScopedReferenceSiteCollection {
   ScopedReferenceSiteCollection {
-    sites: list_snoc_item(xs: acc.sites, item: ScopedReferenceSite { site: site, head: site_head_binding(scope: scope, spelling: site.spelling) }),
+    sites: list_snoc_item(
+    xs: acc.sites,
+    item: ScopedReferenceSite {
+      site: site,
+      position: position,
+      occurrence: occurrence,
+      head: site_head_binding(scope: scope, spelling: site.spelling)
+    }
+  ),
     unreadable_roots: acc.unreadable_roots
   }
 }
@@ -296,6 +329,7 @@ fn collection_snoc_site(
 fn reference_sites_in_node(
   acc: ScopedReferenceSiteCollection,
   position: List<EdgeLabel>,
+  issued: ReferencePosition,
   scope: SiteScope,
   node: Node
 ) -> ScopedReferenceSiteCollection {
@@ -305,14 +339,17 @@ fn reference_sites_in_node(
         reference_sites_in_children(
           acc: acc,
           position: position,
-          scope: scope,
+          issued: issued,
+            scope: scope,
           node: node
         )
       } else {
         collection_snoc_site(
           acc: acc,
           scope: scope,
-          site: ReferenceSite { position: position, spelling: qn }
+          position: issued,
+            occurrence: node.occurrence_id,
+            site: ReferenceSite { position: position, spelling: qn }
         )
       }
     Rejected { diagnostics: _ } =>
@@ -331,25 +368,20 @@ fn reference_sites_in_node(
             collection_snoc_site(
               acc: acc,
               scope: scope,
-              site: ReferenceSite {
+              position: issued,
+                    occurrence: node.occurrence_id,
+                    site: ReferenceSite {
                 position: position,
                 spelling: Cons { head: sym, tail: Empty }
               }
             )
           }
           }
-        TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Occupancy } =>
-          reference_sites_in_children(
-            acc: collection_snoc_site(acc: acc, scope: scope, site: ReferenceSite { position: position, spelling: optional_declaration_identity() }),
-            position: position,
-            scope: scope,
-            node: node
-          )
-        TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
+        TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
+        ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, issued: issued, scope: scope, node: node)
       }
   }
 }
@@ -414,14 +446,36 @@ fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bo
 // module acquisition probes storage; an undecided head requests nothing. That is a refusal to guess, not a
 // claim: a spelling that did need its module and was never requested refuses at resolution, naming the
 // spelling. HeadLexicallyUnbound is likewise not a claim that the head names a module.
+// FOUR ANSWERS, and they are all the same question: what a VALUE FRAME says about this head. Frame /
+// root / undecided / unbound. There is deliberately NO fifth "not a value position" answer -- that
+// would fold the position fact into the binding fact, and the two are read apart by the consumers
+// (acquisition asks the binding alone, the roster asks both). Position is its OWN FIELD on the site,
+// so a mention at a non-value position keeps its honest binding reading instead of being silenced by
+// a variant, and no consumer can mistake "not a value" for "not a candidate" or the other way round.
+// Reporting a non-value mention as HeadLexicallyUnbound AND ACTING ON THAT alone is the defect this
+// stops -- a free-name reading is what made a roster sweep emit `import std.host_text { chars }` for a
+// module that binds `chars` itself (gunbc#14338); the fix is that the position now travels with the
+// site so a consumer cannot act on the binding reading alone.
 type SiteHeadBinding
   = HeadBoundInFrame
   | HeadBoundAtRootValue
   | HeadBindingUndecided
   | HeadLexicallyUnbound
 
+// ONE SITE, TWO ORTHOGONAL FACTS, each issued by its own authority and neither derived from the other:
+//   position -- where the mention sits relative to the value layer, issued SOLELY by
+//              v2.compiler.occurrence_role reference_position_step as the walk descends (which consults
+//              v2.compiler.lexical_scope arrow_slot for the codomain, the one position no marker carries);
+//   head     -- what a value frame says about the head, decided here from the frame the SAME walk
+//              carries from v2.compiler.lexical_scope child_value_scope.
+// A consumer that needs "may this name be free?" must ask BOTH: a non-value position is not a free
+// name however unbound its head reads.
 type ScopedReferenceSite {
   site: ReferenceSite
+  position: ReferencePosition
+  // The occurrence of the node the mention was read at: the identity a consumer joins to its own tree's node, where `site.position`
+  // is only a path in the normalized tree.
+  occurrence: NodeOccurrenceIdentity
   head: SiteHeadBinding
 }
 
@@ -463,6 +517,11 @@ type SiteScope {
   imported: Map<Symbol, Symbol>
 }
 
+// THE BINDING FACT ALONE: what a value frame says about this head. It does NOT consult the position --
+// position travels as its own field on the site (tidy-ant-251's D3 ruling), because folding the two
+// into one variant let a consumer mistake "not a value position" for "not a candidate" and widen
+// module acquisition for an imported qualified tag. A consumer that asks "may this name be free?" must
+// read BOTH fields; a consumer that asks "is this head bound?" reads this one.
 fn site_head_binding(scope: SiteScope, spelling: QualifiedName) -> SiteHeadBinding {
   match spelling {
     Cons { head: head, tail: _ } =>
@@ -528,6 +587,10 @@ fn module_reference_sites(
       reference_sites_in_node(
         acc: acc,
         position: list_map(xs: module_qn, f: fn(segment) { Authored { name: segment } }),
+        // The ROOT has no parent, so its position is decided by no step: ValuePosition is the fold's
+        // initial answer, which the issuer itself owns (reference_position_step is transparent for a
+        // nameless edge) -- the collector supplies the seed only because a fold needs one.
+        issued: ValuePosition,
         scope: SiteScope {
           frame: empty_map(),
           undecided: [],
@@ -550,7 +613,10 @@ fn module_reference_sites(
 // `imported` is the names the module's imports bind (v2.compiler.normalized_tree NormalizedTree
 // import_bindings), which the tree under `root` does not carry: they are what a head can be bound by that no
 // frame and no root declaration says.
-fn collect_scoped_module_reference_sites(root: Node, imported: List<Symbol>) -> ScopedReferenceSiteCollection {
+fn collect_scoped_module_reference_sites(
+  root: Node,
+  imported: List<Symbol>
+) -> ScopedReferenceSiteCollection {
   module_reference_sites(acc: empty_scoped_reference_site_collection(), root: root, imported: imported)
 }
 

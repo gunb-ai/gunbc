@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.host_ownership_admitted_as_vacancy
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data host_ownership_admitted_as_vacancy: RecurringFailureMode = RecurringFailureMode {
   identity: "host_ownership_admitted_as_vacancy" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a host's ownership admitted as its vacancy** (an admission answers WHO HOLDS a host -- a fact in the event log -- and the effect it admits then runs as though the host were FREE, which is a fact on the machine the admission never read; the owner's own running workload and the admitted effect contend for the same memory).",

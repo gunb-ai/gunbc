@@ -1,0 +1,120 @@
+module test.claim.gcp_iam_bootstrap_self_grant_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, heal_publisher_dedicated_federation }
+import gunbc.auth.github_gcp_federation { federated_service_account_member }
+import gunbc.auth.gcp_iam_converge {
+  gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets,
+  iam_converge_bindings_over, iam_converge_reach_excludes_its_own_trust_over, iam_converge_reach_excludes_its_own_trust,
+}
+import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, iam_bootstrap_service_account_id, gcp_iam_bootstrap_wif_pool_id }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  iam_bootstrap_delta_role_permissions, iam_bootstrap_denied_permissions, iam_bootstrap_withheld_undeniable_permissions,
+  iam_bootstrap_delta_role_withholds_its_boundary, iam_bootstrap_delta_deny_rules, deny_permission_iam_spelling, iam_bootstrap_model_admitted,
+  iam_bootstrap_capability_bindings_over, IamBootstrapBinding, BootstrapProject,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code }
+import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secrets }
+import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── CONVERGE-ONLY AUTHORITY CANNOT SELF-GRANT ────────────────────────────────────────────────
+// The RED the brief asks for: a roster edit made by the converge's own inputs alone must not obtain
+// the bootstrap's rights. The converge's reach is derived from its roster
+// (gunbc.auth.gcp_iam_converge iam_converge_bindings_over), so the attack is a roster edit that names
+// the bootstrap identity's own account or pool as a converge target: the derived reach would then
+// carry the account-policy or provider role on the bootstrap's trust, and the next approved converge
+// could make the converge job a principal of iam-bootstrap. These claims compute the reach such an
+// edit WOULD produce and require the model to refuse it. They were run RED before the bootstrap trust
+// joined iam_converge_own_trust_resources.
+
+fn target_naming(account: String, pool: NonEmptyStr) -> DedicatedFederation {
+  let base = heal_publisher_dedicated_federation()
+  DedicatedFederation { label: "roster edit naming the bootstrap trust", pool_id: pool, pool_display_name: base.pool_display_name,
+    provider_id: base.provider_id, attribute_mapping: base.attribute_mapping, attribute_condition: base.attribute_condition,
+    impersonation: base.impersonation, service_account: account as ServiceAccountEmail, service_account_id: iam_bootstrap_service_account_id,
+    service_account_display_name: base.service_account_display_name,
+    service_account_member: federated_service_account_member(email: account as ServiceAccountEmail), secret_grants: [] }
+}
+
+fn reach_with(extra: DedicatedFederation) -> Bool {
+  iam_converge_reach_excludes_its_own_trust_over(bindings: iam_converge_bindings_over(targets: gcp_iam_converge_targets + [extra], grant_set_secrets: gcp_iam_converge_grant_set_secrets()))
+}
+
+// POSITIVE CONTROL: the declared roster's reach excludes the trust it must exclude.
+test fn the_declared_roster_reach_excludes_every_trust_root() -> Bool {
+  iam_converge_reach_excludes_its_own_trust()
+}
+
+// RED: a target naming iam-bootstrap's own account.
+test fn a_roster_edit_naming_the_bootstrap_account_cannot_reach_it() -> Bool {
+  !reach_with(extra: target_naming(account: iam_bootstrap_service_account as String, pool: "an-unrelated-pool"))
+}
+
+// RED: a target naming iam-bootstrap's own pool, whose principal set is the one path to the account.
+test fn a_roster_edit_naming_the_bootstrap_pool_cannot_reach_it() -> Bool {
+  !reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: gcp_iam_bootstrap_wif_pool_id))
+}
+
+// DISCRIMINATION CONTROL: an ordinary new target is admitted, so the two REDs above are not the
+// reach check refusing everything.
+test fn an_ordinary_roster_edit_is_admitted() -> Bool {
+  reach_with(extra: target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool"))
+}
+
+// THE WIDENED REACH STILL EXCLUDES EVERY TRUST ROOT: with every non-root secret now a converge grant-set
+// secret (all keys), no iam-converge binding sits on a trust-root secret, and the declared own-trust
+// resources are still outside its reach.
+test fn the_widened_converge_reach_excludes_every_trust_root() -> Bool {
+  let bound = map(iam_converge_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets()), b => b.resource)
+  iam_converge_reach_excludes_its_own_trust()
+    && all(ceremony_trust_root_secrets(), t => !any(bound, r => r == gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: t.secret)))
+}
+
+// ── iam-bootstrap's own reach: fixed, denied where deniable, and not a roster input ────────────
+
+fn bootstrap_project_cells(rs: List<IamBootstrapBinding>) -> List<String> {
+  map(filter(rs, b => match b.resource { BootstrapProject => true  _ => false }), b => b.cell.role)
+}
+
+// A ROSTER EDIT ALONE CANNOT ADD TO iam-bootstrap's REACH: its role is a constant, and widening every
+// roster input leaves the project cells -- the only cells that grant reach -- exactly as they were.
+test fn a_roster_edit_cannot_widen_the_bootstrap_identitys_reach() -> Bool {
+  let before = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let widened = iam_bootstrap_capability_bindings_over(
+    targets: gcp_iam_converge_targets + [target_naming(account: "unrelated@gunbai-secrets.iam.gserviceaccount.com", pool: "an-unrelated-pool")],
+    grant_set_secrets: gcp_iam_converge_grant_set_secrets() + ["gunbc-self-grant-probe-secret"])
+  bootstrap_project_cells(rs: before) == bootstrap_project_cells(rs: widened)
+}
+
+// EVERYTHING DENIABLE IS DENIED AND NOTHING DENIED OR WITHHELD IS IN THE ALLOW ROLE.
+test fn the_bootstrap_identitys_boundary_is_denied_or_withheld() -> Bool {
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  iam_bootstrap_delta_role_withholds_its_boundary() && iam_bootstrap_model_admitted()
+    && all(["secretmanager.versions.access", "iam.serviceAccounts.getAccessToken", "iam.serviceAccounts.actAs", "iam.serviceAccounts.signBlob",
+      "iam.serviceAccounts.signJwt", "iam.serviceAccountKeys.create", "cloudresourcemanager.projects.setIamPolicy", "iam.roles.update", "iam.roles.create"], p => any(denied, d => d == p))
+    && count(iam_bootstrap_delta_deny_rules()) == 1
+}
+
+// RED CONTROL FOR THE BOUNDARY CHECK: an allow role that carried a denied permission is refused.
+test fn a_role_carrying_a_denied_permission_is_caught() -> Bool {
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  let leaky = iam_bootstrap_delta_role_permissions + ["secretmanager.versions.access"]
+  any(leaky, p => any(denied, d => d == p))
+}
+
+// THE CENSUS ROW MIRRORS THE CONVERGE'S: the selection asks for an operator-approved capability, the
+// site realizes a gated federated grant, and the divergence carries the converge's stated reason.
+test fn the_bootstrap_delta_census_row_diverges_with_the_converges_reason() -> Bool {
+  let rows = filter(privileged_effect_census, r => declaration_ref_display_key(ref: r.site) == "gunbc.auth.gcp_iam_bootstrap_delta_run::gcp_iam_bootstrap_delta_apply_wet")
+  count(rows) == 1
+    && (match select_authorization_pattern(e: bootstrap_delta_privileged_effect) { PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true  _ => false })
+    && all(rows, r => match site_verdict(row: r).conformance { DivergesWithReason { reason } => reason == gcp_iam_approval_enforced_in_reviewed_code  _ => false })
+}

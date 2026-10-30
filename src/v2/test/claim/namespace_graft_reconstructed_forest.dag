@@ -1,0 +1,46 @@
+module v2.test.claim.namespace_graft_reconstructed_forest
+
+import v2.compiler.namespace_graft { namespace_graft_reconstruct_declaration_forest }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.node { node_same_occurrence, Authored, Conj, Edge, Node, TypeNode, NotADeclaration }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, List }
+import std.algebra { zip_eq, Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RECONSTRUCTED DECLARATION FOREST IS THE DECLARED LIST INTRODUCTION OF ITS UNITS
+// (v2.std.list_introduction), not a node of a connective of its own. Hermetic: the units are supplied
+// values, and the claim reads the forest back through the list's own reader, so the units come out
+// in order and unchanged. The producer's real route is exercised by every module whose flatten is
+// empty with surviving units (v2.compiler.namespace_graft namespace_graft_body_for_graft).
+data ngrf_unit_a: Node = Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+data ngrf_unit_b: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [Edge { label: Authored { name: ^ngrf_marker }, target: ngrf_unit_a, declaration: NotADeclaration }],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn ngrf_edge_target(e: Edge) -> Node { e.target }
+
+test fn reconstructed_forest_reads_back_its_units_in_order_holds() -> Bool {
+  match namespace_graft_reconstruct_declaration_forest(units: [ngrf_unit_a, ngrf_unit_b]) {
+    Cons { head: edge, tail: Empty } =>
+      match list_introduction_elements_optional(node: ngrf_edge_target(e: edge)) {
+        Present { value: elements } => zip_eq(a: elements, b: [ngrf_unit_a, ngrf_unit_b], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// Discriminating input: a bare Conj of the same units is not a list introduction, so the reader
+// refuses it. Without this the claim above could pass over any shape the reader happened to accept.
+test fn bare_conj_of_units_is_not_a_list_introduction_holds() -> Bool {
+  match list_introduction_elements_optional(node: ngrf_unit_b) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

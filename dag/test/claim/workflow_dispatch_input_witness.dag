@@ -9,7 +9,7 @@ import extdeps.github.actions {
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
-  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
+  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
@@ -18,11 +18,12 @@ import gunbc.fleet.fleet_converge_workflow {
   RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
-  fleet_converge_job_edges, fleet_converge_release_bins_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id, fleet_converge_plan_revision_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
   fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
+  fleet_converge_branch_run_grant_await_job_id, FleetKeypairMint, QualificationFloor,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for, ApprovalDeviceEnrolmentCodeIssue,
+  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -256,7 +257,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // an edge row no rostered mode reaches, and a rostered mode's job with no edge row -- so a red names
 // its identities rather than two unequal lists.
 fn fleet_converge_expected_job_ids() -> List<String> {
-  concat([fleet_converge_release_bins_job_id as String],
+  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String, fleet_converge_gcp_iam_bootstrap_job_id as String],
     map(fleet_converge_workflow_modes, m => fleet_converge_mode_job_id(mode: m) as String))
 }
 
@@ -274,17 +275,35 @@ fn fleet_converge_job_roster_duplicated(edges: List<FleetConvergeJobEdge>) -> Li
   filter(map(edges, e => e.id as String), id => length(filter(edges, e => (e.id as String) == id)) > 1)
 }
 
+// THE JOBS THAT RUN NO RELEASE PACK AND BUILD NO PAIR (gunbc.fleet.fleet_converge_workflow fleet_converge_job_edges): the
+// grant wait and the fleet keypair mint touch no host and build the one binary they run (#15001, #15036); the qualification
+// floor builds the seed it runs from the pinned checkout (#15256). Each waits on nothing.
+fn fleet_converge_jobs_without_a_release_pack() -> List<String> {
+  [fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_mode_job_id(mode: FleetKeypairMint) as String, fleet_converge_mode_job_id(mode: QualificationFloor) as String]
+}
+
+// A ROSTERED PAIR JOB'S ONE BINARY SOURCE IS ITS OWN BUILD: it never waits on `build`, and it may wait only on another
+// rostered job that is not a binary source (the boot waits for the run-scoped grant, #15001).
+fn fleet_converge_pair_job_needs_hold(e: FleetConvergeJobEdge, expected: List<String>) -> Bool {
+  all(e.needs, n => n != (fleet_converge_release_bins_job_id as String) && n != (e.id as String) && any(expected, x => x == n))
+}
+
 fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: List<String>) -> Bool {
   let build = [fleet_converge_release_bins_job_id as String]
   fleet_converge_job_roster_missing(edges: edges, expected: expected) == []
     && fleet_converge_job_roster_extra(edges: edges, expected: expected) == []
     && fleet_converge_job_roster_duplicated(edges: edges) == []
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
-      e.needs == []
+      e.needs == [fleet_converge_plan_revision_job_id as String]
     } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
+      fleet_converge_pair_job_needs_hold(e: e, expected: expected)
+    } else if any(fleet_converge_jobs_without_a_release_pack(), j => j == (e.id as String)) {
       e.needs == []
     } else {
-      e.needs == build
+      // THE BINARIES' SOURCE IS `build`; a job may also wait on another rostered job (the converge waits
+      // for gcp-iam-bootstrap), but never on one the roster does not name.
+      any(e.needs, n => n == (fleet_converge_release_bins_job_id as String))
+        && all(e.needs, n => n == (fleet_converge_release_bins_job_id as String) || (n != (e.id as String) && any(expected, x => x == n)))
     })
 }
 
@@ -313,12 +332,12 @@ test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
     && fleet_converge_job_roster_duplicated(edges: edges) == ["namecheap-observe", "namecheap-observe"]
 }
 
-// A JOB ROSTERED AS BUILDING ITS OWN PAIR IS HELD TO DOING SO: its edge needs nothing, and the step
+// A JOB ROSTERED AS BUILDING ITS OWN PAIR IS HELD TO DOING SO: its edge never waits on `build`, and the step
 // it builds with is the compiler pair product's own build line. The red: a rostered job that still
 // waits on `build` (two binary sources, one of them unread) breaks the edge property.
 test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> Bool {
   fleet_converge_in_job_compiler_pair_jobs != []
-    && all(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) { e.needs == [] } else { true })
+    && all(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) { fleet_converge_pair_job_needs_hold(e: e, expected: fleet_converge_expected_job_ids()) } else { true })
     && match fleet_converge_mtcollins1_boot_pair_build_step() {
       RunStep { name: _, id: i, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
         string_contains(s: r, pattern: "--bin claim_executor") && string_contains(s: r, pattern: "--bin gunbc")
@@ -328,6 +347,15 @@ test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> 
 
 test fn fleet_converge_job_roster_red_on_a_pair_job_that_still_waits_on_build() -> Bool {
   let edges = map(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
+    FleetConvergeJobEdge { id: e.id, needs: [fleet_converge_release_bins_job_id as String] }
+  } else { e })
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+}
+
+// RED: a job that runs no release pack (here the qualification floor) waiting on `build` is a second binary source it
+// never reads.
+test fn fleet_converge_job_roster_red_on_a_packless_job_that_waits_on_build() -> Bool {
+  let edges = map(fleet_converge_job_edges, e => if (e.id as String) == (fleet_converge_mode_job_id(mode: QualificationFloor) as String) {
     FleetConvergeJobEdge { id: e.id, needs: [fleet_converge_release_bins_job_id as String] }
   } else { e })
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
@@ -443,10 +471,9 @@ test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
 // above, because those join options to wires and never reach a job. This joins the job's own
 // condition to the same derivation, so the two cannot drift apart silently.
 test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
-  fleet_converge_approval_broker_dark_install_step_if
-    == fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
-    && fleet_converge_approval_broker_dark_install_step_if
-      == "github.event.inputs.mode == 'approval_broker_dark_install'"
+  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall))
+    && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.mode == 'approval_broker_dark_install'")
+    && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.host == 'srv1'")
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
@@ -631,6 +658,12 @@ test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Boo
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
+test fn the_gpu_container_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerGpuContainerToolchainConverge))
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
@@ -656,7 +689,8 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
 
 test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
   let env = fleet_converge_srv1_root_mutation_environment as String
-  fleet_converge_dashboard_deploy_step_if == "github.event.inputs.mode == 'dashboard_deploy'"
+  string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.mode == 'dashboard_deploy'")
+    && string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.host == 'srv1'")
     && !string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.ref")
     && (match fleet_converge_dashboard_deploy_job().environment { Present { value: v } => v == env  Absent => false })
     && (match fleet_converge_approval_broker_dark_install_job().environment { Present { value: v } => v == env  Absent => false })
@@ -803,17 +837,9 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
-// THE LOCK KEY IS THE MUTATED SUBJECT, NOT THE DISPATCH HOST, IN BOTH DIRECTIONS: the enrolment-code
-// issue (the approval device store alone) leaves srv1's executor key, so a control-plane dispatch on
-// srv1 can no longer supersede a pending enrolment; two issues still share one group; and the keyring
-// converge still shares srv1's executor key. Reverting the mode's row to the executor domain turns the
-// first conjunct red.
-test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_the_executor() -> Bool {
-  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1", target: "srv1", run_id: "0")
-  issue != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
-    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2", target: "srv2", run_id: "0")
-    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
-    && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+// The keyring converge shares srv1's executor key: it is not a narrower subject.
+test fn the_keyring_converge_stays_with_the_executor_key() -> Bool {
+  fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "0")
 }
 
 // The plan choice must reach the commissioning-only entry with both admission bindings,
@@ -840,4 +866,17 @@ test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
       FleetSshKeyConsumed => true
       FleetSshKeyNotConsumed => false
     }
+}
+
+// A GUEST-IMAGE BUILD WRITES ONLY INTO ITS OWN RUN (runner workspace, own artifact), so it takes a group keyed
+// by its run, never srv1's executor group (the class an_own_run_mode_is_serialized_in_a_shared_host_mutation_group). Each build's group differs from
+// FleetApply's on the same host, differs from the other build's at another run, and is stable across hosts for one
+// run. Mapping either mode back to the executor domain turns the first conjuncts red.
+test fn a_guest_image_build_is_keyed_to_its_own_run_not_the_executor_host() -> Bool {
+  let apply = fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv1", run_id: "1")
+  all([WorkspaceImageBuild, RevisionJobImageBuild], m =>
+    fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") != apply
+      && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "2")
+      && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") == fleet_converge_mutation_group_for(mode: m, host: "srv2", target: "srv2", run_id: "1"))
+    && fleet_converge_mutation_group_for(mode: WorkspaceImageBuild, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: RevisionJobImageBuild, host: "srv1", target: "srv1", run_id: "2")
 }

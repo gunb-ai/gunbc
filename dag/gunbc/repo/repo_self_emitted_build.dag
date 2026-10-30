@@ -1,0 +1,27 @@
+module gunbc.repo.repo_self_emitted_build
+
+import std.types { String }
+import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+
+// THE BUILD OF AN EMITTED CRATE IS ONE FACT, SPELLED ONCE: the argv after cargo, and the warning denial
+// it runs under. The seed's probe build (src/v1/stage0/src/emitted_closure_compile_host.rs
+// probe_cargo_build_flags, with WARNING_DENIAL_RUSTFLAGS) and the release job that packs an emitted
+// entry (gunbc.ci.ci_spec ci_emitted_release_build_line) must build one binary under one flag set;
+// two sets would make the binary the probe's controls ran a different artifact from the one packed.
+// The row is a String because the seed declares its mirror by value and a Rust test compares that
+// mirror with this row's text; the denial is gunbc.repo.repo_self_warning_policy
+// repo_self_warning_denial_rustflags, never re-spelled here. The compiler is the toolchain the job
+// installs, resolved from RUSTC or PATH exactly as the probe does; it is not a literal.
+data repo_self_emitted_cargo_build_flags: String = "build --release --offline --message-format json --color never"
+
+// THE DENIAL APPENDS TO THE AMBIENT RUSTFLAGS INSTEAD OF REPLACING IT. An assignment of the form
+// RUSTFLAGS="-D warnings" on a command line REPLACES the exported value for that command, and the
+// seed-build preamble (gunbc.repo.repo_self_build repo_self_build_env_preamble) is exported, not
+// inline -- so the plain form silently dropped the four --remap-path-prefix pairs for exactly the
+// build whose product the fleet pack ships, leaving per-runner registry and sysroot paths baked into
+// the emitted bin while the cargo-built sibling was reproducible. Appending keeps both properties:
+// the denial still applies when nothing is exported (the fleet key's own cargo run, a bare local
+// build), and it still leads its own value so a future flag parse sees the floor first.
+fn repo_self_emitted_crate_build_command(cargo: String) -> String {
+  join(["RUSTFLAGS=\"$RUSTFLAGS ", repo_self_warning_denial_rustflags(), "\" ", cargo, " ", repo_self_emitted_cargo_build_flags], "")
+}

@@ -1,14 +1,17 @@
 module test.claim.srv3.srv3_install_media_fetch_real_execution_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr }
-import extdeps.provisioning.ubuntu_install_media_fetch { observe_install_media_fetch }
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.url_file_acquisition { observe_url_file }
 import gunbc.artifact_acquisition {
-  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.provisioning.install_media_store { install_media_store, install_media_store_path, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_install_path, install_media_part_path, install_media_parent_directory }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,7 +25,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionVerified
+  let matched = observe_url_file(path: path, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionVerified
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -31,7 +34,7 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == AcquisitionDigestMismatch
+  let matched = observe_url_file(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -41,18 +44,119 @@ test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_
   let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
   let present_path = concat(dir.path as String, "/present") as NonEmptyStr
   let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
-  let absent_ok = observe_install_media_fetch(
+  let absent_ok = observe_url_file(
     path: missing_path,
     expected_hash: install_media_fetch_fixture_sha256,
   ) == AcquisitionAbsent
-  let verified_ok = observe_install_media_fetch(
+  let verified_ok = observe_url_file(
     path: present_path,
     expected_hash: install_media_fetch_fixture_sha256,
   ) == AcquisitionVerified
-  let mismatch_ok = observe_install_media_fetch(
+  let mismatch_ok = observe_url_file(
     path: present_path,
     expected_hash: install_media_fetch_fixture_wrong_sha256,
   ) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
+}
+
+fn probe_failed(o: AcquisitionObservation) -> Bool {
+  match o {
+    AcquisitionProbeFailed { reason: _ } => true
+    AcquisitionAbsent => false
+    AcquisitionVerified => false
+    AcquisitionDigestMismatch => false
+  }
+}
+
+// RED: a directory at the install path is present, not absent. `test -f` is false for it, so the
+// observation read through that answer called it absent and authorized a download moved into it.
+// It must refuse before any attempt. And a path whose parent does not exist yet is absent, which is
+// the first-run case the parent listing alone could not establish.
+test fn a_non_regular_entry_refuses_and_a_missing_parent_is_absent_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let occupied = concat(dir.path as String, "/occupied") as NonEmptyStr
+  let made = shell.Mkdir.Parents(path: occupied as FilePath)
+  let refused = probe_failed(o: observe_url_file(path: occupied, expected_hash: install_media_fetch_fixture_sha256))
+  let nested = concat(dir.path as String, "/not-yet/fixture") as NonEmptyStr
+  let absent_ok = observe_url_file(path: nested, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionAbsent
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && made.success && refused && absent_ok
+}
+
+// THE BYTE-FOR-BYTE PROOF for the install-media cutover (sealed stores, cohort C-host): the store's
+// format did not change -- only who derives its root. An existing record is written with the PRE-cutover
+// formulation -- the deleted gunbc-side trio's own join (root + "/" + the row's cited filename), spelled
+// here in this witness and nowhere else in production -- then read back through the SEALED store's
+// routes, which derive from the ONE declaration via the isolated tree (a real directory, so the mint
+// lists it for real). Same bytes, same names, same .part siblings.
+test fn media_bytes_written_before_the_cutover_read_back_through_the_sealed_store() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let made = shell.Mkdir.Parents(path: install_media_store_path(tree: tree) as FilePath)
+  // THE OLD JOIN, evaluated at the directory the ONE declaration derives, is exactly what the sealed
+  // store's route computes -- the name nobody changed is the proof no format moved.
+  let old_name = concat(concat(install_media_store_path(tree: tree) as String, "/"), ubuntu_install_media_filename(artifact: noble_numbat_2404_3_live_server_arm64) as String)
+  let wrote = Filesystem.Write(path: old_name, content: install_media_fetch_fixture_content)
+  let read = Filesystem.Read(path: old_name)
+  let ok = match install_media_store(tree: tree) {
+    InstallMediaStoreReady { store: s } =>
+      install_media_install_path(store: s, artifact: noble_numbat_2404_3_live_server_arm64) as String == old_name
+        && read.success
+        && read.content == install_media_fetch_fixture_content
+        && install_media_part_path(store: s, artifact: noble_numbat_2404_3_live_server_arm64) as String == concat(old_name, ".part")
+    InstallMediaStoreUnready { detail: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && made.success && wrote.success && ok && cleaned.success
+}
+
+// CONTROL (reviews 86279 / 86297 / 86365), unconverged host on the REAL filesystem: with the
+// artifacts directory absent the mint REFUSES -- it is a pure observer, and the directory is a
+// DEMANDED provisioning directory (gunbc.runner.runner_host_grants install_media_store_plan
+// creates it at convergence). A converged tree (directory present, as the demanded row leaves it)
+// mints Ready; the refusal here is what an unconverged host gets, and NOTHING was created by the
+// mint: the listing of the artifacts path still fails after the mint ran.
+test fn the_mint_refuses_an_unconverged_host_and_creates_nothing_itself() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let reading = install_media_store(tree: tree)
+  let listed_after = Filesystem.List(path: join([dir.path as String, "/", "artifacts"], ""))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let refused = match reading {
+    InstallMediaStoreReady { store: _ } => false
+    InstallMediaStoreUnready { detail: _ } => true
+  }
+  dir.success && refused && !listed_after.success && cleaned.success
+}
+
+// CONTROL, converged host on the REAL filesystem: the directory the demanded provisioning row creates
+// (mode 0755, the declared member), present before the mint runs, mints Ready.
+test fn the_mint_admits_a_converged_host_where_provisioning_created_artifacts() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let made = shell.Mkdir.Parents(path: join([dir.path as String, "/", "artifacts"], "") as FilePath)
+  let reading = install_media_store(tree: tree)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let ok = match reading {
+    InstallMediaStoreReady { store: s } => install_media_parent_directory(store: s) as String == join([dir.path as String, "/", "artifacts"], "")
+    InstallMediaStoreUnready { detail: _ } => false
+  }
+  dir.success && made.success && ok && cleaned.success
+}
+
+// CONTROL, non-directory at the derived path: the mint refuses with a typed reason -- never an empty
+// store -- when the artifacts path exists as a regular file.
+test fn the_mint_refuses_when_the_artifacts_path_is_not_a_directory() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let artifacts = join([dir.path as String, "/", "artifacts"], "") as NonEmptyStr
+  let wrote = Filesystem.WriteCreateNew(path: artifacts as String, content: "not a directory" as NonEmptyStr)
+  let reading = install_media_store(tree: tree)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let refused = match reading {
+    InstallMediaStoreReady { store: _ } => false
+    InstallMediaStoreUnready { detail: _ } => true
+  }
+  dir.success && wrote.success && cleaned.success && refused
 }

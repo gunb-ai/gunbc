@@ -1,0 +1,34 @@
+module gunbc.rung_drop.literal_only_where_refinement_judgment
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// THE DECLARED SCAFFOLD for the interim literal-only where-refinement judgment (DESIGN 4b(3), 3b). Ruling
+// where_refinements_retire_for_checked_constructors (2026-10-02) said no infer judgment is coming: refinements
+// become checked constructors returning Optional. The operator decision of 2026-10-23, recorded as gunbc.design_ruling literal_only_refinement_judgment_is_interim, admits ONE exception: a
+// string/int literal at a call argument or record field whose declared type is a `where` refinement of the
+// literal's own type is admitted by v2.compiler.infer and OWED to v2.compiler.refinement_discharge, which
+// evaluates `predicate(literal)` through the one evaluator. DIVERGENCE FROM THE RETIREMENT PREMISE, STATED:
+// the NonEmptyStr structural cut has not landed and its literal population is the largest infer wall, so the
+// judgment is built for that population only. Non-literals still refuse; cast, return and let positions are
+// not covered (counted frontier, each still refuses the literal). The rung is mechanically preventable, not
+// guaranteed: safety depends on the demand producer and the post-pass staying enrolled.
+data literal_only_where_refinement_judgment_population: FreeSemigroup<String> = FreeSemigroup { head: "a literal at a where-refinement-typed call argument", tail: ["a literal at a where-refinement-typed record field"] }
+
+data literal_only_where_refinement_judgment: RungDrop = RungDrop {
+  identity: "literal_only_where_refinement_judgment" as NonEmptyStr,
+
+  subject: "a literal at a where-refinement's carrier as a call argument or record field, judged by v2.compiler.infer InferLiteralRefinementDemand and discharged by v2.compiler.refinement_discharge",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "NonEmptyStr and the other where-refinements become checked constructors returning Optional (where_refinements_retire_for_checked_constructors); the literal-only judgment is the operator-ruled interim of 2026-10-23, gunbc.design_ruling literal_only_refinement_judgment_is_interim" },
+    population: Enumerated { members: literal_only_where_refinement_judgment_population },
+    restoration_trigger: "the NonEmptyStr structural cut lands, SUFFICIENT FOR no where-refinement clause to reach infer: then InferLiteralRefinementDemand, infer_literal_refinement_demand and infer_demands_to_obligations are deleted with the clause."
+  } }
+}

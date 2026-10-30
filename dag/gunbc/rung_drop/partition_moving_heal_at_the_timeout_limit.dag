@@ -1,0 +1,43 @@
+module gunbc.rung_drop.partition_moving_heal_at_the_timeout_limit
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for heal convergence of a partition-moving change (DESIGN 4b(3)). Operator
+// ruling relayed by clever-crane-830 on gunbc#14353: the heal timeout is not raised, and a heal that
+// times out is an ACCEPTED, VISIBLE failure. Heal pushes nothing, and the author regenerates locally.
+//
+// Measured: heal run 39288503502 over the specimen (gunbc#14317) took 88m16s of its 90m limit with the
+// converge step at 75m07s; the non-moving baseline run 39284218586 took 32m40s. The worst case, boundary
+// drift that first appears after the mirrors converge (an extra rebuild and regen), exceeds 90m.
+//
+// RE-MEASURED with the round.built_seed_regen marks (instrument: `claim_executor --regen-round-cost`,
+// whose receipt lists every phase per stage; specimen run 39332816440, 89.6m of 90m): the converge is
+// dominated by the between-stage regens (over half), then the rebuilds, the first-generation regen and
+// the seed build. The cut this
+// row first named, a stage rebuilding only what its install changed, does not apply: every installed
+// file lives in the v1-compiler crate, which is also the emitter AND the frontend, so each stage's binary
+// is a new producer and both its regen and that regen's corpus_load/frontend/reconcile are demanded by
+// a changed producer. Skipping or reusing either leaves the producer out of the key (DESIGN 2, step 3),
+// so per-stage regen skipping is inadmissible while the emitter shares a crate with every installed file.
+// Cargo's own incrementality is not the defeat: the rebuild is the smaller cost and crate-granular.
+//
+// WHAT IS LOST IS THE CLAIM THAT ONE LOOP CONVERGES WITHIN HEAL, FOR THIS POPULATION ONLY. The loop
+// still converges (bounded, refusing with per-round records); only heal's wall time can end it first.
+data partition_moving_heal_at_the_timeout_limit: RungDrop = RungDrop {
+  identity: "partition_moving_heal_at_the_timeout_limit" as NonEmptyStr,
+
+  subject: "heal converging a partition-moving change within its 90m timeout: the loop converges, but heal's wall time can end it first, in which case nothing is pushed",
+
+  declared: "2026-10-19",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a producer identity finer than the v1-compiler crate, or fewer fixed-point stages, so a partition-moving converge demands fewer producer-changed regens (per-stage rebuild incrementality was measured and is not the cost)" },
+    population: Enumerated { members: FreeSemigroup { head: "partition-moving changes (a change that moves partition_generated.rs, such as adding a seed module) run under gunbc.heal_workflow", tail: [] } },
+    restoration_trigger: "THE CAPABILITY, either of two: (1) a producer identity finer than the v1-compiler crate, such as the emitter and frontend split into their own crate, so a stage whose install leaves the emit path unchanged has a provably equal producer and its regen can be reused keyed on module input plus emitter identity; OR (2) fewer fixed-point stages for a partition-moving change. Landed AND MEASURED on a partition-moving heal run (the saving is measured before it is claimed), with that heal finishing inside its limit with stated margin."
+  } }
+}

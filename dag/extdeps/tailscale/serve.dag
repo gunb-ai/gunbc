@@ -22,6 +22,7 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -76,6 +77,12 @@ fn tailscale_serve_status_json_argv() -> List<String> {
 
 // The status read as a command. The program is PATH-resolved, as the operations below spell it.
 fn tailscale_program() -> ProgramIdentity = uncataloged_program(invocation: "tailscale")
+
+// The off form as a command, so a caller sources the program from the module that owns it rather than
+// spelling `tailscale` beside the argv.
+fn tailscale_serve_off_command(endpoint: TailscaleServeEndpoint) -> ArgvCommand {
+  argv_command(program: tailscale_program(), arguments: tailscale_serve_off_argv(endpoint: endpoint))
+}
 
 fn tailscale_serve_status_json_command() -> ArgvCommand {
   argv_command(program: tailscale_program(), arguments: tailscale_serve_status_json_argv())
@@ -299,7 +306,7 @@ fn tailscale_serve_status_route_proxy_targets(status_json: String, key: Tailscal
 // are confined code-point runs (semver_numeric_field is the only admission), so the boundary
 // arrives through the parser and an unadmitted label is carried as a refusal to every
 // consumer, not a fabricated version (review 77150).
-data tailscale_scoped_serve_off_minimum: SemVerVersion? = semver_version_parse(cps: chars(s: "1.52.0" as String))
+data tailscale_scoped_serve_off_minimum: SemVerVersion? = semver_version_parse(cps: chars(text: "1.52.0" as String))
 
 type TailscaleServeCapability
   = ScopedRemovalSupported { observed: SemVerVersion }

@@ -58,7 +58,7 @@ pub fn parse_fixture(source: String) -> Rc<ParseWithTableResult> {
 }
 
 pub fn parsed_ok(parsed: Rc<ParseWithTableResult>) -> bool {
-    match parsed.result.clone().error.clone() {
+    match parsed.result.error.clone() {
         Some(_) => false,
         std::option::Option::None => true,
     }
@@ -70,14 +70,7 @@ pub fn extent_rows_for(
 ) -> Rc<Vec<Rc<ParsedSourceExtent>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in parsed
-            .source_extents
-            .clone()
-            .extents
-            .clone()
-            .iter()
-            .cloned()
-        {
+        for row in parsed.source_extents.extents.clone().iter().cloned() {
             if (row.occurrence.clone() == id.clone()) {
                 __result.push(row);
             }
@@ -91,28 +84,33 @@ pub fn free_monoid_last(
     mut __tco_loop_last: Option<OccurrenceId>,
 ) -> Option<OccurrenceId> {
     {
-        let mut __tco_cursor: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut last = __tco_loop_last;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
-                    break last;
-                } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
-                    {
-                        let __tco_0 = Some(h.clone());
-                        let __tco_1 = __tco_cursor + 1;
-                        __tco_loop_last = __tco_0;
-                        __tco_cursor = __tco_1;
-                        continue;
+        let mut __tco_cursor_xs: usize = 0;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut last = __tco_loop_last;
+                {
+                    let __fm = __tco_base_xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break last;
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = Some(h.clone());
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_last = __tco_1;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -127,14 +125,7 @@ pub fn extent_text(source: String, extent: Rc<SourceSpan>) -> String {
 pub fn extent_texts(parsed: Rc<ParseWithTableResult>, source: String) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in parsed
-            .source_extents
-            .clone()
-            .extents
-            .clone()
-            .iter()
-            .cloned()
-        {
+        for row in parsed.source_extents.extents.clone().iter().cloned() {
             __result.push(extent_text(source.clone(), row.extent.clone()));
         }
         __result
@@ -144,7 +135,7 @@ pub fn extent_texts(parsed: Rc<ParseWithTableResult>, source: String) -> Rc<Vec<
 pub fn has_extent_text(parsed: Rc<ParseWithTableResult>, source: String, text: String) -> bool {
     {
         let mut __found = false;
-        for t in extent_texts(parsed.clone(), source.clone()).iter().cloned() {
+        for t in extent_texts(parsed, source).iter().cloned() {
             if (t.clone() == text.clone()) {
                 __found = true;
                 break;
@@ -155,17 +146,16 @@ pub fn has_extent_text(parsed: Rc<ParseWithTableResult>, source: String, text: S
 }
 
 pub fn entry_covered(parsed: Rc<ParseWithTableResult>, entry: Rc<OccurrenceIndexEntry>) -> bool {
-    match extent_rows_for(parsed.clone(), entry.projection.clone().occurrence.clone())
+    match extent_rows_for(parsed.clone(), entry.projection.occurrence.clone())
         .first()
         .cloned()
     {
         std::option::Option::None => false,
         Some(own) => {
-            (((extent_rows_for(parsed.clone(), entry.projection.clone().occurrence.clone()).len()
-                as i64)
+            (((extent_rows_for(parsed.clone(), entry.projection.occurrence.clone()).len() as i64)
                 == 1)
                 && match free_monoid_last(
-                    entry.containment.clone().ancestors.clone(),
+                    entry.containment.ancestors.clone(),
                     std::option::Option::None,
                 ) {
                     std::option::Option::None => true,
@@ -183,16 +173,14 @@ pub fn entry_covered(parsed: Rc<ParseWithTableResult>, entry: Rc<OccurrenceIndex
 
 pub fn uncovered_occurrences(source: String) -> Rc<Vec<String>> {
     {
-        let parsed = parse_fixture(source.clone());
+        let parsed = parse_fixture(source);
         Rc::new({
             let mut __result = Vec::new();
             for e in Rc::new({
                 let mut __result = Vec::new();
                 for e in parsed
                     .occurrence_transport
-                    .clone()
                     .index
-                    .clone()
                     .entries
                     .clone()
                     .iter()
@@ -208,8 +196,8 @@ pub fn uncovered_occurrences(source: String) -> Rc<Vec<String>> {
             .cloned()
             {
                 __result.push(v1_rt::concat(
-                    v1_rt::concat(e.projection.clone().authored_name.clone(), "@".to_string()),
-                    (e.projection.clone().diagnostic_span.clone().start.clone()).to_string(),
+                    v1_rt::concat(e.projection.authored_name.clone(), "@".to_string()),
+                    (e.projection.diagnostic_span.start.clone()).to_string(),
                 ));
             }
             __result
@@ -220,27 +208,18 @@ pub fn uncovered_occurrences(source: String) -> Rc<Vec<String>> {
 pub fn every_row_is_published(parsed: Rc<ParseWithTableResult>) -> bool {
     {
         let mut __all = true;
-        for row in parsed
-            .source_extents
-            .clone()
-            .extents
-            .clone()
-            .iter()
-            .cloned()
-        {
+        for row in parsed.source_extents.extents.clone().iter().cloned() {
             if !({
                 let mut __found = false;
                 for e in parsed
                     .occurrence_transport
-                    .clone()
                     .index
-                    .clone()
                     .entries
                     .clone()
                     .iter()
                     .cloned()
                 {
-                    if (e.projection.clone().occurrence.clone() == row.occurrence.clone()) {
+                    if (e.projection.occurrence.clone() == row.occurrence.clone()) {
                         __found = true;
                         break;
                     }
@@ -259,15 +238,7 @@ pub fn every_published_occurrence_has_one_contained_extent_holds() -> bool {
     {
         let parsed = parse_fixture(extent_fixture_source());
         (((parsed_ok(parsed.clone())
-            && ((parsed
-                .occurrence_transport
-                .clone()
-                .index
-                .clone()
-                .entries
-                .clone()
-                .len() as i64)
-                > 50))
+            && ((parsed.occurrence_transport.index.entries.clone().len() as i64) > 50))
             && ((uncovered_occurrences(extent_fixture_source()).len() as i64) == 0))
             && every_row_is_published(parsed.clone()))
     }
@@ -327,18 +298,11 @@ pub fn function_extent_reaches_its_closing_brace_holds() -> bool {
         let parsed = parse_fixture(extent_fixture_source());
         {
             let mut __found = false;
-            for row in parsed
-                .source_extents
-                .clone()
-                .extents
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for row in parsed.source_extents.extents.clone().iter().cloned() {
                 if (v1_rt::starts_with(
                     extent_text(extent_fixture_source(), row.extent.clone()),
                     "fn zqx_fn(".to_string(),
-                ) && (row.extent.clone().end.clone()
+                ) && (row.extent.end.clone()
                     == v1_rt::int_sub(v1_rt::string_length(&extent_fixture_source()), 1)))
                 {
                     __found = true;
@@ -370,14 +334,7 @@ pub fn erased_scope_texts(
         let mut __result = Vec::new();
         for scope in Rc::new({
             let mut __result = Vec::new();
-            for scope in parsed
-                .source_extents
-                .clone()
-                .erased_scopes
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for scope in parsed.source_extents.erased_scopes.clone().iter().cloned() {
                 if match scope.kind.clone() {
                     ErasedSourceScopeKind::ErasedParenScope => kind_is_paren.clone(),
                     ErasedSourceScopeKind::ErasedSingletonBlockScope => !kind_is_paren.clone(),
@@ -402,14 +359,7 @@ pub fn nested_parentheses_keep_both_erased_scopes_holds() -> bool {
         let parens = erased_scope_texts(parsed.clone(), extent_fixture_source(), true);
         let arg_scopes = Rc::new({
             let mut __result = Vec::new();
-            for scope in parsed
-                .source_extents
-                .clone()
-                .erased_scopes
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for scope in parsed.source_extents.erased_scopes.clone().iter().cloned() {
                 if ((extent_text(extent_fixture_source(), scope.extent.clone())
                     == "(arg)".to_string())
                     || (extent_text(extent_fixture_source(), scope.extent.clone())
@@ -475,7 +425,7 @@ pub fn nested_parentheses_keep_both_erased_scopes_holds() -> bool {
 pub fn singleton_block_keeps_its_erased_scope_holds() -> bool {
     {
         let parsed = parse_fixture(extent_fixture_source());
-        let blocks = erased_scope_texts(parsed.clone(), extent_fixture_source(), false);
+        let blocks = erased_scope_texts(parsed, extent_fixture_source(), false);
         (({
             let mut __found = false;
             for t in blocks.iter().cloned() {
@@ -541,7 +491,7 @@ pub fn brace_expression_singleton_keeps_its_erased_scope_holds() -> bool {
         let parsed = parse_fixture(extent_fixture_source());
         {
             let mut __found = false;
-            for t in erased_scope_texts(parsed.clone(), extent_fixture_source(), false)
+            for t in erased_scope_texts(parsed, extent_fixture_source(), false)
                 .iter()
                 .cloned()
             {
@@ -556,7 +506,7 @@ pub fn brace_expression_singleton_keeps_its_erased_scope_holds() -> bool {
 }
 
 pub fn extent_of(parsed: Rc<ParseWithTableResult>, id: OccurrenceId) -> Option<Rc<SourceSpan>> {
-    match extent_rows_for(parsed.clone(), id.clone()).first().cloned() {
+    match extent_rows_for(parsed, id).first().cloned() {
         Some(row) => Some(row.extent.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -567,14 +517,7 @@ pub fn scopes_around_an_absorbed_callee_lie_inside_its_call_holds() -> bool {
         let parsed = parse_fixture(extent_fixture_source());
         let callee_scopes = Rc::new({
             let mut __result = Vec::new();
-            for scope in parsed
-                .source_extents
-                .clone()
-                .erased_scopes
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for scope in parsed.source_extents.erased_scopes.clone().iter().cloned() {
                 if ((extent_text(extent_fixture_source(), scope.extent.clone())
                     == "(zqx_g)".to_string())
                     || (extent_text(extent_fixture_source(), scope.extent.clone())
@@ -615,14 +558,7 @@ pub fn scope_around_an_absorbed_descendant_lies_inside_its_container_holds() -> 
         let parsed = parse_fixture(extent_fixture_source());
         let ns_scopes = Rc::new({
             let mut __result = Vec::new();
-            for scope in parsed
-                .source_extents
-                .clone()
-                .erased_scopes
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for scope in parsed.source_extents.erased_scopes.clone().iter().cloned() {
                 if (extent_text(extent_fixture_source(), scope.extent.clone())
                     == "(zqx_ns)".to_string())
                 {
@@ -672,14 +608,7 @@ pub fn scope_under_an_absorbed_inferred_type_lies_inside_its_call_holds() -> boo
         let parsed = parse_fixture(extent_fixture_source());
         let one_scopes = Rc::new({
             let mut __result = Vec::new();
-            for scope in parsed
-                .source_extents
-                .clone()
-                .erased_scopes
-                .clone()
-                .iter()
-                .cloned()
-            {
+            for scope in parsed.source_extents.erased_scopes.clone().iter().cloned() {
                 if (extent_text(extent_fixture_source(), scope.extent.clone()) == "(1)".to_string())
                 {
                     __result.push(scope);

@@ -311,6 +311,7 @@ type UserWorkScopeStanding
   | BoundedContainerUncapped
   | BoundedContainerUnreadable
   | ExternallyBoundedExecutor { run_id: NonEmptyStr }
+  | OperatorHostWithoutCgroups
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -525,6 +526,23 @@ fn namespaced_root_without_systemd(cgroup: UserWorkScopeCgroupRead, systemd_mana
   }
 }
 
+// A HOST WITHOUT A CGROUP FACILITY (macOS) can neither observe nor install a memory bound. It is
+// classified before the cgroup read: an operator's terminal run outside CI is admitted as
+// OperatorHostWithoutCgroups (gunbc.design_ruling macos_operator_terminal_runs_without_a_memory_bound;
+// the loss is gunbc.rung_drop.macos_operator_terminal_run_unbounded); any other run there is
+// CgroupUnreadable and refuses. A host with cgroups answers Absent and the cgroup classification runs.
+type UserWorkHostFacility = HostWithCgroups | HostWithoutCgroups { stdin_terminal: Bool }
+
+fn user_work_host_facility_standing(host: UserWorkHostFacility, github_actions: Bool) -> UserWorkScopeStanding? {
+  match host {
+    HostWithCgroups => none
+    HostWithoutCgroups { stdin_terminal } =>
+      if stdin_terminal && !github_actions { Present { value: OperatorHostWithoutCgroups } }
+      else { Present { value: CgroupUnreadable } }
+  }
+}
+
+
 // UNIT_TEST_EXEMPT IS THE ONE EXEMPT ARM THAT DOES NOT CLAIM AN ENCLOSING BOUND, so it does not go
 // through `live_enclosing_bound`. It fires only inside the seed's own `#[cfg(test)]` build
 // (cli_run::user_work_scope): the process is a cargo test binary, not a host process sitting in a
@@ -622,6 +640,7 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     BoundedContainerUncapped => "BoundedContainerUncapped"
     BoundedContainerUnreadable => "BoundedContainerUnreadable"
     ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id as String], "")
+    OperatorHostWithoutCgroups => "OperatorHostWithoutCgroups:no memory bound on this host"
   }
 }
 
@@ -645,6 +664,7 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     BoundedContainerUnreadable => RefuseUserWorkScope { standing: BoundedContainerUnreadable }
     ExternallyBoundedExecutor { run_id } =>
       SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: run_id } }
+    OperatorHostWithoutCgroups => SkipUserWorkScope { standing: OperatorHostWithoutCgroups }
   }
 }
 

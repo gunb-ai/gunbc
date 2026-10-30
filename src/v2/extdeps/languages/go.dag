@@ -42,7 +42,7 @@ import v2.std.compilers.lexing {
   SequencePattern,
   TokenRule,
   TriviaRule,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 import std.optional { Absent, Present, optional_absent }
 import v2.std.model_core {
@@ -65,8 +65,8 @@ import v2.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
-import v2.std.compilers.target_model {
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, NotADeclaration }
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
 import v2.std.compilers.target_model {
   TargetAtomRealization,
@@ -99,7 +99,7 @@ import v2.std.host_transport {
 }
 import v2.std.logic { bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
-import std.algebra { Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert }
+import std.algebra { Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, commutative_ring_node, free_monoid_node }
 import v2.std.text { String }
 
@@ -412,7 +412,7 @@ fn go_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn go_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn go_int_kind_node(kind: GoIntKind) -> Node {
@@ -1525,8 +1525,8 @@ fn go_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
-      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1800,6 +1800,7 @@ fn go_target_model_bundle_core() -> Node {
 
 fn go_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_bundle_core(),
     lex: go_lex(),
@@ -1874,6 +1875,7 @@ fn go_target_model_node() -> Node {
 
 fn go_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node(),
     lex: go_lex(),
@@ -1905,6 +1907,7 @@ fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
 
 fn go_target_model_int64_selection_policy() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node_with_selection_policy(
       selection: go_int64_selection_policy_node()
@@ -1918,11 +1921,11 @@ fn go_target_model_int64_selection_policy() -> TargetModel {
 }
 
 fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
 fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: KeywordPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
@@ -1984,11 +1987,14 @@ fn go_grammar() -> ParseGrammar {
   ModeledGrammar { root: go_grammar_root() }
 }
 
+// The token-class membership map for go_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data go_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: go_lex_rules())
+
 fn go_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: go_lex_rules(),
-    token_class: sym
-  )
+  map_contains_key(m: go_lex_token_class_membership, key: sym)
 }
 
 fn go_integer_catalog_surface_symbol_step(

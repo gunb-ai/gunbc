@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.downstream_upload_failure_read_as_adjudicati
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data downstream_upload_failure_read_as_adjudication_cause: RecurringFailureMode = RecurringFailureMode {
   identity: "downstream_upload_failure_read_as_adjudication_cause" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**five floor TSV uploads failing after D0-ADJUDICATE are read as the cause of the refusal, when adjudication consumes a local measurement receipt that D0-MEASURE already wrote** (INVALID STATE: the jobs API shows D0-ADJUDICATE red and then admission-roster, expected-red join, long-home agreement, per-claim cost, and cross-claim demand uploads red, so a reader infers that a missing upload is what `--adjudicate-measurement-receipt` refused over, or that the unreached-receipt fallback sealed a file the instrument never produced. Those are the opposite causal direction from the one that holds.",
 

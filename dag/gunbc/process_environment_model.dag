@@ -2,7 +2,7 @@ module gunbc.process_environment_model
 
 import std.types { List, NonEmptyStr, String }
 import std.measure { second }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
   ShellObserved, operation_input_text,

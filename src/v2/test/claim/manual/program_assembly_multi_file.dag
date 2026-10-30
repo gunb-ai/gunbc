@@ -48,7 +48,8 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName }
 
@@ -90,7 +91,8 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -113,7 +115,8 @@ fn pa_subject_with_import_use() -> Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

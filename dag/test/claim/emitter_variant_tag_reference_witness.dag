@@ -5,8 +5,8 @@ module test.claim.emitter_variant_tag_reference_witness
 //
 // THE DEFECT. `discriminant(v: X {})` is the corpus-wide idiom for naming a coproduct variant to
 // obtain its stable tag identity; the frontend sanctions exactly this shape as a TAG REFERENCE
-// rather than a construction (v1.compiler.infer zero_field_variant_tag_reference_frontier_note,
-// operator Ruling 1a, 2026-07-15). The Rust lowering did not honour the same reading: it emitted
+// rather than a construction (v1.compiler.infer payload_arm_tag_reference_waiver_results,
+// gunbc.rung_drop payload_arm_tag_reference_hollow_value). The Rust lowering did not honour the same reading: it emitted
 // the argument as an ordinary expression and matched over it, so a fieldless variant lowered to a
 // valid empty struct literal and compiled, while a variant carrying required fields lowered to
 // `Parent::X {}` -- unwritable in Rust, rustc E0063. Measured population at the repair: 162 sites
@@ -60,10 +60,10 @@ module test.claim.emitter_variant_tag_reference_witness
 // whole lowering. It is asserted so the row cannot pass by emitting nothing at all.
 test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool {
   compile_dag_rust_emit_check(
-    "module vtag\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Fielded { token: String }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: Fielded {})\n}\n",
+    "module vtag\n\nimport std.types { String }\nimport v2.std.compilers.target_model { PrefixToken }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: PrefixToken {})\n}\n",
     "src/vtag.rs",
-    ["\"Fielded\".to_string()"],
-    ["Shape::Fielded {}"]
+    ["\"PrefixToken\".to_string()"],
+    ["TargetOperatorShape::PrefixToken {}"]
   )
 }
 

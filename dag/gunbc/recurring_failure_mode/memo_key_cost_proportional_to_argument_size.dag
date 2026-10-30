@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.memo_key_cost_proportional_to_argument_size
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data memo_key_cost_proportional_to_argument_size: RecurringFailureMode = RecurringFailureMode {
   identity: "memo_key_cost_proportional_to_argument_size" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a memo that keys every call by the content of its arguments derives that key at a cost proportional to the arguments' size, on every call, including calls that can never recur. A recursion threading one large value through its steps then pays O(|value|) per step and O(|value|^2) in total, and the cost lands on whichever program happens to thread a large value, not on the provider that charged it.",

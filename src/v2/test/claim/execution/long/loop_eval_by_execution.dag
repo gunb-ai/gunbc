@@ -1,5 +1,6 @@
 module v2.test.claim.execution.long.loop_eval_by_execution
 
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
@@ -56,7 +57,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   Atom,
   Arrow,
   ComputationNode,
@@ -69,8 +70,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -159,7 +160,7 @@ fn loop_runtime_diagnostic(n: Node) -> Diagnostic {
 fn loop_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: loop_i64_node())) && (count(p.bytes) == 1)
     _ => false
   }
 }
@@ -199,7 +200,7 @@ fn loop_choose_branch(
 }
 
 fn loop_step_loop(node: Node, env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Present { value: body } =>
       bind_outcome(
         o: loop_allocate_literal(node: body, env: env),
@@ -273,7 +274,7 @@ fn loop_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration }
     ]
   }
 }
@@ -283,8 +284,8 @@ fn loop_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^loop_actual }, target: call },
-      Edge { label: Authored { name: ^loop_expected }, target: expected }
+      Edge { label: Authored { name: ^loop_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^loop_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }

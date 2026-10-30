@@ -9,6 +9,8 @@ import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond }
 import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload }
+import gunbc.native_census_verb { NativeCensusVerbWord }
+import gunbc.native_serve_probe_plan { NativeServeProbe }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
 // identity and dependency edges; this relation answers the separate realization question. In
@@ -22,8 +24,10 @@ import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload 
 // is required. The next program of this shape is one more BINDING ROW naming entry and deadline,
 // never another producer arm.
 // NativeServeProgramProducer is the same shape for std.compiler_entry NativeServeDriver: it emits and
-// builds the named service entry, starts it, writes gunbc.native_serve_probe's requests to real TCP
-// connections and hands what came back to native_serve_probe_standing. A separate arm because the
+// builds the named service entry, starts it, writes the requests of the row's probe reader to real
+// TCP connections and hands what came back to that reader's native_serve_probe_standing. The reader
+// module and the phases the run performs (gunbc.native_serve_probe_plan) are fields of the row, so a
+// further served program is a binding row naming entry and probe, never a host branch. A separate arm because the
 // observation differs (a served process answering requests, not a report on stdout), so folding it
 // into the claim arm would give one arm two meanings.
 // CliWireProgramProducer IS GENERIC OVER ENTRY AND FUNCTION. The host evaluates that function in
@@ -54,14 +58,15 @@ type TargetProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
-  | DependencyDemandCensusProducer
+  | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
+  | SelfHostFrontierProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
   | CardinalityRealizationProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
-  | NativeServeProgramProducer { entry: String }
+  | NativeServeProgramProducer { entry: String, probe: NativeServeProbe }
   | CliWireProgramProducer { entry: String, function: String }
 
 // THE HOST EVALUATES THIS AT SPAWN so the child wall is the binding row's Millisecond, not a
@@ -96,14 +101,29 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
-    DependencyDemandCensusProducer {} => optional_absent()
+    NativeCensusVerbProducer { verb: _ } => optional_absent()
+    SelfHostFrontierProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
-    NativeServeProgramProducer { entry: _ } => optional_absent()
+    NativeServeProgramProducer { entry: _, probe: _ } => optional_absent()
     CliWireProgramProducer { entry: _, function: _ } => optional_absent()
+  }
+}
+
+// THE HOST EVALUATES THIS AT SPAWN, as it does the claim deadline: the probe (reader module and
+// phase set) is the binding row's, so the host's serve producer holds no per-binding branch. Present
+// only for a NativeServeProgramProducer whose entry matches.
+fn native_serve_probe_if_entry(producer: TargetProducer, want: String) -> Optional<NativeServeProbe> {
+  match producer {
+    NativeServeProgramProducer { entry: e, probe: p } =>
+      match e == want {
+        true => optional_present(value: p)
+        false => optional_absent()
+      }
+    _ => optional_absent()
   }
 }
 
@@ -119,9 +139,12 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
-//   OccurrenceBindingReading: `census-infer` again, its occurrence-binding lines (resolve's one
-//     binding record, v2.compiler.occurrence_binding_census) with that census's fixture and unindexed
+//   OccurrenceResolutionReading: `census-infer` again, its occurrence-binding lines (resolve's one
+//     binding record, v2.compiler.occurrence_resolution_census) with that census's fixture and unindexed
 //     controls, read by gunbc.instruments.ambient_name_census_reading.
+//   AmbientOperationDispositionReading: that same run, read by
+//     gunbc.instruments.ambient_operation_disposition_reading for each ambient primitive spelling's
+//     disposition (existing declaration, missing, compiler-generated, host substrate).
 //   BindingDiffReading: those rows on BASE (base's own ambient-name-census, run in a private worktree
 //     of the merge base by base's own seed) and on HEAD, joined per occurrence by
 //     gunbc.instruments.namespace_wave_binding_diff, with its re-bind RED run over two fixture roots.
@@ -132,7 +155,8 @@ type V2NativeCensusReading
   = RefusalCensusReading
   | ScopedRefusalCensusReading { subject: PackageName }
   | TypeDeclarationUseReading
-  | OccurrenceBindingReading
+  | OccurrenceResolutionReading
+  | AmbientOperationDispositionReading
   | BindingDiffReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 

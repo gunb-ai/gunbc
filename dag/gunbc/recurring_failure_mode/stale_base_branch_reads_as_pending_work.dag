@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.stale_base_branch_reads_as_pending_work
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data stale_base_branch_reads_as_pending_work: RecurringFailureMode = RecurringFailureMode {
   identity: "stale_base_branch_reads_as_pending_work" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a stale-base branch reads as ordinary pending work, in CONTENT form with no ref-level tell** (a branch whose substantive content has ALREADY LANDED through another PR presents, after main moves on, as a perfectly ordinary feature branch: its merge-base predates the landing, so its three-dot diff against main shows only insertions and no deletions, and every sentence a reviewer would write about it -- adds the note, properly scoped, no code touched -- is ACCURATE RELATIVE TO THAT BASE and wrong relative to main.",

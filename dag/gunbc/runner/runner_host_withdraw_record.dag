@@ -1,0 +1,269 @@
+module gunbc.runner.runner_host_withdraw_record
+
+// THE WITHDRAWN RECORD: the one file that makes "this host is OUT of admission" an observable fact.
+//
+// WHY A FILE, AND WHY HERE. gunbc.runner.runner_host_withdraw leaves a host masked with no re-admit;
+// runner_host_file_observe, a later cap converge, and the restore all need to read that state rather than
+// assume it. The bracket already keeps its release obligation as a file so an unfinished bracket is
+// visible to a later run -- this is the same instrument for the same reason, at the SAME authority the
+// fleet-converge job already owns on the host: the converged state directory
+// (gunbc.fleet.fleet_converge_state_path fleet_converge_state_root), which the host-wide grant rows
+// (gunbc.runner.runner_host_grants runner_host_wide_refused_operations) ensure owned by the converge job
+// user, and which the allocation operations already use for their own published JSON. /etc stays the one
+// scope the typed remote write route seals (gunbc.typed_remote_file_write); this is a run's EVIDENCE, not
+// desired state, so it goes beside the lease and the allocation invocations, in the directory the mode's
+// own job is granted to write.
+//
+// THE KEY IS INSIDE THE FILE. One flat path per host directory, the key named by the document itself --
+// the obligation's own route -- and the reader REFUSES a foreign key by name rather than acting on it.
+// Both halves matter: an unreadable document is not an absent one, and an absent one is not an ours one.
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.optional { Absent, Present }
+import std.algebra { list_flat_map }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonArray, serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.runner.runner_slot_actuation { read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused, slot_is_masked, slot_state_active }
+
+// ONE CERTIFIED LISTENER: the slot, and the CURRENT REGISTRATION its worker was admitted under when the
+// drain certified it idle. The registration is kept typed and SEPARATE from the unit (§2: no packed
+// strings): a withdrawal record whose listener lost its registration cannot be re-derived later, and the
+// reader refuses such a row rather than inventing one.
+type WithdrawnCertification {
+  unit: NonEmptyStr
+  registration: NonEmptyStr
+}
+
+// THE RECORD. `key` is the identity it was written under (run id + attempt + host, the same fields the
+// bracket keys its obligation by -- see gunbc.runner.runner_host_withdraw.runner_host_withdraw_identity);
+// `units` are every slot of the host the withdrawal took out; `certified` names the listeners the drain
+// read idle at that moment; `at` is the observer clock reading at the completion readback.
+type WithdrawnRecord {
+  key: String
+  host: String
+  units: List<NonEmptyStr>
+  certified: List<WithdrawnCertification>
+  at: String
+}
+
+data runner_host_withdraw_record_file_prefix: String = "runner-host-withdraw-record-"
+
+// THE PATH: under the host's converged state directory, one flat file PER HOST -- the state root is the
+// directory every fleet-converge mode on this host shares, so the record names the host it speaks for.
+// The identity (run id + attempt) is checked from the document itself, so a stale attempt's record of the
+// SAME host is foreign by key. The host segment is escaped here -- the wet boundary vouches for the host
+// through subject admission (a modeled host with a runner deploy row), but a record path is built by
+// several callers and a path-escaping name must not become a write outside the state root. Its parent
+// directory is granted and ensured by the host-wide rows named in the header; the directory is NOT
+// created here, because creating it silently would hide a host whose converge state root was never
+// converged -- a write into an ungranted or absent directory fails, and the caller refuses rather than
+// withdrawing unrecordably.
+fn runner_host_withdraw_record_path(host: String) -> NonEmptyStr {
+  let escaped = fold_host_chars(s: host)
+  join([fleet_converge_state_root as String, "/", runner_host_withdraw_record_file_prefix, escaped, ".json"], "") as NonEmptyStr
+}
+
+// EACH PATH-DANGEROUS CHARACTER becomes a dash, one replace per character -- so a directory separator, a
+// backslash, whitespace, or a dot-leading traversal segment cannot survive into the file name.
+fn fold_host_chars(s: String) -> String {
+  s.replace(from: "/", to: "-").replace(from: "\\", to: "-").replace(from: " ", to: "-").replace(from: "\t", to: "-").replace(from: "\n", to: "-").replace(from: ".", to: "-")
+}
+
+// THE CODEC, one body for both directions: the writer renders exactly the five members the reader
+// accepts, and nothing else. Certified listeners are objects with their two typed members, not strings.
+fn runner_host_withdraw_record_text(r: WithdrawnRecord) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "key", value: json_string(s: r.key)),
+    json_kv(key: "host", value: json_string(s: r.host)),
+    json_kv(key: "at", value: json_string(s: r.at)),
+    json_kv(key: "units", value: json_array(elements: map(r.units, u => json_string(s: u as String)))),
+    json_kv(key: "certified", value: json_array(elements: map(r.certified, c => json_object(members: [
+      json_kv(key: "unit", value: json_string(s: c.unit as String)),
+      json_kv(key: "registration", value: json_string(s: c.registration as String)),
+    ])))),
+  ]))
+}
+
+// THE READER refuses a document that is not EXACTLY this shape -- five members, each of the declared type,
+// in the one style the obligation's own reader uses (gunbc.runner.runner_host_cap_bracket
+// bracket_obligation_of): a failed member is unreadable, never a completed-from-defaults record. The
+// expected key is checked here, at the top: a record written under another identity is named back, not
+// interpreted.
+fn withdrawn_record_of_text(text: String, expected_key: String) -> WithdrawnRecordReading {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => WithdrawnRecordUnreadable { cause: concat("the withdrawn record is not a JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match doc {
+        JsonObject { members: ms } =>
+          if length(ms) != 5 {
+            WithdrawnRecordUnreadable { cause: "the withdrawn record does not carry exactly the members key, host, at, units and certified" }
+          } else {
+            match json_object_unique_member(v: doc, key: "key") {
+              JsonMemberFound { value: JsonString { value: k } } =>
+                if k != expected_key { WithdrawnRecordForeign { key: k } } else {
+                  match json_object_unique_member(v: doc, key: "host") {
+                    JsonMemberFound { value: JsonString { value: h } } =>
+                      match json_object_unique_member(v: doc, key: "at") {
+                        JsonMemberFound { value: JsonString { value: a } } =>
+                          match json_object_unique_member(v: doc, key: "units") {
+                            JsonMemberFound { value: JsonArray { elements: us } } =>
+                              match json_object_unique_member(v: doc, key: "certified") {
+                                JsonMemberFound { value: JsonArray { elements: cs } } => withdrawn_record_of_members(key: k, host: h, at: a, unit_elements: us, certified_elements: cs)
+                                _ => WithdrawnRecordUnreadable { cause: "the withdrawn record's certified member is missing, duplicated or not an array" }
+                              }
+                            _ => WithdrawnRecordUnreadable { cause: "the withdrawn record's units member is missing, duplicated or not an array" }
+                          }
+                        _ => WithdrawnRecordUnreadable { cause: "the withdrawn record's at member is missing, duplicated or not a string" }
+                      }
+                    _ => WithdrawnRecordUnreadable { cause: "the withdrawn record's host member is missing, duplicated or not a string" }
+                  }
+                }
+              _ => WithdrawnRecordUnreadable { cause: "the withdrawn record's key member is missing, duplicated or not a string" }
+            }
+          }
+        _ => WithdrawnRecordUnreadable { cause: "the withdrawn record is not a JSON object" }
+      }
+  }
+}
+
+// AN EMPTY units list is UNREADABLE, not an empty withdrawal: a record that names no slot claims nothing,
+// and a caller that completed on it would report a host withdrawn that no slot was ever taken out of.
+// Certified may be empty -- a host with nothing admitted is still a host that was withdrawn.
+fn withdrawn_record_of_members(key: String, host: String, at: String, unit_elements: List<JsonValue>, certified_elements: List<JsonValue>) -> WithdrawnRecordReading {
+  let names = map(unit_elements, e => match e { JsonString { value: n } => n _ => "" })
+  if length(names) == 0 {
+    WithdrawnRecordUnreadable { cause: "the withdrawn record lists no unit" }
+  } else if any(names, n => n == "") {
+    WithdrawnRecordUnreadable { cause: "the withdrawn record lists a unit that is not a non-empty string" }
+  } else {
+    match certified_rows_of(elements: certified_elements) {
+      Present { value: cs } => WithdrawnRecordOurs { record: WithdrawnRecord { key: key, host: host, at: at, units: map(names, n => n as NonEmptyStr), certified: cs } }
+      Absent => WithdrawnRecordUnreadable { cause: "the withdrawn record's certified rows are not unit/registration object pairs of non-empty strings" }
+    }
+  }
+}
+
+// EACH CERTIFIED ROW is read as the typed pair it was written as; a row missing either half, or carrying
+// an empty half, makes the whole document unreadable (Absent here means "not a pair", not "no pairs").
+fn certified_rows_of(elements: List<JsonValue>) -> List<WithdrawnCertification>? {
+  let rows = map(elements, e => match e {
+    JsonObject { members: _ } =>
+      match json_object_unique_member(v: e, key: "unit") {
+        JsonMemberFound { value: JsonString { value: u } } =>
+          match json_object_unique_member(v: e, key: "registration") {
+            JsonMemberFound { value: JsonString { value: r0 } } => if u == "" || r0 == "" { none } else { Present { value: WithdrawnCertification { unit: u as NonEmptyStr, registration: r0 as NonEmptyStr } } }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  })
+  if any(rows, x => match x { Absent => true Present { value: _ } => false }) {
+    Absent
+  } else {
+    // Every row is a pair (the check above), so this flatten is an unwrap at the proven-total case -- the
+    // bracket's own list-monoid trick: no fabricated empty pair stands in for an arm the match excludes.
+    Present { value: list_flat_map(rows, x => match x { Present { value: c } => [c] Absent => [] }) }
+  }
+}
+
+// THE RECORD READ, four answers, never two: an absent record is not an unreadable one, and a foreign key
+// is not ours. Every caller branches on all four -- withdraw (a held foreign record blocks, an unreadable
+// one blocks), restore (only ours can be lifted), observe (each renders its own line).
+type WithdrawnRecordReading = WithdrawnRecordAbsent | WithdrawnRecordUnreadable { cause: String } | WithdrawnRecordForeign { key: String } | WithdrawnRecordOurs { record: WithdrawnRecord }
+
+// THE READ goes through the observation route (gunbc.filesystem_file_observe), not a bare read: an
+// INDETERMINATE observation is reported as unreadable rather than guessed either way.
+fn read_withdrawn_record(host: String, expected_key: String) -> WithdrawnRecordReading {
+  match filesystem_file_observation_of_path(path: runner_host_withdraw_record_path(host: host)) {
+    FilesystemFileAbsent(_) => WithdrawnRecordAbsent
+    FilesystemFileRead { path: _, content: c } => withdrawn_record_of_text(text: c, expected_key: expected_key)
+    FilesystemFileIndeterminate { cause: c } => WithdrawnRecordUnreadable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => WithdrawnRecordUnreadable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => WithdrawnRecordUnreadable { cause: c }
+  }
+}
+
+// THE WRITE reports its failure rather than swallowing it; a caller that could not write the record has
+// to refuse its withdrawal, because an unrecorded withdrawal is a hand mask wearing a mode's clothes.
+fn write_withdrawn_record(host: String, r: WithdrawnRecord) -> Bool {
+  Filesystem.Write(path: runner_host_withdraw_record_path(host: host), content: runner_host_withdraw_record_text(r: r)).success
+}
+
+// CLEARING reads first: an absent record is already cleared (true); an INDETERMINATE observation is NOT
+// cleared (false) -- deleting blind is how a record nobody can read vanishes without anyone saying so.
+fn clear_withdrawn_record(host: String) -> Bool {
+  match filesystem_file_observation_of_path(path: runner_host_withdraw_record_path(host: host)) {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileRead { path: _, content: _ } => Filesystem.Delete(path: runner_host_withdraw_record_path(host: host)).success
+    _ => false
+  }
+}
+
+// THE RECORD'S KEY: `host=<escaped host>`, a CONSTANT for the host -- deliberately NOT keyed by run or
+// attempt. A withdrawal OUTLIVES its run: the whole point is that the host stays out until a restore, and
+// that restore (or the next cap converge, or any observe) runs under a different GITHUB_RUN_ID than the
+// withdraw did. A run-keyed record would make every legitimate restore refuse its own record as foreign.
+// The key therefore names what the record is ABOUT -- the host -- and the reader still checks it: a
+// document whose key names another host is a misfiled or tampered record (WithdrawnRecordForeign), and
+// `at` records when the withdrawal was certified for the operator to see who-out-and-since-when.
+fn runner_host_withdraw_identity(host: String) -> String {
+  join(["host=", fold_host_chars(s: host)], "")
+}
+
+// THE OBSERVABILITY JOIN: the record says withdrawn AND every slot of the host reads masked+inactive.
+// Both, not either: a record alone is a file claiming a state the host contradicts (a stale or lying
+// record), and masks alone are an unexplained state -- a hand mask, which is what the withdraw mode
+// retires. This is the single judgment observe, withdraw, and restore share.
+fn host_is_withdrawn(record: WithdrawnRecordReading, every_slot_masked_and_inactive: Bool) -> Bool {
+  match record {
+    WithdrawnRecordOurs { record: r } => length(r.units) > 0 && every_slot_masked_and_inactive
+    _ => false
+  }
+}
+
+// WHAT THE OBSERVER RENDERS. Called ONLY when a record exists at all (absent renders "" -- the host's
+// ordinary admitting lines are already rendered by the caller, and no withdrawn claim is made without a
+// record). `withdrawn=true` requires the join above; every other combination renders its OWN diagnosis
+// rather than silently reporting admitting: masks contradicting a record, a record owned by another
+// identity, and an unreadable record are three different things an operator needs to tell apart.
+fn runner_host_withdraw_record_observe_line(record: WithdrawnRecordReading, masked_ok: Bool) -> String {
+  match record {
+    WithdrawnRecordAbsent => ""
+    WithdrawnRecordOurs { record: r } =>
+      if masked_ok {
+        join(["state=withdrawn withdrawn=true host=", r.host, " units=", join(map(r.units, u => u as String), ","), " certified=", join(map(r.certified, c => join([c.unit as String, "=", c.registration as String], "")), ","), "\n"], "")
+      } else {
+        "state=inconsistent withdrawn=unproven cause=the withdrawn record holds while a slot reads unmasked, active, or unreadable\n"
+      }
+    WithdrawnRecordForeign { key: k } => join(["state=inconsistent withdrawn=unproven cause=a withdrawn record names another identity: ", k, "\n"], "")
+    WithdrawnRecordUnreadable { cause: c } => join(["state=inconsistent withdrawn=unproven cause=the withdrawn record could not be read: ", c, "\n"], "")
+  }
+}
+
+// EVERY SLOT MASKED AND INACTIVE, over the same read the withdraw readback uses: masked is the unit
+// file's masked state, inactive is the unit's active state. A slot that cannot be read counts as NOT
+// masked-and-inactive (could-not-tell is not confirmed, §5), so an unobservable host never renders as
+// withdrawn through optimism.
+fn host_slots_all_masked_and_inactive_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> Bool {
+  length(units) > 0 && all(units, u => match read_slot_over(target: target, context: context, unit: u) {
+    SlotRead { reading: r } => slot_is_masked(r: r) && !slot_state_active(active: r.active)
+    SlotReadRefused { reason: _ } => false
+  })
+}
+
+// THE OBSERVE LINE FOR A HOST, end to end: record read and the slot join. A host with no record renders
+// "" (the ordinary admitting lines already say what there is to say). This is what
+// runner_host_file_observe renders, and what withdraw and restore consult -- one renderer, three callers.
+fn runner_host_withdraw_observe_line_for(host: String, target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  let record = read_withdrawn_record(host: host, expected_key: runner_host_withdraw_identity(host: host))
+  match record {
+    WithdrawnRecordAbsent => ""
+    _ => runner_host_withdraw_record_observe_line(record: record, masked_ok: host_slots_all_masked_and_inactive_over(target: target, context: context, units: units))
+  }
+}

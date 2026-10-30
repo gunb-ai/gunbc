@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data type_decl_field_decl_block_not_named_at_graft: RecurringFailureMode = RecurringFailureMode {
   identity: "type_decl_field_decl_block_not_named_at_graft" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a type_decl whose parse tree still carries dag_surface_field_decl_block is not rehomed onto a Named graft edge** (INVALID STATE: namespace_graft_type_decl_named_edge returns Absent whenever parse_subtree_locate_production finds that production under the unit. The skip is that production, not the record spelling. dag_grammar_type_variant_expr puts an optional field_decl_block on every variant, and graft runs after sugar, so the same arm covers `type Rec { n: Int }`, `type Foo = Bar {}`, and `type Box = Leaf | Cell { n: Int }`. Nullary coproducts without a field block (`type Flag = On | Off`) and type_decl units that locate no field_decl_block are Named. Narrowing the skip by type_alias_rhs / `=` is not available: those discriminators rehome records.)",

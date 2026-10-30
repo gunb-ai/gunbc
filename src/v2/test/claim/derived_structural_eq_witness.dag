@@ -1,0 +1,56 @@
+module v2.test.claim.derived_structural_eq_witness
+
+import std.types { Bool, Int, List, String }
+import gunbc.commit_workflow { CommitWorkflowSurface, GithubActionsCiJob, GitPrePushHook, FalsifierCadenceJob, LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyCargoFmtCheck }
+
+// R2 backfill (derived structural equality payoff): the hand structural-equality folds
+// commit_workflow_surface_eq, gate_eq, local_tidy_check_eq, bmc_event_eq,
+// section13_population_law_id_eq and nat_manual_anchor_key_eq are deleted; their call sites read
+// the derived structural ==. Prior art: v2.test.claim.vacuity_evidence_derived_eq_witness.
+
+type ProbeKind
+  = ProbeAlpha
+  | ProbeBeta
+  | ProbeGamma { weight: Int }
+
+// The control: the failure class the hand fold had. Its author enumerated the variants known when
+// it was written, so a variant added later (ProbeGamma here) falls through the wildcard and is not
+// equal to itself. The derived == has no such list, so nothing is edited when a variant is added.
+fn probe_kind_hand_eq(a: ProbeKind, b: ProbeKind) -> Bool {
+  match a {
+    ProbeAlpha => match b { ProbeAlpha => true  _ => false }
+    ProbeBeta => match b { ProbeBeta => true  _ => false }
+    _ => false
+  }
+}
+
+// RED: a variant the hand fold never listed is equal to itself and distinct from the others under
+// the derived ==, with no edit to any equality code.
+test fn derived_eq_answers_a_variant_added_after_any_hand_fold() -> Bool {
+  (ProbeGamma { weight: 3 } == ProbeGamma { weight: 3 })
+    && (ProbeGamma { weight: 3 } != ProbeGamma { weight: 4 })
+    && (ProbeGamma { weight: 3 } != ProbeAlpha)
+}
+
+// CONTROL: the hand fold is wrong for exactly that variant, so the RED above discriminates.
+test fn hand_fold_misses_the_variant_added_after_it() -> Bool {
+  !probe_kind_hand_eq(a: ProbeGamma { weight: 3 }, b: ProbeGamma { weight: 3 })
+    && probe_kind_hand_eq(a: ProbeAlpha, b: ProbeAlpha)
+}
+
+// The deleted folds' own populations: every distinct pair separates, equal values compare equal.
+test fn derived_eq_commit_workflow_surface_discriminates() -> Bool {
+  (GithubActionsCiJob == GithubActionsCiJob)
+    && (GitPrePushHook == GitPrePushHook)
+    && (FalsifierCadenceJob == FalsifierCadenceJob)
+    && (GithubActionsCiJob != GitPrePushHook)
+    && (GitPrePushHook != FalsifierCadenceJob)
+    && (GithubActionsCiJob != FalsifierCadenceJob)
+}
+
+test fn derived_eq_local_tidy_check_compares_payload_fields() -> Bool {
+  (LocalTidyWitnessCheck { entry: "e", check_fns: ["a", "b"] } == LocalTidyWitnessCheck { entry: "e", check_fns: ["a", "b"] })
+    && (LocalTidyWitnessCheck { entry: "e", check_fns: ["a", "b"] } != LocalTidyWitnessCheck { entry: "e", check_fns: ["a"] })
+    && (LocalTidyWitnessCheck { entry: "e", check_fns: [] } != LocalTidyCargoFmtCheck)
+    && (LocalTidyCargoFmtCheck == LocalTidyCargoFmtCheck)
+}

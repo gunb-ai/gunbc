@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.grammar_change_parses_no_real_corpus_file_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared, GroundingDeclared }
 
 // A §4b(2) STALL, NOT A §4b(3) DROP: no control has ever parsed real corpus files on a grammar
 // change, so nothing fell and there is no previous rung to name (gunbc.rung_drop's own header
@@ -26,7 +27,7 @@ data grammar_change_parses_no_real_corpus_file_stall: GuaranteeStall = Guarantee
   subject: "A grammar-authority change merges without any control parsing the real corpus files it can affect: today no control parses real corpus files on a grammar change, which is how gunbc#13056 broke src/v2/std/node.dag unseen. Held instead: supplied-source route controls, one per changed production, plus the verbatim broken shapes",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding { grounding: "the native-built parser on the merge path: a whole-file parse on the interpreted route exceeds the floor's per-claim budget by orders of magnitude (re-derived by v2.lens.enforcement.grammar_coverage grammar_coverage_ingest_path under claim_batch)" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: UncountedNotEnumerable { reason: "the corpus .dag files a grammar-authority change can affect" },
   next_rung_trigger: climbs_when(capability: "every corpus file is parsed by the native-built parser on every pull request that changes a grammar authority, and a parse refusal blocks the merge.")
 }

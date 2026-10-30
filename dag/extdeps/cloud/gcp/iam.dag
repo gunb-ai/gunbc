@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation, GoogleRpcStatus }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import std.algebra { fold_list }
 import std.optional { Absent, Present }
@@ -528,8 +528,175 @@ type GcpProjectResourceV3 {
 // intent for an id it did not choose.
 type GcpFolderResourceV3 { name: String, parent: String, state: String }
 
+// ── RESOURCE MANAGER TAGS (Cloud Resource Manager API v3) ──────────────────────────────────────
+// Read from the upstream's own Discovery document (cloudresourcemanager.googleapis.com/$discovery/rest
+// ?version=v3, revision 20261011, read 2026-10-19): tagKeys / tagValues / tagBindings create are POST
+// with the resource as the body and answer a long-running Operation; tagKeys and tagValues
+// getNamespaced are GET with one query parameter `name`; tagBindings list is GET with `parent`. A
+// TagKey's namespaced name is `{parentId}/{shortName}` (e.g. `r2-d2/bar` under project r2-d2), a
+// TagBinding's parent is the bound resource's full resource name, and its tagValue is `tagValues/{id}`.
+// Deny-policy denial conditions recognize only resource tag functions
+// (cloud.google.com/iam/docs/deny-overview), which is why these are modeled.
+data gcp_resource_manager_v3_discovery_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "cloudresourcemanager.googleapis.com/$discovery/rest?version=v3" }
+}
+
+type GcpTagKeyWire { name: String, parent: String, short_name: String from "shortName", namespaced_name: String? from "namespacedName", etag: String? }
+
+type GcpTagValueWire { name: String, parent: String, short_name: String from "shortName", namespaced_name: String? from "namespacedName", etag: String? }
+
+type GcpTagBindingWire { name: String?, parent: String, tag_value: String? from "tagValue", tag_value_namespaced_name: String? from "tagValueNamespacedName" }
+
+type GcpTagBindingListWire { tag_bindings: List<GcpTagBindingWire>? from "tagBindings", next_page_token: String? from "nextPageToken" }
+
+// A TAG CONDITION, TYPED (docs.cloud.google.com/iam/docs/conditions-attribute-reference, resource tags,
+// read 2026-10-19): resource.matchTag(keyName, valueShortName) takes the key's namespaced name
+// (`<org numeric id>/<key>` or `<project id>/<key>`); resource.matchTagId(keyId, valueId) takes the
+// permanent ids `tagKeys/<n>` / `tagValues/<n>`. Both are admitted in deny rules, the only functions a
+// denial condition recognizes (deny-overview). The expression text is rendered here, never spelled.
+type GcpTagCondition
+  = ResourceMatchTag { key_namespaced_name: NonEmptyStr, value_short_name: NonEmptyStr }
+  | ResourceMatchTagId { key_id: NonEmptyStr, value_id: NonEmptyStr }
+
+fn gcp_tag_condition_expression(c: GcpTagCondition) -> String {
+  match c {
+    ResourceMatchTag { key_namespaced_name: k, value_short_name: v } => join(["resource.matchTag('", k as String, "', '", v as String, "')"], "")
+    ResourceMatchTagId { key_id: k, value_id: v } => join(["resource.matchTagId('", k as String, "', '", v as String, "')"], "")
+  }
+}
+
+// DETACHING A TAG FROM A SERVICE ACCOUNT needs BOTH resourcemanager.tagValueBindings.delete on the
+// TagValue AND iam.serviceAccounts.deleteTagBinding on the service account
+// (docs.cloud.google.com/iam/docs/service-accounts-tags, read 2026-10-19). Each half is one permission on
+// one resource; a caller lacking either cannot detach.
+type GcpServiceAccountTagDetachRequirement { tag_value_permission: String, service_account_permission: String }
+
+data gcp_service_account_tag_detach_requirement: GcpServiceAccountTagDetachRequirement = GcpServiceAccountTagDetachRequirement {
+  tag_value_permission: "resourcemanager.tagValueBindings.delete",
+  service_account_permission: "iam.serviceAccounts.deleteTagBinding",
+}
+
+// A SERVICE ACCOUNT'S FULL RESOURCE NAME, the tag binding parent
+// (docs.cloud.google.com/iam/docs/service-accounts-tags, read 2026-10-19).
+fn gcp_service_account_full_resource_name(project_id: GcpProjectId, account: ServiceAccountEmail) -> String {
+  join(["//iam.googleapis.com/projects/", project_id as String, "/serviceAccounts/", account as String], "")
+}
+
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetNamespacedTagKey {
+    requires Network
+    input { access_token: Secret, namespaced_name: NonEmptyStr }
+    output { name: String, parent: String, short_name: String from "shortName", namespaced_name: String? from "namespacedName", etag: String? }
+    readonly
+    transport rest { method: GET, path: "/v3/tagKeys/namespaced", query: { name: namespaced_name } }
+    response {
+      200 => GcpTagKeyWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateTagKey {
+    requires Network
+    input { access_token: Secret, parent: NonEmptyStr, short_name: NonEmptyStr, description: String }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    idempotent
+    transport rest { method: POST, path: "/v3/tagKeys", body: { parent: parent, shortName: short_name, description: description } }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // tagValues.testIamPermissions (Resource Manager v3 Discovery document, revision 20261011):
+  // POST v3/{+resource}:testIamPermissions, resource matching ^tagValues/[^/]+$, body
+  // TestIamPermissionsRequest { permissions }, answer TestIamPermissionsResponse { permissions }: the
+  // subset of the requested permissions the CALLER holds on that value.
+  operation TestTagValueIamPermissions {
+    requires Network
+    input { access_token: Secret, tag_value: NonEmptyStr, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v3/\{tag_value\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetNamespacedTagValue {
+    requires Network
+    input { access_token: Secret, namespaced_name: NonEmptyStr }
+    output { name: String, parent: String, short_name: String from "shortName", namespaced_name: String? from "namespacedName", etag: String? }
+    readonly
+    transport rest { method: GET, path: "/v3/tagValues/namespaced", query: { name: namespaced_name } }
+    response {
+      200 => GcpTagValueWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateTagValue {
+    requires Network
+    input { access_token: Secret, parent: NonEmptyStr, short_name: NonEmptyStr, description: String }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    idempotent
+    transport rest { method: POST, path: "/v3/tagValues", body: { parent: parent, shortName: short_name, description: description } }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation ListTagBindings {
+    requires Network
+    input { access_token: Secret, parent: NonEmptyStr }
+    output { tag_bindings: List<GcpTagBindingWire>? from "tagBindings", next_page_token: String? from "nextPageToken" }
+    readonly
+    transport rest { method: GET, path: "/v3/tagBindings", query: { parent: parent } }
+    response {
+      200 => GcpTagBindingListWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // Resource Manager v3 answers a synchronously completed tag-binding create as a done Operation with
+  // no name (2026-10-28, receipt iam-ceremony-20261028T133424Z), so the name is optional.
+  operation CreateTagBinding {
+    requires Network
+    input { access_token: Secret, parent: NonEmptyStr, tag_value: NonEmptyStr }
+    output { operation_name: String? from "name", done: Bool?, error: GoogleRpcStatus? }
+    idempotent
+    transport rest { method: POST, path: "/v3/tagBindings", body: { parent: parent, tagValue: tag_value } }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
 
   operation GetFolder {
     requires Network

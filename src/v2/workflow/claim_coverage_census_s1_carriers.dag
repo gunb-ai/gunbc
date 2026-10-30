@@ -1,0 +1,283 @@
+module v2.workflow.claim_coverage_census_s1_carriers
+
+import std.types { String, Bool, List }
+import std.algebra { map_lookup, non_empty_to_list }
+import std.realization_schedule { ScheduleWitnessEntry }
+import std.optional { Optional, Absent, Present }
+import v2.workflow.claim_coverage_census_s1 { ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole, IdentityMember, DeclaredMember, FileMember, ExactMemberMatch, SubstringMemberMatch }
+import gunbc.ci.ci_layer_roots { bin_witness_wet_entries, witness_exclusion_frontier }
+import gunbc.witness.witness_deferral_freeze { frozen_path_deferrals }
+import gunbc.explicit_witness_admission { explicit_witness_admissions }
+import v2.workflow.floor_expected_red { floor_expected_red_chunks }
+import v2.workflow.floor_pure_producer_share { floor_single_claim_fill_debt_active_claims }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop { RungDrop, RungDropPopulation, Enumerated, DerivedBy, DeclaredBy, NotYetCounted, rung_drop_population, rung_drop_population_at_retirement }
+
+// THE CLASSIFIERS, READ FROM THEIR OWN CARRIERS AS DATA (Charter 4 ruling 2026-10-19: the enrolled
+// population is S1 alone; every carrier below is a CLASSIFIER over subsets of S1, never a peer
+// source).
+//
+// Each fn turns one carrier's declared rows into ClassifierRow values: the carrier's own name as
+// `carrier` (so every finding the census prints is located at a file the reader can open), the
+// member spelled the way that carrier spells it, and the grain + match relation that carrier
+// actually declares. Nothing here re-states a carrier's contents: the fold classifies what these
+// accessors answer, so a carrier that changes changes the census, and a carrier that names an
+// identity discovery does not find is StaleEnrolled by the same join that catches jolly-boar-495's
+// three known-stale fill-debt rows (the RED: bcn_let_in_value_cast_carries_its_target,
+// kvr_a_named_calls_bool_formal_is_counted_not_judged_holds, and the renamed tpb row — all three
+// absent from the tree at this head, so all three must print as STALE-ENROLLED, and the post-fix
+// list must print none).
+//
+// THE DROP POPULATIONS ARRIVE UNTYPED AND THIS FILE DOES NOT REPAIR THEM. A TypedDeclaration
+// population is `List<String>` at the declaration; whether a member spells a path, an identity, or
+// neither is decided by the fold's shape check, not here — re-typing a member here would be the
+// repair the ruling forbids ("never by restating the string"). The values that parse as neither
+// come out as UngroundedDropMember findings. An AuthoredProse drop declares no population at all and
+// contributes no rows: there is nothing to ground, and inventing members for a prose drop would be
+// hand-authoring a classifier.
+
+// THE ARMS, SO NO BUILDER FILLS A DUMMY (review 82804: a tag and fields only that tag reads is a sum
+// type written as a record). An identity member is a claim spelling and nothing else; a file member is a
+// path plus the relation that selects files, plus the function the carrier itself named beside it. A row
+// that could once be written as `IdentityGrain` + `SubstringMemberMatch` -- a demand no identity grain can
+// answer -- is now unwriteable, which is the point.
+// THE ROLE IS FIXED BY WHICH CONSTRUCTOR A CARRIER CALLS (review 82845: a role is a closed coproduct, set
+// once per carrier, never threaded through call sites). A carrier that credits coverage calls a `cover_*`
+// constructor; a carrier that only enrolls an expectation calls `enroll_*`. There is no `cover: Bool`
+// argument left to get wrong, so the silent failure the review named -- a wrong `true` crediting claims
+// with coverage and firing no refusal -- has no spelling.
+fn cover_identity_row(carrier: String, identity: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: IdentityMember { identity: identity },
+    role: CoverRole
+  }
+}
+
+// An ENROLLMENT row: the same arm, a different role. It grounds exactly as cover does -- and goes stale
+// exactly as cover does -- but contributes nothing to the covered population, which is what makes an
+// expectation excusable and a false cover not.
+fn enroll_identity_row(carrier: String, identity: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: IdentityMember { identity: identity },
+    role: EnrollmentRole
+  }
+}
+
+// A file cover over the whole file: the carrier's authority stopped at the path it declared.
+fn cover_file_row(carrier: String, path: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: FileMember { path: path, match_: ExactMemberMatch, function: Absent },
+    role: CoverRole
+  }
+}
+
+// A file cover the carrier narrowed to one function it named beside the path. The narrowing is the
+// carrier's own declaration; a census that dropped it would credit the lane with claims it never scheduled.
+fn cover_file_fn_row(carrier: String, path: String, function: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: FileMember { path: path, match_: ExactMemberMatch, function: Present { value: function } },
+    role: CoverRole
+  }
+}
+
+// A cover over a ScheduleWitnessEntry, AT THE GRAIN THAT ENTRY DECLARES. The entry carries a function
+// beside its entry file, and the census may not decide to forget it: a named function narrows the cover to
+// that one claim, while an entry whose function text is empty declares only the file. Dropping the field
+// instead would credit a lane with every claim in the entry's file -- the defect the parent caught on review
+// of #14469, where 2 admitted tests of 13 in `map_literal.dag` read as 13 covered.
+fn cover_witness_entry_row(carrier: String, witness: ScheduleWitnessEntry) -> ClassifierRow {
+  if witness.function == "" {
+    cover_file_row(carrier: carrier, path: witness.entry)
+  } else {
+    cover_file_fn_row(carrier: carrier, path: witness.entry, function: witness.function)
+  }
+}
+
+// The frontier's own form: a pattern selected by CONTAINMENT, the only carrier permitted that relation
+// because the frontier is what declares patterns.
+fn cover_frontier_row(carrier: String, pattern: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: FileMember { path: pattern, match_: SubstringMemberMatch, function: Absent },
+    role: CoverRole
+  }
+}
+
+// A drop population member, whose arm declares no grain, so the fold joins it against both discovered
+// populations and refuses it only when neither bears it.
+fn cover_declared_row(carrier: String, text: String) -> ClassifierRow {
+  ClassifierRow {
+    carrier: carrier,
+    member: DeclaredMember { text: text },
+    role: CoverRole
+  }
+}
+
+// The floor_single_claim_fill_debt list, active members only — jolly-boar-495's cover-side
+// consumer. The carrier's own accessor joins module + "." + claim, so the spelling is the
+// carrier's, not a reconstruction. Identity grain: a fill-debt row names a claim, never a file.
+fn fill_debt_classifier_rows() -> List<ClassifierRow> {
+  map(
+    floor_single_claim_fill_debt_active_claims(),
+    claim => cover_identity_row(
+      carrier: "v2.workflow.floor_pure_producer_share.floor_single_claim_fill_debt",
+      identity: claim
+      )
+  )
+}
+
+// floor_expected_red: an EXPECTATION carrier, not a lane — it predicts which claims are red, and
+// silent-bee-194's known-red instrument now consumes it. Classified here so a red prediction naming
+// a claim discovery does not find is StaleEnrolled at no extra cost, as ruled. The carrier stores
+// each row as a `module + "." + function` string already; the `enroll_*` constructor because a red prediction
+// excuses nothing — it enrolls an expectation, not a lane membership.
+fn floor_expected_red_classifier_rows() -> List<ClassifierRow> {
+  flat_map(
+    floor_expected_red_chunks(),
+    chunk => map(
+      chunk,
+      identity => enroll_identity_row(
+        carrier: "v2.workflow.floor_expected_red",
+        identity: identity
+        )
+    )
+  )
+}
+
+// The bin-wet entries: {entry, functions} pairs the bin witness pools schedule. The member this
+// carrier names is the ENTRY (a repo path), so the row is File-exact and the fold reaches the
+// identities of that file through the one expansion. The function list is deliberately not
+// flattened into identity rows here: an entry-level schedule row schedules the file's pool, and
+// inventing per-function cover rows from it would claim a finer authority than the carrier has.
+// THE GRAIN IS THE CARRIER'S, NOT THE CENSUS'S CHOICE (parent ruling on review of #14469). A
+// ScheduleWitnessEntry declares a function beside its entry; a row that dropped it would credit the lane
+// with EVERY claim of the file the entry happens to sit in — 2 admitted tests of 13 would read as 13
+// covered. Empty function text means the carrier's authority stopped at the file (file cover); a named
+// function narrows through `narrows_to` to that one claim and NOTHING else.
+fn bin_wet_classifier_rows() -> List<ClassifierRow> {
+  map(
+    bin_witness_wet_entries,
+    entry => cover_witness_entry_row(
+      carrier: "gunbc.ci.ci_layer_roots.bin_witness_wet_entries",
+      witness: entry
+    )
+  )
+}
+
+// The exclusion frontier: file-grain cover rows matched by CONTAINMENT, because that is the
+// frontier's own matching authority — `witness_row_excluded_from_discovery` in
+// `v2.workflow.witness_admission` asks whether a row's entry CONTAINS the pattern, through
+// `path_contains_substring` in the same module, which is the body `matches_member` calls (one rule,
+// one body — DESIGN §3). Its patterns are stems and directory prefixes ("impossible_bug",
+// "test/claim/long/"), not paths. Carrying SubstringMemberMatch keeps the census from reading every
+// frontier pattern as ungrounded (no entry EQUALS a stem) — and a pattern that matches no discovered
+// file still fails the fold's empty-expansion refusal, so it cannot read as grounded by accident.
+fn exclusion_frontier_classifier_rows() -> List<ClassifierRow> {
+  map(
+    witness_exclusion_frontier,
+    row => cover_frontier_row(
+      carrier: "gunbc.ci.ci_layer_roots.witness_exclusion_frontier",
+      pattern: row.pattern
+      )
+  )
+}
+
+// Frozen path deferrals: claimed-and-deferred entries. Cover side, File-exact — the deferral names
+// an entry file, and a deferral excuses that file's claims from a lane, which is what a cover row
+// means to this census.
+fn frozen_deferral_classifier_rows() -> List<ClassifierRow> {
+  map(
+    frozen_path_deferrals,
+    deferral => cover_file_row(
+      carrier: "gunbc.witness.witness_deferral_freeze.frozen_path_deferrals",
+      path: deferral.entry
+      )
+  )
+}
+
+// Explicit witness admissions: carriers whose witness is a ScheduleWitnessEntry — a claimed file
+// whose functions ride beside it. THE GRAIN RIDES WITH THE CARRIER (same ruling as
+// `bin_wet_classifier_rows` above): the admission's own accessor resolves its member to the
+// entry+function pair, so the census classifies it at that pair, and a named function narrows the
+// cover to the one claim the admission actually admits. An entry with empty function text declares
+// only the file, and the cover stops there. Taking the entry alone would credit the consumer with
+// every claim in the file.
+fn explicit_admission_classifier_rows() -> List<ClassifierRow> {
+  map(
+    explicit_witness_admissions,
+    admission => cover_witness_entry_row(
+      carrier: "gunbc.explicit_witness_admission.explicit_witness_admissions",
+      witness: admission.witness
+    )
+  )
+}
+
+// Every rung_drop's typed population, as cover rows. The roster hands the drops over as data; each
+// member is passed AT ITS DECLARED TEXT as a file member, and the fold grounds it through the join: the
+// population was declared List<String> precisely because its members were never typed, so a value no
+// discovered file bears is refused as UngroundedDropMember rather than being guessed at. A drop
+// whose declaration is AuthoredProse has no population to classify and contributes no rows.
+fn rung_drop_population_classifier_rows() -> List<ClassifierRow> {
+  flat_map(
+    rung_drop_roster,
+    drop => match rung_drop_recorded_population(d: drop) {
+      Present { value: Enumerated { members: members } } => map(
+        non_empty_to_list(xs: members),
+        member => cover_declared_row(
+          carrier: concat("gunbc.rung_drop.", drop.identity as String),
+          text: member
+        )
+      )
+      Present { value: DerivedBy { label: _ } } => []
+      Present { value: DeclaredBy { declaration: _ } } => []
+      Present { value: NotYetCounted { cause: _ } } => []
+      Absent => []
+    }
+  )
+}
+
+// The members a drop recorded, live or at retirement: a Standing or Superseded drop's population, and
+// the population a Retired drop kept as evidence. A Dissolved or prose drop recorded none.
+fn rung_drop_recorded_population(d: RungDrop) -> Optional<RungDropPopulation> {
+  match rung_drop_population(d: d) {
+    Present { value: p } => Present { value: p }
+    Absent => rung_drop_population_at_retirement(d: d)
+  }
+}
+
+// THE MODULE REAL-PATH PAIRING CLAIM (jolly-boar-495, gunbc#14389): the only claim that judges the full
+// ingest, so its enrollment is a cover-side classifier row over one identity of S1, not a peer source.
+// AUTHORED AS A LITERAL BECAUSE THE CARRIER IS THE CLAIM ITSELF: unlike every row above, this member has
+// no accessor to read it from -- the pairing claim lives in
+// `v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness`, and the carrier for it is
+// that module's own name plus the identity, spelled once here. The RED is that module's claim: deleting
+// `rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds` must make this row print as
+// STALE-ENROLLED, which is exactly what a literal whose identity no longer resolves is for.
+fn module_real_path_pairing_classifier_rows() -> List<ClassifierRow> {
+  [
+    cover_identity_row(
+      carrier: "gunbc.module_real_path_pairing_claim.infer_record_construct_field_inhabitance_witness",
+      identity: "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness.rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds"
+      )
+  ]
+}
+
+// All classifiers, one list: the census input the live entry feeds the fold, and the fixture input
+// the witnesses feed it (the positive control runs this SAME composition over a fixture tree, so
+// what is checkable about the carriers is checked, not asserted).
+fn s1_all_classifier_rows() -> List<ClassifierRow> {
+  concat(
+    concat(
+      concat(
+        concat(fill_debt_classifier_rows(), floor_expected_red_classifier_rows()),
+        concat(bin_wet_classifier_rows(), exclusion_frontier_classifier_rows())
+      ),
+      concat(frozen_deferral_classifier_rows(), explicit_admission_classifier_rows())
+    ),
+    concat(rung_drop_population_classifier_rows(), module_real_path_pairing_classifier_rows())
+  )
+}

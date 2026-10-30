@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.mistyped_body_radiates_nonlocal_diagnostics
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data mistyped_body_radiates_nonlocal_diagnostics: RecurringFailureMode = RecurringFailureMode {
   identity: "mistyped_body_radiates_nonlocal_diagnostics" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "mistyped body radiates nonlocal phantom diagnostics (LAYER, stated first because carrying this finding across it inverts its meaning: the producer is the .dag COMPILER diagnosing .dag SOURCE -- the interpreter/type-check path behind gunbc compile and the --required-regen self-compile -- NOT rustc diagnosing emitted Rust; nothing here supports discounting any rustc-diagnostic census.",

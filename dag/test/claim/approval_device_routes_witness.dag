@@ -1,25 +1,37 @@
 module test.claim.approval_device_routes_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp, List }
+import std.types { String, NonEmptyStr, Timestamp, List, Int }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, BrokerProcess, RoadmapProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
-  redemption_status, requested_at_within_skew,
+  device_list_response, device_revoke_response,
+  redemption_status, requested_at_within_skew, google_enrolment_refused,
 }
-import gunbc.auth.approval_device_redemption { observe_enrollment, EnrolmentSlotUnreadable, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
-import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
-import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
-import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment, SignedRedemption, DeviceRedemptionSigningInput, RedemptionChallenge, IosAppAttestAssertion, signed_redemption_json }
-import extdeps.crypto.signature { SignatureBytes, EcdsaP256Sha256, P1363FixedWidth }
+import gunbc.auth.approval_google_enrolment {
+  GoogleEnrolmentTokenRefused, GoogleEnrolmentAudienceNotExact, GoogleEnrolmentAuthorizedPartyNotAdmitted, GoogleEnrolmentEmailAbsent,
+  GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch, GoogleEnrolmentAttestationRefused, GoogleEnrolmentAttestationForOtherBytes,
+  GoogleEnrolmentAttestKeyMismatch, GoogleEnrolmentAndroidUnrealized, GoogleEnrolmentRevokedKey, GoogleEnrolmentStoredMismatch, GoogleEnrolmentStoreUnreadable,
+  GoogleEnrolmentRefusal, StoredFieldGoogleEmail,
+}
+import extdeps.auth.oidc { OidcIdTokenSignatureRefusal }
+import extdeps.apple.app_attest { AttestationUndecodable }
+import extdeps.tailscale.identity { TailnetUser }
+import gunbc.auth.approval_decision_store { approval_identity_trust, IdentityHeaderTrustNotEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustEstablished }
+import gunbc.auth.approval_device_redemption { DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
+import gunbc.auth.approval_google_enrolment { GoogleEnrolmentSlot, GoogleEnrolmentUnreadable }
+import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body, fx_point }
+import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable, approval_decision_store_root }
+import gunbc.auth.approval_device_wire { GoogleEnrolmentRequest, google_enrolment_request_json, MobileIos, ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment, SignedRedemption, DeviceRedemptionSigningInput, RedemptionChallenge, IosAppAttestAssertion, signed_redemption_json }
+import extdeps.crypto.signature { SignatureBytes, VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
 import gunbc.auth.approval_capability { ProposeApprove }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, approval_app_attest_app_id, approval_app_bundle_id, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, DeviceCryptoAdmitted, DeviceCryptoRefused,
+  DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, NativeDeviceCryptoUnavailable, DeviceCryptoRequirement, DeviceCryptoGateOpen, DeviceCryptoGateRefused,
   P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder,
-  device_crypto_admission, approval_device_crypto_realization,
+  device_crypto_gate,
 }
 import gunbc.roadmap.roadmap_serve { roadmap_mounts_during_cutover }
 import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler }
@@ -31,15 +43,17 @@ import gunbc.auth.approval_broker_serve { DeviceEnrolHandler, DeviceRedeemHandle
 // configuration row names, and a claim that greened them from designed bytes would assert a
 // route nothing can reach.
 
-// The production binding, read from its row: every claim below that passes it asserts what the
-// served route answers today.
-data fx_unbound: DeviceCryptoRealization = approval_device_crypto_realization
+// An unavailable realization: the route's gate refuses before any decode beyond the wire's, store read or verifier call.
+// The production row is Bound (the gate opens and the sidecar answers); its claims live in
+// test.claim.approval_device_crypto_client_witness.
+data fx_unbound: DeviceCryptoRealization = NativeDeviceCryptoUnavailable { cause: "fixture: no native handler bound" }
 
 fn fx_bound(covered: List<DeviceCryptoObligation>) -> DeviceCryptoRealization {
-  NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture-native-handler", exact_revision: "0000000", covered: covered } }
+  NativeDeviceCryptoBound { requirement: DeviceCryptoRequirement { handler_identity: "fixture-native-handler", required: covered } }
 }
 
 data fx_now: Timestamp = "2026-09-21T12:00:00Z"
+data fx_epoch: Int = 1790000000
 data fx_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-21T12:00:30Z", assertion_b64: "omlzaWduYXR1cmU" }
 
 fn non_writer() -> Bool {
@@ -60,7 +74,7 @@ fn writer_process() -> ApprovalServingProcess {
 }
 
 test fn malformed_bodies_refuse_400_on_every_route() -> Bool {
-  device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{", process: writer_process(), observed_at: fx_now), status: 400, fragment: "enrolment request refused at")
+  device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{", process: writer_process(), observed_at: fx_now, epoch: fx_epoch), status: 400, fragment: "enrolment request refused at")
     && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "[]", process: writer_process(), observed_at: fx_now), status: 400, fragment: "redemption refused at")
     && device_route_refused_with(r: device_pending_response_at(realization: fx_unbound, body: "{\"enrollment_id\":\"e\"}", observed_at: fx_now), status: 400, fragment: "read refused at")
     && device_route_refused_with(r: device_request_response_at(realization: fx_unbound, body: "{}", segment: path_segment(s: "esc-1") as String, observed_at: fx_now), status: 400, fragment: "read refused at")
@@ -87,7 +101,7 @@ test fn a_readback_for_another_enrolment_refuses_403() -> Bool {
 test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
   let asker = if non_writer() { BrokerProcess } else { RoadmapProcess }
   device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
-    && device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
+    && device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now, epoch: fx_epoch), status: 503, fragment: "writer authority")
     && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
 }
 
@@ -109,19 +123,18 @@ test fn reads_refuse_unconfigured_until_the_operator_supplies_the_prefix() -> Bo
   }
 }
 
-// A REQUEST-SUPPLIED IDENTITY NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): the two
-// observers the device routes hand a body or path-segment identity to answer Unreadable with the
-// store's fixed slot-addressability detail for a separator-carrying key -- the store refuses before
-// any read, so no path outside the root is probed and the detail names no host state.
+// A REQUEST-SUPPLIED IDENTITY NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): the observers the
+// device routes hand a body or path-segment identity to answer Unreadable with the store's fixed
+// slot-addressability detail for a separator-carrying key -- the store refuses before any read, so no
+// path outside the root is probed and the detail names no host state. The escalation observer is driven
+// here; the enrolment observer takes the sealed device store, which is minted only from a listed
+// directory, so its half runs over a real one (test.claim.approval_google_enrolment_wet_witness
+// a_traversal_enrolment_id_is_refused_by_the_store_before_any_read).
 test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
-  (match observe_enrollment(root: approval_device_store_root, enrollment_id: "enr-../../../etc/shadow") {
-    EnrolmentSlotUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
+  match observe_escalation(root: approval_decision_store_root, escalation_id: "../../../etc/shadow") {
+    EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
     _ => false
-  })
-    && (match observe_escalation(root: approval_device_store_root, escalation_id: "../../../etc/shadow") {
-      EscalationUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
-      _ => false
-    })
+  }
 }
 
 // The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
@@ -162,7 +175,7 @@ test fn the_roadmap_mounts_no_device_route() -> Bool {
 // THE VERIFIER-DEPENDENT ROUTES REFUSE 503 ON THE UNBOUND REALIZATION BEFORE ANY CRYPTO RUNS. Every
 // body here is well formed and reaches past the wire and writer gates, the verifier row is
 // configured, and each assertion/attestation/signature is bytes that would be handed to a verifier
-// -- yet all six answer the realization's own reason. The route asks device_crypto_admission before
+// -- yet all six answer the realization's own reason. The route asks device_crypto_gate before
 // it reads the enrolment store or calls a verifier, so no crypto can have started.
 data fx_unrealized: String = "native device-crypto realization is unavailable"
 
@@ -182,7 +195,7 @@ test fn the_push_update_refuses_503_before_any_crypto_while_the_native_handler_i
 }
 
 test fn the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
-  writer_route_refused_unrealized(name: "enrolment_request", route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now) })
+  writer_route_refused_unrealized(name: "enrolment_request", route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now, epoch: fx_epoch) })
 }
 
 // THE REDEMPTION BODY IS SUPPLIED, NOT DERIVED (DESIGN section 3, a witness discriminates at one
@@ -218,13 +231,67 @@ fn writer_route_refused_unrealized(name: String, route: fn(String) -> DeviceRout
 // THE RECEIPT MUST COVER THE NAMED POPULATION, THE P-256 ORDER FACT INCLUDED: a bound handler whose
 // receipt covers every verifier but not the base-point order is refused 503 naming that witness and
 // its (n-1)*G control; the full receipt is admitted with its identity and revision.
-test fn a_bound_handler_without_the_base_point_order_fact_is_refused() -> Bool {
-  (match device_crypto_admission(r: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification])) {
-    DeviceCryptoRefused { status: s, reason: why } => s == 503 && string_contains(s: why, pattern: "the_base_point_has_order_n") && string_contains(s: why, pattern: "(n-1)*G != infinity")
-    DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => false
+test fn a_bound_requirement_without_the_base_point_order_fact_is_refused() -> Bool {
+  (match device_crypto_gate(r: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification])) {
+    DeviceCryptoGateRefused { status: s, reason: why } => s == 503 && string_contains(s: why, pattern: "the_base_point_has_order_n") && string_contains(s: why, pattern: "(n-1)*G != infinity")
+    DeviceCryptoGateOpen { requirement: _ } => false
   })
-    && (match device_crypto_admission(r: fx_bound(covered: [P256BasePointOrder, AppAttestAssertionVerification, AppAttestAttestationVerification, P256SignatureVerification])) {
-      DeviceCryptoAdmitted { handler_identity: h, exact_revision: v } => (h as String) == "fixture-native-handler" && (v as String) == "0000000"
-      DeviceCryptoRefused { status: _, reason: _ } => false
+    && (match device_crypto_gate(r: fx_bound(covered: [P256BasePointOrder, AppAttestAssertionVerification, AppAttestAttestationVerification, P256SignatureVerification])) {
+      DeviceCryptoGateOpen { requirement: q } => (q.handler_identity as String) == "fixture-native-handler"
+      DeviceCryptoGateRefused { status: _, reason: _ } => false
     })
+}
+
+// THE TYPED ENROLMENT REFUSAL, one claim per arm, through the route's own refusal fold
+// (google_enrolment_refused, the arm device_enrol_admit takes for every model refusal). The app
+// leaves SubmissionUnknown on the label alone, so each arm owes its status and its wire label.
+// The selection of the arm by the real fold is the inhabitance claim in
+// test.claim.approval_google_enrolment_witness; this asserts the map the route calls.
+fn google_refusal_answers(r: GoogleEnrolmentRefusal, status: Int, label: String) -> Bool {
+  device_route_refused_with(r: google_enrolment_refused(r: r), status: status, fragment: concat(concat("\"", label), "\""))
+}
+
+test fn each_google_enrolment_refusal_arm_answers_its_status_and_wire_label() -> Bool {
+  google_refusal_answers(r: GoogleEnrolmentTokenRefused { cause: OidcIdTokenSignatureRefusal { reason: "x" } }, status: 403, label: "token_refused")
+    && google_refusal_answers(r: GoogleEnrolmentAudienceNotExact, status: 403, label: "audience_not_exact")
+    && google_refusal_answers(r: GoogleEnrolmentAuthorizedPartyNotAdmitted, status: 403, label: "authorized_party_not_admitted")
+    && google_refusal_answers(r: GoogleEnrolmentEmailAbsent, status: 403, label: "email_absent")
+    && google_refusal_answers(r: GoogleEnrolmentNotAnApprover { email: "x@y.z" }, status: 403, label: "not_an_approver")
+    && google_refusal_answers(r: GoogleEnrolmentSubjectMismatch { email: "x@y.z" }, status: 403, label: "subject_mismatch")
+    && google_refusal_answers(r: GoogleEnrolmentAttestationRefused { cause: AttestationUndecodable { cause: "x" } }, status: 403, label: "attestation_refused")
+    && google_refusal_answers(r: GoogleEnrolmentAttestationForOtherBytes, status: 403, label: "attestation_for_other_bytes")
+    && google_refusal_answers(r: GoogleEnrolmentAttestKeyMismatch, status: 403, label: "attest_key_mismatch")
+    && google_refusal_answers(r: GoogleEnrolmentAndroidUnrealized, status: 501, label: "android_unrealized")
+    && google_refusal_answers(r: GoogleEnrolmentRevokedKey, status: 403, label: "revoked_key")
+    && google_refusal_answers(r: GoogleEnrolmentStoredMismatch { field: StoredFieldGoogleEmail }, status: 409, label: "stored_mismatch:google_email")
+    && google_refusal_answers(r: GoogleEnrolmentStoreUnreadable { detail: "slot unreadable" }, status: 503, label: "store_unreadable")
+}
+
+// THE ENROLMENT PAST THE CRYPTO GATE: the same well-formed request the unbound realization refuses
+// 503 reaches the token decode under the bound realization (a malformed ID token answers 400 from the
+// decode, before the JWKS or any store), so it is the gate that decided the unbound claim above.
+test fn a_bound_realization_passes_the_enrolment_past_the_gate() -> Bool {
+  let covered = [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]
+  let body = google_enrolment_request_json(r: GoogleEnrolmentRequest {
+    platform: MobileIos,
+    decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
+    attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0", id_token: "not-a-jwt",
+  })
+  let r = device_enrol_response_at(realization: fx_bound(covered: covered), body: body, process: fx_writer(), observed_at: fx_now, epoch: fx_epoch)
+  !string_contains(s: r.body, pattern: fx_unrealized) && r.status == 400 && string_contains(s: r.body, pattern: "did not decode")
+}
+
+// THE LIST AND REVOKE ROUTES REFUSE UNTIL THE OPERATOR IDENTITY IS ATTRIBUTED (the claim reads the
+// trust row's own arm, so it flips with the row): not-established or unattributed answers 503 naming
+// that; once established, an identity that is not the operator answers 403. Nothing is listed or
+// revoked in either case.
+test fn the_list_and_revoke_routes_refuse_an_unattributed_or_foreign_identity() -> Bool {
+  let foreign = TailnetUser { login: "someone-else@example.com" }
+  let list = device_list_response(presented: foreign)
+  let revoke = device_revoke_response(presented: foreign, segment: path_segment(s: "genr-1") as String, process: writer_process())
+  match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: _ } => device_route_refused_with(r: list, status: 503, fragment: "not attributed") && device_route_refused_with(r: revoke, status: 503, fragment: "not attributed")
+    IdentityHeaderUnattributed { residual: _ } => device_route_refused_with(r: list, status: 503, fragment: "not attributed") && device_route_refused_with(r: revoke, status: 503, fragment: "not attributed")
+    IdentityHeaderTrustEstablished { evidence: _ } => list.status == 403 && revoke.status == 403
+  }
 }

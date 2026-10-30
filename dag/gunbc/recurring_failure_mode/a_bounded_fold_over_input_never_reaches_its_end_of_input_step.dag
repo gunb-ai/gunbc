@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_bounded_fold_over_input_never_reaches_its_end_of_input_step
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_bounded_fold_over_input_never_reaches_its_end_of_input_step: RecurringFailureMode = RecurringFailureMode {
   identity: "a_bounded_fold_over_input_never_reaches_its_end_of_input_step" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a text the generic lexer ACCEPTS that its own rule set says is unterminated. v2.std.text fold_source ran an algebra for one step per scalar of the source, and v2.compiler.tokenize lex_walk_step decided the end-of-input verdict (a mode still pushed is `tokenize_lex_e4_mode_unterminated`, lex_walk_finish) in its step on an EMPTY cursor, which is a step AFTER the last scalar. A step that takes a lexeme of w scalars spends w scalars of the fuel on one step, so the step after the last scalar existed only when some lexeme was wider than one scalar. On a source whose every lexeme is ONE scalar and whose last lexeme opens a mode, the iterations ran out on the last scalar, the verdict never ran, and the walk reported the lex complete. The consumer cannot see this from the answer: an Accepted token stream and a refused one differ only in a step that did not execute.",

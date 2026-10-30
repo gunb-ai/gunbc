@@ -11,6 +11,7 @@ fn fixture_run(run_id: String, revision: String) -> ActionsRunBinding {
     workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
     run_id: run_id,
     run_revision: revision,
+    execution_revision: revision,
   }
 }
 
@@ -144,6 +145,7 @@ test fn witness_apply_plan_binding_refuses_another_repository() -> Bool {
     workflow_ref: "someone/fork/.github/workflows/fleet-converge.yml@refs/heads/main",
     run_id: "1002",
     run_revision: receipt_fixture_r,
+    execution_revision: receipt_fixture_r,
   }
   match admit_apply_plan_binding(plan: fixture_plan_receipt(), apply_run: foreign, plan_run_id_input: "1001", plan_hash_on_disk: "a1b2c3d4e5f60718") {
     PlanBindingRepositoryMismatch { plan: p, apply: a } => p == "gunb-ai/gunbc" && a == "someone/fork"
@@ -165,7 +167,7 @@ test fn witness_run_binding_round_trips_and_refuses_a_short_revision() -> Bool {
     ActionsRunBindingDecoded { binding: back } => back.run_id == "7" && back.run_revision == receipt_fixture_r
     ActionsRunBindingUnreadable { reason: _ } => false
   }
-  let short = ActionsRunBinding { repository: "gunb-ai/gunbc", workflow_ref: "x", run_id: "7", run_revision: "abc" }
+  let short = ActionsRunBinding { repository: "gunb-ai/gunbc", workflow_ref: "x", run_id: "7", run_revision: "abc", execution_revision: "abc" }
   let refused = match actions_run_binding_of_json(doc: actions_run_binding_json(binding: short)) {
     ActionsRunBindingDecoded { binding: _ } => false
     ActionsRunBindingUnreadable { reason: r } => string_contains(s: r, pattern: "40-digit")

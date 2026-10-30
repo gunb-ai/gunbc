@@ -240,7 +240,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
                 let module_name = crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
+                    tm.type_env.source_indices.clone(),
                     tm.module.clone(),
                 );
                 let filename =
@@ -261,7 +261,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                                                 owner.clone(),
                                                 module_name.clone(),
                                             ]),
-                                            span: tm.module.clone().span.clone(),
+                                            span: tm.module.span.clone(),
                                         }),
                                         module_name.clone(),
                                     ),
@@ -351,60 +351,62 @@ pub fn to_string_helper(
     mut __tco_loop_value: i64,
     mut __tco_loop_acc: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut value = __tco_loop_value;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        if (value.clone() == 0) {
-            break acc.clone();
-        } else {
-            let rest = v1_rt::int_div(value.clone(), 10);
-            let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
-            let digit_chars = Rc::new(vec![
-                "0".to_string(),
-                "1".to_string(),
-                "2".to_string(),
-                "3".to_string(),
-                "4".to_string(),
-                "5".to_string(),
-                "6".to_string(),
-                "7".to_string(),
-                "8".to_string(),
-                "9".to_string(),
-            ]);
-            let ch = match Rc::new({
-                let mut __result = Vec::new();
-                for p in Rc::new(
-                    digit_chars
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut value = __tco_loop_value;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (value.clone() == 0) {
+                break acc.clone();
+            } else {
+                let rest = v1_rt::int_div(value.clone(), 10);
+                let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
+                let digit_chars = Rc::new(vec![
+                    "0".to_string(),
+                    "1".to_string(),
+                    "2".to_string(),
+                    "3".to_string(),
+                    "4".to_string(),
+                    "5".to_string(),
+                    "6".to_string(),
+                    "7".to_string(),
+                    "8".to_string(),
+                    "9".to_string(),
+                ]);
+                let ch = match Rc::new({
+                    let mut __result = Vec::new();
+                    for p in Rc::new(
+                        digit_chars
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if (p.0.clone() == digit.clone()) {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .first()
                 .cloned()
                 {
-                    if (p.0.clone() == digit.clone()) {
-                        __result.push(p);
-                    }
+                    Some(p) => p.1.clone(),
+                    std::option::Option::None => "?".to_string(),
+                };
+                {
+                    let __tco_0 = rest.clone();
+                    let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                    __tco_loop_value = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    continue;
                 }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(p) => p.1.clone(),
-                std::option::Option::None => "?".to_string(),
-            };
-            {
-                let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
-                __tco_loop_value = __tco_0;
-                __tco_loop_acc = __tco_1;
-                continue;
             }
         }
     }
@@ -454,8 +456,8 @@ pub fn to_snake(name: String) -> String {
 
 pub fn to_screaming_snake(name: String) -> String {
     {
-        let snake = to_snake(name.clone());
-        crate::std_unicode_scalar::ascii_uppercase(snake.clone())
+        let snake = to_snake(name);
+        crate::std_unicode_scalar::ascii_uppercase(snake)
     }
 }
 
@@ -496,7 +498,7 @@ pub fn capitalize_first(s: String) -> String {
 pub fn service_var_name(service_name: String) -> String {
     to_snake(
         Rc::new(
-            sanitize_service_name(service_name.clone())
+            sanitize_service_name(service_name)
                 .split(&"__".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -507,7 +509,7 @@ pub fn service_var_name(service_name: String) -> String {
 
 pub fn to_pascal(name: String) -> String {
     {
-        let snake = to_snake(name.clone());
+        let snake = to_snake(name);
         let parts = Rc::new(
             snake
                 .clone()
@@ -528,7 +530,7 @@ pub fn to_pascal(name: String) -> String {
 
 pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
     {
-        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
+        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target);
         let formatted = match conventions.name_style.clone() {
             TestNameStyle::SnakeCaseTestNames => v1_rt::concat(
                 v1_rt::concat(
@@ -630,7 +632,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
 
 pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
     apply_named_template_nested(
-        template.clone(),
+        template,
         bindings.clone(),
         Rc::new(v1_rt::map_keys(&bindings)),
     )
@@ -680,7 +682,7 @@ pub fn apply_named_template_nested(
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
-    crate::v1_compiler_languages::language_spec_for_target(target.clone())
+    crate::v1_compiler_languages::language_spec_for_target(target)
 }
 
 pub fn escape_string_literal_body(s: String) -> String {
@@ -776,7 +778,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __found = true;
@@ -795,15 +797,15 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 {
                                     __result.push(Rc::new(TestProjection {
                                         module_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             tm.module.clone(),
                                         ),
                                         service_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             item.clone(),
                                         ),
                                         operation_name: crate::v1_std_core::authored_name_at(
-                                            tm.type_env.clone().source_indices.clone(),
+                                            tm.type_env.source_indices.clone(),
                                             c.clone(),
                                         ),
                                         inferred: crate::v1_compiler_infer_types::resolved_type(
@@ -816,7 +818,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                                 if has_mock_prefix(
                                                     crate::v1_std_core::field_init_node_name_at(
                                                         p.clone(),
-                                                        tm.type_env.clone().source_indices.clone(),
+                                                        tm.type_env.source_indices.clone(),
                                                     ),
                                                 ) {
                                                     __result.push(p);
@@ -824,7 +826,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             }
                                             __result
                                         }),
-                                        source_indices: tm.type_env.clone().source_indices.clone(),
+                                        source_indices: tm.type_env.source_indices.clone(),
                                         type_env: tm.type_env.clone(),
                                     }));
                                 }
@@ -848,7 +850,7 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
+    (crate::v1_std_core::authored_name_at(source_indices, n) != "Unit".to_string())
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
@@ -871,7 +873,7 @@ pub fn is_type_alias_item(
     (is_leaf_type_item(item.clone())
         && is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
+            source_indices,
         ))
 }
 
@@ -882,7 +884,7 @@ pub fn is_type_decl_item(
     ((is_leaf_type_item(item.clone())
         && !is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices.clone(),
+            source_indices,
         ))
         || ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && ((item.params.clone().len() as i64) > 0))
@@ -934,7 +936,7 @@ pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<
         let mut __result = Vec::new();
         for tm in typed.modules.clone().iter().cloned() {
             __result.extend((*{
-        let source_indices = tm.type_env.clone().source_indices.clone();
+        let source_indices = tm.type_env.source_indices.clone();
 let module_name = crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
 let result = tm.items.clone().iter().cloned().fold(Rc::new(EmittedSymbolOwners {
     owners: v1_rt::rc_empty_map::<String, String>(),

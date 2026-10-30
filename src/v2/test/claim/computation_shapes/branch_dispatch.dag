@@ -13,6 +13,7 @@ import v2.std.node {
   TypeNode,
   content_hash,
   well_formed,
+  NotADeclaration
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -35,7 +36,7 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
+      Edge { label: Positional, target: branch_dispatch_leaf(s: s), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -47,8 +48,8 @@ data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_ar
 data branch_dispatch_subject: Node = Node {
   kind: ComputationNode { behavior: Branch },
   children: [
-    Edge { label: Positional, target: branch_dispatch_arm_then },
-    Edge { label: Positional, target: branch_dispatch_arm_else }
+    Edge { label: Positional, target: branch_dispatch_arm_then, declaration: NotADeclaration },
+    Edge { label: Positional, target: branch_dispatch_arm_else, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -86,8 +87,8 @@ data claim_branch_dispatch_equals_refl: TestClaim = EqualsClaim {
 data branch_dispatch_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Branch },
   children: [
-    Edge { label: Positional, target: branch_dispatch_arm_then },
-    Edge { label: Positional, target: branch_dispatch_arm_else }
+    Edge { label: Positional, target: branch_dispatch_arm_then, declaration: NotADeclaration },
+    Edge { label: Positional, target: branch_dispatch_arm_else, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -95,8 +96,8 @@ data branch_dispatch_subject_rebuilt: Node = Node {
 data branch_dispatch_subject_arms_swapped: Node = Node {
   kind: ComputationNode { behavior: Branch },
   children: [
-    Edge { label: Positional, target: branch_dispatch_arm_else },
-    Edge { label: Positional, target: branch_dispatch_arm_then }
+    Edge { label: Positional, target: branch_dispatch_arm_else, declaration: NotADeclaration },
+    Edge { label: Positional, target: branch_dispatch_arm_then, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

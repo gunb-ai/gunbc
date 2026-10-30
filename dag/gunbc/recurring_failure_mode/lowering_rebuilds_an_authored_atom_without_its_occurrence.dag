@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_i
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data lowering_rebuilds_an_authored_atom_without_its_occurrence: RecurringFailureMode = RecurringFailureMode {
   identity: "lowering_rebuilds_an_authored_atom_without_its_occurrence" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: v2 lowering keeps an authored atom's spelling but rebuilds the node that carries it with OccurrenceSynthetic, or folds it into a Named edge label, so the normalized tree still says WHAT was written but no longer WHERE. The parse minted an OccurrenceId for the atom and recorded its extent in the SpanIndex (`v2.compiler.parse` `parse_mint_from_source`); after lowering, no node carries that id. A consumer that must address one occurrence cannot find it: a located diagnostic at the reference, an occurrence-exact rewrite (XL-5), or a check that one mention survived rather than some other mention of the same name.",

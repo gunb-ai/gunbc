@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.authored_text_fixtures_ground_nothing_at_infer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data authored_text_fixtures_ground_nothing_at_infer: RecurringFailureMode = RecurringFailureMode {
   identity: "authored_text_fixtures_ground_nothing_at_infer" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "a one-module program assembled from authored text through v2.compiler.program_assembly assemble_program_from_ingest resolves cleanly but grounds nothing at infer. INVALID STATE: the fixture module declares ordinary types and fns (records, coproducts, generic coproducts, param-fed constructions, variant-scrutinee matches -- exactly the shapes v2.test.claim.match_binder.match_binder_typing's mbt_decls uses), resolve accepts and the construct reads decode correctly (Boxed/Seal/Mk), and infer then reports a ~18-28-diagnostic cascade of infer_grounding_not_derived with inhabitance_undecidable_formal_unresolved and inhabitance_undecidable_argument_type_not_derived mid-chain, ending in a downstream refusal such as arrow_body_does_not_inhabit_declared_return -- so every fact-level reading in the module is underived. HARM: any claim that needs a grounded infer fact from an assembled-text fixture cannot obtain one, and the cascade's shape is identical across fixtures, so it does not point at any declaration. THE SILENT PART: no existing authored-text claim asserts a grounded infer fact -- the passing match_binder claims assert resolve-side structure or negative (not-yet-typed) states -- so nothing ever went red and the route's grounding was never exercised by a green run.",

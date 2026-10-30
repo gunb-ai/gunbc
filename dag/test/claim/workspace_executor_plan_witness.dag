@@ -27,7 +27,7 @@ fn executor_plan_fixture_receipt(body: String, shell: String, host: String, scop
   serialize_json(v: fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt {
     run: ActionsRunBinding { repository: "gunb-ai/gunbc",
       workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
-      run_id: "1001", run_revision: p.source_revision as String },
+      run_id: "1001", run_revision: p.source_revision as String, execution_revision: p.source_revision as String },
     observed_host: host, scope_wire: scope, member_set_fingerprint_hex: "0011223344556677",
     plan_artifact_hash: digest, observed_baseline_hex: "1122334455667788",
     prior_generation: 17, planned_generation: 18, lease_key: "fleet-converge-plan:srv1",

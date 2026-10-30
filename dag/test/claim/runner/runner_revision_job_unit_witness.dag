@@ -1,0 +1,84 @@
+module test.claim.runner.runner_revision_job_unit_witness
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_sudoers_command }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
+import gunbc.runner.runner_host_grants { revision_job_start_operations }
+import gunbc.runner.runner_slot_allocation { srv1_revision_job_slot }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.runner.runner_revision_job_unit {
+  revision_job_runner_unit_file, revision_job_image_pinned_sha256, revision_job_installed_image_root,
+  revision_job_runner_unit_instance_name,
+}
+import gunbc.host.host_effect_realize {
+  MicrovmControllerInstallReady, MicrovmControllerInstallRefused, MicrovmControllerInstallStep,
+  microvm_controller_install_staging, microvm_controller_step_text, microvm_controller_step_name,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn install_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }
+}
+
+fn install_plan() -> List<MicrovmControllerInstallStep> {
+  match microvm_controller_install_staging(revision: install_revision(), checkout_root: "/fixture/checkout") {
+    MicrovmControllerInstallReady { steps: steps } => steps
+    MicrovmControllerInstallRefused { reason: _ } => []
+  }
+}
+
+fn deploy_on(host: NonEmptyStr) -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: host,
+    ssh_target: "x@invalid.example",
+    runner_user: "r",
+    unit_user: "r",
+    job_user: "ghrunner",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+
+// THE START GRANT IS ONE EXACT ARGV PER DECLARED REVISION-JOB SLOT, ON THAT SLOT'S HOST ONLY.
+test fn the_start_grant_is_exact_and_on_the_revision_job_host_only() -> Bool {
+  let on_srv1 = revision_job_start_operations(deploy: deploy_on(host: srv1_revision_job_slot().host as NonEmptyStr))
+  let on_srv3 = revision_job_start_operations(deploy: deploy_on(host: "srv3"))
+  on_srv1.length() == 1
+    && on_srv3.length() == 0
+    && (executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: revision_job_runner_unit_instance_name(slot_instance: "srv1-14") }) as String)
+      == "/usr/bin/systemctl start gunbc-revision-job-runner@srv1-14.service"
+}
+
+// THE UNIT HANDS THE JOB THE SAME PIN THE INSTALLER VERIFIES, AND ITS IMAGE DIRECTORY IS NAMED BY IT:
+// one row, two renderings, so the job's admission and the install cannot disagree about the image.
+test fn the_unit_and_the_installer_share_one_image_pin() -> Bool {
+  let dir = "/var/lib/gunbc/fixture-release"
+  let unit = serialize_systemd_unit_file(file: revision_job_runner_unit_file(release_dir: dir))
+  let surface = join(map(install_plan(), s => microvm_controller_step_text(step: s)), "\n")
+  string_contains(s: unit, pattern: concat("GUNBC_REVISION_JOB_IMAGE_SHA256=", revision_job_image_pinned_sha256 as String))
+    && string_contains(s: unit, pattern: concat("GUNBC_REVISION_JOB_IMAGE_DIR=", revision_job_installed_image_root(release_dir: dir)))
+    && string_contains(s: unit, pattern: "GUNBC_REVISION_JOB_SLOT=%i")
+    && string_contains(s: unit, pattern: "--function revision_job_main")
+    && string_contains(s: unit, pattern: "Restart=no")
+    && !string_contains(s: unit, pattern: "WantedBy")
+}
+
+// THE INSTALL PLAN CARRIES THE LEG, VERIFIES THE INSTALLED ROOTFS AGAINST THE PIN, WRITES THE TEMPLATE
+// UNIT, AND STARTS NOTHING.
+test fn the_install_plan_installs_and_verifies_the_image_and_starts_nothing() -> Bool {
+  let plan = install_plan()
+  let names = join(map(plan, s => microvm_controller_step_name(step: s)), "\n")
+  let surface = join(map(plan, s => microvm_controller_step_text(step: s)), "\n")
+  string_contains(s: names, pattern: "revision-job rootfs install")
+    && string_contains(s: names, pattern: "revision-job rootfs digest")
+    && string_contains(s: names, pattern: "revision-job guest kernel digest")
+    && string_contains(s: names, pattern: "revision-job runner unit")
+    && string_contains(s: surface, pattern: revision_job_image_pinned_sha256 as String)
+    && string_contains(s: surface, pattern: "gunbc-revision-job-runner@.service")
+    && !string_contains(s: surface, pattern: "systemctl start")
+    && !string_contains(s: surface, pattern: "systemctl enable")
+}

@@ -1,5 +1,6 @@
 module gunbc.instruments.fabric_control_plane_live_probe
 
+import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import product.fabric.provider_route {
   CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
   ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
@@ -14,7 +15,8 @@ import product.fabric.provider_admission {
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
-import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
+import extdeps.shell
+import std.types { Bool, Int, List, NonEmptyStr, String, GitRef, FilePath }
 import std.algebra { trim, Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
@@ -78,13 +80,15 @@ import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload,
 }
+import gunbc.host_state_root { host_state_tree, isolated_host_state_tree }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, FabricAllocationStoreReading, fabric_allocation_store, fabric_allocation_store_path, fabric_allocation_namespace_path, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_slot, fabric_allocation_commit_slot }
 import gunbc.durable_cas_file_store {
-  observe_cas_slot_state, DefaultAccessCreateOnly,
+  DefaultAccessCreateOnly,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  admit_cas_attempt_for_derived_payload, file_compare_and_set,
+  admit_cas_attempt_for_derived_payload,
 }
 import gunbc.fabric.fabric_required_build_cell {
-  RequiredBuildCellObservation, RequiredBuildCellObserved, ReservationPayloadWorkMismatch,
+  RequiredBuildCellObservation, RequiredBuildCellObserved, ReservationPayloadWorkMismatch, ReservationAbsent, ReservationUnreadable,
   RequiredBuildCellLifetimeVerdict, RequiredBuildCellObservationRefused,
   RequiredBuildCellLifetimeSampleDecode, RequiredBuildCellLifetimeSampleDecoded, RequiredBuildCellLifetimeSampleUndecodable,
   FabricCellPreReservationStanding, FabricCellPreReservationClean, FabricCellPreReservationAbsent,
@@ -140,7 +144,7 @@ import gunbc.host.host_effect_realize { srv3_observe_path_owner }
 import extdeps.posix.path_ownership { PathOwnershipObservation, PathOwnerObserved, PathOwnerUnobserved, posix_owner_spec_equal }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathAbsent }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
 }
@@ -231,11 +235,14 @@ fn fci1_write_checkpoint_terminal_receipt(token: NonEmptyStr, path: String) -> P
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/fabric_control_plane_live_probe.dag \
-//     --function cp_live_reservation_is_exclusive --arg root=<an EMPTY directory>
+//     --function cp_live_reservation_is_exclusive --arg tree=<an EMPTY directory>
+//
+// The directory is a disposable host-state tree (see THE ENTRIES at the end of this module); the store
+// is minted inside it at <tree>/fabric/allocation.
 //
 // THE SECOND FUNCTION'S ASSERTION IS NOT ITS RETURN VALUE. Run
-// cp_live_nothing_admissible_touches_no_store against a FRESH empty root and then list that
-// directory: it must still be empty. A broker that reserved a cell when selection admitted
+// cp_live_nothing_admissible_touches_no_store against a FRESH empty tree and then list the store
+// directory inside it: it must still be empty. A broker that reserved a cell when selection admitted
 // nothing would fabricate a decision the market refused to make, and would still return a
 // plausible-looking outcome -- only the absence of a file catches it.
 
@@ -296,10 +303,10 @@ fn cp_probe_account() -> MoneyAccount {
   }
 }
 
-fn cp_probe_reserve(root: NonEmptyStr) -> Int {
+fn cp_probe_reserve(store: FabricAllocationStore) -> Int {
   cp_probe_code(
     r: reserve_selected_cell(
-      root: root,
+      store: store,
       slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
       demand_id: cp_probe_demand_id(key: "demand-7"),
       offer_id: cp_probe_offer_id(key: "offer-1"),
@@ -316,23 +323,23 @@ fn cp_probe_reserve(root: NonEmptyStr) -> Int {
 // broker used to advance a held slot to generation 2 when handed the right
 // expectation. The advance now needs a release in between: the holder frees the
 // cell at generation 2 and the next reservation lands on generation 3.
-fn cp_live_reservation_is_exclusive(root: NonEmptyStr) -> Bool {
-  let first = cp_probe_reserve(root: root)
-  let second = cp_probe_reserve(root: root)
-  let held_again = cp_probe_reserve(root: root)
+fn cp_live_reservation_is_exclusive_in(store: FabricAllocationStore) -> Bool {
+  let first = cp_probe_reserve(store: store)
+  let second = cp_probe_reserve(store: store)
+  let held_again = cp_probe_reserve(store: store)
   let released = cp_probe_release_for(
-    root: root,
+    store: store,
     reservation: fabric_money_reservation_ref(demand: cp_probe_demand_id(key: "demand-7"), offer: cp_probe_offer_id(key: "offer-1")),
   )
-  let advance = cp_probe_reserve(root: root)
+  let advance = cp_probe_reserve(store: store)
   first == 101 && second == 2 && held_again == 2 && released == 202 && advance == 103
 }
 
 // The empty-roster control for the split above. It must answer 50 -- nothing
 // offered -- and NOT 51, or the two states are still collapsed and the e2e row
 // below cannot tell a broken fixture from a market refusal.
-fn cp_live_empty_roster_reports_nothing_offered(root: NonEmptyStr) -> Bool {
-  cp_live_nothing_admissible_touches_no_store(root: root) == 50
+fn cp_live_empty_roster_reports_nothing_offered_in(store: FabricAllocationStore) -> Bool {
+  cp_live_nothing_admissible_touches_no_store_in(store: store) == 50
 }
 
 fn cp_probe_demand() -> Demand<NonEmptyStr> {
@@ -352,7 +359,6 @@ fn cp_probe_demand() -> Demand<NonEmptyStr> {
 // required_witnesses_build_work; it is never transcribed into this probe.
 data fci1_work_source_commit: NonEmptyStr = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
 data fci1_work_source_tree: NonEmptyStr = "c8983a3d8412a5e37a309b2d90ceafc698856619"
-data fci1_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
 data fci1_projected_sudoers_path: NonEmptyStr = "provisioning/srv3/gunbc-ghrunner.sudoers"
 
 fn fci1_root_owner() -> PosixOwnerSpec {
@@ -374,7 +380,7 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
   let cell_root = fabric_cell_root_path(slot: slot) as NonEmptyStr
   let attempts = fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
   let mode = fci1_directory_mode_unobserved(path: cell_root, desired_mode: "0755")
-  match sha256sum_file_digest_via_shell(path: fci1_installed_sudoers_path) {
+  match sha256sum_file_digest_via_shell(path: runner_host_sudoers_install_path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => exit_failure(reason: "FCI-1 sudoers readback unavailable")
     Sha256FileDigest { digest: observed_digest } =>
       match sha256sum_file_digest_via_shell(path: fci1_projected_sudoers_path) {
@@ -392,9 +398,9 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
               exit_failure(reason: "FCI-1 cell root owner/group mismatch")
             } else if !fci1_path_owner_matches(path: attempts, expected: runner_owner) {
               exit_failure(reason: "FCI-1 attempts root owner/group mismatch")
-            } else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric" as NonEmptyStr, expected: fci1_root_owner()) {
+            } else if !fci1_path_owner_matches(path: fabric_allocation_namespace_path(tree: host_state_tree()), expected: fci1_root_owner()) {
               exit_failure(reason: "FCI-1 allocation namespace substrate owner/group mismatch")
-            } else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric/allocation" as NonEmptyStr, expected: fci1_root_owner()) {
+            } else if !fci1_path_owner_matches(path: fabric_allocation_store_path(tree: host_state_tree()), expected: fci1_root_owner()) {
               exit_failure(reason: "FCI-1 allocation directory substrate owner/group mismatch")
             } else {
               match mode {
@@ -467,11 +473,11 @@ fn fci1_probe_demand() -> Fci1DemandBinding {
 
 // FCI-1 instrument leaves the complete typed producer outputs visible. These are functions rather
 // than receipt rows: every invocation re-reads the live CAS slot and cell substrate.
-fn fci1_live_reserve(root: NonEmptyStr) -> CellReservation {
+fn fci1_live_reserve(store: FabricAllocationStore) -> CellReservation {
   match fci1_probe_demand() {
     Fci1DemandRefused => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "FCI-0 Work construction refused" }
     Fci1DemandBound { demand: demand } => broker_reserve_for_demand(
-      root: root,
+      store: store,
       demand: demand,
       roster: cp_probe_roster(executor: "srv3-06", work: demand.work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
@@ -495,9 +501,9 @@ type Fci1HeldGenerationMutation
   = Fci1HeldGenerationReplaced { slot_key: NonEmptyStr, generation: Int }
   | Fci1HeldGenerationMutationRefused { detail: NonEmptyStr }
 
-fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
+fn fci1_live_replace_held(store: FabricAllocationStore) -> Fci1HeldGenerationMutation {
   let slot_key = fabric_cell_allocation_key(slot: cp_probe_slot())
-  match fci1_allocation_slot_observation(root: root) {
+  match fci1_allocation_slot_observation(store: store) {
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: holder, payload: _, content: _ } =>
       match admit_cas_attempt_for_derived_payload(
         key: slot_key,
@@ -507,7 +513,7 @@ fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
         DerivedPayloadKeyNotSlotAddressable { key: _ } =>
           Fci1HeldGenerationMutationRefused { detail: "allocation key is not slot-addressable" }
         DerivedPayloadAdmitted { verified: v } =>
-          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+          match fabric_allocation_commit_slot(store: store, publication: DefaultAccessCreateOnly, verified: v) {
             CasCommitted { committed: c } => Fci1HeldGenerationReplaced { slot_key: slot_key, generation: c.generation }
             CasPreconditionFailed { expected: _, observed: _ } =>
               Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
@@ -594,17 +600,13 @@ fn fci1_modeled_ownership_wire(member: FabricCellMember) -> NonEmptyStr {
   }
 }
 
-fn fci1_live_replace_held_wire(root: NonEmptyStr) -> String {
-  fci1_held_generation_mutation_wire(mutation: fci1_live_replace_held(root: root))
-}
-
-fn fci1_assert_replace_held(
-  root: NonEmptyStr,
+fn fci1_assert_replace_held_in(
+  store: FabricAllocationStore,
   cleanup_path: String,
   checkpoint: NonEmptyStr,
   checkpoint_path: String,
 ) -> ProcessExit {
-  let observed = fci1_allocation_slot_observation(root: root)
+  let observed = fci1_allocation_slot_observation(store: store)
   let expected_generation = match observed {
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation + 1
     Fci1SlotAbsent { path: _ } => -1
@@ -613,7 +615,7 @@ fn fci1_assert_replace_held(
     Fci1SlotUndecodable { path: _, generation: _, payload: _, content: _ } => -1
   }
   if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
-  else { let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
+  else { let authority = fci1_cleanup_authority(store: store, generation: expected_generation)
   let authority_write = Filesystem.Write(
     path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
     content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
@@ -625,7 +627,7 @@ fn fci1_assert_replace_held(
       ExitFailure { code: _, reason: why } => exit_failure(reason: why)
     }
   }
-  else { let outcome = fci1_live_replace_held(root: root)
+  else { let outcome = fci1_live_replace_held(store: store)
   match outcome {
     Fci1HeldGenerationReplaced { slot_key: slot, generation: generation } =>
       if slot == "srv3-06" && generation == expected_generation { ExitSuccess } else {
@@ -636,11 +638,11 @@ fn fci1_assert_replace_held(
   } } }
 }
 
-fn fci1_live_binding_observation(root: NonEmptyStr) -> RequiredBuildCellObservation {
+fn fci1_live_binding_observation(store: FabricAllocationStore) -> RequiredBuildCellObservation {
   match fci1_probe_demand() {
     Fci1DemandRefused => ReservationPayloadWorkMismatch { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     Fci1DemandBound { demand: demand } => observe_required_build_cell_wet(
-      root: root,
+      store: store,
       host: "srv3",
       slot: cp_probe_slot(),
       demand: demand,
@@ -674,11 +676,11 @@ fn fci1_reservation_cleanup_authority_wire(authority: Fci1ReservationCleanupAuth
   ], "") as NonEmptyStr
 }
 
-fn fci1_cleanup_authority(root: NonEmptyStr, generation: Int) -> Fci1ReservationCleanupAuthority {
+fn fci1_cleanup_authority(store: FabricAllocationStore, generation: Int) -> Fci1ReservationCleanupAuthority {
   let reservation = cp_probe_reservation_ref()
   let payload = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: reservation) })
   Fci1ReservationCleanupAuthority {
-    root: root,
+    root: store.root,
     slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
     generation: generation,
     reservation_identity: reservation as NonEmptyStr,
@@ -727,16 +729,16 @@ fn fci1_decode_reservation_cleanup_authority(wire: String) -> Fci1ReservationCle
   } }
 }
 
-fn fci1_live_reserve_and_observe_available(
-  root: NonEmptyStr,
+fn fci1_live_reserve_and_observe_available_in(
+  store: FabricAllocationStore,
   path: String,
   cleanup_path: String,
   checkpoint: NonEmptyStr,
   checkpoint_path: String,
 ) -> ProcessExit {
-  let prestate = fci1_allocation_prestate(root: root)
+  let prestate = fci1_allocation_prestate(store: store)
   let expected_generation = fci1_expected_held_generation(prestate: prestate)
-  let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
+  let authority = fci1_cleanup_authority(store: store, generation: expected_generation)
   let authority_write = Filesystem.Write(
     path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
     content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
@@ -744,8 +746,8 @@ fn fci1_live_reserve_and_observe_available(
   if expected_generation < 1 { exit_failure(reason: "ReservationCleanupAuthorityPrestateRefused") }
   else if !authority_write.success { exit_failure(reason: "ReservationCleanupAuthorityWriteRefusedBeforeCommit") }
   else { let reserved = match prestate {
-    AllocationSlotAbsent { path: _ } => fci1_live_reserve(root: root)
-    AllocationSlotFree { path: _, generation: _ } => fci1_live_reserve(root: root)
+    AllocationSlotAbsent { path: _ } => fci1_live_reserve(store: store)
+    AllocationSlotFree { path: _, generation: _ } => fci1_live_reserve(store: store)
     AllocationSlotHeld { path: _, generation: _ } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
     AllocationSlotUnreadable { path: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate unreadable" }
     AllocationSlotUndecodable { path: _, generation: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate undecodable" }
@@ -758,7 +760,7 @@ fn fci1_live_reserve_and_observe_available(
           ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterCommitBeforeTransport" }
           ExitFailure { code: _, reason: why } => exit_failure(reason: why)
         }
-      } else { match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(root: root)) {
+      } else { match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(store: store)) {
         RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
         RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
           path: path,
@@ -776,8 +778,8 @@ fn fci1_live_reserve_and_observe_available(
   } }
 }
 
-fn fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
-  match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(root: root)) {
+fn fci1_live_binding_sample_wire_in(store: FabricAllocationStore, path: String) -> ProcessExit {
+  match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(store: store)) {
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
       path: path,
@@ -786,15 +788,15 @@ fn fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit
   }
 }
 
-fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationSlotPrestate {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: root }
-    CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: root }
+fn fci1_allocation_prestate(store: FabricAllocationStore) -> AllocationSlotPrestate {
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+    CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: store.root }
+    CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_hold_slot_payload(payload: version.value) {
-        HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => AllocationSlotFree { path: root, generation: version.generation }
-        HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => AllocationSlotHeld { path: root, generation: version.generation }
-        HoldPayloadUndecodable { detail: _ } => AllocationSlotUndecodable { path: root, generation: version.generation }
+        HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => AllocationSlotFree { path: store.root, generation: version.generation }
+        HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => AllocationSlotHeld { path: store.root, generation: version.generation }
+        HoldPayloadUndecodable { detail: _ } => AllocationSlotUndecodable { path: store.root, generation: version.generation }
       }
   }
 }
@@ -820,24 +822,24 @@ type Fci1AllocationSlotObservation
   | Fci1SlotUnreadable { path: NonEmptyStr }
   | Fci1SlotUndecodable { path: NonEmptyStr, generation: Int, payload: NonEmptyStr, content: NonEmptyStr }
 
-fn fci1_allocation_slot_observation(root: NonEmptyStr) -> Fci1AllocationSlotObservation {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: root }
-    CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: root }
+fn fci1_allocation_slot_observation(store: FabricAllocationStore) -> Fci1AllocationSlotObservation {
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+    CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: store.root }
+    CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {
       let content = serialize_content_hash(hash: version.content)
       match decode_hold_slot_payload(payload: version.value) {
         HoldPayloadDecoded { state: DurableHoldFree { released_by: released } } => Fci1SlotFree {
-          path: root, generation: version.generation, released_by: (released as String) as NonEmptyStr,
+          path: store.root, generation: version.generation, released_by: (released as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
         HoldPayloadDecoded { state: DurableHoldHeld { owner: owner } } => Fci1SlotHeld {
-          path: root, generation: version.generation,
+          path: store.root, generation: version.generation,
           reservation_identity: (owner as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
         HoldPayloadUndecodable { detail: _ } => Fci1SlotUndecodable {
-          path: root, generation: version.generation, payload: version.value, content: content,
+          path: store.root, generation: version.generation, payload: version.value, content: content,
         }
       }
     }
@@ -887,15 +889,15 @@ fn fci1_decode_allocation_prestate(wire: String) -> AllocationSlotPrestate {
   }
 }
 
-fn fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_live_allocation_prestate_in(store: FabricAllocationStore, path: String) -> ProcessExit {
   fabric_ci_write_wire(
     path: path,
-    wire: fabric_ci_evidence_wire(value: fci1_allocation_prestate_wire(prestate: fci1_allocation_prestate(root: root))),
+    wire: fabric_ci_evidence_wire(value: fci1_allocation_prestate_wire(prestate: fci1_allocation_prestate(store: store))),
   )
 }
 
-fn fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
-  match fci1_allocation_slot_admission(prestate: fci1_allocation_prestate(root: root)) {
+fn fci1_assert_allocation_available_in(store: FabricAllocationStore) -> ProcessExit {
+  match fci1_allocation_slot_admission(prestate: fci1_allocation_prestate(store: store)) {
     AllocationSlotAdmitted { path: _ } => ExitSuccess
     AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
     AllocationSlotRefusedUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation slot unreadable")
@@ -903,14 +905,14 @@ fn fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
   }
 }
 
-fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
+fn fci1_allocation_restoration(store: FabricAllocationStore, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
   match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable { cause: _ } => AllocationStoreRestorationRefused { path: root }
+    FabricCiEvidenceUndecodable { cause: _ } => AllocationStoreRestorationRefused { path: store.root }
     FabricCiEvidenceDecoded { value: before } => {
       let prestate = fci1_decode_allocation_prestate(wire: before as String)
-      let poststate = fci1_allocation_prestate(root: root)
+      let poststate = fci1_allocation_prestate(store: store)
       match fci1_decode_transport_sample(wire: held_wire) {
-        RequiredBuildCellLifetimeSampleUndecodable => AllocationStoreRestorationRefused { path: root }
+        RequiredBuildCellLifetimeSampleUndecodable => AllocationStoreRestorationRefused { path: store.root }
         RequiredBuildCellLifetimeSampleDecoded { sample: held } => fci1_exact_allocation_restoration(
           prestate: prestate,
           held_generation: held.generation,
@@ -921,8 +923,8 @@ fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire
   }
 }
 
-fn fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String, held_wire: String) -> ProcessExit {
-  match fci1_allocation_restoration(root: root, before_wire: before_wire, held_wire: held_wire) {
+fn fci1_assert_allocation_restored_in(store: FabricAllocationStore, before_wire: String, held_wire: String) -> ProcessExit {
+  match fci1_allocation_restoration(store: store, before_wire: before_wire, held_wire: held_wire) {
     AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => ExitSuccess
     AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => ExitSuccess
     AllocationStoreRestorationRefused { path: _ } => exit_failure(reason: "FCI-1 allocation store restoration refused")
@@ -1043,15 +1045,15 @@ fn fci1_authority_matches_exact_free(
 }
 
 fn fci1_canonical_cleanup_disposition(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   before_wire: String,
   authority_path: String,
 ) -> Fci1CanonicalCleanupDisposition {
   let before_decoded = decode_fabric_ci_evidence_wire(wire: before_wire)
-  let observed = fci1_allocation_slot_observation(root: root)
+  let observed = fci1_allocation_slot_observation(store: store)
   let observed_prestate = fci1_slot_observation_prestate(observed: observed)
   let disposition = match before_decoded {
-    FabricCiEvidenceUndecodable { cause: _ } => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: root }, observed: observed }
+    FabricCiEvidenceUndecodable { cause: _ } => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: store.root }, observed: observed }
     FabricCiEvidenceDecoded { value: before_value } => {
       let prestate = fci1_decode_allocation_prestate(wire: before_value as String)
       let initial_disposition = if fci1_slot_prestate_equal(a: prestate, b: observed_prestate) {
@@ -1066,8 +1068,8 @@ fn fci1_canonical_cleanup_disposition(
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
           if authority.generation == fci1_expected_held_generation(prestate: prestate)
             && fci1_authority_matches_held(authority: authority, observed: observed) {
-            let ended = fci1_live_release_outcome(root: root)
-            let post = fci1_allocation_slot_observation(root: root)
+            let ended = fci1_live_release_outcome(store: store)
+            let post = fci1_allocation_slot_observation(store: store)
             let restoration = fci1_exact_allocation_restoration(
               prestate: prestate,
               held_generation: authority.generation,
@@ -1122,8 +1124,8 @@ fn fci1_canonical_cleanup_disposition(
     }
   }
 }
-fn fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
-  let disposition = fci1_canonical_cleanup_disposition(root: root, before_wire: before_wire, authority_path: authority_path)
+fn fci1_write_canonical_cleanup_receipt_in(store: FabricAllocationStore, before_wire: String, authority_path: String, path: String) -> ProcessExit {
+  let disposition = fci1_canonical_cleanup_disposition(store: store, before_wire: before_wire, authority_path: authority_path)
   let write = Filesystem.Write(path: path, content: to_string(disposition))
   if !write.success { exit_failure(reason: join(["canonical cleanup receipt write refused: ", write.error], "")) }
   else { match disposition {
@@ -1136,8 +1138,8 @@ fn fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, 
   } }
 }
 
-fn fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: String, path: String) -> ProcessExit {
-  let observed = fci1_allocation_slot_observation(root: root)
+fn fci1_write_disposable_cleanup_receipt_in(store: FabricAllocationStore, authority_path: String, path: String) -> ProcessExit {
+  let observed = fci1_allocation_slot_observation(store: store)
   match observed {
     Fci1SlotAbsent { path: _ } => {
       let write = Filesystem.Write(path: path, content: join(["DisposableNoCommit|observed=", to_string(observed)], ""))
@@ -1150,8 +1152,8 @@ fn fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: Stri
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } => if !fci1_authority_matches_held(authority: authority, observed: observed) {
           exit_failure(reason: "disposable held reservation identity refused")
         } else {
-          let ended = fci1_live_release_outcome(root: root)
-          let post = fci1_allocation_slot_observation(root: root)
+          let ended = fci1_live_release_outcome(store: store)
+          let post = fci1_allocation_slot_observation(store: store)
           let write = Filesystem.Write(
             path: path,
             content: join(["DisposableHoldingReleased|authority=", to_string(authority), "|held=", to_string(observed), "|release=", to_string(ended), "|post=", to_string(post)], ""),
@@ -1191,8 +1193,8 @@ fn fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: Stri
   }
 }
 
-fn fci1_grade_and_write_allocation_receipt(
-  root: NonEmptyStr,
+fn fci1_grade_and_write_allocation_receipt_in(
+  store: FabricAllocationStore,
   before_wire: String,
   held_wire: String,
   phase: NonEmptyStr,
@@ -1200,7 +1202,7 @@ fn fci1_grade_and_write_allocation_receipt(
 ) -> ProcessExit {
   let before_decoded = decode_fabric_ci_evidence_wire(wire: before_wire)
   let held_decoded = fci1_decode_transport_sample(wire: held_wire)
-  let post = fci1_allocation_prestate(root: root)
+  let post = fci1_allocation_prestate(store: store)
   match before_decoded {
     FabricCiEvidenceUndecodable { cause: _ } => exit_failure(reason: "allocation receipt before observation undecodable")
     FabricCiEvidenceDecoded { value: before_value } => match held_decoded {
@@ -1214,7 +1216,7 @@ fn fci1_grade_and_write_allocation_receipt(
         )
         let content = join([
           "phase=", phase as String,
-          "\nroot=", root as String,
+          "\nroot=", store.root as String,
           "\nslot_key=", held.slot_key as String,
           "\npre=", to_string(pre),
           "\nheld=", to_string(held),
@@ -1301,11 +1303,17 @@ fn fci1_decode_transport_sample(wire: String) -> RequiredBuildCellLifetimeSample
 // The before wire must have been emitted by fci1_live_reserve_and_observe_available. This entry
 // validates it, takes the second observation live, and calls the typed verdict fold. Bash sequences
 // the submitter boundary and transports bytes; it cannot manufacture either verdict name.
-fn fci1_live_lifetime_verdict(root: NonEmptyStr, before_wire: String) -> RequiredBuildCellLifetimeVerdict {
+fn fci1_live_lifetime_verdict(store: FabricAllocationStore, before_wire: String) -> RequiredBuildCellLifetimeVerdict {
+  fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_live_binding_observation(store: store) })
+}
+
+// The verdict over an observation it is HANDED as a thunk, so the decoder control below can prove the live
+// observation is never reached when the before-wire refuses: it hands one that must not be called.
+fn fci1_lifetime_verdict_over(before_wire: String, observe: fn() -> RequiredBuildCellObservation) -> RequiredBuildCellLifetimeVerdict {
   match fci1_decode_transport_sample(wire: before_wire) {
     RequiredBuildCellLifetimeSampleUndecodable => RequiredBuildCellObservationRefused
     RequiredBuildCellLifetimeSampleDecoded { sample: before } =>
-      required_build_cell_lifetime_verdict(before: before, after: fci1_live_binding_observation(root: root))
+      required_build_cell_lifetime_verdict(before: before, after: observe())
   }
 }
 
@@ -1313,7 +1321,7 @@ fn fci1_live_lifetime_verdict(root: NonEmptyStr, before_wire: String) -> Require
 // lazy evaluation means the live observer is unreachable when decode refuses, so this control can
 // run anywhere while still exercising the exact production entry used by the wet transaction.
 fn fci1_invalid_before_wire_refuses() -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: "/fci1-invalid-wire-must-not-be-read", before_wire: "srv3-06\n1")
+  let verdict = fci1_lifetime_verdict_over(before_wire: "srv3-06\n1", observe: fn() { ReservationAbsent { slot_key: "fci1-invalid-wire-must-not-be-read" } })
   match verdict {
     RequiredBuildCellObservationRefused => ExitSuccess
     RequiredBuildCellLifetimeHeld { snapshot: _ } => exit_failure(reason: join(["invalid before wire was accepted: ", required_build_cell_lifetime_verdict_wire(verdict: verdict)], ""))
@@ -1324,8 +1332,8 @@ fn fci1_invalid_before_wire_refuses() -> ProcessExit {
   }
 }
 
-fn fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
+fn fci1_assert_lifetime_held_in(store: FabricAllocationStore, before_wire: String) -> ProcessExit {
+  let verdict = fci1_live_lifetime_verdict(store: store, before_wire: before_wire)
   match verdict {
     RequiredBuildCellLifetimeHeld { snapshot: snapshot } =>
       if snapshot.slot_key == "srv3-06" { ExitSuccess } else {
@@ -1339,8 +1347,8 @@ fn fci1_assert_lifetime_held(root: NonEmptyStr, before_wire: String) -> ProcessE
   }
 }
 
-fn fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
+fn fci1_assert_generation_changed_in(store: FabricAllocationStore, before_wire: String) -> ProcessExit {
+  let verdict = fci1_live_lifetime_verdict(store: store, before_wire: before_wire)
   match verdict {
     ReservationGenerationChanged { expected_generation: expected, observed_generation: observed } =>
       if expected != observed { ExitSuccess } else {
@@ -1354,11 +1362,11 @@ fn fci1_assert_generation_changed(root: NonEmptyStr, before_wire: String) -> Pro
   }
 }
 
-fn fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
+fn fci1_write_generation_changed_receipt_in(store: FabricAllocationStore, before_wire: String, path: String) -> ProcessExit {
+  let verdict = fci1_live_lifetime_verdict(store: store, before_wire: before_wire)
   let write = Filesystem.Write(path: path, content: join([
     "before_wire=", before_wire, "\nverdict=", to_string(verdict),
-    "\nslot_observation=", to_string(fci1_allocation_slot_observation(root: root)),
+    "\nslot_observation=", to_string(fci1_allocation_slot_observation(store: store)),
   ], ""))
   if !write.success { exit_failure(reason: "generation-changed receipt write refused") }
   else { match verdict {
@@ -1373,8 +1381,8 @@ fn fci1_write_generation_changed_receipt(root: NonEmptyStr, before_wire: String,
   } }
 }
 
-fn fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
+fn fci1_assert_lifetime_dependent_in(store: FabricAllocationStore, before_wire: String) -> ProcessExit {
+  let verdict = fci1_live_lifetime_verdict(store: store, before_wire: before_wire)
   match verdict {
     ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
       if slot == "srv3-06" { ExitSuccess } else {
@@ -1388,11 +1396,11 @@ fn fci1_assert_lifetime_dependent(root: NonEmptyStr, before_wire: String) -> Pro
   }
 }
 
-fn fci1_write_lifetime_dependent_receipt(root: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
-  let verdict = fci1_live_lifetime_verdict(root: root, before_wire: before_wire)
+fn fci1_write_lifetime_dependent_receipt_in(store: FabricAllocationStore, before_wire: String, path: String) -> ProcessExit {
+  let verdict = fci1_live_lifetime_verdict(store: store, before_wire: before_wire)
   let write = Filesystem.Write(path: path, content: join([
     "before_wire=", before_wire, "\nverdict=", to_string(verdict),
-    "\nslot_observation=", to_string(fci1_allocation_slot_observation(root: root)),
+    "\nslot_observation=", to_string(fci1_allocation_slot_observation(store: store)),
   ], ""))
   if !write.success { exit_failure(reason: "lifetime-dependent receipt write refused") }
   else { match verdict {
@@ -1706,10 +1714,10 @@ fn fci1_write_zero_work_receipt(phase: NonEmptyStr, path: String) -> ProcessExit
 }
 
 
-fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
+fn cp_live_nothing_admissible_touches_no_store_in(store: FabricAllocationStore) -> Int {
   cp_probe_code(
     r: broker_reserve_for_demand(
-      root: root,
+      store: store,
       demand: cp_probe_demand(),
       roster: [],
       sanctions: [],
@@ -1926,10 +1934,10 @@ fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, Work
   )
 }
 
-fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
+fn cp_live_broker_reserves_the_cell_the_market_chose_in(store: FabricAllocationStore) -> Int {
   cp_probe_code(
     r: broker_reserve_for_demand(
-      root: root,
+      store: store,
       demand: cp_probe_demand(),
       roster: cp_probe_roster(executor: "srv3-06", work: cp_probe_demand().work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
@@ -1994,8 +2002,8 @@ fn cp_probe_held_account() -> List<MoneyAccount> {
 // separate process that has lost that handle, so it reads the slot and presents the generation
 // it finds. That is the instrument's honesty, not the protocol's: the ABA fence the acquisition
 // generation exists for is witnessed hermetically, where a stale generation is supplied and refused.
-fn fci1_observed_hold_generation(root: NonEmptyStr) -> Int {
-  match fci1_allocation_slot_observation(root: root) {
+fn fci1_observed_hold_generation(store: FabricAllocationStore) -> Int {
+  match fci1_allocation_slot_observation(store: store) {
     Fci1SlotHeld { path: _, generation: g, reservation_identity: _, payload: _, content: _ } => g
     Fci1SlotFree { path: _, generation: g, released_by: _, payload: _, content: _ } => g
     Fci1SlotUndecodable { path: _, generation: g, payload: _, content: _ } => g
@@ -2008,16 +2016,16 @@ fn fci1_observed_hold_generation(root: NonEmptyStr) -> Int {
 // rather than supplied here. A hand-built observation would prove only that the
 // decision agrees with itself; this row exists to establish that the store's
 // own answer flows through the holder comparison and reaches a commit.
-fn cp_probe_release_for(root: NonEmptyStr, reservation: ReservationRef) -> Int {
+fn cp_probe_release_for(store: FabricAllocationStore, reservation: ReservationRef) -> Int {
   fold(
     cp_probe_held_account_for(reservation: reservation),
     init: 0,
     f: fn(acc, a) {
       cp_probe_release_code(
         r: release_reserved_cell_at(
-          root: root,
+          store: store,
           slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
-          acquired_generation: fci1_observed_hold_generation(root: root),
+          acquired_generation: fci1_observed_hold_generation(store: store),
           lease: LeaseIdentity {
             lease_key: "cell-lease-probe",
             resource_fingerprint: content_hash_of_value(value: "srv3-06"),
@@ -2033,8 +2041,8 @@ fn cp_probe_release_for(root: NonEmptyStr, reservation: ReservationRef) -> Int {
   )
 }
 
-fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
-  cp_probe_release_for(root: root, reservation: cp_probe_reservation_ref())
+fn cp_live_release_frees_the_cell_it_reserved_in(store: FabricAllocationStore) -> Int {
+  cp_probe_release_for(store: store, reservation: cp_probe_reservation_ref())
 }
 
 fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
@@ -2062,7 +2070,7 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
 
 data fci1_release_identity: NonEmptyStr = "FCI-1 instrument release"
 
-fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
+fn fci1_live_release_outcome(store: FabricAllocationStore) -> CellHoldEnd {
   match cp_probe_held_account() {
     Empty => HoldEndAttemptRefused {
       slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
@@ -2070,9 +2078,9 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
     }
     Cons { head: account, tail: rest } => match rest {
       Empty => release_reserved_cell_at(
-        root: root,
+        store: store,
         slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
-        acquired_generation: fci1_observed_hold_generation(root: root),
+        acquired_generation: fci1_observed_hold_generation(store: store),
         lease: LeaseIdentity {
           lease_key: "cell-lease-probe",
           resource_fingerprint: content_hash_of_value(value: "srv3-06"),
@@ -2091,8 +2099,8 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
   }
 }
 
-fn fci1_live_release(root: NonEmptyStr) -> ProcessExit {
-  let outcome = fci1_live_release_outcome(root: root)
+fn fci1_live_release_in(store: FabricAllocationStore) -> ProcessExit {
+  let outcome = fci1_live_release_outcome(store: store)
   match outcome {
     CellHoldEnded { slot_key: slot, generation: _, account: _ } =>
       if slot == "srv3-06" { ExitSuccess } else {
@@ -2106,13 +2114,13 @@ fn fci1_live_release(root: NonEmptyStr) -> ProcessExit {
   }
 }
 
-fn fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessExit {
-  let outcome = fci1_live_release_outcome(root: root)
-  let poststate = fci1_allocation_prestate(root: root)
+fn fci1_live_release_with_receipt_in(store: FabricAllocationStore, path: String) -> ProcessExit {
+  let outcome = fci1_live_release_outcome(store: store)
+  let poststate = fci1_allocation_prestate(store: store)
   let write = Filesystem.Write(
     path: path,
     content: join([
-      "root=", root as String,
+      "root=", store.root as String,
       "\nrelease_outcome=", to_string(outcome),
       "\npoststate=", to_string(poststate),
     ], ""),
@@ -2184,3 +2192,205 @@ data nfr_dissolve_fci1_prestate_equal: DissolutionCondition = unbound_dissolutio
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
 ]
+
+// ── THE ENTRIES: WHICH ALLOCATION STORE A RUN DRIVES ─────────────────────────────────────────────────
+//
+// Every function above takes the sealed store (gunbc.fabric.fabric_allocation_store FabricAllocationStore); no
+// entry takes a store root. A launcher reaches a store one of two ways, and they are two entry families rather
+// than one entry with a path argument, so the canonical store's root never appears in an argv:
+//
+//   THE CANONICAL STORE: the entries named fci1_live_* / fci1_assert_* / fci1_write_canonical_* / fci1_grade_*
+//   mint the host's own store through the production tree (gunbc.host_state_root host_state_tree).
+//
+//   A DISPOSABLE STORE: the fci1_disposable_* entries and the cp_live_* exclusion probe take tree=<dir> and mint
+//   through gunbc.host_state_root isolated_host_state_tree. Each disposable tree is per-run scratch: the
+//   generation mutation's mktemp directory, removed by the launcher after its cleanup receipt; the dependent
+//   submitter's systemd RuntimeDirectory (/run/fci1-submitter-owned-reservation, created at the unit's start and
+//   removed at its stop, which the launcher asserts); and the empty directory an operator hands the exclusion
+//   probe. The store's directory inside a fresh tree is created here, as the substrate creates the canonical one.
+//
+// The dependent submitter's after-reading is the one disposable read that must NOT create the directory: its
+// subject is that the reservation vanished with the unit's RuntimeDirectory. That is read from the host -- the
+// tree's own exact path answering NotFound -- and never from the mint's refusal (see fci1_dependent_after_reading).
+//
+// NO REFUSED MINT IS EVER READ AS AN OBSERVATION. Every entry below answers an Unready mint with ExitFailure, or,
+// for the cp_live_* code entries, with CpLiveStoreUnready -- never a false, a zero or an invented reading, any of
+// which is a value a run can expect.
+//
+// THE OPERATOR-HANDED TREE IS A CALLER-CHOSEN ROOT. fci1_disposable_store and fci1_dependent_after_reading mint
+// over whatever directory the launcher or operator passes, through gunbc.host_state_root isolated_host_state_tree.
+// That route is recorded as a specimen of gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, and its expecting-red probe is
+// test.claim.fabric.fabric_allocation_store_seal_witness an_operator_handed_tree_mints_an_allocation_store_today.
+
+fn fci1_canonical_store() -> FabricAllocationStoreReading {
+  fabric_allocation_store(tree: host_state_tree())
+}
+
+fn fci1_disposable_store(tree: NonEmptyStr) -> FabricAllocationStoreReading {
+  let isolated = isolated_host_state_tree(dir: tree)
+  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: isolated) as String as FilePath)
+  fabric_allocation_store(tree: isolated)
+}
+
+fn fci1_store_unready(detail: NonEmptyStr) -> ProcessExit {
+  exit_failure(reason: join(["the allocation store is unready: ", detail as String], ""))
+}
+
+fn fci1_live_allocation_prestate(path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_allocation_prestate_in(store: store, path: path) }
+}
+
+fn fci1_assert_allocation_available() -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_assert_allocation_available_in(store: store) }
+}
+
+fn fci1_assert_allocation_restored(before_wire: String, held_wire: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_assert_allocation_restored_in(store: store, before_wire: before_wire, held_wire: held_wire) }
+}
+
+fn fci1_live_reserve_and_observe_available(path: String, cleanup_path: String, checkpoint: NonEmptyStr, checkpoint_path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_reserve_and_observe_available_in(store: store, path: path, cleanup_path: cleanup_path, checkpoint: checkpoint, checkpoint_path: checkpoint_path) }
+}
+
+fn fci1_disposable_reserve_and_observe_available(tree: NonEmptyStr, path: String, cleanup_path: String, checkpoint: NonEmptyStr, checkpoint_path: String) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_reserve_and_observe_available_in(store: store, path: path, cleanup_path: cleanup_path, checkpoint: checkpoint, checkpoint_path: checkpoint_path) }
+}
+
+fn fci1_live_binding_sample_wire(path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_binding_sample_wire_in(store: store, path: path) }
+}
+
+fn fci1_assert_lifetime_held(before_wire: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_assert_lifetime_held_in(store: store, before_wire: before_wire) }
+}
+
+fn fci1_live_release_with_receipt(path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_release_with_receipt_in(store: store, path: path) }
+}
+
+fn fci1_live_release() -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_release_in(store: store) }
+}
+
+fn fci1_disposable_release(tree: NonEmptyStr) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_live_release_in(store: store) }
+}
+
+fn fci1_grade_and_write_allocation_receipt(before_wire: String, held_wire: String, phase: NonEmptyStr, path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_grade_and_write_allocation_receipt_in(store: store, before_wire: before_wire, held_wire: held_wire, phase: phase, path: path) }
+}
+
+fn fci1_write_canonical_cleanup_receipt(before_wire: String, authority_path: String, path: String) -> ProcessExit {
+  match fci1_canonical_store() { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_write_canonical_cleanup_receipt_in(store: store, before_wire: before_wire, authority_path: authority_path, path: path) }
+}
+
+fn fci1_disposable_assert_replace_held(tree: NonEmptyStr, cleanup_path: String, checkpoint: NonEmptyStr, checkpoint_path: String) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_assert_replace_held_in(store: store, cleanup_path: cleanup_path, checkpoint: checkpoint, checkpoint_path: checkpoint_path) }
+}
+
+fn fci1_disposable_assert_generation_changed(tree: NonEmptyStr, before_wire: String) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_assert_generation_changed_in(store: store, before_wire: before_wire) }
+}
+
+fn fci1_disposable_write_generation_changed_receipt(tree: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_write_generation_changed_receipt_in(store: store, before_wire: before_wire, path: path) }
+}
+
+fn fci1_disposable_write_cleanup_receipt(tree: NonEmptyStr, authority_path: String, path: String) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => fci1_write_disposable_cleanup_receipt_in(store: store, authority_path: authority_path, path: path) }
+}
+
+// THE DEPENDENT SUBMITTER'S AFTER-READING. The host is asked first whether the submitter's tree still exists. Its
+// exact path answering NotFound is the subject itself -- the RuntimeDirectory, and the reservation's store inside
+// it, went with the unit -- and is read as the reservation being unreadable, the reading the library answers over a
+// vanished root. Any other answer means the tree remains, so the store is minted over it WITHOUT creating its
+// directory and the reservation is read through the sealed store: a reservation that survived reads as survived,
+// and a store that will not mint while its tree remains is a typed refusal, never a vanished reservation.
+type Fci1DependentAfterReading
+  = Fci1DependentTreeVanished { tree: NonEmptyStr }
+  | Fci1DependentStoreRemains { store: FabricAllocationStore }
+  | Fci1DependentStoreRefused { tree: NonEmptyStr, detail: NonEmptyStr }
+
+fn fci1_dependent_after_reading(tree: NonEmptyStr) -> Fci1DependentAfterReading {
+  let r = Filesystem.Read(path: tree as String)
+  match filesystem_exact_read(path: tree as String, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => Fci1DependentTreeVanished { tree: tree }
+    _ => match fabric_allocation_store(tree: isolated_host_state_tree(dir: tree)) {
+      FabricAllocationStoreReady { store } => Fci1DependentStoreRemains { store: store }
+      FabricAllocationStoreUnready { detail } => Fci1DependentStoreRefused { tree: tree, detail: detail }
+    }
+  }
+}
+
+fn fci1_tree_vanished_observation(tree: NonEmptyStr) -> RequiredBuildCellObservation {
+  ReservationUnreadable { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), cause: CasUnreadableReadRefused { detail: join(["the submitter's host-state tree answered NotFound: ", tree as String], "") } }
+}
+
+fn fci1_dependent_store_refused(tree: NonEmptyStr, detail: NonEmptyStr) -> ProcessExit {
+  exit_failure(reason: join(["the dependent submitter's tree remains but its allocation store will not mint: ", tree as String, ": ", detail as String], ""))
+}
+
+fn fci1_disposable_assert_lifetime_dependent(tree: NonEmptyStr, before_wire: String) -> ProcessExit {
+  match fci1_dependent_after_reading(tree: tree) {
+    Fci1DependentStoreRemains { store } => fci1_assert_lifetime_dependent_in(store: store, before_wire: before_wire)
+    Fci1DependentStoreRefused { tree: t, detail } => fci1_dependent_store_refused(tree: t, detail: detail)
+    Fci1DependentTreeVanished { tree: t } => match fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_tree_vanished_observation(tree: t) }) {
+      ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
+        if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "dependent reservation named wrong slot") }
+      other => exit_failure(reason: join(["submitter-owned reservation survived: ", required_build_cell_lifetime_verdict_wire(verdict: other)], ""))
+    }
+  }
+}
+
+fn fci1_disposable_write_lifetime_dependent_receipt(tree: NonEmptyStr, before_wire: String, path: String) -> ProcessExit {
+  match fci1_dependent_after_reading(tree: tree) {
+    Fci1DependentStoreRemains { store } => fci1_write_lifetime_dependent_receipt_in(store: store, before_wire: before_wire, path: path)
+    Fci1DependentStoreRefused { tree: t, detail } => fci1_dependent_store_refused(tree: t, detail: detail)
+    Fci1DependentTreeVanished { tree: t } => {
+      let verdict = fci1_lifetime_verdict_over(before_wire: before_wire, observe: fn() { fci1_tree_vanished_observation(tree: t) })
+      let write = Filesystem.Write(path: path, content: join([
+        "before_wire=", before_wire, "\nverdict=", to_string(verdict),
+        "\nslot_observation=", to_string(Fci1SlotUnreadable { path: fabric_allocation_store_path(tree: isolated_host_state_tree(dir: t)) }),
+        "\ntree_observation=TreeAnsweredNotFound|path=", t as String,
+      ], ""))
+      if !write.success { exit_failure(reason: "lifetime-dependent receipt write refused") }
+      else { match verdict {
+        ReservationLifetimeDependentOnSubmitter { slot_key: slot } =>
+          if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "lifetime-dependent receipt named wrong slot") }
+        other => exit_failure(reason: "lifetime-dependent receipt did not carry typed verdict")
+      } }
+    }
+  }
+}
+
+// THE EXCLUSION PROBE, over an EMPTY directory an operator hands it as a disposable tree. The Bool entries answer
+// with a ProcessExit; the code entries answer CpLiveCodeObserved with the probe's code, or CpLiveStoreUnready with
+// the mint's detail -- a refused mint has no code, so it can never read as one a run expects.
+type CpLiveCodeReading
+  = CpLiveCodeObserved { code: Int }
+  | CpLiveStoreUnready { detail: NonEmptyStr }
+
+fn cp_live_held(claim: String, held: Bool) -> ProcessExit {
+  if held { ExitSuccess } else { exit_failure(reason: join([claim, ": the claim did not hold over the minted store"], "")) }
+}
+
+fn cp_live_reservation_is_exclusive(tree: NonEmptyStr) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => cp_live_held(claim: "cp_live_reservation_is_exclusive", held: cp_live_reservation_is_exclusive_in(store: store)) }
+}
+
+fn cp_live_empty_roster_reports_nothing_offered(tree: NonEmptyStr) -> ProcessExit {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => fci1_store_unready(detail: detail)  FabricAllocationStoreReady { store } => cp_live_held(claim: "cp_live_empty_roster_reports_nothing_offered", held: cp_live_empty_roster_reports_nothing_offered_in(store: store)) }
+}
+
+fn cp_live_nothing_admissible_touches_no_store(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_nothing_admissible_touches_no_store_in(store: store) } }
+}
+
+fn cp_live_broker_reserves_the_cell_the_market_chose(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_broker_reserves_the_cell_the_market_chose_in(store: store) } }
+}
+
+fn cp_live_release_frees_the_cell_it_reserved(tree: NonEmptyStr) -> CpLiveCodeReading {
+  match fci1_disposable_store(tree: tree) { FabricAllocationStoreUnready { detail } => CpLiveStoreUnready { detail: detail }  FabricAllocationStoreReady { store } => CpLiveCodeObserved { code: cp_live_release_frees_the_cell_it_reserved_in(store: store) } }
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_replica_silently_became_a_hub_fetch
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_replica_silently_became_a_hub_fetch: RecurringFailureMode = RecurringFailureMode {
   identity: "a_replica_silently_became_a_hub_fetch" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "A REPLICA SILENTLY BECAME A HUB FETCH AND WAS REPORTED UPWARD AS A REPLICA. The invalid state is an acquisition whose ROLE was inferred from a failure: the checkpoint materialize asked each group peer to verify, and when none was admitted it fell through to fetching from the Hub -- so a target meant to replicate over the 50 Gb/s fabric rail fetched hundreds of gigabytes over the wireless management link instead, and the run that did it was dispatched, described and reported as a replica. Nothing refused. The fall-through was labelled fail-closed because nothing was missed; it is DESIGN section 5's absorbing fallback exactly -- the superset answer (fetch everything from upstream) standing in for the precise one, destroying the only signal that the precise mechanism (peer admission) was broken.",

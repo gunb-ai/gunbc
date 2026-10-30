@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.let_annotation_unjudged_at_an_unresolved_bar
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data let_annotation_unjudged_at_an_unresolved_bare_channel_value: RecurringFailureMode = RecurringFailureMode {
   identity: "let_annotation_unjudged_at_an_unresolved_bare_channel_value" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a `let x: T = v` whose value is not a T is accepted with no diagnostic. Observed at ONE site grain, stated as such: in dag/test/claim/runner/runner_placement_witness.dag (an import-less module, so every name reaches it through the flat bare channel), a planted `let zz: Int = refused` -- where `refused = plan_refused_hosts(p: p)` is a List<RefusedHostDeployment> -- compiled with zero diagnostics on both a control tree and gunbc#12526's head (clever-heron-784, entry compiles on srv1, 485-source closure). The same value passed to `fn(x: Int)` at that site IS refused, so the value's type is known there; the let seam alone did not judge it.",
     "DISTINGUISHING FACTS, by a fixture on main 6f96d86: let annotations ARE judged for a string literal, a list literal, a local bound to a list, and a direct call result (all four refuse 'type mismatch: expected Primitive(Int), got Container(List,Primitive(Int))'). So the class is not 'let is never judged'; it is narrower and its discriminator is not yet isolated (candidates: the import-less bare-channel module, the test-fn context, a cross-module call through the flat channel). This row is the sibling of gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2 on the v1 path, not the same state: there the annotation never reaches resolve; here it resolves (Int) and the value's type is known, but the pair is not judged.",

@@ -1,19 +1,24 @@
 module gunbc.auth.approval_device_redemption_fixtures
 
 import std.types { NonEmptyStr, String, Timestamp, List }
+import std.algebra { list_append }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
+import gunbc.auth.approval_google_enrolment { google_enrolment_transcript, google_enrolment_nonce }
+import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid, PushRegistration,
-  device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
+  device_redemption_signing_input, platform_wire, approval_device_audience,
   device_read_client_data, approval_device_pending_path, approval_device_request_path_prefix,
-  EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
+  GoogleEnrolmentRequest, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
   EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive,
-  enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
+  google_enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
-  device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
+  device_request_path, device_enrollment_path, path_segment,
   ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json,
+  GoogleEnrolmentRefusalWire, google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label, google_enrolment_refusal_json,
+  decode_push_update, WireDecode, WireDecoded, WireRefused,
   approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
@@ -40,7 +45,7 @@ type RedemptionVector {
 
 type EnrolmentVector {
   name: NonEmptyStr
-  code: NonEmptyStr
+  attest_key_id: NonEmptyStr
   platform: MobilePlatform
   point_b64url: NonEmptyStr
 }
@@ -74,13 +79,13 @@ data redemption_vectors: List<RedemptionVector> = [
 ]
 
 data enrolment_vectors: List<EnrolmentVector> = [
-  EnrolmentVector { name: "ios", code: "482913", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
-  EnrolmentVector { name: "android", code: "482913", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "ios", attest_key_id: "attest-key-1", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "android", attest_key_id: "attest-key-1", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
 ]
 
 fn enrolment_expected(v: EnrolmentVector) -> NonEmptyStr {
-  enrolment_transcript(
-    code: v.code,
+  google_enrolment_transcript(
+    attest_key_id: v.attest_key_id as AttestKeyId,
     decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: v.point_b64url },
     platform: v.platform,
   )
@@ -110,11 +115,12 @@ fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
   json_object(members: [
     json_kv(key: "name", value: json_string(s: v.name as String)),
     json_kv(key: "input", value: json_object(members: [
-      json_kv(key: "code", value: json_string(s: v.code as String)),
+      json_kv(key: "attest_key_id", value: json_string(s: v.attest_key_id as String)),
       json_kv(key: "platform", value: json_string(s: platform_wire(p: v.platform) as String)),
       json_kv(key: "point_b64url", value: json_string(s: v.point_b64url as String)),
     ])),
     json_kv(key: "expected", value: json_string(s: enrolment_expected(v: v) as String)),
+    json_kv(key: "nonce", value: json_string(s: google_enrolment_nonce(transcript: enrolment_expected(v: v)) as String)),
   ])
 }
 
@@ -129,7 +135,7 @@ type ReadVector {
 data read_vectors: List<ReadVector> = [
   ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
   ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
 ]
 
 fn read_vector_json(v: ReadVector) -> JsonValue {
@@ -160,39 +166,83 @@ type EnvelopeVector {
   body: String
 }
 
-data envelope_vectors: List<EnvelopeVector> = [
-  EnvelopeVector { name: "enrolment_request", body: enrolment_request_json(r: EnrolmentRequest {
-    code: "482913", platform: MobileIos,
-    decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
-    evidence: IosAppAttestAttestation { attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0" },
-    push: fx_push,
-  }) },
-  EnvelopeVector { name: "signed_redemption", body: signed_redemption_json(r: SignedRedemption {
-    signing_input: fx_signing_input(),
-    signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "c2lnbmF0dXJl" },
-    platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
-  }) },
-  EnvelopeVector { name: "push_update", body: push_update_json(p: fx_push) },
-  EnvelopeVector { name: "read_authentication", body: read_authentication_json(a: fx_read_auth) },
-  EnvelopeVector { name: "push_update_request", body: push_update_request_json(r: PushUpdateRequest { auth: fx_read_auth, push: fx_push }) },
-  EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: "enr-482913" }) },
-  EnvelopeVector { name: "pending_list", body: pending_list_json(rows: [PendingApproval { escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab" }]) },
-  EnvelopeVector { name: "fetched_request", body: fetched_request_json(f: FetchedRequest {
-    escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab", stored_request_text: "{\"kind\":\"request\"}",
-    challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z" as Timestamp, nonce_hex: "9c1d" },
-    approve: VerbCapability { capability_text: "approve-text", capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=" },
-    deny: VerbCapability { capability_text: "deny-text", capability_tag_b64url: "DfEI-CJIvDgDxhGnedEBCKWBrsxopGkEpUqVsl6enGg=" },
-  }) },
-  EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: "enr-482913", standing: EnrolmentStandingActive }) },
-  EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) },
-  EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
-  EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
-  EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: "enr-482913" })) },
-  EnvelopeVector { name: "redemption_response_enrollment_unknown", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentUnknown)) },
-  EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
-  EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String },
-  EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
-  EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) as String },
+// One envelope per ARM of the enrol route's typed refusal, named by the arm's wire label, so the
+// Swift side decodes each and a new arm without a vector reds the arm-coverage check there.
+// The reason is a fixed string: the vector pins the kind's bytes, not the route's prose.
+fn enrolment_refusal_vector(k: GoogleEnrolmentRefusalWire) -> EnvelopeVector {
+  EnvelopeVector { name: ("enrolment_refusal_" + (google_enrolment_refusal_wire_label(k: k) as String)) as NonEmptyStr, body: google_enrolment_refusal_json(reason: "fixture refusal", kind: k) }
+}
+
+data envelope_vectors: List<EnvelopeVector> = list_append(left: envelope_vectors_fixed, right: map(google_enrolment_refusal_kinds(), k => enrolment_refusal_vector(k: k)))
+
+data fx_env_enrolment_request: EnvelopeVector = EnvelopeVector { name: "enrolment_request", body: google_enrolment_request_json(r: GoogleEnrolmentRequest {
+      platform: MobileIos,
+      decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
+      attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0", id_token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln",
+    }) }
+
+data fx_env_signed_redemption: EnvelopeVector = EnvelopeVector { name: "signed_redemption", body: signed_redemption_json(r: SignedRedemption {
+      signing_input: fx_signing_input(),
+      signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "c2lnbmF0dXJl" },
+      platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
+    }) }
+
+data fx_env_push_update: EnvelopeVector = EnvelopeVector { name: "push_update", body: push_update_json(p: fx_push) }
+
+data fx_env_read_authentication: EnvelopeVector = EnvelopeVector { name: "read_authentication", body: read_authentication_json(a: fx_read_auth) }
+
+data fx_env_push_update_request: EnvelopeVector = EnvelopeVector { name: "push_update_request", body: push_update_request_json(r: PushUpdateRequest { auth: fx_read_auth, push: fx_push }) }
+
+data fx_env_enrolment_grant: EnvelopeVector = EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: "enr-482913" }) }
+
+data fx_env_pending_list: EnvelopeVector = EnvelopeVector { name: "pending_list", body: pending_list_json(rows: [PendingApproval { escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab" }]) }
+
+data fx_env_fetched_request: EnvelopeVector = EnvelopeVector { name: "fetched_request", body: fetched_request_json(f: FetchedRequest {
+      escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab", stored_request_text: "{\"kind\":\"request\"}",
+      challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z" as Timestamp, nonce_hex: "9c1d" },
+      approve: VerbCapability { capability_text: "approve-text", capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=" },
+      deny: VerbCapability { capability_text: "deny-text", capability_tag_b64url: "DfEI-CJIvDgDxhGnedEBCKWBrsxopGkEpUqVsl6enGg=" },
+    }) }
+
+data fx_env_enrolment_readback: EnvelopeVector = EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: "enr-482913", standing: EnrolmentStandingActive }) }
+
+data fx_env_redemption_response_lost_the_race: EnvelopeVector = EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) }
+
+data fx_env_redemption_response_challenge_expired: EnvelopeVector = EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) }
+
+data fx_env_redemption_response_signed_for_another_request: EnvelopeVector = EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) }
+
+data fx_env_redemption_response_enrollment_revoked: EnvelopeVector = EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: "enr-482913" })) }
+
+data fx_env_redemption_response_enrollment_unknown: EnvelopeVector = EnvelopeVector { name: "redemption_response_enrollment_unknown", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentUnknown)) }
+
+data fx_env_push_update_client_data: EnvelopeVector = EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String }
+
+data fx_env_request_path: EnvelopeVector = EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String }
+
+data fx_env_enrollment_id_fixture: EnvelopeVector = EnvelopeVector { name: "enrollment_id_fixture", body: "genr-fixture" }
+
+data fx_env_enrollment_path: EnvelopeVector = EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr) as String }
+
+data envelope_vectors_fixed: List<EnvelopeVector> = [
+  fx_env_enrolment_request,
+  fx_env_signed_redemption,
+  fx_env_push_update,
+  fx_env_read_authentication,
+  fx_env_push_update_request,
+  fx_env_enrolment_grant,
+  fx_env_pending_list,
+  fx_env_fetched_request,
+  fx_env_enrolment_readback,
+  fx_env_redemption_response_lost_the_race,
+  fx_env_redemption_response_challenge_expired,
+  fx_env_redemption_response_signed_for_another_request,
+  fx_env_redemption_response_enrollment_revoked,
+  fx_env_redemption_response_enrollment_unknown,
+  fx_env_push_update_client_data,
+  fx_env_request_path,
+  fx_env_enrollment_id_fixture,
+  fx_env_enrollment_path,
 ]
 
 // The body of one named envelope vector, so a claim can drive a route with the same bytes the
@@ -209,6 +259,43 @@ fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {
   json_object(members: [
     json_kv(key: "name", value: json_string(s: v.name as String)),
     json_kv(key: "body", value: json_string(s: v.body)),
+  ])
+}
+
+// ── Refused push updates ─────────────────────────────────────────────────────────────
+// BODIES THE APP'S STRICT DECODER MUST REFUSE WITH THE SERVER'S OWN LOCATION AND CAUSE. The expected
+// `at` and `cause` are read from decode_push_update, the decoder the server runs, so the app's
+// WireDecode.pushUpdate is checked against the authority and not a hand-typed message. The rows pick
+// the two places the transcription once disagreed: a kind other than apns (the cause names the
+// provider, not a generic kind) and a missing member (located under `push.`, not at the document root).
+type RefusalVector {
+  name: NonEmptyStr
+  body: String
+}
+
+data refusal_vectors: List<RefusalVector> = [
+  RefusalVector { name: "push_kind_fcm", body: "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_missing_token", body: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\"}" },
+  RefusalVector { name: "push_empty_topic", body: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_environment_unknown", body: "{\"kind\":\"apns\",\"environment\":\"staging\",\"topic\":\"t\",\"token\":\"x\"}" },
+  RefusalVector { name: "push_not_an_object", body: "[]" },
+]
+
+// A body the decoder ACCEPTS is rendered with at "accepted", which no decoder emits, so the app's
+// test fails on it rather than the vector silently vanishing from the contract.
+fn refusal_vector_json(v: RefusalVector) -> JsonValue {
+  match decode_push_update(text: v.body) {
+    WireRefused { at: a, cause: c } => refusal_vector_object(v: v, at: a as String, cause: c as String)
+    WireDecoded { value: _ } => refusal_vector_object(v: v, at: "accepted", cause: "")
+  }
+}
+
+fn refusal_vector_object(v: RefusalVector, at: String, cause: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "body", value: json_string(s: v.body)),
+    json_kv(key: "at", value: json_string(s: at)),
+    json_kv(key: "cause", value: json_string(s: cause)),
   ])
 }
 
@@ -243,6 +330,37 @@ fn segment_vector_json(input: NonEmptyStr) -> JsonValue {
   json_object(members: [
     json_kv(key: "input", value: json_string(s: input as String)),
     json_kv(key: "encoded", value: json_string(s: path_segment(s: input) as String)),
+  ])
+}
+
+// THE CHARACTERS THE EMITTER HAS TO ESCAPE, assembled from rows this module already declares rather
+// than spelled again: the U+001F field separator the signing input joins on, every path_segment
+// specimen (non-ASCII, "%2F", "#", "/", "."), and every stored-request purpose (the destructive one
+// carries a quote, a backslash, a newline and non-ASCII). Before this the escape test in
+// ApproveTests spelled its own input and hand-typed its own expected bytes, so it checked one
+// character nobody else named against a string nobody derived.
+data escape_specimens: List<String> = list_append(
+  left: list_append(
+    left: [signing_field_separator],
+    right: map(segment_specimens, x => x as String)
+  ),
+  right: map(stored_request_specimens, r => r.purpose as String)
+)
+
+// One specimen and BOTH bytes the app's emitter must produce for it. The expectations are not typed
+// here: serialize_json is the .dag authority the Swift WireJson mirrors, so asking it for the bytes is
+// asking the thing under comparison. A row that spells a character serialize_json does not escape
+// would put "/" and non-ASCII through literally, which is the other half of the contract.
+fn escape_vector_json(input: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "input", value: json_string(s: input)),
+    json_kv(key: "string_json", value: json_string(s: serialize_json(v: json_string(s: input)))),
+    json_kv(
+      key: "object_json",
+      value: json_string(s: serialize_json(v: json_object(members: [
+        json_kv(key: "k", value: json_array(elements: [json_string(s: input)])),
+      ])))
+    ),
   ])
 }
 
@@ -298,9 +416,11 @@ fn approval_device_vectors_json() -> String {
       json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
       json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
       json_kv(key: "envelope", value: json_array(elements: map(envelope_vectors, v => envelope_vector_json(v: v)))),
+      json_kv(key: "refusal", value: json_array(elements: map(refusal_vectors, v => refusal_vector_json(v: v)))),
       json_kv(key: "stored_request", value: json_array(elements: map(stored_request_specimens, r => stored_request_vector_json(r: r)))),
       json_kv(key: "surface", value: json_array(elements: map(surface_vectors, v => surface_vector_json(v: v)))),
       json_kv(key: "path_segment", value: json_array(elements: map(segment_specimens, x => segment_vector_json(input: x)))),
+      json_kv(key: "escape", value: json_array(elements: map(escape_specimens, x => escape_vector_json(input: x)))),
     ])),
     "\n",
   )

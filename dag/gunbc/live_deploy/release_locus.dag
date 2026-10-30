@@ -1,20 +1,8 @@
 module gunbc.live_deploy.release_locus
 
 import std.types { String, List, NonEmptyStr, CommitSha }
-import extdeps.exec.command { ArgvCommand }
-import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation,
-  RunGunbcEntryAs,
-  executor_privileged_operation_elevated_argv,
-  executor_privileged_operation_elevated_command,
-}
-import gunbc.auth.approval_ntfy_runtime_observe {
-  approval_ntfy_runtime_observe_entry_rel,
-  approval_ntfy_runtime_observe_function,
-  approval_ntfy_runtime_observe_run_as,
-}
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
 // THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
 // gunbc.live_deploy.emit, so every reader of a release path -- the approval broker's own routes and
@@ -32,7 +20,7 @@ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 // compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists
 // so a retract cannot name a revision even accidentally — the arm that would render ExecStart under
 // it REFUSES with a poison marker, the same unreachable-arm discipline
-// emit_deploy_teardown_dependency_refusal uses.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
+// the deleted retract emitter used.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
 // REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the
 // unit so a committed script could defer its revision to invocation. It could never have worked:
 // the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter
@@ -85,8 +73,22 @@ fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
+// A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
+// device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
+fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
+  join([release_locus_dir(root: root, revision: revision), "/", name], "")
+}
+
+// THE BROKER'S RELEASE LOCUS HAS EXACTLY THESE EXECUTABLE MEMBERS, AND THIS ROW IS THE ONLY ENUMERATION. The broker unit
+// loads an EnvironmentFile named from the sidecar binary and orders itself after the sidecar unit, so a locus holding only
+// the gunbc binary cannot start the broker (2026-10-21: run 39545280023 installed the gunbc binary alone and systemd
+// refused the unit with "Failed to load environment files"). Staging installs and reads back every name here; a member
+// is added by adding a name, never by a second install step. The helper snapshot is a different locus and holds only
+// gunbc_release_bin_name.
+data approval_broker_release_locus_executables: List<String> = [gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name]
+
 fn release_locus_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([release_locus_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+  release_locus_member_path(root: root, revision: revision, name: gunbc_release_bin_name)
 }
 
 fn release_locus_tree_receipt_path(root: String, revision: ReleaseRevisionBinding) -> String {
@@ -97,8 +99,6 @@ data release_locus_tree_subdirs: List<String> = ["dag", "src/v2"]
 
 data approval_broker_helper_root_principal: NonEmptyStr = "root"
 
-data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-helpers"
-
 // WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
 // the locus (the install makes it so, and the snapshot readback checks it).
 type HelperLocus {
@@ -106,42 +106,9 @@ type HelperLocus {
   owner: NonEmptyStr
 }
 
-fn approval_broker_helper_snapshot_locus() -> HelperLocus {
-  HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
-}
-
 fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
   }
-}
-
-fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
-  let dir = helper_locus_dir(locus: locus, revision: revision)
-  RunGunbcEntryAs {
-    run_as: approval_ntfy_runtime_observe_run_as(),
-    workspace_root: dir as NonEmptyStr,
-    binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-    source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
-    entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
-    function: approval_ntfy_runtime_observe_function,
-  }
-}
-
-fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
-  approval_broker_ntfy_runtime_observe_operation_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
-}
-
-// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy /opt/gunbc/approval-broker-helpers/<sha>/gunbc run ...`.
-// It is pure and exported so the verb (#12077) builds its invocation from this value, and a claim can
-// pin it.
-fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
-  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
-}
-
-// The same invocation as the command the verb runs (gunbc.auth.approval_ntfy_access_readback
-// approval_ntfy_runtime_reading), from the same operation.
-fn approval_ntfy_runtime_observe_helper_command(revision: ReleaseRevisionBinding) -> ArgvCommand {
-  executor_privileged_operation_elevated_command(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
 }

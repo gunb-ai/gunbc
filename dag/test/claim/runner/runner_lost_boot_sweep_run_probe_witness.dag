@@ -1,0 +1,57 @@
+module test.claim.runner.runner_lost_boot_sweep_run_probe_witness
+
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE RUN WITNESS'S SUPPLIED-WIDTH HELPER REFUSES AN OUTSIDE CALLER (DESIGN §4b executed RED). The probe
+// source calls supplied_population from outside its admit_callers list; the refusal must land at that
+// subject. The positive control is the run witness itself, whose own claims call it through run_sweep.
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn supplied_population_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "supplied_population") >= 1
+}
+
+test fn sweep_under_staged_key_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "sweep_under_staged_key") >= 1
+}
+
+test fn sweep_and_deregister_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "sweep_and_deregister") >= 1
+}
+
+test fn the_dry_run_key_site_and_its_plan_refuse_an_outside_caller() -> Bool {
+  let c = compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content)
+  blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "dry_run_under_staged_key") >= 1
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "plan_without_deleting") >= 1
+}
+
+test fn a_current_boot_evidence_literal_refuses_outside_its_mint() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "SoleConstructorViolation", subject: "CurrentBootEvidence") >= 1
+}
+
+test fn the_evidence_mint_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "mint_current_boot_evidence") >= 1
+}
+
+test fn the_observation_fixture_refuses_an_outside_caller() -> Bool {
+  blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
+           wanted: "ConstructorCallAdmissionRefused", subject: "observed_on") >= 1
+}

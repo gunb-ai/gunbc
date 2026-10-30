@@ -2,7 +2,7 @@ module gunbc.rung_drop.shared_capability
 
 import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.rung_drop {
-  RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, AuthoredProse, dissolved_is_admissible,
+  RungDrop, Standing, Retired, Superseded, Dissolved, TypedTerms, Enumerated, ProseTerms, rung_drop_terms,
 }
 
 // ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.
@@ -98,16 +98,16 @@ fn shared_capability_verdict(cap: SharedCapability, ds: List<RungDrop>) -> Share
         } else {
           let rows = waiter_rows(cap: cap, ds: ds)
           let standing_ids = map(filter(rows, d => match d.standing {
-            Standing => true
-            Retired { trigger_fired: _ } => false
-            Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-            Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d) == false
+            Standing { declaration: _ } => true
+            Retired { trigger_fired: _, declaration: _ } => false
+            Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+            Dissolved { removal: _, declaration: _ } => false
           }), d => d.identity as String)
           let retired_ids = map(filter(rows, d => match d.standing {
-            Standing => false
-            Retired { trigger_fired: _ } => true
-            Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
-            Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d)
+            Standing { declaration: _ } => false
+            Retired { trigger_fired: _, declaration: _ } => true
+            Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => true
+            Dissolved { removal: _, declaration: _ } => true
           }), d => d.identity as String)
           if length(xs: standing_ids) > 0 && length(xs: retired_ids) > 0 {
             SplitRetirement { standing_identities: standing_ids, retired_identities: retired_ids }
@@ -150,11 +150,11 @@ fn every_shared_capability_holds(caps: List<SharedCapability>, ds: List<RungDrop
 // or the join treats a legitimate single-row retirement as SplitRetirement.
 fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> Bool {
   fold(waiter_rows(cap: cap, ds: ds), init: true, f: fn(acc, d) {
-    acc && match d.declaration {
-      TypedDeclaration {
-        previous: _, temporary: _, reason: _, population: _, restoration_trigger: rt
+    acc && match rung_drop_terms(d: d) {
+      TypedTerms {
+        previous: _, temporary: _, reason: _, restoration_trigger: rt
       } => rt.contains(cap.identity as String)
-      AuthoredProse { legacy: _, authored: a } => a.contains(cap.identity as String)
+      ProseTerms { legacy: _, authored: a } => a.contains(cap.identity as String)
     }
   })
 }

@@ -10,8 +10,7 @@ import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bas
 import std.algebra { list_head, list_tail, list_at_optional }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, None, Outcome, Rejected, Some, Unavailable, bind_outcome, diagnostics_singleton, node_locus }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Atom, Node, Symbol, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
 
@@ -30,7 +29,7 @@ fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Out
 }
 
 fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 0) {
     Present { value: tag } =>
       match node_atom_identity_optional(node: tag) {
         Present { value: binding } => binding
@@ -107,24 +106,81 @@ fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
   bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
 }
 
-fn bash_fold_flatten_stmt_list(list_node: Node) -> List<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 0) {
-    Present { value: first } =>
-      match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 1) {
-        Present { value: second } =>
-          concat(bash_fold_flatten_stmt_list(list_node: first), [second])
-        Absent => [first]
+// Statement-list encoding is a nonempty cons spine: one statement child, or
+// (prefix-list, statement). Zero children is Bash-illegal as a subshell or then/else
+// body (`( )` / empty `then`). bash_build_stmt_list_from_nodes([]) / word_list_from_nodes([])
+// plant a one-child refused-empty placeholder; that is not a statement or word and must
+// refuse here, not serialize as a member. A tagged statement (first child an Atom) and
+// any third child are not that encoding. Reading only children 0 and 1 of an or_else
+// body used to keep left and drop right (DESIGN section 5).
+fn bash_fold_stmt_list_shape_refused(list_node: Node) -> Outcome<List<Node>> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^bash_fold_serialize_stmt_list_shape_refused,
+        at: node_locus(node: list_node),
+        correction: Unavailable { reason: ExternalContractUnknown }
       }
-    Absent => []
+    )
+  }
+}
+
+fn bash_fold_refused_empty_word_placeholder(node: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+    Present { value: kind } =>
+      match node_atom_identity_optional(node: kind) {
+        Present { value: binding } => binding == ^bash_build_refused_empty_word_list
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn bash_fold_flatten_stmt_list(list_node: Node) -> Outcome<List<Node>> {
+  match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 2) {
+    Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+    Absent =>
+      match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 0) {
+        Present { value: first } =>
+          match list_at_optional(xs: positional_child_target_nodes(node: list_node), index: 1) {
+            Present { value: second } =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+                Absent =>
+                  bind_outcome(
+                    o: bash_fold_flatten_stmt_list(list_node: first),
+                    f: fn(prefix) {
+                      Accepted { value: concat(prefix, [second]), diagnostics: None }
+                    }
+                  )
+              }
+            Absent =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_shape_refused(list_node: list_node)
+                Absent =>
+                  if bash_fold_refused_empty_word_placeholder(node: first) {
+                    bash_fold_stmt_list_shape_refused(list_node: list_node)
+                  } else {
+                    Accepted { value: [first], diagnostics: None }
+                  }
+              }
+          }
+        Absent => bash_fold_stmt_list_shape_refused(list_node: list_node)
+      }
   }
 }
 
 fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
-  bash_fold_serialize_stmts_semi(stmts: bash_fold_flatten_stmt_list(list_node: list_node))
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: list_node),
+    f: fn(stmts) {
+      bash_fold_serialize_stmts_semi(stmts: stmts)
+    }
+  )
 }
 
 fn bash_fold_serialize_with_redir_file(stmt: Node, stmt_spelling: String, redir_of: fn(String) -> String) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 3) {
     Present { value: path_node } =>
       bind_outcome(
         o: bash_fold_serialize_word_node(word: path_node),
@@ -140,9 +196,9 @@ fn bash_fold_serialize_with_redir_file(stmt: Node, stmt_spelling: String, redir_
 }
 
 fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: inner } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: redir_tag } =>
           match node_atom_identity_optional(node: redir_tag) {
             Present { value: redir_binding } =>
@@ -201,7 +257,7 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: word), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: word), index: 0) {
     Present { value: kind_node } =>
       match node_atom_identity_optional(node: kind_node) {
         Present { value: kind } =>
@@ -218,13 +274,22 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               rule_name: ^bash_production_fold_var_word
             )
           } else if kind == ^bash_fold_word_kind_concat {
-            bash_fold_serialize_leaf_node(
-              emitted: word,
-              production_binding: ^bash_production_fold_concat_word,
-              rule_name: ^bash_production_fold_concat_word
-            )
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: parts } =>
+                bind_outcome(
+                  o: bash_fold_flatten_stmt_list(list_node: parts),
+                  f: fn(_) {
+                    bash_fold_serialize_leaf_node(
+                      emitted: word,
+                      production_binding: ^bash_production_fold_concat_word,
+                      rule_name: ^bash_production_fold_concat_word
+                    )
+                  }
+                )
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
           } else if kind == ^bash_fold_word_kind_cmdsubst {
-            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: body } =>
                 bind_outcome(
                   o: bash_fold_serialize_node(stmt: body),
@@ -277,10 +342,15 @@ fn bash_fold_serialize_word_list_spelling_from(
 }
 
 fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
-  bash_fold_serialize_word_list_spelling_from(
-    acc: "",
-    first: true,
-    rest: bash_fold_flatten_stmt_list(list_node: parts)
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: parts),
+    f: fn(words) {
+      bash_fold_serialize_word_list_spelling_from(
+        acc: "",
+        first: true,
+        rest: words
+      )
+    }
   )
 }
 
@@ -293,11 +363,11 @@ fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: name_node } =>
       match node_atom_identity_optional(node: name_node) {
         Present { value: name } =>
-          match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+          match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
             Present { value: value } =>
               bind_outcome(
                 o: bash_fold_serialize_word_node(word: value),
@@ -320,7 +390,7 @@ fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_exit_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: code_node } =>
       match node_atom_identity_optional(node: code_node) {
         Present { value: code } =>
@@ -373,9 +443,9 @@ fn bash_fold_serialize_andor_pair(left: Node, right: Node, op: String, group_bin
 }
 
 fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: right } =>
           bash_fold_serialize_andor_pair(
             left: left,
@@ -390,9 +460,9 @@ fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: right } =>
           bash_fold_serialize_andor_pair(
             left: left,
@@ -407,9 +477,9 @@ fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: right } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
@@ -435,9 +505,9 @@ fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: cond } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: body } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: cond),
@@ -468,11 +538,11 @@ fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_if_else_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: cond } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+      match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 2) {
         Present { value: then_body } =>
-          match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
+          match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 3) {
             Present { value: else_body } =>
               bind_outcome(
                 o: bash_fold_serialize_node(stmt: cond),
@@ -511,7 +581,7 @@ fn bash_fold_serialize_if_else_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: body } =>
       bind_outcome(
         o: bash_fold_serialize_stmt_list_semi(list_node: body),
@@ -542,7 +612,7 @@ fn bash_fold_serialize_negation_inner(inner: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: inner } =>
       bind_outcome(
         o: bash_fold_serialize_negation_inner(inner: inner),

@@ -1,6 +1,8 @@
 module extdeps.systemd.service_exec
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.optional { Optional, Present, Absent }
+import std.algebra { list_find_first }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -24,6 +26,13 @@ data systemd_service_command_lines_authority: ExternalAuthority = ExternalAuthor
   }
 }
 
+data systemd_exec_process_exit_codes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/255/systemd.exec.html#Process%20Exit%20Codes"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -33,7 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [systemd_service_command_lines_authority]
+  further_citations: [systemd_service_command_lines_authority, systemd_exec_process_exit_codes_authority]
 }
 
 // systemd.exec(5), "Environment Variables Set or Propagated by the Service Manager":
@@ -226,4 +235,64 @@ fn exec_word_is_rendered_expansion(word: String) -> Bool {
     f: (acc, v) => replace(acc, join(["${", service_stop_variable_name(variable: v) as String, "}"], ""), ""),
   )
   stripped != word && exec_literal_admissible(text: stripped)
+}
+
+// EXEC-SETUP FAILURES: systemd.exec(5), "Process Exit Codes". When the manager cannot finish
+// preparing the child (namespaces, capabilities, user, ...) the child exits with a status from the
+// reserved 200-series BEFORE the command's own main() runs, so that status says the command never
+// executed. It is not the command's verdict, and a reader that takes any nonzero status for the
+// command refusing something merges "never ran" with "ran and was refused".
+// Transcribed from the table as published for systemd 255 (the user manager on srv1); statuses the
+// table gaps over (223, 234) and anything past EXIT_CREDENTIALS are NOT modeled here, so they are
+// absent from this list rather than guessed (DESIGN section 4d): a reader must not treat absence as
+// proof the command ran, and a consumer must also require the command's own status.
+type ExecSetupFailure = ExecSetupFailure { status: Int, name: NonEmptyStr }
+
+data exec_setup_failures: List<ExecSetupFailure> = [
+  ExecSetupFailure { status: 200, name: "EXIT_CHDIR" as NonEmptyStr },
+  ExecSetupFailure { status: 201, name: "EXIT_NICE" as NonEmptyStr },
+  ExecSetupFailure { status: 202, name: "EXIT_FDS" as NonEmptyStr },
+  ExecSetupFailure { status: 203, name: "EXIT_EXEC" as NonEmptyStr },
+  ExecSetupFailure { status: 204, name: "EXIT_MEMORY" as NonEmptyStr },
+  ExecSetupFailure { status: 205, name: "EXIT_LIMITS" as NonEmptyStr },
+  ExecSetupFailure { status: 206, name: "EXIT_OOM_ADJUST" as NonEmptyStr },
+  ExecSetupFailure { status: 207, name: "EXIT_SIGNAL_MASK" as NonEmptyStr },
+  ExecSetupFailure { status: 208, name: "EXIT_STDIN" as NonEmptyStr },
+  ExecSetupFailure { status: 209, name: "EXIT_STDOUT" as NonEmptyStr },
+  ExecSetupFailure { status: 210, name: "EXIT_CHROOT" as NonEmptyStr },
+  ExecSetupFailure { status: 211, name: "EXIT_IOPRIO" as NonEmptyStr },
+  ExecSetupFailure { status: 212, name: "EXIT_TIMERSLACK" as NonEmptyStr },
+  ExecSetupFailure { status: 213, name: "EXIT_SECUREBITS" as NonEmptyStr },
+  ExecSetupFailure { status: 214, name: "EXIT_SETSCHEDULER" as NonEmptyStr },
+  ExecSetupFailure { status: 215, name: "EXIT_CPUAFFINITY" as NonEmptyStr },
+  ExecSetupFailure { status: 216, name: "EXIT_GROUP" as NonEmptyStr },
+  ExecSetupFailure { status: 217, name: "EXIT_USER" as NonEmptyStr },
+  ExecSetupFailure { status: 218, name: "EXIT_CAPABILITIES" as NonEmptyStr },
+  ExecSetupFailure { status: 219, name: "EXIT_CGROUP" as NonEmptyStr },
+  ExecSetupFailure { status: 220, name: "EXIT_SETSID" as NonEmptyStr },
+  ExecSetupFailure { status: 221, name: "EXIT_CONFIRM" as NonEmptyStr },
+  ExecSetupFailure { status: 222, name: "EXIT_STDERR" as NonEmptyStr },
+  ExecSetupFailure { status: 224, name: "EXIT_PAM" as NonEmptyStr },
+  ExecSetupFailure { status: 225, name: "EXIT_NETWORK" as NonEmptyStr },
+  ExecSetupFailure { status: 226, name: "EXIT_NAMESPACE" as NonEmptyStr },
+  ExecSetupFailure { status: 227, name: "EXIT_NO_NEW_PRIVILEGES" as NonEmptyStr },
+  ExecSetupFailure { status: 228, name: "EXIT_SECCOMP" as NonEmptyStr },
+  ExecSetupFailure { status: 229, name: "EXIT_SELINUX_CONTEXT" as NonEmptyStr },
+  ExecSetupFailure { status: 230, name: "EXIT_PERSONALITY" as NonEmptyStr },
+  ExecSetupFailure { status: 231, name: "EXIT_APPARMOR_PROFILE" as NonEmptyStr },
+  ExecSetupFailure { status: 232, name: "EXIT_ADDRESS_FAMILIES" as NonEmptyStr },
+  ExecSetupFailure { status: 233, name: "EXIT_RUNTIME_DIRECTORY" as NonEmptyStr },
+  ExecSetupFailure { status: 235, name: "EXIT_CHOWN" as NonEmptyStr },
+  ExecSetupFailure { status: 236, name: "EXIT_SMACK_PROCESS_LABEL" as NonEmptyStr },
+  ExecSetupFailure { status: 237, name: "EXIT_KEYRING" as NonEmptyStr },
+  ExecSetupFailure { status: 238, name: "EXIT_STATE_DIRECTORY" as NonEmptyStr },
+  ExecSetupFailure { status: 239, name: "EXIT_CACHE_DIRECTORY" as NonEmptyStr },
+  ExecSetupFailure { status: 240, name: "EXIT_LOGS_DIRECTORY" as NonEmptyStr },
+  ExecSetupFailure { status: 241, name: "EXIT_CONFIGURATION_DIRECTORY" as NonEmptyStr },
+  ExecSetupFailure { status: 242, name: "EXIT_NUMA_POLICY" as NonEmptyStr },
+  ExecSetupFailure { status: 243, name: "EXIT_CREDENTIALS" as NonEmptyStr },
+]
+
+fn exec_setup_failure_of_status(status: Int) -> Optional<ExecSetupFailure> {
+  list_find_first(xs: exec_setup_failures, predicate: fn(row) { row.status == status })
 }

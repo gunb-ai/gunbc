@@ -7,11 +7,16 @@ import std.measure { byte_size_count }
 import std.nat { Nat, nat_to_decimal_string }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
+import gunbc.emit_dying_base_specimen { DbInner, DbOuter, db_init, db_step, db_opt_absent, db_opt_present, db_opt_step, db_opt_child_k, db_opt_child_xs }
 
 // THE ALLOCATION READING OF THE STATE-THREADING SPECIMEN, taken by a binary that carries the counting
 // allocator BECAUSE this entry `uses` AllocationCounter (std.realization_measurement; the claim route's
 // NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
 // emits this closure, builds it and runs it in one process; nothing is interpreted.
+//
+// F lowered this specimen's allocation readings while a separate runtime comparison regressed on
+// container-held records. Allocation counts do not measure copy work or establish a runtime win
+// (gunbc.recurring_failure_mode by_value_record_widens_container_slots).
 //
 // FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
 //   AVAILABILITY  the selecting main registered the counting allocator before any read
@@ -223,12 +228,31 @@ fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   ]
 }
 
+// The dying-base reuse form, executed (gunbc.emit_dying_base_specimen). Each case reads results that
+// differ if a slot were overwritten while shared, or computed after an overwrite.
+fn dying_base_cases() -> List<AllocationCase> {
+  let fresh = db_step(o: db_init())
+  let retained = db_init()
+  let from_retained = db_step(o: retained)
+  let kept = DbInner { xs: [1], k: 1 }
+  let sharing = DbOuter { inner: kept, log: [], n: 3 }
+  let from_sharing = db_step(o: sharing)
+  let opt_a = db_opt_step(o: db_opt_absent())
+  let opt_p = db_opt_step(o: db_opt_present())
+  [
+    AllocationCase { identity: "dying_base_unique_outer_computes_from_old_fields", held: fresh.inner.xs == [10, 3] && fresh.inner.k == 8 && fresh.log == [5] && fresh.n == 4, observed: concat("k=", to_string(value: fresh.inner.k), " n=", to_string(value: fresh.n)) },
+    AllocationCase { identity: "dying_base_retained_outer_is_unchanged", held: retained.inner.xs == [10] && retained.inner.k == 5 && retained.log == [] && retained.n == 3 && from_retained.inner.k == 8 && from_retained.n == 4 && from_retained.log == [5], observed: concat("retained_k=", to_string(value: retained.inner.k), " result_k=", to_string(value: from_retained.inner.k)) },
+    AllocationCase { identity: "dying_base_retained_nested_is_preserved", held: kept.xs == [1] && kept.k == 1 && from_sharing.inner.xs == [1, 3] && from_sharing.inner.k == 4 && from_sharing.n == 4, observed: concat("kept_k=", to_string(value: kept.k), " result_k=", to_string(value: from_sharing.inner.k)) },
+    AllocationCase { identity: "dying_base_optional_nested_slot_absent_and_present", held: db_opt_child_k(o: opt_a) == 3 && db_opt_child_xs(o: opt_a) == [3] && db_opt_child_k(o: opt_p) == 3 && db_opt_child_xs(o: opt_p) == [3] && opt_a.n == 4 && opt_p.n == 4, observed: concat("absent_k=", to_string(value: db_opt_child_k(o: opt_a)), " present_k=", to_string(value: db_opt_child_k(o: opt_p))) }
+  ]
+}
+
 fn case_line(c: AllocationCase) -> String {
   concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = allocation_cases()
+  let cases = concat(allocation_cases(), dying_base_cases())
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
   let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")

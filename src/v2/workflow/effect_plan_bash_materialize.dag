@@ -1,20 +1,25 @@
 module v2.workflow.effect_plan_bash_materialize
 
 import std.types { List }
-import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var }
+import v2.extdeps.languages.bash_build { bash_build_and_then, bash_build_assign, bash_build_assign_lit, bash_build_assign_var, bash_build_command, bash_build_command_from_lits, bash_build_command_words_from_lits_suffix, bash_build_command_words_single, bash_build_command_with_words, bash_build_exit, bash_build_pipe, bash_build_subshell_from_stmts, bash_build_if, bash_build_if_else, bash_build_negation, bash_build_or_else, bash_build_stmt_list_single, bash_build_test_bracket, bash_build_word_cmdsubst, bash_build_word_lit, bash_build_word_var }
 import std.algebra { list_head, list_tail, list_at_optional }
 import v2.std.text { string_all_chars_in, string_any_char_in }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan { Call, Do, EffectPlan, EffectPlanStep, For, If, Let, Retry, While }
 import v2.std.node { Node }
-import v2.std.operation_argv { ArgvMaterialization, ArgvMaterializationRefused, ArgvMaterialized, ArgvRefusalCause, BoundOperationInvocation, OperationInputBinding, OperationRef, bind_operation_invocation, operation_argv_cause_label, operation_argv_ref_label }
+import std.operation_argv { ArgvMaterialization, ArgvMaterializationRefused, ArgvMaterialized, ArgvRefusalCause, BoundOperationInvocation, OperationInputBinding, operation_argv_bind_text, OperationRef, bind_operation_invocation, operation_argv_cause_label, operation_argv_ref_label, shell_materialize_operation_argv }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.orchestration { And, Continue, ExitZero, Expr, ExprCmdSubst, ExprLit, ExprVarRef, FailFast, FailurePolicy, IntNe, LogMatches, Not, Or, Predicate, StrEmpty, StrEq, StrNonempty }
+import v2.std.effect_plan_observed_sha256 { DigestShapeInvalid, ObservationFailed, ObservedSha256FailureCause, ObservedSha256EnvWrite, observed_sha256_failure_exit_status }
+import v2.workflow.effect_plan_bash_hex_ere { effect_plan_bash_sha256_line_ere }
+import std.content_hash { sha256_hex_digit_count }
+import extdeps.tools.grep { grep_program }
+import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_group_flag, coreutils_install_mode_flag, coreutils_install_owner_flag, printf_program }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 
-// Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash
+// Wave A realization edge: EffectPlan<BashPlanEffect> lowers to the existing Bash
 // command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf's
 // operation intent is the agnostic BoundOperationInvocation (operation ref + declaration bindings
 // only); argv is derived from that declaration by shell_materialize_operation_argv. Bash-only
@@ -50,6 +55,13 @@ type BashBoundOperationInvocation {
   executable_position: BashShellExecutablePosition
 }
 
+// THE CLOSED EFFECT SUM OF THIS MATERIALIZER. A plan's Do leaf is either a named extdeps operation
+// or the observed-SHA-256 env write, and effect_plan_bash_encode_step gives each case exactly one
+// arm; there is no second materializer and no open extension point.
+type BashPlanEffect
+  = BashOperationEffect { bound: BashBoundOperationInvocation }
+  | ObservedSha256EnvWriteEffect { write: ObservedSha256EnvWrite }
+
 // Bash realization wrapper over the agnostic BoundOperationInvocation. executable_position is
 // transport-only: it cannot change which operation row is named or which declared inputs bind; it
 // only selects whether argv[0] emits as the declaration literal or as a grammar-owned host env var
@@ -58,32 +70,32 @@ type BashBoundOperationInvocation {
 fn bash_bind_operation_invocation(
   at: OperationRef,
   bindings: List<OperationInputBinding>
-) -> BashBoundOperationInvocation {
-  BashBoundOperationInvocation {
+) -> BashPlanEffect {
+  BashOperationEffect { bound: BashBoundOperationInvocation {
     invocation: bind_operation_invocation(at: at, bindings: bindings),
     executable_position: DeclarationLiteral
-  }
+  } }
 }
 
 fn bash_bind_operation_invocation_elevated(
   at: OperationRef,
   bindings: List<OperationInputBinding>
-) -> BashBoundOperationInvocation {
-  BashBoundOperationInvocation {
+) -> BashPlanEffect {
+  BashOperationEffect { bound: BashBoundOperationInvocation {
     invocation: bind_operation_invocation(at: at, bindings: bindings),
     executable_position: ElevatedDeclarationLiteral
-  }
+  } }
 }
 
 fn bash_bind_operation_invocation_host_env_executable(
   at: OperationRef,
   bindings: List<OperationInputBinding>,
   env_var: String
-) -> BashBoundOperationInvocation {
-  BashBoundOperationInvocation {
+) -> BashPlanEffect {
+  BashOperationEffect { bound: BashBoundOperationInvocation {
     invocation: bind_operation_invocation(at: at, bindings: bindings),
     executable_position: HostEnvVar { name: env_var }
-  }
+  } }
 }
 
 data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
@@ -246,15 +258,23 @@ fn effect_plan_bash_encode_invocation(
 }
 
 fn effect_plan_bash_encode_step(
-  step: EffectPlanStep<BashBoundOperationInvocation>,
+  step: EffectPlanStep<BashPlanEffect>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match step {
-    Do { effect: bound } =>
-      effect_plan_bash_encode_invocation(
-        bound: bound,
-        step_index: step_index
-      )
+    Do { effect: effect } =>
+      match effect {
+        BashOperationEffect { bound: bound } =>
+          effect_plan_bash_encode_invocation(
+            bound: bound,
+            step_index: step_index
+          )
+        ObservedSha256EnvWriteEffect { write: write } =>
+          effect_plan_bash_encode_observed_sha256_env_write(
+            write: write,
+            step_index: step_index
+          )
+      }
     If { cond: cond, then_: then_, else_: else_ } =>
       effect_plan_bash_encode_if(
         cond: cond,
@@ -291,6 +311,127 @@ fn effect_plan_bash_encode_step(
     Call { callee: callee, args: args } =>
       effect_plan_bash_encode_call(callee: callee, args: args, step_index: step_index)
   }
+}
+
+
+// ---- ObservedSha256EnvWrite ---------------------------------------------------------------
+//
+// The one arm that lowers the observed-SHA-256 env write. Three statements joined by the grammar's
+// && relation, each failing CLOSED before the next:
+//   1. the observation: the canonical extdeps.tools.sha256sum DigestFile argv, run in a command
+//      substitution into a variable only this statement chain names; a nonzero read exits with
+//      ObservationFailed's status;
+//   2. the shape guard: the variable piped to grep -Eq with the pattern derived from
+//      std.content_hash' alphabet (effect_plan_bash_sha256_line_ere); no match exits with
+//      DigestShapeInvalid's status, before anything is written;
+//   3. the write: the digest's first sha256_hex_digit_count characters (what the guard admitted) as
+//      `NAME=<digest>`, piped into root-owned install at the declared mode and owner.
+// The variable is a shell-side word; the model never reads it. Statically decidable faults (env
+// name not a POSIX name, NUL in a path, an observer argv that does not materialize) refuse here,
+// with the same typed causes the other arms use.
+
+data effect_plan_bash_observed_digest_var: String = "_gunbc_observed_digest"
+data effect_plan_bash_sha256sum_operation_path: String = "dag/extdeps/tools/sha256sum.dag"
+data effect_plan_bash_sha256sum_operation_service: String = "sha256sum.Sha256"
+data effect_plan_bash_sha256sum_digest_file_operation: String = "DigestFile"
+data effect_plan_bash_sha256sum_path_input: String = "path"
+
+fn effect_plan_bash_observed_exit(cause: ObservedSha256FailureCause) -> Node {
+  bash_build_exit(code: observed_sha256_failure_exit_status(cause: cause))
+}
+
+fn effect_plan_bash_observed_digest_word() -> Node {
+  bash_build_word_var(name: effect_plan_bash_observed_digest_var)
+}
+
+fn effect_plan_bash_observed_printf(format: String) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: printf_program().invocation as String),
+    bash_build_word_lit(text: format),
+    effect_plan_bash_observed_digest_word()
+  ])
+}
+
+fn effect_plan_bash_observed_statement(
+  write: ObservedSha256EnvWrite,
+  observer_argv: List<String>
+) -> Node {
+  bash_build_subshell_from_stmts(stmts: [
+    bash_build_or_else(
+      left: bash_build_assign(
+        name: effect_plan_bash_observed_digest_var,
+        value: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: observer_argv))
+      ),
+      right: effect_plan_bash_observed_exit(cause: ObservationFailed)
+    ),
+    bash_build_or_else(
+      left: bash_build_pipe(
+        left: effect_plan_bash_observed_printf(format: "%s"),
+        right: bash_build_command_from_lits(lits: [
+          grep_program().invocation as String,
+          "-Eq",
+          effect_plan_bash_sha256_line_ere()
+        ])
+      ),
+      right: effect_plan_bash_observed_exit(cause: DigestShapeInvalid)
+    ),
+    bash_build_pipe(
+      left: effect_plan_bash_observed_printf(
+        format: concat(write.env_name, concat("=%.", concat(to_string(sha256_hex_digit_count), "s\\n")))
+      ),
+      right: bash_build_command_from_lits(lits: concat(
+        sudo_elevate_argv(command: [
+          coreutils_install_binary_name as String,
+          coreutils_install_mode_flag as String,
+          write.mode as String,
+          coreutils_install_owner_flag as String,
+          write.owner as String,
+          coreutils_install_group_flag as String,
+          write.owner as String
+        ]),
+        ["/dev/stdin", write.dest]
+      ))
+    )
+  ])
+}
+
+fn effect_plan_bash_encode_observed_sha256_env_write(
+  write: ObservedSha256EnvWrite,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  let at = OperationRef {
+    path: effect_plan_bash_sha256sum_operation_path,
+    service: effect_plan_bash_sha256sum_operation_service,
+    operation: effect_plan_bash_sha256sum_digest_file_operation
+  }
+  effect_plan_bash_shell_name_checked(
+    name: write.env_name,
+    step_index: step_index,
+    accepted: effect_plan_bash_lits_nul_checked(
+      lits: [write.path, write.dest, write.mode as String, write.owner as String],
+      step_index: step_index,
+      accepted: match shell_materialize_operation_argv(
+        at.path,
+        at.service,
+        at.operation,
+        [operation_argv_bind_text(
+          name: effect_plan_bash_sha256sum_path_input,
+          text: write.path
+        )]
+      ) {
+        ArgvMaterialized { argv: argv } =>
+          effect_plan_bash_accept_statement(
+            statement: effect_plan_bash_observed_statement(write: write, observer_argv: argv)
+          )
+        ArgvMaterializationRefused { at: refused_at, cause: cause } =>
+          effect_plan_bash_refuse(
+            step_index: step_index,
+            operation: Present { value: refused_at },
+            cause: OperationArgvRefused { cause: cause }
+          )
+      }
+    )
+  )
 }
 
 // ---- Let ----------------------------------------------------------------------------------
@@ -656,7 +797,7 @@ type EffectPlanBashBranchEncoding
   | BranchRefused { refusal: EffectPlanBashRefusal }
 
 fn effect_plan_bash_encode_branch(
-  plan: EffectPlan<BashBoundOperationInvocation>,
+  plan: EffectPlan<BashPlanEffect>,
   branch: EffectPlanBashIfBranch,
   step_index: Int
 ) -> EffectPlanBashBranchEncoding {
@@ -687,8 +828,8 @@ fn effect_plan_bash_encode_branch(
 
 fn effect_plan_bash_encode_if(
   cond: Predicate,
-  then_: EffectPlan<BashBoundOperationInvocation>,
-  else_: Optional<EffectPlan<BashBoundOperationInvocation>>,
+  then_: EffectPlan<BashPlanEffect>,
+  else_: Optional<EffectPlan<BashPlanEffect>>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match effect_plan_bash_encode_predicate(predicate: cond, step_index: step_index) {
@@ -751,7 +892,7 @@ fn effect_plan_bash_and_then(
 }
 
 fn effect_plan_bash_encode_steps(
-  steps: List<EffectPlanStep<BashBoundOperationInvocation>>,
+  steps: List<EffectPlanStep<BashPlanEffect>>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match list_head(xs: steps) {
@@ -786,7 +927,7 @@ fn effect_plan_bash_encode_steps(
 }
 
 fn effect_plan_bash_encode(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: EffectPlan<BashPlanEffect>
 ) -> EffectPlanBashEncodeResult {
   match plan.on_failure {
     Continue =>
@@ -899,7 +1040,7 @@ fn effect_plan_bash_refusal_label(refusal: EffectPlanBashRefusal) -> String {
 }
 
 fn effect_plan_bash_materialize(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: EffectPlan<BashPlanEffect>
 ) -> EffectPlanBashMaterialization {
   match effect_plan_bash_encode(plan: plan) {
     EffectPlanBashEncodingRefused { refusal: refusal } =>

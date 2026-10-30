@@ -6,6 +6,9 @@ use self::ScopeDecision::*;
 use self::ScopeFinding::*;
 use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_optional::Optional;
@@ -185,7 +188,7 @@ pub fn external_model_scope_foreign_subject_findings(
         for s in Rc::new({
             let mut __result = Vec::new();
             for s in m.product_fact_subjects.clone().iter().cloned() {
-                if !external_subject_ref_eq(s.clone(), m.scope.clone().subject.clone()) {
+                if !external_subject_ref_eq(s.clone(), m.scope.subject.clone()) {
                     __result.push(s);
                 }
             }
@@ -196,7 +199,7 @@ pub fn external_model_scope_foreign_subject_findings(
         {
             __result.push(Rc::new(ScopeFinding::ForeignSubjectRow {
                 module: m.module.clone(),
-                declared: m.scope.clone().subject.clone(),
+                declared: m.scope.subject.clone(),
                 foreign: s.clone(),
             }));
         }
@@ -243,7 +246,7 @@ pub fn external_model_scope_decision_of_findings(
 }
 
 pub fn external_model_scope_decision(m: Rc<DeclaredScopeFacts>) -> Rc<ScopeDecision> {
-    external_model_scope_decision_of_findings(external_model_scope_findings(m.clone()))
+    external_model_scope_decision_of_findings(external_model_scope_findings(m))
 }
 
 pub fn external_model_scope_portfolio_decision(

@@ -2,7 +2,8 @@ module test.claim.belt_tick_receipt_home_witness
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 
 
-import std.types { Bool, String, FilePath }
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
@@ -10,9 +11,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
 }
-import gunbc.roadmap.roadmap_belt_actuate { belt_tick_receipt_path_for_instance }
+import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_tick_receipt_slots }
 import gunbc.live_deploy.emit {
-  composed_artifact_upsert,
   install_d_owned_for_user,
 }
 import gunbc.live_deploy.release_locus {
@@ -31,6 +31,14 @@ import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { List, NonEmptyStr, CommitSha }
 import v2.std.orchestration { PipelineStep, Do, Run }
 import std.optional { Present, Absent }
+
+// The tick receipt's entry, composed from the store's own declaration over the receipts directory its mint
+// lists (gunbc.roadmap.roadmap_belt_receipt_store_root belt_tick_receipt_store). The mint needs a listed
+// directory, which the production instances' paths are not on a witness host, so the path claims read the
+// declaration and the directory derivation the mint reads; the wet witness exercises the mint itself.
+fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
+  join([instance_receipts_dir(instance_root: instance.instance_root as String), "/", belt_tick_receipt_slots.stem as String, belt_tick_receipt_slots.suffix as String], "")
+}
 
 // THE KEYSTONE. srv1-live resolves the dispatch attempt-state root to a path it does not own
 // alone — it is DispatchStateHostShared, so that root answers for the host, not for this instance.
@@ -123,44 +131,4 @@ fn step_commands(steps: List<PipelineStep>) -> List<String> {
 
 fn has_command(cmds: List<String>, want: String) -> Bool {
   fold(cmds, init: false, f: (acc, c) => acc || c == want)
-}
-
-fn belt_upsert_commands() -> List<String> {
-  let spec = deployment_spec_srv1()
-  step_commands(steps: composed_artifact_upsert(
-    principal: fleet_posix_ci_runner_principal(),
-    kind: BeltEventPathUnit,
-    path: deployment_belt_exit_path_unit_path(
-      names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
-    ) as String as NonEmptyStr,
-    spec: spec,
-    revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
-    oidc_now: Absent,
-  ).steps)
-}
-
-// The bootstrap is emitted, it targets THIS instance's receipts directory, and it carries the
-// service-user ownership. All three facts live in one command, and a witness that only checked for
-// "install -d" would pass on production's path or on a root-owned directory — the two ways this fix
-// can be silently wrong. The command is DERIVED from the same authority the emitter calls rather
-// than transcribed: the earlier spelling pinned the bytes `sudo -n install -d -m 0755 -o briansrls
-// -g briansrls /opt/gunbc/receipts`, which stopped matching the moment quoting became the bash
-// grammar's decision instead of this string's. What the claim is about — the path, the mode and the
-// ownership — is carried by the arguments, so a drift in any of the three still reds here; only the
-// spelling moved to its owner.
-test fn the_belt_member_bootstraps_its_own_receipts_directory() -> Bool {
-  has_command(
-    cmds: belt_upsert_commands(),
-    want: install_d_owned_for_user(user: gunbc_service_user, path: instance_receipts_dir(instance_root: "/opt/gunbc")),
-  )
-}
-
-// The directory the deploy creates is the directory the tick writes into. Stated as a join between
-// the two derivations rather than as two literals, so a drift in either one reds here instead of
-// producing a created-but-unused directory beside an unwritable receipt.
-test fn the_bootstrapped_directory_is_where_the_receipt_goes() -> Bool {
-  let dir = instance_receipts_dir(instance_root: "/opt/gunbc")
-  let receipt = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
-  has_command(cmds: belt_upsert_commands(), want: install_d_owned_for_user(user: gunbc_service_user, path: dir))
-    && receipt == join([dir, "/belt-last-tick.json"], "")
 }

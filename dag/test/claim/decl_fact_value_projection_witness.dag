@@ -2,6 +2,7 @@ module test.claim.decl_fact_value_projection_witness
 
 import std.types { List }
 import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import v2.std.fn_index { atom_identities_in_node }
 import std.algebra { list_snoc_item, contains, fold_list, for_all, length }
 import v2.std.node { Symbol, symbol_eq }
@@ -26,9 +27,19 @@ import v2.std.text { String }
 
 data value_projection_roots: List<String> = ["dag", "src/v2"]
 
-fn atoms_at(qn: String) -> List<Symbol> {
+// ONE READ PER CLAIM: every claim reads the pool once with the keys it compares and joins each key
+// against that read (decl_facts_matching_qualified_name), never once per key.
+fn specimen_facts(qns: List<String>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: value_projection_roots, qualified_names: qns, type_names: [])
+}
+
+fn specimen_rows(facts: List<DeclFact>, qn: String) -> List<DeclFact> {
+  decl_facts_matching_qualified_name(qn: qn, facts: facts)
+}
+
+fn atoms_at(facts: List<DeclFact>, qn: String) -> List<Symbol> {
   fold_list(
-    xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn),
+    xs: specimen_rows(facts: facts, qn: qn),
     empty: [],
     cons: fn(acc, f) {
       fold_list(
@@ -41,8 +52,9 @@ fn atoms_at(qn: String) -> List<Symbol> {
 }
 
 fn same_atoms(a: String, b: String) -> Bool {
-  let xs = atoms_at(qn: a)
-  let ys = atoms_at(qn: b)
+  let facts = specimen_facts(qns: [a, b])
+  let xs = atoms_at(facts: facts, qn: a)
+  let ys = atoms_at(facts: facts, qn: b)
   (length(xs: xs) == length(xs: ys))
     && for_all(xs: xs, predicate: fn(s) { contains(xs: ys, item: s, eq: symbol_eq) })
 }
@@ -78,11 +90,13 @@ data rec_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen
 // non-empty atom population, so the three regression controls below report whether the
 // projection DISTINGUISHES VALUES rather than a lookup that found nothing.
 test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Bool {
+  let specimens = [bare_a, bare_b, list_a, list_b, rec_a, rec_b]
+  let facts = specimen_facts(qns: specimens)
   for_all(
-    xs: [bare_a, bare_b, list_a, list_b, rec_a, rec_b],
+    xs: specimens,
     predicate: fn(qn) {
-      (length(xs: decl_facts_at(pool_roots: value_projection_roots, qualified_name: qn)) == 1)
-        && (length(xs: atoms_at(qn: qn)) > 0)
+      (length(xs: specimen_rows(facts: facts, qn: qn)) == 1)
+        && (length(xs: atoms_at(facts: facts, qn: qn)) > 0)
     }
   )
 }

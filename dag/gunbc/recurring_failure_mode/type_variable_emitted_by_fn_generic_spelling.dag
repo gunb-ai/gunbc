@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.type_variable_emitted_by_fn_generic_spelling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data type_variable_emitted_by_fn_generic_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "type_variable_emitted_by_fn_generic_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: v1.compiler.emit_rust render_rust_type, on Present TypeVariable { id: tv }, asks type_var_in_fn_generic_scope whether tv is a member of emit_info.fn_generic_param_names by SPELLING (g == id). A TypeVariable whose id coincides with an enclosing fn generic is emitted as that fn parameter (to_pascal(tv)); one whose id is not in the list is emitted as `_`. The TypeVariable's declaration identity is not consulted.",

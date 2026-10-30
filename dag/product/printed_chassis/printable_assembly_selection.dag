@@ -1,0 +1,190 @@
+module product.printed_chassis.printable_assembly_selection
+
+import std.types { String, List }
+import product.printed_chassis.printable_assembly {
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot,
+  DuctRootKind, duct_root_kinds, PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct,
+  PrintableAssembly, PrintableAssemblySelection, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire,
+}
+import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
+import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
+import product.printed_chassis.cassette { rear_socket_bolt_clearances }
+import product.printed_chassis.cassette_review { cassette_printable, rack_review_assembly }
+import product.printed_chassis.gpu_duct {
+  GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
+  GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, DuctCardMount, DuctExtent, PlugAndFlange, SleeveOverCardEnd,
+  FullDuct, CardFitRing, a16_duct_design, admit_gpu_duct, duct_presentation_members, duct_readme,
+  BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, a16_blower_duct_design, admit_blower_duct, blower_presentation_members, blower_readme,
+  plane_on_end_duct_parts, plane_on_end_duct_joints, plane_on_end_presentation_members, plane_on_end_readme,
+}
+import std.optional { Present, Absent }
+import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_cards, duct_card, duct_card_dims, duct_card_unread_reason }
+import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
+import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
+
+// WHICH ROOTS EXIST, ENUMERATED FROM THE ROSTER: the cassette arms are named, and the duct roots are the
+// card roster crossed with the six shapes. A card added to product.printed_chassis.duct_card_catalog
+// duct_cards becomes selectable -- by wire spelling, through select_printable_assembly, by the CAD check and
+// by preparation -- with no change to this module, and a root naming an id that is not on the roster decodes
+// to nothing. The enumeration is HERE and not in printable_assembly because printable_assembly is the module
+// the card-reading geometry imports (product.printed_chassis.gpu_duct takes its JSON emitters from it), so
+// the roster is not visible from there.
+fn duct_card_root(card: DuctCard, kind: DuctRootKind) -> PrintedAssemblyRoot {
+  DuctCardRoot { card: card.row.id, kind: kind }
+}
+
+data printed_assembly_roots: List<PrintedAssemblyRoot> = concat(
+  [ResidentialCassette, CassetteRackReview],
+  fold(duct_cards, init: [], f: (acc, c) => concat(acc, map(duct_root_kinds, k => duct_card_root(card: c, kind: k)))))
+
+fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
+  fold(printed_assembly_roots, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if printed_assembly_root_wire(root: r) == s { Present { value: r } } else { none }
+    })
+}
+
+// THE ONE PLACE A ROOT BECOMES PARTS. Every consumer on the print path -- the CAD check, preparation
+// identity and the inventory verbs -- asks here instead of calling an assembly's producer itself, so
+// adding a printable assembly is an arm and a row rather than a new set of call sites, and adding a CARD to
+// the roster above needs neither.
+//
+// Each arm declares its own required keep-outs and combined-assembly membership. The residential
+// cassette keeps the rear-socket hardware envelopes it has always required; the A16 duct requires
+// its 8-pin power keep-out, so the CAD kernel checks that clearance on solids as well as the
+// source-model construction in gpu_duct.
+fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
+  match root {
+    ResidentialCassette => match residential_assembly() {
+      ResidentialAssemblyReady { parts: parts, joints: joints, pitch: _, cooling: _ } =>
+        PrintableAssemblyReady { assembly: cassette_printable(root: root, parts: parts, joints: joints, keepouts: map(rear_socket_bolt_clearances(), p => p.id)) }
+      ResidentialAssemblyRefused { reason: r } => PrintableAssemblyRefused { reason: r }
+    }
+    CassetteRackReview => PrintableAssemblyReady { assembly: rack_review_assembly() }
+    // A DUCT ROOT NAMES A CATALOGUED CARD BY ID. The roster answers; a root whose id is not on the roster
+    // refuses naming the id, rather than falling through to some other card's geometry.
+    DuctCardRoot { card: card, kind: kind } => match duct_card(id: card) {
+      Present { value: c } => duct_root_selection(root: root, kind: kind, card: c)
+      Absent => PrintableAssemblyRefused { reason: join(["no duct card is catalogued under id \"", card as String, "\"; product.printed_chassis.duct_card_catalog duct_cards is the roster"], "") }
+    }
+  }
+}
+
+// THE SIX SHAPES, applied to whichever catalogued card the root names. The shape vocabulary is
+// printable_assembly's DuctRootKind, so this match and the wire spelling are the same split of card and
+// shape. WHICH wall a card's duct is designed against is still the A16's own (a16_duct_design,
+// a16_blower_duct_design, read below) -- that is the part of duct_card_catalog_consumer_frontier still
+// open, and it is why an unread card must refuse at its reading rather than be built anyway.
+fn duct_root_selection(root: PrintedAssemblyRoot, kind: DuctRootKind, card: DuctCard) -> PrintableAssemblySelection {
+  match kind {
+    PlugDuct => duct_selection(root: root, card: card, mount: PlugAndFlange, extent: FullDuct)
+    SleeveDuct => duct_selection(root: root, card: card, mount: SleeveOverCardEnd, extent: FullDuct)
+    PlugFitRing => duct_selection(root: root, card: card, mount: PlugAndFlange, extent: CardFitRing)
+    SleeveFitRing => duct_selection(root: root, card: card, mount: SleeveOverCardEnd, extent: CardFitRing)
+    BlowerDuct => blower_selection(root: root, card: card)
+    BlowerFlatOnEndDuct => plane_on_end_selection(root: root, card: card)
+  }
+}
+
+// THE FLAT-ON-END HOME IS NOT SELECTABLE UNLESS THE ROUTE MODEL ADMITS IT, and the admission it must
+// produce is the operator-bound one specifically. This is the seam where the ruling and the geometry meet:
+// a reader cannot get a printable shape out of this root by editing the part list, and cannot get one at
+// all if the operator withdraws the bound. The refusal text is the route model's own verdict, so what the
+// operator is told is what the model actually decided rather than a paraphrase of it.
+fn plane_on_end_selection(root: PrintedAssemblyRoot, card: DuctCard) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => plane_on_end_selection_of(root: root, dims: dims)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn plane_on_end_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
+  match admit_home(s: RouteSubject { face: dims.face, wall: a16_duct_design, fan: a16_blower_duct_design }, home: PlaneOnEnd) {
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => {
+      let parts = plane_on_end_duct_parts(f: dims.face, card: dims.card, d: a16_duct_design, b: a16_blower_duct_design)
+      PrintableAssemblyReady {
+        assembly: PrintableAssembly {
+          root: root,
+          parts: parts,
+          interfaces: plane_on_end_duct_joints(),
+          required_keepouts: ["POWER-KEEPOUT"],
+          // Clearance is a virtual volume, not a member that gets built -- the POWER-KEEPOUT part carries its
+          // id in required_keepouts just above. Same rule the two sibling roots in this file already apply.
+          assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+          package: printed_assembly_root_wire(root: root),
+          schema: "gunbc.a16-inlet-duct-review.v2",
+          readme: plane_on_end_readme(),
+          presentation: plane_on_end_presentation_members(),
+        }
+      }
+    }
+    RouteAdmitted {home: _, needs: _} => PrintableAssemblyRefused { reason: "flat-on-end home was admitted on a CALIPER reading; this root asks for the operator-bound verdict, and the two must not be conflated" }
+    RouteProposalOnly {home: _, needs: _, on_estimate: g, margin: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home is only PROPOSED on an estimate of ", demand_display(n: RouteDemand { name: "rear", needed: micrometer(count: 0), of_gap: g.name as String }), "); re-read the gap with an instrument"], "") }
+    RouteRefusedByChassis {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home refused by the chassis: needs ", demand_display(n: n)], "") }
+    RouteHomeUnmeasured {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home refused: the gap it needs is unmeasured -- ", demand_display(n: n)], "") }
+  }
+}
+
+fn blower_selection(root: PrintedAssemblyRoot, card: DuctCard) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => blower_selection_of(root: root, dims: dims)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn blower_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
+  match admit_blower_duct(f: dims.face, card: dims.card, d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
+      assembly: PrintableAssembly {
+        root: root,
+        parts: parts,
+        interfaces: joints,
+        required_keepouts: ["POWER-KEEPOUT"],
+        assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+        package: printed_assembly_root_wire(root: root),
+        schema: "gunbc.a16-inlet-duct-review.v2",
+        readme: blower_readme(),
+        presentation: blower_presentation_members(),
+      }
+    }
+    BlowerDuctCardInterfaceRefused { refusal: _ } => PrintableAssemblyRefused { reason: "A16 blower duct card interface refused" }
+    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => PrintableAssemblyRefused { reason: "A16 blower socket is thicker than the card" }
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => PrintableAssemblyRefused { reason: "A16 blower passage closed by the 8-pin keep-out" }
+    BlowerInsertNotReachable { insert_x: _, insert_y: _, passage_low: _, passage_high: _, tool_radius: _ } => PrintableAssemblyRefused { reason: "A16 blower duct leaves a card insert unreachable through the open socket" }
+    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => PrintableAssemblyRefused { reason: "A16 blower duct admits one card; stacked intakes are unsolved" }
+  }
+}
+
+// Each duct root is one (mount, extent) admission of the same duct model, applied to the card its root
+// names; the package takes the root's wire spelling, so the card-shape pairs each get a distinct package
+// instead of overwriting one another.
+fn duct_selection(root: PrintedAssemblyRoot, card: DuctCard, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => duct_selection_of(root: root, dims: dims, mount: mount, extent: extent)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
+  match admit_gpu_duct(f: dims.face, card: dims.card, d: a16_duct_design, mount: mount, extent: extent) {
+    GpuDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
+      assembly: PrintableAssembly {
+        root: root,
+        parts: parts,
+        interfaces: joints,
+        required_keepouts: ["POWER-KEEPOUT"],
+        assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+        package: printed_assembly_root_wire(root: root),
+        schema: "gunbc.a16-inlet-duct-review.v2",
+        readme: duct_readme(mount: mount, extent: extent),
+        presentation: duct_presentation_members(),
+      }
+    }
+    GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => PrintableAssemblyRefused { reason: "A16 end-cap insert readings do not close on the face length" }
+    GpuDuctFinsAtTheWindowFace { fin_setback: _, fin_margin: _ } => PrintableAssemblyRefused { reason: "A16 fins too close to the window face for a plug lip" }
+    GpuDuctFanMountRefused { mount: _ } => PrintableAssemblyRefused { reason: "A16 duct fan mount refused" }
+    GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => PrintableAssemblyRefused { reason: "A16 fin window deeper than the fan frame" }
+    GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => PrintableAssemblyRefused { reason: "A16 duct plug passage closed" }
+  }
+}

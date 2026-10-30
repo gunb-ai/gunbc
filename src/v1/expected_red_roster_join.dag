@@ -19,15 +19,23 @@ type BudgetVerdictCompletion
   = Interrupted
   | CompletedOverBudget
 
-// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION, closed and companion-local exactly as
+// WHY A RUN COULD NOT REALIZE ONE OPERATION, closed and companion-local exactly as
 // BudgetVerdictCompletion above is. Each arm names a DIFFERENT remedy, which is the whole
 // reason it is not one String: an unpublished mock case is closed by publishing the case, a
-// missing mock_response by authoring one, and a filesystem removal only by a wet route, since
-// removal's whole content is the effect and there is no mock arm to author.
-type HermeticEffectGround
+// missing mock_response by authoring one, a filesystem removal only by a wet route, since
+// removal's whole content is the effect and there is no mock arm to author, and a witness frame
+// only by a hermetic run, since a modeled realization is admitted nowhere else. The MODE the
+// run was in is not a second field beside the ground: it is derived from it by
+// effect_refusal_mode, so the pair cannot disagree and the remedy follows the mode.
+type EffectRefusalGround
   = UnpublishedMockCase
   | NoMockResponse
   | FilesystemRemoval
+  | FrameNotRealizableUnderMode
+
+type EffectRefusalMode
+  = RefusedUnderHermetic
+  | RefusedUnderWet
 
 // HostEffectRefused IS A ROUTE GAP, NOT A VERDICT. The witness never reached its subject: the
 // route it was given has no arm for a host effect it reached for. That is the same distinction
@@ -53,7 +61,7 @@ type WitnessEvalVerdict
   | NotBool { got: String }
   | RuntimeError { message: String }
   | HostToolUnresolved { name: String, probed: List<String> }
-  | HostEffectRefused { operation: String, ground: HermeticEffectGround }
+  | HostEffectRefused { operation: String, ground: EffectRefusalGround }
   | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
   | ExitFailure { code: Int, reason: String }
 
@@ -93,92 +101,42 @@ type ExpectedRedRosterJoinReport {
   rows: List<ExpectedRedRosterJoinRow>
 }
 
-fn new_expected_red_roster_join_report(run_head: String?, run_note: String, roster: List<String>) -> ExpectedRedRosterJoinReport {
-  ExpectedRedRosterJoinReport {
-    run_head: run_head,
-    run_note: run_note,
-    rows: roster |> map(identity => ExpectedRedRosterJoinRow {
-      identity: identity,
-      disposition: NotEvaluated { reason: "not_observed" },
-      detail: ""
-    })
-  }
-}
-
-fn expected_red_roster_join_roster_len(report: ExpectedRedRosterJoinReport) -> Int {
-  report.rows |> count
-}
-
-fn is_still_red(disposition: ExpectedRedJoinDisposition) -> Bool {
-  match disposition {
-    StillRed => true,
-    _ => false
-  }
-}
-
-fn is_now_passes(disposition: ExpectedRedJoinDisposition) -> Bool {
-  match disposition {
-    NowPasses => true,
-    _ => false
-  }
-}
-
-fn is_suppressed(disposition: ExpectedRedJoinDisposition) -> Bool {
-  match disposition {
-    Suppressed { ground: _ } => true,
-    _ => false
-  }
-}
-
-fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String {
-  match ground {
-    OutsideRequiredGate => "suppressed_outside_required_gate"
-    WithheldCostDebt => "suppressed_withheld_cost_debt"
-    DeclinedNoCiWetLane => "suppressed_declined_no_ci_wet_lane"
-  }
-}
-
-fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String {
-  match ground {
-    OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted"
-    WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted"
-    DeclinedNoCiWetLane => "enrolled and changed by this run, but its file is a declared BinWitnessWet row no CI lane executes (gunbc.rung_drop edited_bin_witness_wet_rows_not_executed_by_ci), so the changed-witness sublane declined it -- dormant, not deleted"
-  }
-}
-
-fn is_not_evaluated(disposition: ExpectedRedJoinDisposition) -> Bool {
-  match disposition {
-    NotEvaluated { reason: _ } => true,
-    _ => false
-  }
-}
-
-fn expected_red_roster_join_still_red(report: ExpectedRedRosterJoinReport) -> Int {
-  report.rows |> filter(row => is_still_red(disposition: row.disposition)) |> count
-}
-
-fn expected_red_roster_join_now_passes(report: ExpectedRedRosterJoinReport) -> Int {
-  report.rows |> filter(row => is_now_passes(disposition: row.disposition)) |> count
-}
-
-fn expected_red_roster_join_not_evaluated(report: ExpectedRedRosterJoinReport) -> Int {
-  report.rows |> filter(row => is_not_evaluated(disposition: row.disposition)) |> count
-}
-
-fn expected_red_roster_join_suppressed(report: ExpectedRedRosterJoinReport) -> Int {
-  report.rows |> filter(row => is_suppressed(disposition: row.disposition)) |> count
-}
-
 type VerdictClassification {
   disposition: ExpectedRedJoinDisposition
   detail: String
 }
 
-fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+fn effect_refusal_mode(ground: EffectRefusalGround) -> EffectRefusalMode {
+  match ground {
+    UnpublishedMockCase => RefusedUnderHermetic
+    NoMockResponse => RefusedUnderHermetic
+    FilesystemRemoval => RefusedUnderHermetic
+    FrameNotRealizableUnderMode => RefusedUnderWet
+  }
+}
+
+fn effect_refusal_ground_label(ground: EffectRefusalGround) -> String {
   match ground {
     UnpublishedMockCase => "no published mock case for a corpus-governed service"
     NoMockResponse => "operation declares no mock_response"
     FilesystemRemoval => "filesystem removal has no mock arm; only a wet route can run it"
+    FrameNotRealizableUnderMode => "a modeled witness frame is admitted only under Hermetic execution"
+  }
+}
+
+fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
+  match mode {
+    RefusedUnderHermetic => "hermetic route has no arm for"
+    RefusedUnderWet => "wet run cannot realize"
+  }
+}
+
+// The remedy depends only on the mode: a hermetic run is given a wet route, a wet run a hermetic
+// one. The Hermetic spelling names both entry points, so no caller re-spells it per CLI.
+fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
+  match mode {
+    RefusedUnderHermetic => "re-run with --wet"
+    RefusedUnderWet => "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
   }
 }
 
@@ -201,7 +159,7 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
       VerdictClassification {
         disposition: NotEvaluated { reason: "host_effect_refused" },
         detail: concat(
-          "hermetic route has no arm for ", operation, " (", hermetic_effect_ground_label(ground: ground),
+          effect_refusal_mode_label(mode: effect_refusal_mode(ground: ground)), " ", operation, " (", effect_refusal_ground_label(ground: ground),
           ") — the witness never reached its subject, so this is a route gap, not a verdict"
         )
       },
@@ -231,78 +189,6 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
         disposition: StillRed,
         detail: concat("exit ", to_string(code), ": ", reason)
       }
-  }
-}
-
-fn disposition_label(disposition: ExpectedRedJoinDisposition) -> String {
-  match disposition {
-    StillRed => "still_red",
-    NowPasses => "now_passes",
-    NotEvaluated { reason: _ } => "not_evaluated",
-    Suppressed { ground: _ } => "suppressed"
-  }
-}
-
-// The reason column for EITHER absence-of-verdict arm, so the TSV carries one reason field and
-// the disposition column says which kind of absence it is.
-fn disposition_reason(disposition: ExpectedRedJoinDisposition) -> String {
-  match disposition {
-    NotEvaluated { reason: reason } => reason,
-    Suppressed { ground: ground } => suppression_ground_label(ground: ground),
-    _ => ""
-  }
-}
-
-fn not_evaluated_reason(disposition: ExpectedRedJoinDisposition) -> String {
-  match disposition {
-    NotEvaluated { reason: reason } => reason,
-    _ => ""
-  }
-}
-
-// Pure equivalent of recording a pre-fold suppression: the row for `identity` becomes Suppressed
-// with its ground, all other rows unchanged. Called BEFORE the fold, so a later record_observed
-// for the same identity cannot exist -- a suppressed identity is by construction not executed.
-fn record_suppressed(report: ExpectedRedRosterJoinReport, identity: String, ground: ExpectedRedSuppressionGround) -> ExpectedRedRosterJoinReport {
-  ExpectedRedRosterJoinReport {
-    run_head: report.run_head,
-    run_note: report.run_note,
-    rows: report.rows |> map(row =>
-      if row.identity == identity {
-        ExpectedRedRosterJoinRow {
-          identity: row.identity,
-          disposition: Suppressed { ground: ground },
-          detail: suppression_ground_detail(ground: ground)
-        }
-      } else {
-        row
-      }
-    )
-  }
-}
-
-fn row_with_recorded_verdict(row: ExpectedRedRosterJoinRow, verdict: WitnessEvalVerdict) -> ExpectedRedRosterJoinRow {
-  let classification = classify_verdict(verdict: verdict)
-  ExpectedRedRosterJoinRow {
-    identity: row.identity,
-    disposition: classification.disposition,
-    detail: classification.detail
-  }
-}
-
-// Pure equivalent of ExpectedRedRosterJoinReport::record_observed: returns a report whose
-// row matching `identity` reflects `verdict`, all other rows unchanged.
-fn record_observed(report: ExpectedRedRosterJoinReport, identity: String, verdict: WitnessEvalVerdict) -> ExpectedRedRosterJoinReport {
-  ExpectedRedRosterJoinReport {
-    run_head: report.run_head,
-    run_note: report.run_note,
-    rows: report.rows |> map(row =>
-      if row.identity == identity {
-        row_with_recorded_verdict(row: row, verdict: verdict)
-      } else {
-        row
-      }
-    )
   }
 }
 

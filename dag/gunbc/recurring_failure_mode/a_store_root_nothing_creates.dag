@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_store_root_nothing_creates
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
+
+data a_store_root_nothing_creates: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_store_root_nothing_creates" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**a durable slot store is read under a root that no deployment route creates** (the CAS slot store, gunbc.durable_cas_file_store, refuses a root it cannot list rather than reading it as an empty slot, so the first read of a never-created root stops its consumer: absence is not established, and the refusal is correct).",
+
+    "INVALID STATE: a store module declares the path of its root and reads and writes under it, while the one list both deployment routes ensure and read back (gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands) carries no row for it and no other capability creates it.",
+
+    "HARM, TWO INSTANCES. 2026-10-16: the srv1 lab's first claude dispatch stopped at its credential snapshot, 'the directory .../credential-acquisition-slots could not be listed' (repaired by gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory). 2026-10-20: the lab's first dispatch past #14235 stopped at the spawn step worktree-claim for EVERY executor, 'the directory <instance>/attempt-state/worktree-claims could not be listed', and the session placement was released; production serves a build that predates #14235, so its first deploy past it would have stopped every dispatch at the same step (repaired by gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_slots_directory).",
+
+    "DISTINGUISHING FACTS: the refusal is fail-closed and located, so nothing runs wrong; the cost is a whole dispatch factory stopped by a directory. The store's own witnesses are green because they write under a root the test creates; only a deploy that omits the row shows it. There were two creators in the corpus for one class (the instance directory list, and belt_session_slots_ensure for the session slot store); the belt ensure was deleted when the session slot store took its own declared row (gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_directory), so the list is the one creator. Compute seat directories are the declared exception: one per dispatch attempt, created by the provider from their declared target (gunbc.compute.compute_attempt_slots_root compute_seat_directory) under the listed compute root.",
+
+    "RUNG: found at 1 (a live dispatch refused), twice. Now 2 for the three stores the join enumerates: a root with no row in the list goes red in a witness, but the witness enumerates its stores by authorship, so a third store nobody lists is still writable. CEILING 3, next trigger D14 step 4 (docs/plans/ensure-closure-design.md section 12), which derives the demand from the code that writes, at which point the join is not authored and the class has no constructor. The witness evaluates only in a witness run; the required job evaluates none (gunbc.rung_drop v1_required_lanes_withdrawn).",
+
+    "RECOGNITION RULE: a new durable slot store declares its root's creator in the same change, as a row in the instance directory list, and the join test.claim.roadmap.roadmap_dashboard_instance_witness every_slot_store_root_has_a_declared_creator names it.",
+
+    "HOST-SINGLETON SPECIMENS, 2026-10-24 (the C-auth sealed-store change): two stores under the host-state tree (gunbc.host_state_root HostStateTree) whose directories nothing creates. gunbc.auth.approval_assertion_counter approval_assertion_counter_directory (<tree>/approval-assertion-counters) and gunbc.auth.approval_device_routes approval_device_push_directory (<tree>/approval-device-push) now each derive from their store's one member declaration, as approval_device_store_directory does, but no route enrols them: the broker install converges only the device store and the broker JWKS cache (gunbc.host.host_effect_realize dark_state_directories_install). So on a real host each store's mint answers Unready, which is the same refusal the old literal-root code gave (the CAS store could not list the root; the push write had no directory). The instance directory list and its join do not cover host singletons. NEXT TRIGGER: a host-singleton directory creator, enrolled from gunbc.host_state_root host_state_tree_directory(), that converges every member row beneath the tree; these two rows join it then. CLOSED FOR BOTH, 2026-10-25, when the C-auth change merged main: #15119 landed the broker state-root census (gunbc.auth.approval_broker_state_directories approval_broker_state_directories, folded by dark_state_directories_install), and the counter row joins it as the derived row above; #15124 moved push registrations into the device store as a windowed slot, so the push directory and its store are deleted. The broker census is the creator for the host-singleton broker stores; the general host-singleton creator stays the trigger for any host-state member outside it.",
+  ],
+
+  evidence: [],
+}

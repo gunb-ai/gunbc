@@ -2,7 +2,7 @@ module extdeps.bmc.ipmi_sdr
 
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Celsius, Percent, RevolutionsPerMinute, SdrUndecodedLineCount, celsius, percent, rpm, sdr_undecoded_line_count }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -52,6 +52,13 @@ type SdrTypeLine {
   reading_text: NonEmptyStr
 }
 
+// THE SAME SHAPE READ BACKWARD: the five fields in order, separated as the tool separates them. The
+// tool pads each column to a width; sdr_decode_line trims every field, so the padding is not part of
+// what any reader may depend on, and a line rendered here decodes to the record it was rendered from.
+fn sdr_type_line_text(line: SdrTypeLine) -> String {
+  join([line.name as String, line.sensor_number as String, line.status as String, line.entity_id as String, line.reading_text as String], " | ")
+}
+
 // A LINE THAT DID NOT HAVE FIVE FIELDS IS NOT AN EMPTY LINE AND NOT A ZERO READING.
 //
 // ipmitool prints header noise, blank lines and, on some builds, continuation text. Dropping those
@@ -75,48 +82,42 @@ type SdrLineResult
 // "one is the controller's report and the other is our gap" distinction this module's header
 // draws, inverted by the helper that was supposed to serve it.
 fn sdr_decode_line(text: String) -> SdrLineResult {
-  let fields = split(s: text, delimiter: "|") |> map(f => trim(f))
-  if fields.length() != 5 {
-    SdrLineUnstructured { text: text }
-  } else {
-    sdr_decoded_or_unstructured(
-      text: text,
-      name: sdr_field_at(fields: fields, index: 0),
-      sensor_number: sdr_field_at(fields: fields, index: 1),
-      status: sdr_field_at(fields: fields, index: 2),
-      entity_id: sdr_field_at(fields: fields, index: 3),
-      reading_text: sdr_field_at(fields: fields, index: 4),
-    )
+  match sdr_row_cells(text: text) {
+    Absent => SdrLineUnstructured { text: text }
+    Present { value: c } => match c.reading_text {
+      Absent => SdrLineUnstructured { text: text }
+      Present { value: rt } => SdrLineDecoded {
+        line: SdrTypeLine { name: c.name, sensor_number: c.sensor_number, status: c.status, entity_id: c.entity_id, reading_text: rt }
+      }
+    }
   }
 }
 
-fn sdr_decoded_or_unstructured(
-  text: String,
-  name: NonEmptyStr?,
-  sensor_number: NonEmptyStr?,
-  status: NonEmptyStr?,
-  entity_id: NonEmptyStr?,
-  reading_text: NonEmptyStr?,
-) -> SdrLineResult {
-  match name {
-    Absent => SdrLineUnstructured { text: text }
-    Present { value: n } => match sensor_number {
-      Absent => SdrLineUnstructured { text: text }
-      Present { value: sn } => match status {
-        Absent => SdrLineUnstructured { text: text }
-        Present { value: st } => match entity_id {
-          Absent => SdrLineUnstructured { text: text }
-          Present { value: eid } => match reading_text {
-            Absent => SdrLineUnstructured { text: text }
-            Present { value: rt } => SdrLineDecoded {
-              line: SdrTypeLine {
-                name: n,
-                sensor_number: sn,
-                status: st,
-                entity_id: eid,
-                reading_text: rt,
-              }
-            }
+// THE ONE FIVE-CELL WALK. Four leading cells present and non-empty; the reading cell is carried as read (Absent when blank).
+// sdr_decode_line projects the rows whose reading is present, sdr_empty_reading_row the rows whose reading is absent: one
+// parse of one row shape, two projections.
+type SdrRowCells {
+  name: NonEmptyStr
+  sensor_number: NonEmptyStr
+  status: NonEmptyStr
+  entity_id: NonEmptyStr
+  reading_text: NonEmptyStr?
+}
+
+fn sdr_row_cells(text: String) -> SdrRowCells? {
+  let fields = split(s: text, delimiter: "|") |> map(f => trim(f))
+  if fields.length() != 5 {
+    none
+  } else {
+    match sdr_field_at(fields: fields, index: 0) {
+      Absent => none
+      Present { value: n } => match sdr_field_at(fields: fields, index: 1) {
+        Absent => none
+        Present { value: sn } => match sdr_field_at(fields: fields, index: 2) {
+          Absent => none
+          Present { value: st } => match sdr_field_at(fields: fields, index: 3) {
+            Absent => none
+            Present { value: eid } => Present { value: SdrRowCells { name: n, sensor_number: sn, status: st, entity_id: eid, reading_text: sdr_field_at(fields: fields, index: 4) } }
           }
         }
       }
@@ -131,6 +132,27 @@ fn sdr_field_at(fields: List<String>, index: Int) -> NonEmptyStr? {
   match fields.skip(n: index).first() {
     Absent => Absent
     Present { value: f } => if trim(f) == "" { none } else { Present { value: f as NonEmptyStr } }
+  }
+}
+
+// A FIVE-CELL ROW WHOSE ONLY EMPTY CELL IS THE READING. ipmitool prints a discrete sensor that carries no reading text
+// (observed on this controller family: every FANn_Failure row of artifacts/bmc/mtcollins1-32dimm/06-sdr.txt, `status ok`,
+// reading cell empty) as exactly this shape; sdr_decode_line leaves it unstructured because all five fields must be
+// present. This parse is the STRUCTURAL reading of that shape (name plus status); it says nothing about what an empty
+// reading MEANS, which is the consumer's judgment.
+type SdrEmptyReadingRow {
+  name: NonEmptyStr
+  status: NonEmptyStr
+  text: String
+}
+
+fn sdr_empty_reading_row(text: String) -> SdrEmptyReadingRow? {
+  match sdr_row_cells(text: text) {
+    Absent => none
+    Present { value: c } => match c.reading_text {
+      Present { value: _ } => none
+      Absent => Present { value: SdrEmptyReadingRow { name: c.name, status: c.status, text: text } }
+    }
   }
 }
 
@@ -260,11 +282,18 @@ fn sdr_unstructured_texts(results: List<SdrLineResult>) -> List<String> {
   })
 }
 
-fn sdr_unstructured_count(results: List<SdrLineResult>) -> SdrUndecodedLineCount {
-  sdr_undecoded_line_count(count: filter(results, r => match r {
-    SdrLineDecoded { line: _ } => false
-    SdrLineUnstructured { text: _ } => true
-  }).length())
+// THE TEXTS OF TEMPERATURE READINGS THE DECODER DID NOT RECOGNISE, kept apart from sdr_temperature_publication, whose meaning is
+// "was ANY temperature published": a published magnitude absorbs an unrecognised sibling there, by design, so a consumer that must not
+// treat a semantic decode failure as healthy reads this list.
+fn sdr_unrecognised_temperature_texts(results: List<SdrLineResult>) -> List<String> {
+  flat_map(results, r => match r {
+    SdrLineUnstructured { text: _ } => []
+    SdrLineDecoded { line: l } => match sdr_temperature_reading(reading_text: l.reading_text) {
+      SdrTemperatureDegreesC { degrees: _ } => []
+      SdrTemperatureNoReading => []
+      SdrTemperatureUnrecognised { text: t } => [t]
+    }
+  })
 }
 
 // WHAT A WHOLE TEMPERATURE READ ESTABLISHED, AS THREE STATES RATHER THAN A Bool.

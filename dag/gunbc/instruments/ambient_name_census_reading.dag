@@ -1,14 +1,16 @@
 module gunbc.instruments.ambient_name_census_reading
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.instruments.namespace_wave_binding_shard { shard_owned_rewritten }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitProbe, KitCallProbe, KitTypeUseProbe, AmbientNameKitType, ambient_name_homes, ambient_name_candidates, kit_int }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
-// read off resolve's one binding record (v2.compiler.occurrence_binding_census), and one
+// read off resolve's one binding record (v2.compiler.occurrence_resolution_census), and one
 // `binding_module` line per module that resolved, or one `binding_unreached` line per module that did
 // not. This module is the host-side reader the instrument row hands its runs to, and it decides:
 //
@@ -93,29 +95,31 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // holds four (twice, yes, p, xs), so a per-module dedupe that counted them once fails the join.
 fn ambient_census_fixture_expected() -> List<String> {
   [
-    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.decls\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.decls\tPair\t0\tdeclared\texamples.decls.Pair",
-    "binding\texamples.uses\tPairAlias\t0\tdeclared\texamples.decls.PairAlias",
-    "binding\texamples.uses\tPairAlias\t1\texpected_type\texamples.decls.Pair",
-    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper",
-    "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper",
-    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol",
-    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true",
-    "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
-    "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid",
-    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
+    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t3:16",
+    "binding\texamples.decls\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t8:6",
+    "binding\texamples.decls\tPair\t0\tdeclared\texamples.decls.Pair\t11:18",
+    "binding\texamples.uses\tPairAlias\t0\tdeclared\texamples.decls.PairAlias\t14:9",
+    "binding\texamples.uses\tPairAlias\t1\texpected_type\texamples.decls.Pair\t-",
+    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t6:15",
+    "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper\t7:3",
+    "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper\t7:14",
+    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol\t10:13",
+    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true\t11:3",
+    "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid\t16:10",
+    "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t16:21",
+    "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid\t-",
+    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid\t5:27",
     "binding_unanswered\tstd.algebra\tstd.algebra.FreeMonoid\t0\tdeclared_order",
-    "binding_partial\texamples.partial\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
-    "binding_partial\texamples.partial\thelper\t0\tdeclared\texamples.decls.helper",
+    "binding_partial\texamples.partial\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t5:11",
+    "binding_partial\texamples.partial\thelper\t0\tdeclared\texamples.decls.helper\t6:3",
     "binding_partial_module\texamples.partial\t2\t0\t0",
     "binding_unanswered\texamples.decls\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t0\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t1\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t2\tdeclared_order",
-    "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order"
+    "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order",
+    "binding_unbound\texamples.partial\tnot_declared_anywhere\t6:14",
+    "binding_unbound_module\texamples.partial\t1\t0"
   ]
 }
 
@@ -148,7 +152,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -267,13 +271,13 @@ fn census_observation_text(tree_stdout: String) -> String {
     + (distinct_lines(lines: partial_lines(stdout: tree_stdout)) |> join(separator: "\n")) + "\n"
 }
 
-// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_binding_census
-// occurrence_binding_partial_lines), forwarded as printed. They never count as observation of the module:
+// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_resolution_census
+// occurrence_resolution_partial_lines), forwarded as printed. They never count as observation of the module:
 // observed_modules reads only binding_module, and the module's binding_unreached line still stands. The
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
 fn partial_lines(stdout: String) -> List<String> {
-  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t"))
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
 }
 
 fn ambient_name_census_standing(
@@ -295,6 +299,17 @@ fn ambient_name_census_standing(
   // refused, which is not the same fact as never read. Both leave the wave's edits unjudged at
   // occurrence grain, so both answer 2; they are named apart so the cause is not misreported.
   let refused_modules = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
+  // WHICH refusal each refused module carries, read off the walk's OWN row rather than re-derived here: the
+  // two trailing fields of a binding_unreached line are the cause symbol and the locus the resolver located
+  // (v2.compiler.source_root_eval native_census_infer_first_refusal_text, whose source is the demand
+  // census's first-reason/first-unbound derivation). A row without them -- an older walk, or a module that
+  // refused before resolve -- reads as "-" and the receipt says so instead of guessing a cause.
+  let refused_first_refusal = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) {
+    let cause = field_at(line: l, index: 3)
+    let locus = field_at(line: l, index: 4)
+    map_insert(m, field_at(line: l, index: 1),
+      (if cause == "" { "-" } else { cause }) + "\t" + (if locus == "" { "-" } else { locus }))
+  })
   let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
   let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
   let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
@@ -303,7 +318,7 @@ fn ambient_name_census_standing(
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
     |> map(l => "rewritten\t" + l + "\t" + module_subjects_text(attribution: attribution, module: field_at(line: l, index: 0)))
   let subject_lines = map_keys(observed) |> map(m => "module_subjects\t" + m + "\t" + module_subjects_text(attribution: attribution, module: m))
-  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_binding_census UnrecordedSplit): declared-order
+  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_resolution_census UnrecordedSplit): declared-order
   // heads no one resolves, printed by module and path and counted, never refused and never hidden.
   let unanswered = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unanswered\t")))
   let bytes = census_observation_text(tree_stdout: tree_stdout)
@@ -312,7 +327,8 @@ fn ambient_name_census_standing(
     + (unanswered |> join(separator: "\n")) + "\n"
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
-    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })
+      + "\t" + (match map_get(refused_first_refusal, m) { Present { value: refusal } => refusal  Absent => "-\t-" })) |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
@@ -342,5 +358,118 @@ fn ambient_name_census_standing(
               }
           }
       }
+  }
+}
+
+// THE WAVE SCOPE of one census run (GUNBC_WAVE_SHARD, empty for the whole wave): the rewritten modules (the `module`
+// lines of the host's rewritten text) this run's mode owns, so a shard's head census covers its members and their
+// closures instead of the whole wave.
+fn ambient_census_scoped_rewritten(rewritten: String, shard_mode: String) -> List<String> {
+  shard_owned_rewritten(rewritten: rewritten, shard_mode: shard_mode)
+}
+
+// THE ACCEPTANCE KIT'S FIXTURE PAIR (gunbc.namespace_cut.migration_kit), censused as its own subjects. The census
+// fixture root cannot hold it (no std to bind a primitive-authority name against), so the host writes these modules
+// into a third root and runs census-scoped over them with the real source roots; their printed rows come back
+// prefixed `kit_fixture\t` (ambient_name_census_standing_with_kit) after every existing row, which stays byte-identical.
+// One pair per row: the name called with no import, and with `import <home> { <name> }`.
+fn ambient_census_kit_rows() -> List<AmbientNameHome> {
+  ambient_name_homes() + (ambient_name_candidates() |> filter(c => count(ambient_name_homes() |> filter(h => h.name == c.name)) == 0))
+}
+
+fn ambient_census_kit_module(row: AmbientNameHome, imported: Bool) -> String {
+  "examples.kit_" + row.name + (if imported { "_imported" } else { "_unimported" })
+}
+
+fn kit_type_text(t: AmbientNameKitType) -> String {
+  t.name + (if count(t.arguments) == 0 { "" } else { "<" + (t.arguments |> map(a => kit_type_text(t: a)) |> join(separator: ", ")) + ">" })
+}
+
+// Every (home, name) a type mentions, each once: the imports a fixture needs are read off the references.
+fn kit_type_imports(t: AmbientNameKitType) -> List<String> {
+  fold(t.arguments, init: ["import " + t.home + " { " + t.name + " }"], f: fn(acc, a) {
+    fold(kit_type_imports(t: a), init: acc, f: fn(seen, i) { if count(seen |> filter(x => x == i)) == 0 { seen + [i] } else { seen } })
+  })
+}
+
+fn kit_types_imports(types: List<AmbientNameKitType>) -> List<String> {
+  fold(types, init: [], f: fn(acc, t) {
+    fold(kit_type_imports(t: t), init: acc, f: fn(seen, i) { if count(seen |> filter(x => x == i)) == 0 { seen + [i] } else { seen } })
+  })
+}
+
+// The probe's signature types and its one use of the row's spelling, by probe kind. The type-use probe's result is Int,
+// so its body is a literal and the parameter annotation is the spelling's only occurrence.
+fn kit_probe_types(probe: AmbientNameKitProbe) -> List<AmbientNameKitType> {
+  match probe {
+    KitCallProbe { call: c } => c.params |> map(p => p.type_ref) + [c.result]
+    KitTypeUseProbe { arguments: args } => args + [kit_int()]
+  }
+}
+
+fn kit_probe_text(row: AmbientNameHome) -> String {
+  match row.kit_probe {
+    KitCallProbe { call: c } =>
+      "fn probe(" + (c.params |> map(p => p.name + ": " + kit_type_text(t: p.type_ref)) |> join(separator: ", ")) + ") -> " + kit_type_text(t: c.result)
+        + " { " + row.name + "(" + (c.params |> map(p => p.name) |> join(separator: ", ")) + ") }\n"
+    KitTypeUseProbe { arguments: args } =>
+      "fn probe(m: " + row.name + (if count(args) == 0 { "" } else { "<" + (args |> map(a => kit_type_text(t: a)) |> join(separator: ", ")) + ">" }) + ") -> Int { 0 }\n"
+  }
+}
+
+fn ambient_census_kit_source(row: AmbientNameHome, imported: Bool) -> String {
+  "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
+    + (kit_types_imports(types: kit_probe_types(probe: row.kit_probe)) |> map(i => i + "\n") |> join(separator: ""))
+    + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
+    + kit_probe_text(row: row)
+}
+
+fn ambient_census_kit_files() -> List<AmbientCensusFixtureFile> {
+  ambient_census_kit_rows() |> flat_map(r => [
+    AmbientCensusFixtureFile { path: "examples/kit_" + r.name + "_unimported.dag", content: ambient_census_kit_source(row: r, imported: false) },
+    AmbientCensusFixtureFile { path: "examples/kit_" + r.name + "_imported.dag", content: ambient_census_kit_source(row: r, imported: true) }
+  ])
+}
+
+fn ambient_census_kit_subjects() -> List<String> {
+  ambient_census_kit_rows() |> flat_map(r => [ambient_census_kit_module(row: r, imported: false), ambient_census_kit_module(row: r, imported: true)])
+}
+
+// THE LABEL'S ANSWER PLUS THE KIT'S ROWS. The six-argument standing is unchanged (a second reader calls it); this wraps
+// it, so every existing row and the exit are exactly its own, and the kit run's rows follow under their own prefix.
+// A kit run that observed nothing prints no kit_fixture row, which the kit's consumer reads as not-runnable.
+fn ambient_name_census_standing_with_kit(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_runs: String,
+  rewritten: String,
+  kit_stdout: String,
+  kit_root: String
+) -> CliWireResponse {
+  let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten)
+  ambient_census_kit_standing(base: base, kit_stdout: kit_stdout, kit_root: kit_root)
+}
+
+// THE KIT'S JUDGMENT OVER AN ALREADY-READ BASE STANDING, apart from the runs that feed it so a claim can supply both
+// (test.claim.ambient_name_census_kit_unobserved).
+fn ambient_census_kit_standing(base: CliWireResponse, kit_stdout: String, kit_root: String) -> CliWireResponse {
+  let kit_lines = split(s: kit_stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unreached\t") || starts_with(s: l, prefix: "binding_module\t"))
+    |> map(l => "kit_fixture\t" + l)
+  // A DECLARED KIT THE CENSUS DID NOT OBSERVE IS NO OBSERVATION, NEVER A HELD ONE (DESIGN section 5): a kit run
+  // that refused (a source root the native lane would not bind, an unreadable kit tree) prints no binding row, and
+  // holding exit 0 over it would hide the kit controls. It refuses 2 naming the kit root; a reading the base already
+  // refused keeps its own, earlier cause.
+  match base {
+    CliWirePrintable { bytes: b, exit: ExitSuccess } =>
+      if count(kit_lines) == 0 {
+        CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: "kit_unobserved: the kit run over kit root " + kit_root + " printed no binding row for any of " + to_string(count(ambient_census_kit_subjects())) + " kit subject(s), so the kit fixtures were not observed" } }
+      } else {
+        CliWirePrintable { bytes: b + (kit_lines |> join(separator: "\n")) + "\n", exit: ExitSuccess }
+      }
+    CliWirePrintable { bytes: b, exit: e } => CliWirePrintable { bytes: b + (kit_lines |> join(separator: "\n")) + "\n", exit: e }
+    other => other
   }
 }

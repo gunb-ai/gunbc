@@ -4,6 +4,7 @@
 use self::ConversionEndpoint::*;
 use self::ConversionPhase::*;
 use self::ConversionPlanJudgment::*;
+use self::CrossingPlanSelection::*;
 use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
 use self::ReferenceIdentityUnavailableCause::*;
@@ -13,7 +14,11 @@ use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_count_shape, collection_map_shape,
+};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
+pub use crate::std_host_text::{chars, text_of_chars};
 use crate::std_literal_elaboration::LiteralSourceKind::*;
 pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
 pub use crate::std_optional::Optional;
@@ -329,7 +334,7 @@ pub struct ConversionPlan {
 }
 
 pub fn conversion_plan_identity(plan: Rc<ConversionPlan>) -> String {
-    plan.route.clone().decl_name.clone()
+    plan.route.decl_name.clone()
 }
 
 pub fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> Rc<ConversionEndpoint> {
@@ -487,13 +492,9 @@ pub fn judge_conversion_plan(
                         })
                     }
                     Some(plan) => {
-                        if (conversion_endpoint_eq(
-                            conversion_plan_source(plan.clone()),
-                            source.clone(),
-                        ) && conversion_endpoint_eq(
-                            conversion_plan_target(plan.clone()),
-                            target.clone(),
-                        )) {
+                        if (conversion_endpoint_eq(conversion_plan_source(plan.clone()), source)
+                            && conversion_endpoint_eq(conversion_plan_target(plan.clone()), target))
+                        {
                             Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
                                 plan: plan.clone(),
                             })
@@ -582,7 +583,90 @@ pub fn judge_text_conversion_plan(
                     })
                 }
                 TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
-                    judge_conversion_plan(rows.clone(), route.clone(), se.clone(), te.clone())
+                    judge_conversion_plan(rows, route, se.clone(), te.clone())
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CrossingPlanSelection {
+    CrossingPlanJudged {
+        judgment: Rc<ConversionPlanJudgment>,
+    },
+    CrossingPlanNone,
+    CrossingPlanSeveral {
+        routes: Rc<Vec<Rc<DeclarationRef>>>,
+    },
+}
+
+pub fn select_text_crossing_plan(
+    rows: Rc<Vec<Rc<ConversionPlan>>>,
+    source: TextRepresentation,
+    target: TextRepresentation,
+) -> Rc<CrossingPlanSelection> {
+    match (*text_plan_endpoint(source.clone())).clone() {
+        TextPlanEndpoint::TextPlanEndpointUnkeyed => {
+            Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                judgment: Rc::new(ConversionPlanJudgment::ConversionPlanEndpointNotText {
+                    source: source.clone(),
+                    target: target.clone(),
+                }),
+            })
+        }
+        TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: se, .. } => {
+            match (*text_plan_endpoint(target.clone())).clone() {
+                TextPlanEndpoint::TextPlanEndpointUnkeyed => {
+                    Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                        judgment: Rc::new(ConversionPlanJudgment::ConversionPlanEndpointNotText {
+                            source: source.clone(),
+                            target: target.clone(),
+                        }),
+                    })
+                }
+                TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
+                    let between = Rc::new({
+                        let mut __result = Vec::new();
+                        for r in rows.iter().cloned() {
+                            if (conversion_endpoint_eq(
+                                conversion_plan_source(r.clone()),
+                                se.clone(),
+                            ) && conversion_endpoint_eq(
+                                conversion_plan_target(r.clone()),
+                                te.clone(),
+                            )) {
+                                __result.push(r);
+                            }
+                        }
+                        __result
+                    });
+                    if ((between.clone().len() as i64) > 1) {
+                        Rc::new(CrossingPlanSelection::CrossingPlanSeveral {
+                            routes: Rc::new({
+                                let mut __result = Vec::new();
+                                for r in between.iter().cloned() {
+                                    __result.push(r.route.clone());
+                                }
+                                __result
+                            }),
+                        })
+                    } else {
+                        match between.clone().first().cloned() {
+                            std::option::Option::None => {
+                                Rc::new(CrossingPlanSelection::CrossingPlanNone)
+                            }
+                            Some(plan) => Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                                judgment: judge_conversion_plan(
+                                    rows.clone(),
+                                    plan.route.clone(),
+                                    se.clone(),
+                                    te.clone(),
+                                ),
+                            }),
+                        }
+                    }
                 }
             }
         }
@@ -590,11 +674,11 @@ pub fn judge_text_conversion_plan(
 }
 
 pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
-    Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&s)
 }
 
 pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {
-    v1_rt::chars_to_string(&xs, 0, (xs.clone().len() as i64))
+    crate::std_host_text::text_of_chars(xs)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

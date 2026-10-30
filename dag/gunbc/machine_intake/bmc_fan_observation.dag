@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_fan_observation
 
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation,
   ChassisPowerRead,
@@ -9,8 +10,9 @@ import extdeps.bmc.ipmi_chassis_control {
   chassis_observation,
 }
 import std.algebra { trim }
+import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { ObservationRoundCount, SdrUndecodedLineCount, Second, observation_round_count_value, sdr_undecoded_line_count_value, second, second_count }
+import std.measure { ObservationRoundCount, Second, observation_round_count_value, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.ipmi_sdr {
@@ -20,16 +22,18 @@ import extdeps.bmc.ipmi_sdr {
   SdrLineResult,
   SdrFanRpm,
   SdrTypeLine,
+  SdrEmptyReadingRow,
   SdrTemperaturePublication,
   TemperaturePublished,
   TemperatureSensorsSilent,
   TemperatureNoSensorRows,
   TemperatureUndecodable,
   sdr_decode_lines,
+  sdr_unrecognised_temperature_texts,
   sdr_decoded_lines,
+  sdr_empty_reading_row,
   sdr_fan_reading,
   sdr_temperature_publication,
-  sdr_unstructured_count,
   sdr_unstructured_texts,
 }
 import product.fan_tach { FanTachEndpointIdentity }
@@ -98,24 +102,29 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // with the boot handoff's power-state read.
 
 type ThermalObservation
-  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
+  = ThermalRead { publication: SdrTemperaturePublication, undecoded_texts: List<String>, unrecognised_readings: List<String> }
   | ThermalUnreadable
 
 // THE FAN READ GETS THE SAME ARM, AND IT IS THE FOURTH TIME THIS ONE DEFECT HAS BEEN FIXED IN THIS
 // MODULE. The sentinel window zero, the substituted SDR field, the benign chassis and thermal else
 // branches - and then fan_lines, which kept `else { [] }` while the header above declared the class
 // closed. An empty list from a FAILED read is byte-identical to a controller that answered and
-// published no fan sensors: sdr_unstructured_count over the same empty results is 0, so the receipt
+// published no fan sensors: the undecoded count over the same empty results was 0, so the receipt
 // printed `fan_sensors=0 fan_undecoded_line_count=0` for both, samples_of_round emitted nothing,
 // and the series was still reported as taken.
 //
-// THE UNDECODED COUNTS MOVE INSIDE THEIR READS FOR THE SAME REASON. They were separate fields
-// computed from the decode results whether or not the read succeeded, so a failed read printed a
-// count of zero undecoded lines - a measurement of text nobody received. A count is a property OF a
-// read, not of a round, and putting it inside the arm makes that unwritable rather than merely
-// avoided.
+// THE UNDECODED ROWS MOVE INSIDE THEIR READS FOR THE SAME REASON, AND THEY ARE RECORDED, NOT
+// COUNTED. They were separate fields computed from the decode results whether or not the read
+// succeeded, so a failed read printed a count of zero undecoded lines - a measurement of text
+// nobody received. A count is a property OF a read, not of a round, and putting it inside the arm
+// makes that unwritable rather than merely avoided. The count was then dropped for the rows
+// themselves (boot 5, run 40258937016: four temperature rows refused unread and the fan-gate
+// observation carried only `undecoded=4` -- the operator could not see WHICH rows, while the fan
+// side of the same observation had always listed each row as fan_undecoded_line=[..]). An unread
+// row is only diagnosable at its text, so both reads now carry the texts and render_round_block
+// prints each one.
 type FanSensorObservation
-  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_lines: List<String> }
+  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_lines: List<String>, failure_rows: List<SdrEmptyReadingRow> }
   | FanSensorsUnreadable
 
 type FanObservationRound {
@@ -176,7 +185,7 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
     } else {
       match round.thermal {
         ThermalUnreadable => HostPostStateUnobserved
-        ThermalRead { publication: p, undecoded_line_count: _ } => match p {
+        ThermalRead { publication: p, undecoded_texts: _, unrecognised_readings: _ } => match p {
           TemperaturePublished => HostPosted
           TemperatureSensorsSilent => HostPoweredOnPrePost
           TemperatureUndecodable => HostPostStateUnobserved
@@ -217,6 +226,7 @@ fn observe_fan_round(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   round_index: Int,
+  cipher_suite: IpmiCipherSuite?,
 ) -> FanObservationRound
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
@@ -225,6 +235,7 @@ fn observe_fan_round(
     password_file: password_file,
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   temps = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
@@ -233,6 +244,7 @@ fn observe_fan_round(
     sensor_type: "Temperature",
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   fans = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
@@ -241,6 +253,7 @@ fn observe_fan_round(
     sensor_type: "Fan",
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   let temp_results = sdr_decode_lines(stdout: temps.stdout)
   let fan_results = sdr_decode_lines(stdout: fans.stdout)
@@ -254,11 +267,18 @@ fn observe_fan_round(
   }
 }
 
+// Each unstructured line is classified ONCE: a FANn_Failure empty-reading row, or any other undecoded text.
+type FanUnstructuredLine
+  = FanUnstructuredFailure { row: SdrEmptyReadingRow }
+  | FanUnstructuredOther { text: String }
+
 fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObservation {
   if success {
+    let classified = map(sdr_unstructured_texts(results: results), t => match fan_failure_empty_row(text: t) { Present { value: r } => FanUnstructuredFailure { row: r }  Absent => FanUnstructuredOther { text: t } })
     FanSensorsRead {
       lines: sdr_decoded_lines(results: results),
-      undecoded_lines: sdr_unstructured_texts(results: results),
+      undecoded_lines: flat_map(classified, c => match c { FanUnstructuredOther { text: t } => [t]  FanUnstructuredFailure { row: _ } => [] }),
+      failure_rows: flat_map(classified, c => match c { FanUnstructuredFailure { row: r } => [r]  FanUnstructuredOther { text: _ } => [] }),
     }
   } else {
     FanSensorsUnreadable
@@ -277,7 +297,8 @@ fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalOb
   if success {
     ThermalRead {
       publication: sdr_temperature_publication(results: results),
-      undecoded_line_count: sdr_unstructured_count(results: results),
+      undecoded_texts: sdr_unstructured_texts(results: results),
+      unrecognised_readings: sdr_unrecognised_temperature_texts(results: results),
     }
   } else {
     ThermalUnreadable
@@ -305,6 +326,7 @@ fn observe_fan_series(
   round_index: Int,
   interval: Second,
   acc: List<FanObservationRound>,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<FanObservationRound>
 {
   if rounds_remaining <= 0 {
@@ -315,6 +337,7 @@ fn observe_fan_series(
     username: username,
     password_file: password_file,
     round_index: round_index,
+    cipher_suite: cipher_suite,
   )
   let next = acc.append(round)
   if rounds_remaining == 1 {
@@ -329,6 +352,7 @@ fn observe_fan_series(
     round_index: round_index + 1,
     interval: interval,
     acc: next,
+    cipher_suite: cipher_suite,
   )
 }
 
@@ -424,23 +448,23 @@ fn render_round(round: FanObservationRound) -> String {
 fn round_fan_lines(round: FanObservationRound) -> List<SdrTypeLine> {
   match round.fans {
     FanSensorsUnreadable => []
-    FanSensorsRead { lines: l, undecoded_lines: _ } => l
+    FanSensorsRead { lines: l, undecoded_lines: _, failure_rows: _ } => l
   }
 }
 
 fn render_fan_observation(fans: FanSensorObservation) -> String {
   match fans {
     FanSensorsUnreadable => "UNREAD"
-    FanSensorsRead { lines: l, undecoded_lines: u } =>
-      join(["sensors=", to_string(l.length()), " undecoded=", to_string(u.length())], "")
+    FanSensorsRead { lines: l, undecoded_lines: u, failure_rows: f } =>
+      join(["sensors=", to_string(l.length()), " undecoded=", to_string(u.length()), " failure_rows=", to_string(f.length())], "")
   }
 }
 
 fn render_thermal_detail(thermal: ThermalObservation) -> String {
   match thermal {
     ThermalUnreadable => "UNREAD"
-    ThermalRead { publication: p, undecoded_line_count: u } =>
-      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+    ThermalRead { publication: p, undecoded_texts: u, unrecognised_readings: r } =>
+      join([render_thermal_publication(publication: p), " undecoded=", to_string(u.length()), " unrecognised=", to_string(r.length())], "")
   }
 }
 
@@ -473,14 +497,44 @@ fn render_fan_line(round: FanObservationRound, line: SdrTypeLine) -> String {
 fn round_undecoded_fan_lines(round: FanObservationRound) -> List<String> {
   match round.fans {
     FanSensorsUnreadable => []
-    FanSensorsRead { lines: _, undecoded_lines: u } => u
+    FanSensorsRead { lines: _, undecoded_lines: u, failure_rows: _ } => u
+  }
+}
+
+fn round_fan_failure_rows(round: FanObservationRound) -> List<SdrEmptyReadingRow> {
+  match round.fans {
+    FanSensorsUnreadable => []
+    FanSensorsRead { lines: _, undecoded_lines: _, failure_rows: f } => f
+  }
+}
+
+// THE STRUCTURAL SHAPE OF A FAN FAILURE SENSOR ROW WITH NO READING TEXT: a five-cell row (extdeps.bmc.ipmi_sdr
+// sdr_empty_reading_row) whose name is a FANn_Failure discrete sensor. The name selects the sensor KIND only;
+// whether the row admits is the verdict's judgment of its status (chassis_fan_establishment).
+fn fan_failure_sensor_name(name: String) -> Bool {
+  starts_with(s: name, prefix: "FAN") && ends_with(s: name, suffix: "_Failure")
+}
+
+fn fan_failure_empty_row(text: String) -> SdrEmptyReadingRow? {
+  match sdr_empty_reading_row(text: text) {
+    Absent => none
+    Present { value: r } => if fan_failure_sensor_name(name: r.name as String) { Present { value: r } } else { none }
+  }
+}
+
+fn round_thermal_undecoded_texts(round: FanObservationRound) -> List<String> {
+  match round.thermal {
+    ThermalUnreadable => []
+    ThermalRead { publication: _, undecoded_texts: u, unrecognised_readings: _ } => u
   }
 }
 
 fn render_round_block(round: FanObservationRound) -> String {
   join([render_round(round: round)]
     .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l)))
-    .concat(map(round_undecoded_fan_lines(round: round), t => join(["  round=", to_string(round.round_index), " fan_undecoded_line=[", t, "]"], ""))), "\n")
+    .concat(map(round_fan_failure_rows(round: round), r => join(["  round=", to_string(round.round_index), " fan_failure_row=[", r.text, "]"], "")))
+    .concat(map(round_undecoded_fan_lines(round: round), t => join(["  round=", to_string(round.round_index), " fan_undecoded_line=[", t, "]"], "")))
+    .concat(map(round_thermal_undecoded_texts(round: round), t => join(["  round=", to_string(round.round_index), " thermal_undecoded_row=[", t, "]"], ""))), "\n")
 }
 
 fn render_series(rounds: List<FanObservationRound>) -> String {
@@ -506,6 +560,7 @@ fn observe_fan_policy(
   password_file: NonEmptyStr,
   rounds: ObservationRoundCount,
   interval: Second,
+  cipher_suite: IpmiCipherSuite?,
 ) -> FanObservationSeries
 {
   if trim(username as String) == "" {
@@ -528,6 +583,7 @@ fn observe_fan_policy(
     round_index: 0,
     interval: interval,
     acc: [],
+    cipher_suite: cipher_suite,
   )
   return if fold(series, init: false, f: (acc, r) => acc || chassis_was_read(chassis: r.chassis)) {
     FanObservationTaken { rounds: series, interval: interval }

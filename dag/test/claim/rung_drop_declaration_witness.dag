@@ -1,16 +1,30 @@
 module test.claim.rung_drop_declaration_witness
 
+import gunbc.rung_drop.node_reaching_composite_equality { node_reaching_composite_equality }
+
 import std.types { String, Bool, NonEmptyStr }
+import std.algebra { FreeSemigroup, list_append }
 import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable, guarantee_rung_label,
 }
 import gunbc.rung_drop {
-  RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
-  rung_drop_declaration_message, rung_drop_off_ladder_judgment,
+  RungDrop, TypedDeclaration, Enumerated, NotYetCounted, NoInstrumentObservesTheZero, DerivedBy, DeletedWithoutReplacement, Standing,
+  rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
+  population_from_list, rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops, every_legacy_arm_is_claimed_exactly_once,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
+import extdeps.bazel.label { Label, TargetName }
+import gunbc.instrument_targets { instruments_package, compile_clean_diagnostic_census_label }
+import gunbc.required_ci_phase_roster { ParsePhase, GeneratedArtifactPhase, FloorPhase, required_ci_phases, regenerating_phase_names }
+import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.direct_call_unbound_carried_generic_compat { direct_call_unbound_carried_generic_compat }
+import gunbc.rung_drop.floor_cut_regen_second_generation_agreement { floor_cut_regen_second_generation_agreement }
+import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
+import gunbc.rung_drop.emitted_bytes_witness_required_lane { emitted_bytes_witness_required_lane }
+import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
+import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
@@ -19,14 +33,13 @@ data control_rung_drop: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: ["control.population.one"],
+    population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger"
-  }
+  } }
 }
 
 // THE SAME CONTROL, EXCEPT THAT ITS TRIGGER ALREADY CLOSES ITS SENTENCE. The period is the one
@@ -36,14 +49,13 @@ data control_rung_drop_with_terminated_trigger: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: ["control.population.one"],
+    population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger."
-  }
+  } }
 }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
@@ -114,7 +126,7 @@ test fn rung_drop_message_discriminates_between_rows() -> Bool {
 // TWO SPELLINGS, TWO ARMS, ONE TERMINATOR EACH. A trigger with no period gets one appended; a
 // trigger already ending in exactly one period gets nothing appended. Both arms are asserted
 // because they fail differently: unconditional appending (the defect that put 21 double periods
-// into docs/design-rung-drops.md) reds the terminated arm, and never appending reds the
+// into `gunbc.design_ledgers` `expected_design_rung_drops_md`) reds the terminated arm, and never appending reds the
 // unterminated arm. The exact single-period suffix is the whole check -- a rendering ending
 // "trigger.." does not carry the suffix "trigger." -- so no separate double-period clause is
 // needed. This establishes NOTHING about a trigger authored with ".." or "..."; the projector
@@ -124,4 +136,125 @@ test fn unterminated_trigger_gains_one_period_and_terminated_trigger_gains_none(
   let terminated = rung_drop_declaration_message(d: control_rung_drop_with_terminated_trigger)
   ends_with(s: unterminated, suffix: "control restoration trigger.")
     && ends_with(s: terminated, suffix: "control restoration trigger.")
+}
+
+// READABILITY: THE RED AND ITS POSITIVE CONTROL. A Standing typed drop whose population is an empty
+// enumeration, or a derivation naming a label the instrument roster does not hold, is refused; a
+// non-empty enumeration and a derivation by a real roster label are accepted. Each control differs
+// from the others only in its population, so the verdict cannot come from another field.
+data unreadable_empty_population: RungDrop = RungDrop {
+  identity: "control.empty" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+    restoration_trigger: "control restoration trigger"
+  } }
+}
+
+data unreadable_unknown_label: RungDrop = RungDrop {
+  identity: "control.unknown_label" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: DerivedBy { label: Label { package: instruments_package() target: TargetName { name: "no-such-instrument" as NonEmptyStr } } },
+    restoration_trigger: "control restoration trigger"
+  } }
+}
+
+data readable_derived_label: RungDrop = RungDrop {
+  identity: "control.derived" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: DerivedBy { label: compile_clean_diagnostic_census_label() },
+    restoration_trigger: "control restoration trigger"
+  } }
+}
+
+test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_ones_are_accepted() -> Bool {
+  !rung_drop_is_readable(d: unreadable_empty_population)
+    && !rung_drop_is_readable(d: unreadable_unknown_label)
+    && rung_drop_is_readable(d: control_rung_drop)
+    && rung_drop_is_readable(d: readable_derived_label)
+    && !rung_drop_is_readable(d: node_reaching_composite_equality)
+}
+
+test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() -> Bool {
+  every_unreadable_standing_drop_is_not_yet_counted(ds: rung_drop_roster)
+}
+
+// A TYPED NOT-YET-COUNTED ROW RENDERS THE CAPABILITY ITS CAUSE NAMES. The cause names the MISSING CAPABILITY, so the
+// rendering is the only consumer that makes an arm more than a spelling. RED: a renderer that dropped the cause, or a row
+// naming the wrong capability, fails the needle; the two rows carry DIFFERENT causes (an unobserved zero; an empty derived
+// enumeration through population_from_list), so one constant string cannot satisfy all four assertions.
+data empty_derived_enumeration_conversion: RungDrop = RungDrop {
+  identity: "empty_derived_enumeration_conversion" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: population_from_list(xs: []),
+    restoration_trigger: "control restoration trigger"
+  } }
+}
+
+test fn each_typed_uncounted_row_renders_the_capability_it_lacks() -> Bool {
+  contains_text(haystack: rung_drop_declaration_message(d: empty_derived_enumeration_conversion), needle: "a derived enumeration yielded no member")
+    && !contains_text(haystack: rung_drop_declaration_message(d: empty_derived_enumeration_conversion), needle: "no instrument observes the zero")
+    && contains_text(haystack: rung_drop_declaration_message(d: typed_text_boundary_conversion), needle: "no instrument observes the zero")
+    && !contains_text(haystack: rung_drop_declaration_message(d: typed_text_boundary_conversion), needle: "a derived enumeration yielded no member")
+}
+
+// POSITIVE CONTROL / BOUND: the multi-population rows (2, 4) and the rows whose prose does not state every typed field (1, 6) stay counted prose debt, while
+// the two converted rows are no longer prose debt.
+test fn the_converted_rows_leave_prose_debt_and_the_multi_population_rows_stay() -> Bool {
+  let ids = map(authored_prose_rung_drops(ds: rung_drop_roster), d => d.identity)
+  length(xs: filter(ids, i => i == required_gate_bankruptcy.identity)) == 1
+    && length(xs: filter(ids, i => i == text_boundary_identity_wall.identity)) == 1
+    && length(xs: filter(ids, i => i == direct_call_unbound_carried_generic_compat.identity)) == 1
+    && length(xs: filter(ids, i => i == floor_cut_regen_second_generation_agreement.identity)) == 0
+    && length(xs: filter(ids, i => i == floor_cost_high_cpu_withheld.identity)) == 0
+    && length(xs: filter(ids, i => i == emitted_bytes_witness_required_lane.identity)) == 1
+}
+
+// RED: A PROSE ROW CONVERTED TO TYPED WITHOUT DELETING ITS LEGACY ARM IS REFUSED. The converted four have no arm left to re-list
+// (the constructor is gone, which is the stronger rung); the same mechanism is exercised on a row that still has one: replace
+// text_boundary_identity_wall by a typed row of the same identity and its arm goes unclaimed. Positive control: the real roster.
+data typed_text_boundary_conversion: RungDrop = RungDrop {
+  identity: "text_boundary_identity_wall" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+    restoration_trigger: "control restoration trigger"
+  } }
+}
+
+test fn a_converted_row_left_in_the_legacy_roster_is_refused_and_the_real_roster_is_accepted() -> Bool {
+  let converted = list_append(left: filter(rung_drop_roster, d => d.identity != "text_boundary_identity_wall"), right: [typed_text_boundary_conversion])
+  every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
+    && !every_legacy_arm_is_claimed_exactly_once(ds: converted)
+}
+
+// RED + CONTROL, THE POPULATION IS DERIVED FROM THE PROPERTY AND NOT SPELLED FROM THE TYPE: a roster that enrols a regenerating phase
+// yields it, one that does not yields nothing, and a non-regenerating enrolled phase never enters. The real roster is the positive control.
+test fn the_regen_population_is_the_required_phases_that_regenerate() -> Bool {
+  regenerating_phase_names(phases: [ParsePhase, GeneratedArtifactPhase, FloorPhase]) == ["generated-artifact"]
+    && length(xs: regenerating_phase_names(phases: [ParsePhase, FloorPhase])) == 0
+    && regenerating_phase_names(phases: required_ci_phases) == ["generated-artifact"]
 }

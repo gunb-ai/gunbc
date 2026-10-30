@@ -2,10 +2,12 @@ module gunbc.actions_run_binding
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
+import std.optional { Present }
 import extdeps.shell
 import extdeps.github.actions_environment {
   github_sha_variable_name,
   github_run_id_variable_name,
+  github_run_attempt_variable_name,
   github_repository_variable_name,
   github_workflow_ref_variable_name,
 }
@@ -27,11 +29,19 @@ import gunbc.running_release_identity { release_revision_text_valid }
 // checkout would compare git to itself (gunbc.live_rust_observation LiveRustObservationRequest).
 // Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a
 // run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing.
+//
+// TWO REVISIONS, TWO MEANINGS (§3, meaning fork). run_revision is the commit GitHub DISPATCHED the
+// run at (GITHUB_SHA): it is what the workflow-runs API attests as head_sha, so an API-provenance
+// comparison reads it. execution_revision is the commit whose tree the run CHECKED OUT AND BUILT:
+// apply and dashboard_deploy execute at the plan's revision while dispatched from main's later head,
+// so the two differ there and agree everywhere else. Plan/binary/checkout/deployment agreement
+// reads execution_revision; API provenance reads run_revision. Neither field stands in for the other.
 type ActionsRunBinding {
   repository: String
   workflow_ref: String
   run_id: String
   run_revision: String
+  execution_revision: String
 }
 
 type ActionsRunBindingObservation
@@ -61,6 +71,21 @@ fn actions_variable_trimmed(name: NonEmptyStr) -> String {
   }
 }
 
+// ONE LABEL PER RUN AND RUN ATTEMPT, for a fleet-converge mode that owns per-run names or paths (the qualification
+// attempt's branch and SSH context, the lost-boot sweep dry run's SSH context). The prefix names the mode and a re-run
+// is a different label; it is a single ref and path segment. An unset coordinate is no label, never a default.
+fn actions_run_attempt_label(prefix: String, run_id: String, run_attempt: String) -> NonEmptyStr? {
+  if trim(s: run_id) == "" || trim(s: run_attempt) == "" { none } else { Present { value: join([prefix, "-", trim(s: run_id), "-", trim(s: run_attempt)], "") as NonEmptyStr } }
+}
+
+fn actions_run_attempt_label_of_run(prefix: String) -> NonEmptyStr? {
+  actions_run_attempt_label(
+    prefix: prefix,
+    run_id: actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr),
+    run_attempt: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr),
+  )
+}
+
 fn observe_actions_run_binding() -> ActionsRunBindingObservation {
   match actions_variable_read(name: github_repository_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
@@ -83,6 +108,7 @@ fn observe_actions_run_binding() -> ActionsRunBindingObservation {
                         workflow_ref: workflow_ref,
                         run_id: run_id,
                         run_revision: sha,
+                        execution_revision: sha,
                       },
                     }
                   }
@@ -97,6 +123,14 @@ fn observe_actions_run_binding() -> ActionsRunBindingObservation {
 data rlm_expected_revision_env_name: String = "RLM_EXPECTED_REVISION"
 
 data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
+
+// THE SUBJECT, NAMED SEPARATELY FROM THE EXECUTOR (operator ruling 2026-10-24, after run 40085967610).
+// The host-file modes (converge, withdraw, restore) pin their job to `inputs.host` -- the EXECUTOR -- and
+// act on a DIFFERENT host named here, over the FleetSsh edge. The reason is the drain: capping the host
+// the job itself runs on means the bracket waits for its own executor slot to drain, which never
+// happens (srv3-13 ran the converge that tried to drain srv3). A mode whose executor equals its subject
+// refuses as a precondition, before any drain or mask actuation, and readback stays an edge read.
+data fleet_converge_subject_host_env_name: String = "FLEET_CONVERGE_SUBJECT_HOST"
 
 data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_SUBJECT"
 
@@ -122,10 +156,10 @@ type RunRevisionAdmission
   | RunRevisionRefused { expected: String, observed: String }
 
 fn admit_run_revision(binding: ActionsRunBinding, expected: String) -> RunRevisionAdmission {
-  if binding.run_revision == expected {
+  if binding.execution_revision == expected {
     RunRevisionAdmitted { revision: expected }
   } else {
-    RunRevisionRefused { expected: expected, observed: binding.run_revision }
+    RunRevisionRefused { expected: expected, observed: binding.execution_revision }
   }
 }
 
@@ -138,9 +172,9 @@ fn admit_optional_expected_revision_given(read: ExpectedRevisionRead, binding: A
   match read {
     ExpectedRevisionPresent { revision: expected_r } => admit_run_revision(binding: binding, expected: expected_r)
     ExpectedRevisionAbsent { variable: _, detail: _ } =>
-      RunRevisionAdmitted { revision: binding.run_revision }
+      RunRevisionAdmitted { revision: binding.execution_revision }
     ExpectedRevisionMalformed { variable: _, value: r } =>
-      RunRevisionRefused { expected: r, observed: binding.run_revision }
+      RunRevisionRefused { expected: r, observed: binding.execution_revision }
   }
 }
 
@@ -158,7 +192,7 @@ fn run_binding_names_workflow_file(binding: ActionsRunBinding, workflow_path: St
 // distinguishes them and is compared by the join that knows which run is expected where.
 fn run_bindings_share_transaction(left: ActionsRunBinding, right: ActionsRunBinding, workflow_path: String) -> Bool {
   left.repository == right.repository
-    && left.run_revision == right.run_revision
+    && left.execution_revision == right.execution_revision
     && run_binding_names_workflow_file(binding: left, workflow_path: workflow_path)
     && run_binding_names_workflow_file(binding: right, workflow_path: workflow_path)
 }
@@ -169,6 +203,7 @@ fn actions_run_binding_json(binding: ActionsRunBinding) -> JsonValue {
     json_kv(key: "workflow_ref", value: json_string(s: binding.workflow_ref)),
     json_kv(key: "run_id", value: json_string(s: binding.run_id)),
     json_kv(key: "run_revision", value: json_string(s: binding.run_revision)),
+    json_kv(key: "execution_revision", value: json_string(s: binding.execution_revision)),
   ])
 }
 
@@ -205,17 +240,24 @@ fn actions_run_binding_of_json(doc: JsonValue) -> ActionsRunBindingDecode {
               match json_required_string_member(doc: doc, key: "run_revision") {
                 JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
                 JsonStringMemberFound { value: run_revision } =>
-                  if !release_revision_text_valid(text: run_revision) {
-                    ActionsRunBindingUnreadable { reason: "run_revision is not a 40-digit lower-hex revision" }
-                  } else {
-                    ActionsRunBindingDecoded {
-                      binding: ActionsRunBinding {
-                        repository: repository,
-                        workflow_ref: workflow_ref,
-                        run_id: run_id,
-                        run_revision: run_revision,
-                      },
-                    }
+                  match json_required_string_member(doc: doc, key: "execution_revision") {
+                    JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
+                    JsonStringMemberFound { value: execution_revision } =>
+                      if !release_revision_text_valid(text: run_revision) {
+                        ActionsRunBindingUnreadable { reason: "run_revision is not a 40-digit lower-hex revision" }
+                      } else if !release_revision_text_valid(text: execution_revision) {
+                        ActionsRunBindingUnreadable { reason: "execution_revision is not a 40-digit lower-hex revision" }
+                      } else {
+                        ActionsRunBindingDecoded {
+                          binding: ActionsRunBinding {
+                            repository: repository,
+                            workflow_ref: workflow_ref,
+                            run_id: run_id,
+                            run_revision: run_revision,
+                            execution_revision: execution_revision,
+                          },
+                        }
+                      }
                   }
               }
           }
@@ -233,5 +275,5 @@ fn actions_run_binding_of_member(doc: JsonValue, key: String) -> ActionsRunBindi
 }
 
 fn actions_run_binding_identity_text(binding: ActionsRunBinding) -> String {
-  join([binding.repository, "|", binding.workflow_ref, "|", binding.run_id, "|", binding.run_revision], "")
+  join([binding.repository, "|", binding.workflow_ref, "|", binding.run_id, "|", binding.run_revision, "|", binding.execution_revision], "")
 }

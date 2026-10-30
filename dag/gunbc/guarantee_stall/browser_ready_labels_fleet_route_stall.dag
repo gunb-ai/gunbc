@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall
 
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // THE READINESS-LABEL CONVERGE'S PRODUCTION FLEET ROUTE EXECUTES NOWHERE — A PRE-EXISTING STALL,
 // NOT AN EVENT (review round on gunbc#13401; the side chat's ruling: a gap that never held is a
@@ -17,12 +18,17 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // (test.claim.runner.browser_ready_label_real_path_witness): the production converge over
 // LocalShell, the unprivileged posture, against a mktemp scratch destination, with the unprivileged
 // reload honestly skipped as a typed posture arm.
+//
+// BOTH RUNNERS NOW ADMIT FleetSsh (the argv arm first, the stdin arm with the microVM controller's
+// administrator-edge install), so the refusal this stall was declared over no longer fires; what the
+// trigger still owes is the safely realized reload and an executing fleet receipt through this route,
+// and until one exists the route is unexercised, not shown to hold.
 data browser_ready_labels_fleet_route_stall: GuaranteeStall = GuaranteeStall {
-  subject: "The runner readiness-label converge over its production fleet route: every decision is typed and the step pairing is executed for real in the LocalRepoWet receipts over LocalShell against a scratch destination, but the production route itself -- whose transport is always FleetSsh -- is refused by both shared host-effect runners before any leg, so the converge executes nowhere over fleet and its outcome there is always BrowserReadyLabelsFailed.",
+  subject: "The runner readiness-label converge over its production fleet route: every decision is typed and the step pairing is executed for real in the LocalRepoWet receipts over LocalShell against a scratch destination, and the production route itself -- whose transport is always FleetSsh -- has no executing fleet receipt: both shared host-effect runners now admit FleetSsh, but no run has traversed the route, so its outcome over fleet is unobserved.",
   current: MechanicallyPreventable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "the shared host-effect FleetSsh argv and argv+stdin realization, plus a safe daemon-reload realization",
+    grounding: GroundingUndeclared,
   },
   population: BoundedPopulation { members: [
     "gunbc.runner.runner_browser_toolchain::browser_ready_labels_converge_wet over browser_ready_labels_production_target",

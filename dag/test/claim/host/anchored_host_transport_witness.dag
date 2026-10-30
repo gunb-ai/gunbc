@@ -1,0 +1,594 @@
+module test.claim.host.anchored_host_transport_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
+import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.anchored_host_transport {
+  AnchoredHostRow,
+  AnchoredBindingBound,
+  AnchoredBindingNotTheAnchoredHost,
+  AnchoredBindingAnchorNotForRow,
+  AnchoredBindingAnchorAbsent,
+  AnchoredBindingPresentedKeyMismatch,
+  AnchoredBindingRefused,
+  mtcollins1_anchored_host_row,
+  anchored_host_row_for,
+  anchored_host_trusted_row,
+  anchored_host_transport_of,
+  anchored_host_transport_against,
+  anchored_host_binding_refusal_reason,
+  anchored_host_key_scan_effect,
+  anchored_host_key_readback_go_step,
+  anchored_host_key_scan_argv_text,
+  anchored_host_pattern_citation,
+  anchored_host_token_source_citation,
+  anchored_host_transport_frontier_rows,
+  mtcollins1_host_key_anchor,
+  mtcollins1_host_key_read_obligation,
+  mtcollins1_anchored_host_row,
+}
+import gunbc.host.mtcollins1_ssh_host_key_mint { mtcollins1_host_key_mint_receipt_path }
+import gunbc.host.fleet_keypair_mint { mtcollins1_host_keypair_mint_subject }
+import extdeps.dns.domain_name { DnsLabel }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import extdeps.filesystem.filesystem_io
+import std.human_intervention { FleetOnce }
+import gunbc.auth.privileged_effect_census {
+  privileged_effect_census, PrivilegedEffectSite, RealizedFederatedGrant, site_verdict, SiteVerdict,
+  Conforms, DivergesWithReason, Diverges, SiteNotDecidable, mtcollins1_host_key_mint_effect,
+}
+import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, PatternSelected, FederatedScopedGrant }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+  fixture_public_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A transport must not become host-authenticated by a key nobody vouched for. These claims pin
+// gunbc.host.anchored_host_transport at the edges an anchor exists to hold: a PRESENTED key that does not
+// match the anchored statement refuses; a host with no row, or a row with no anchor, refuses outright --
+// matching against nothing is accepting anything; a transport whose address reaches another machine never
+// binds the anchored host. The positive control binds mtcollins1 on the fixture's public half read back
+// whole. And the Q1 invariant -- the private half appears in no argv, no rendered string, no refusal text
+// -- is pinned as its own claim, the class in
+// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag. The mechanism
+// is generic; mtcollins1 enters ONLY through its row and the secret row its row cites.
+
+// THE TRANSPORT, built the way the re-land's witness builds one (same route, same hermetic context):
+// fleet_locus_ssh_target over the managed-host join, wrapped whole into the fleet arm. The address is
+// what binds (gunbc.host.host_bound_transport), so nothing here hand-names a host the binding does not.
+fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unanchored_host_refuses_the_transport"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+] {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } =>
+      match fleet_locus_ssh_target(host: host) {
+        SshTargetRefused { endpoint: _, refusal: _ } => none
+        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+      }
+  }
+}
+
+// THE FIXTURE ROW: mtcollins1's production row with its anchor filled from the fixture's public half,
+// through the one admitted mint. A row built beside the mint carries no standing; built through it, it
+// cannot drop one -- the mint is the only door, and it is admitted here for exactly that reason.
+fn anchored_fixture_row() -> AnchoredHostRow {
+  let base = mtcollins1_anchored_host_row
+  let anchor = anchored_host_trusted_row(
+    host: base.host,
+    address: base.address,
+    host_key_secret: base.host_key_secret,
+    read_obligation: base.read_obligation,
+    public_key_base64: fixture_public_key.material as String,
+    sha256_fingerprint: "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0",
+  )
+  AnchoredHostRow {
+    host: base.host,
+    anchor: Present { value: anchor },
+    read_obligation: base.read_obligation,
+    host_key_secret: base.host_key_secret,
+    address: base.address,
+  }
+}
+
+data wrong_public_key_base64: String = "AAAAC3NzaC1lZDI1NTE5AAAAIADIFFERENTDIFFERENTDIFFERENTDIFFERENT0"
+
+// CLAIM: A WRONG PRESENTED KEY REFUSES THE TRANSPORT. The transport is a real mtcollins1 FleetSsh; the
+// key presented differs from the anchored statement in its base64 body. It must refuse with the mismatch
+// stated -- expected versus observed -- and never bind. This is the defect the anchor exists to close: a
+// target resolved for mtcollins1 completes a session with whatever answers at the address, and a
+// host-authenticated transport is the check that notices.
+test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", wrong_public_key_base64], "")) {
+        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
+          expected != observed
+          && string_contains(s: observed, pattern: wrong_public_key_base64)
+          && !string_contains(s: observed, pattern: fixture_public_key.material as String)
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+  }
+}
+
+// (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
+fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+] {
+  match row.anchor {
+    Present { value: anchor } => anchor
+    Absent => mtcollins1_placeholder_anchor
+  }
+}
+
+// A row is never handed to the comparison with an absent anchor (the fixture fills it); this placeholder
+// keeps the helper total, and it is never what the claims compare against.
+data mtcollins1_placeholder_anchor: KnownHostKeyRow = KnownHostKeyRow {
+  host: operator_host_mtcollins1,
+  address: mtcollins1_anchored_host_row.address,
+  key_type: "ssh-ed25519",
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIPLACEHOLDERPLACEHOLDERPLACEHOLDER0",
+  sha256_fingerprint: "SHA256:PLACEHOLDERPLACEHOLDERPLACEHOLDER0",
+  provenance: ScannedFirstContact { scanned_from: "never used: placeholder for a comparison the fixture never runs" as NonEmptyStr },
+}
+
+// CLAIM: AN EMPTY PRESENTED LINE NEVER BINDS. The presented key is a SUPPLIED VALUE at the boundary, so
+// the empty string must be handled like any other non-matching value: refused, never accepted. (The
+// anchored line can never be empty -- known_hosts_line renders host, key type and public material -- so
+// equality with "" is structurally a mismatch; the claim pins it against a future edit that special-cases
+// emptiness.)
+test fn an_empty_presented_line_never_binds() -> Bool {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: "") {
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: observed } => observed == ""
+        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+  }
+}
+
+// CLAIM: A HOST WITH NO ANCHOR REFUSES -- the brief's RED, at the earliest check that can see each case.
+// srv2 has no anchored row and is no managed host at all: the host layer itself refuses it ("is not the
+// endpoint of any managed host", pinned in test.claim.host.host_bound_transport_witness), and this
+// module passes that refusal through whole -- the transport NEVER binds. That pass-through is the point:
+// there is no path where an unanchored host's transport ends up Bound.
+test fn an_unanchored_host_refuses_the_transport() -> Bool {
+  match fleet_transport_to(host: operator_host_srv2) {
+    Absent => false
+    Present { value: t } =>
+      match anchored_host_transport_of(transport: t, presented_key_line: "mtcollins1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITOTALGARBAGEKEY0") {
+        AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "not the endpoint of any managed host")
+        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+      }
+  }
+}
+
+test fn no_anchor_refuses_the_transport() -> Bool {
+  match anchored_host_row_for(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: row } => match row.anchor {
+      Present { value: _ } => false
+      Absent =>
+        match fleet_transport_to(host: operator_host_mtcollins1) {
+          Absent => false
+          Present { value: t } =>
+            match anchored_host_transport_of(transport: t, presented_key_line: known_hosts_line(k: the_present_anchor(row: anchored_fixture_row()))) {
+              AnchoredBindingAnchorAbsent { cause: cause } =>
+                string_contains(s: cause, pattern: "Read obligation")
+                && string_contains(s: cause, pattern: "mtcollins1-ssh-host-key")
+              AnchoredBindingAnchorNotForRow { cause: _ } => false
+              AnchoredBindingBound { bound: _ } => false
+              AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+              AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+              AnchoredBindingRefused { cause: _ } => false
+            }
+        }
+    }
+  }
+}
+
+// CLAIM: THE POSITIVE CONTROL -- mtcollins1 BINDS. A real mtcollins1 FleetSsh, a fixture row anchored on
+// the fixture public half, and a presented line built from the anchored row through the registry's own
+// render (so the host field agrees by construction) bind: AnchoredBindingBound only stands behind a
+// successful host_bound_transport_of, and the refusal text on the bound value itself says it is not a
+// refusal.
+test fn matching_presented_key_binds_the_anchored_host() -> Bool {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      let outcome = anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: known_hosts_line(k: the_present_anchor(row: row)))
+      match outcome {
+        AnchoredBindingBound { bound: _ } => anchored_host_binding_refusal_reason(b: outcome) == "bound; not a refusal"
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+  }
+}
+
+// CLAIM: A TRANSPORT TO ANOTHER MACHINE NEVER BINDS THE ANCHORED HOST. srv2's own transport, compared
+// against mtcollins1's anchored row with mtcollins1's anchored line presented, refuses and never binds --
+// today the refusal arrives at the HOST layer (srv2 is no managed host, so host_bound_transport_of itself
+// refuses; its cause names srv2). The AnchoredBindingNotTheAnchoredHost arm behind this is
+// defense-in-depth for the day the managed-host join grows a second row -- the shape that closed the
+// wrong-host defect in the re-land. (The host layer's own cross-host refusal is pinned in
+// test.claim.host.host_bound_transport_witness; this is the anchored layer's share: even anchored and
+// with the anchored line presented, nothing reaches Bound.)
+test fn a_transport_to_another_machine_never_binds_the_anchored_host() -> Bool {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_srv2) {
+    Absent => false
+    Present { value: t } =>
+      match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: known_hosts_line(k: the_present_anchor(row: row))) {
+        AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "is not the endpoint of any managed host")
+        AnchoredBindingNotTheAnchoredHost { cause: cause } => string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
+        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+      }
+  }
+}
+
+// CLAIM: THE LOCAL SHELL REFUSES BEFORE ANY KEY IS READ. It names no managed host, so with a row and an
+// anchor in hand it still refuses at the host layer -- the comparison stage is never reached.
+test fn a_local_shell_refuses_before_any_key_is_read() -> Bool {
+  let row = anchored_fixture_row()
+  match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: LocalShell, presented_key_line: known_hosts_line(k: the_present_anchor(row: row))) {
+    AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "local shell")
+    AnchoredBindingBound { bound: _ } => false
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+  }
+}
+
+// CLAIM: AN ANCHOR FOR ANOTHER MACHINE REFUSES THE ROW (merry-fox-82 HOLD, structural anchor-to-row
+// identity). The transport is a real mtcollins1 FleetSsh and the presented line is the anchor's OWN
+// known_hosts line -- so a comparison that skipped the anchor-vs-row identity check would BIND. Two
+// mismatches are pinned, one per identity component: an anchor naming srv2's host at the row's own
+// address, and an anchor naming mtcollins1 at another address. Either must refuse at the typed
+// AnchoredBindingAnchorNotForRow arm, name both machines, and never bind. This is the wrong-pairing
+// defect the re-land closed one layer above -- an anchor authored for A vouching for B's row -- made
+// unwritable below: the check lives INSIDE the sealed comparison, so no caller can route around it.
+test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
+  let row = anchored_fixture_row()
+  let anchor = the_present_anchor(row: row)
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } => {
+      let foreign_host_anchor = KnownHostKeyRow {
+        host: operator_host_srv2,
+        address: anchor.address,
+        key_type: anchor.key_type,
+        public_key_base64: anchor.public_key_base64,
+        sha256_fingerprint: anchor.sha256_fingerprint,
+        provenance: anchor.provenance,
+      }
+      let foreign_address_anchor = KnownHostKeyRow {
+        host: anchor.host,
+        address: fleet_name_at_ssh_port(labels: ["srv2" as DnsLabel]),
+        key_type: anchor.key_type,
+        public_key_base64: anchor.public_key_base64,
+        sha256_fingerprint: anchor.sha256_fingerprint,
+        provenance: anchor.provenance,
+      }
+      // Each mismatched anchor presents ITS OWN rendered known_hosts line. This is what makes the RED
+      // discriminate: the sealed comparison renders its expectation from the SUPPLIED anchor
+      // (known_hosts_line(k: <supplied anchor>) == presented), so an anchor that vouches for itself always
+      // passes the key step. Presenting the original matching anchor's line instead (what the first draft
+      // did) made the host case land in PresentedKeyMismatch for the wrong reason -- delete the identity
+      // check and that claim stayed green. That is the defect merry-fox-82 caught.
+      let presented_by_host = known_hosts_line(k: foreign_host_anchor)
+      let presented_by_address = known_hosts_line(k: foreign_address_anchor)
+      let by_host = anchored_host_transport_against(row: row, anchor: foreign_host_anchor, transport: t, presented_key_line: presented_by_host)
+      let by_address = anchored_host_transport_against(row: row, anchor: foreign_address_anchor, transport: t, presented_key_line: presented_by_address)
+      // THE DISCRIMINATION, shown rather than asserted: for each mismatched anchor, the sibling call that
+      // differs in EXACTLY the component the identity check inspects (host for one, address for the other;
+      // same transport, same key material, each presenting its own rendered line) lands Bound. So the
+      // refused calls are refused by the identity check ALONE -- delete that check and both calls take the
+      // sibling's path and bind, vouching for a machine (or endpoint) the anchor says nothing about.
+      let host_sibling = KnownHostKeyRow {
+        host: row.host,
+        address: foreign_host_anchor.address,
+        key_type: foreign_host_anchor.key_type,
+        public_key_base64: foreign_host_anchor.public_key_base64,
+        sha256_fingerprint: foreign_host_anchor.sha256_fingerprint,
+        provenance: foreign_host_anchor.provenance,
+      }
+      let address_sibling = KnownHostKeyRow {
+        host: foreign_address_anchor.host,
+        address: row.address,
+        key_type: foreign_address_anchor.key_type,
+        public_key_base64: foreign_address_anchor.public_key_base64,
+        sha256_fingerprint: foreign_address_anchor.sha256_fingerprint,
+        provenance: foreign_address_anchor.provenance,
+      }
+      let host_sibling_binds = match anchored_host_transport_against(row: row, anchor: host_sibling, transport: t, presented_key_line: known_hosts_line(k: host_sibling)) {
+        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+      let address_sibling_binds = match anchored_host_transport_against(row: row, anchor: address_sibling, transport: t, presented_key_line: known_hosts_line(k: address_sibling)) {
+        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+      // And the host case additionally proves the refusal cannot be a key mismatch masquerading as one:
+      // the rendered line is address + key type + key material (known_hosts_line), invisible to the
+      // HostIdentity field, so the two anchors render the SAME line and only the check can tell them apart.
+      let host_case_lines_are_identical = presented_by_host == known_hosts_line(k: anchor)
+      anchored_pairing_refused(b: by_host) && anchored_pairing_refused(b: by_address)
+        && host_sibling_binds && address_sibling_binds && host_case_lines_are_identical
+    }
+  }
+}
+
+// (helper) the pairing refusal, stated once so both halves of the claim above check the same thing:
+// the typed arm fired, and its cause names the machine the anchor speaks for AND the machine the row
+// belongs to -- a refusal that hides which pairing it refused is not locatable (DESIGN sec.5).
+fn anchored_pairing_refused(b: AnchoredHostBinding) -> Bool admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+] {
+  match b {
+    AnchoredBindingAnchorNotForRow { cause: cause } =>
+      string_contains(s: cause, pattern: "srv2")
+      && string_contains(s: cause, pattern: "mtcollins1")
+      && !string_contains(s: cause, pattern: "PRIVATE")
+    AnchoredBindingBound { bound: _ } => false
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingRefused { cause: _ } => false
+  }
+}
+
+// CLAIM: Q1 -- THE PRIVATE HALF NEVER APPEARS IN argv OR IN ANY RENDERED TEXT. The scan's rendered argv
+// is ssh-keyscan's anonymous read: it must name the host and the key type and NOTHING that could carry
+// secret material -- even the Secret's own name is refused in it, because argv is rendered wherever it
+// runs (a_secret_crosses_into_shell_stdin_as_a_plain_string.dag: what lands in a rendered string is what
+// gets read). The refusal texts carry no private material either.
+test fn the_private_key_never_appears_in_argv_or_rendered_text() -> Bool {
+  let argv = anchored_host_key_scan_argv_text(row: mtcollins1_anchored_host_row)
+  let secret_name = mtcollins1_ssh_host_key_secret.secret as String
+  let refusals = join([
+    anchored_host_binding_refusal_reason(b: AnchoredBindingAnchorAbsent { cause: "anchor absent" }),
+    anchored_host_binding_refusal_reason(b: AnchoredBindingNotTheAnchoredHost { cause: "not the anchored host" }),
+    anchored_host_binding_refusal_reason(b: AnchoredBindingRefused { cause: "binding refused" }),
+    anchored_host_binding_refusal_reason(b: AnchoredBindingPresentedKeyMismatch { expected_line: "exp", observed_line: "obs" }),
+    anchored_host_key_scan_effect(host: operator_host_mtcollins1).subject as String,
+  ], "\n")
+  !string_contains(s: argv, pattern: secret_name)
+  && !string_contains(s: argv, pattern: "PRIVATE")
+  && !string_contains(s: argv, pattern: "-----BEGIN")
+  && string_contains(s: argv, pattern: "ssh-keyscan")
+  && string_contains(s: argv, pattern: "mtcollins1")
+  && !string_contains(s: refusals, pattern: "PRIVATE")
+  && !string_contains(s: refusals, pattern: "-----BEGIN")
+}
+
+// CLAIM: THE SCAN EFFECT IS CENSUS-CLASSIFIED AND CONFORMS. The gated readback's effect for the anchored
+// row is folded from its own characteristics -- a named human step is its only surface, so the fold
+// selects HumanOnlyStep and the census row realizes it; exactly one row stands in the census for the
+// site, with a Conforms verdict (the pattern in test.claim.printer_authorization_census_witness).
+test fn the_readback_scan_effect_is_census_classified() -> Bool {
+  let go = anchored_host_key_readback_go_step(host: operator_host_mtcollins1)
+  let rows = filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet")))
+  match anchored_host_key_scan_effect(host: operator_host_mtcollins1).surface {
+    HumanSurfaceOnly { step: step } =>
+      step.identity == go.identity
+      && count(rows) == 1
+      && all(rows, r => match site_verdict(row: r).conformance { Conforms => true DivergesWithReason { reason: _ } => false Diverges => false SiteNotDecidable { standing: _ } => false })
+    _ => false
+  }
+}
+
+// CLAIM: THE SELECTORS WERE EXECUTED, NOT HAND-PICKED. The scan's citations are the typed outputs of
+// select_authorization_pattern and select_access_token_source over the census-classified effect -- those
+// strings are only reachable by CALLING the selectors, so a citation in one of their possible shapes is
+// the evidence the route asked rather than chose. (The selector behavior itself is pinned in
+// test.claim.authorization_pattern_selection_witness and test.claim.access_token_source_witness.)
+test fn the_transport_route_cites_the_executed_selectors() -> Bool {
+  let pattern_cited = anchored_host_pattern_citation(host: operator_host_mtcollins1)
+  let source_cited = anchored_host_token_source_citation()
+  string_contains(s: pattern_cited, pattern: "select_authorization_pattern:")
+  && string_contains(s: source_cited, pattern: "select_access_token_source:")
+}
+
+// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
+// rows for what this diff does NOT yet do in production: nothing routes a live transport through
+// anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
+// (no sshd in this slice). They must be well-formed and stand in the census-closure registry -- a gap in
+// a comment dissolves; a row's trigger is checked.
+
+fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
+test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
+  count(anchored_host_transport_frontier_rows) == 3
+  && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
+  && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
+}
+
+// ── THE MINT, WHICH IS NO LONGER A HUMAN STEP ──────────────────────────────────────────────────
+//
+// This block used to witness a human paste: argv builders for gcloud, a rendered shell, a HumanIntervention,
+// a PrivilegedEffect the fold diverged on with a stated reason, and a Scaffold marker whose trigger named the
+// capability that would retire the hand execution (review 85232: "the one step that actually creates the
+// secret" had no privileged effect at all). The capability arrived and the human step went away with it: the
+// operator's ruling of 2026-10-28 -- "i don't see why a human needs to do this - this seems just like normal
+// account creation" -- is a design_ruling row, the_mint_of_a_fleet_ssh_keypair_is_account_creation, and the
+// mint is now gunbc.host.mtcollins1_ssh_host_key_mint, one of the two rows of the single policy
+// gunbc.host.fleet_keypair_mint.
+//
+// The claims below are the ones that survived the change, restated against what still exists. What was
+// DELETED is recorded here rather than silently dropped, because the block's history is the evidence that the
+// census moved deliberately:
+//   - the_mint_effect_is_censused_and_diverges_with_reason, the_mint_render_carries_no_private_material,
+//     the_runbook_mint_block_is_the_model_render, the_mint_render_is_the_builders_render and
+//     the_mint_is_a_declared_scaffold_and_a_fleet_once_step went with the scaffold they name;
+//   - the Q1 RED did not go: it is asserted over the mint's own argv in
+//     dag/test/claim/host/fleet_keypair_mint_witness.dag, which enumerates the four commands a mint issues for
+//     BOTH subjects -- a stronger form of the same claim, since it checks the commands the run actually issues
+//     rather than a rendered script somebody might run;
+//   - the runbook fold below REPLACES the byte-for-byte comparison of a mint fence, and asserts the opposite
+//     property: there must be NO mint block to compare.
+
+// CLAIM: THE MINT'S EFFECT IS CENSUSED AT THE SITE THAT PERFORMS IT, AS A FEDERATED GRANT, AND THE FOLD
+// SELECTS THE FEDERATED PATTERN. This is the retirement's audit trail in machine-checkable form. The retired
+// row sat at anchored_host_key_mint_intervention with RealizedHumanStep and the reason
+// manual_api_effect_beside_unlanded_approval_adapter; its reason named what had to land (an authority adapter
+// that performs the store write), and once that existed the selection computed differently rather than being
+// edited to say so. So the claim is not "the row says FederatedScopedGrant" -- it is that the FOLD EXECUTED
+// over the effect computes it: reversible, resource-scoped reach, a bindable workload identity, no witness
+// owed. Rig the effect's fields and the selection stops matching, which is the only reason a reader has to
+// believe the retirement was earned rather than declared.
+fn host_mint_census_rows() -> List<PrivilegedEffectSite> {
+  filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet")))
+}
+
+fn host_mint_verdict_selects_federated(v: SiteVerdict) -> Bool {
+  match v.selection {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn the_mint_effect_is_censused_as_a_federated_grant_that_the_fold_selects() -> Bool {
+  let rows = host_mint_census_rows()
+  count(rows) == 1
+    && all(rows, r => host_mint_verdict_selects_federated(v: site_verdict(row: r)))
+    && all(rows, r => match r.realized {
+      RealizedFederatedGrant => true
+      _ => false
+    })
+    // NO DIVERGENCE IS CLAIMED ANYWHERE: the retired row's stated reason was the absence of this capability.
+    && all(rows, r => match r.divergence_reason { Absent => true  Present { value: _ } => false })
+    // THE RETIRED SITE IS GONE FROM THE CENSUS, so the audit trail cannot be read as "both are live": a
+    // census with a human mint step AND a workflow mint beside it would describe a fleet with two ways to
+    // mint the same key, one of which nobody may use.
+    && count(filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))) == 0
+    // THE EFFECT'S OWN FIELDS ARE THE MINT'S, NOT A COPY OF THE READER KEY'S: the subject names THIS key's
+    // secret row, so the census cannot be satisfied by pointing at the reader key's mint.
+    && string_contains(s: mtcollins1_host_key_mint_effect().subject as String, pattern: "mtcollins1-ssh-host-key")
+    && match mtcollins1_host_key_mint_effect().frequency {
+      FleetOnce => true
+      _ => false
+    }
+}
+
+// CLAIM: THE ANCHOR STANDING SURVIVES THE RETIREMENT, AND IS THE PART THAT MATTERS MOST. The transport is
+// unskippable because there is exactly one door that can fill this row -- the mint's receipt, which names the
+// public half and the fingerprint together. The retired mint printed both on a terminal for a human to copy,
+// which is how a fingerprint reaches an anchor row wrong; the new receipt is a file the same commit that
+// installs the anchor reads. The claim fails if the anchor row vanishes (a transport that trusts on first
+// contact), if its public half is populated while the key has never been minted (a row that would silence the
+// only thing able to create the key), or if the mint's receipt path drifts from where the workflow uploads it.
+test fn the_anchor_standing_and_the_mint_receipt_are_still_one_door() -> Bool {
+  match mtcollins1_host_key_anchor() {
+    // Today: no minted host key, so no anchor. That is the honest state, and it is what keeps the mint
+    // reachable -- a populated anchor with no key in the store would silence the only thing that can create
+    // one (gunbc.host.mtcollins1_ssh_host_key_mint mtcollins1_host_key_pinned_line reads exactly this call).
+    Absent => true
+    // Once a key exists, the row is a complete ssh-ed25519 statement: a public half AND a SHA256-shaped
+    // fingerprint. The fingerprint half is what the retired human step transcribed by hand, and what the
+    // mint's receipt now names in the same commit as the public half.
+    Present { value: row } =>
+      row.key_type == "ssh-ed25519"
+        && row.public_key_base64 != ""
+        && string_contains(s: row.sha256_fingerprint, pattern: "SHA256:")
+  }
+    // THE READ OBLIGATION IS STILL ATTACHED, naming the secret whose private half the anchor stands for: an
+    // anchor whose read nobody owes is a figure nobody will ever verify.
+    && string_contains(s: mtcollins1_host_key_read_obligation as String, pattern: mtcollins1_ssh_host_key_secret.secret as String)
+    && string_contains(s: mtcollins1_host_key_read_obligation as String, pattern: "anchor row")
+    // THE ROW STILL POINTS AT THE SAME SECRET THE MINT WRITES, so "pinned" and "minted" cannot drift onto
+    // two different store rows -- which would let a mint of one key satisfy an anchor for another.
+    && mtcollins1_anchored_host_row.host_key_secret.secret == mtcollins1_host_keypair_mint_subject.privkey_secret.secret
+    && mtcollins1_host_key_mint_receipt_path == "target/mtcollins1-ssh-host-key-mint.txt"
+}
+
+// CLAIM: THE RUNBOOK NO LONGER TELLS A HUMAN TO MINT THE KEY (the RED that keeps the retirement real).
+// Step 1 is deleted; Step 2 -- installing the anchor row, which is a source change and stays human-owned --
+// remains. This reads the committed markdown, the way action_use_admission_witness reads real census files, so
+// it cannot be satisfied by a model that merely prefers the workflow: a restored hand-mint fence, with
+// ssh-keygen or a gcloud add-version in it, fails here. Deleting the whole runbook does NOT pass either --
+// Step 2 and the custody boundary are load-bearing prose -- so the file must exist and must still say what
+// the operator does now.
+fn anchored_runbook_text() -> String {
+  filesystem_read(path: "docs/runbooks/mtcollins1-ssh-host-key-mint.md").content
+}
+
+test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
+  let doc = anchored_runbook_text()
+  doc != ""
+    // No hand mint, in any of its five shapes: no keygen, no store create, no store write from a shell, no
+    // temp directory for a private half to be born in, and no "one shell session" framing. Each is asserted
+    // directly rather than by the shape of a heading, because what must not come back is the COMMAND -- a
+    // restored fence under a renamed heading would pass a heading test.
+    && !string_contains(s: doc, pattern: "ssh-keygen")
+    && !string_contains(s: doc, pattern: "add-version")
+    && !string_contains(s: doc, pattern: "secrets create")
+    && !string_contains(s: doc, pattern: "--data-file")
+    && !string_contains(s: doc, pattern: "mc-hostkey")
+    && !string_contains(s: doc, pattern: "one shell session")
+    // What the operator does now, and the two halves that stay human-owned: dispatching a mint is an operator
+    // go, and installing a trust anchor is a source change that is reviewed in a commit. Deleting the whole
+    // runbook would not pass either -- these are load-bearing prose.
+    && string_contains(s: doc, pattern: "FleetKeypairMint")
+    && string_contains(s: doc, pattern: "fleet_keypair_mint_subject_rows")
+    && string_contains(s: doc, pattern: "mtcollins1-ssh-host-key")
+    && string_contains(s: doc, pattern: "fingerprint")
+    && string_contains(s: doc, pattern: "known_hosts")
+}

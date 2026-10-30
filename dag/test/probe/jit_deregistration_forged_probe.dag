@@ -13,12 +13,16 @@ import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitWorkFolder }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
-import gunbc.auth.github_apps { DeclaredGitHubApp }
+import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
+import gunbc.auth.github_credential { GitHubCredentialAuthority }
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBindingStopDeregistration, deregister_binding_stopping_unit }
+import std.resources { Network }
 import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, JitMintDispatchAuthorized, AuthorizedJitMintDispatch }
 import gunbc.github_effect_perform { OrganizationRunnerListRead }
 import gunbc.runner.runner_jit_deregistration {
-  JitRegistration, JitDeregistration, JitDeregistrationReceipt, JitRunnerDeregistered, JitSlotExit, SlotJobCompleted,
+  JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, RecoveredReservedRegistration, RecoveredReservedServiceRegistration,
+  StoppingServiceRegistration, StoppingServiceUnitRegistration, stopping_service_registration_of, JitDeregistration, JitDeregistrationReceipt, JitRunnerDeregistered, JitSlotExit, SlotListenerExitedClean,
   jit_registration_of, conclude_from_readback,
 }
 
@@ -75,10 +79,48 @@ fn forged_listing(app: DeclaredGitHubApp, installation: GitHubAppInstallationId)
 // (d) THE RECEIPT'S CONSTRUCTOR, CALLED FROM OUTSIDE THE ENSURE with a real registration beside a
 // listing of the caller's choosing. Refuses at conclude_from_readback.
 fn unadmitted_conclusion(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
-  conclude_from_readback(registration: registration, exit: SlotJobCompleted, deletes: [], readback: readback)
+  conclude_from_readback(subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback)
 }
 
 // (e) A HAND-BUILT SUCCESS RECEIPT. Refuses at JitDeregistrationReceipt.
 fn forged_receipt(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
-  JitRunnerDeregistered { receipt: JitDeregistrationReceipt { registration: registration, exit: SlotJobCompleted, deletes: [], readback: readback } }
+  JitRunnerDeregistered { receipt: JitDeregistrationReceipt { subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback } }
+}
+
+// (f) A HAND-BUILT RECOVERED SUBJECT: the deletable name chosen by the caller, bypassing the
+// service-slot round trip. Refuses at RecoveredReservedRegistration.
+fn forged_recovered(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitDeregistrationSubject {
+  RecoveredReservedServiceRegistration {
+    recovered: RecoveredReservedRegistration {
+      organization: GitHubOrganizationRef { login: "gunb-ai" },
+      name: JitRunnerName { value: "victim-runner" },
+      app: app,
+      installation: installation,
+    },
+  }
+}
+
+// (g) A HAND-BUILT STOPPING-UNIT SUBJECT: a name the caller chose, presented as a stopping unit's own registration.
+// Refuses at StoppingServiceRegistration.
+fn forged_stopping(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitDeregistrationSubject {
+  StoppingServiceUnitRegistration {
+    stopping: StoppingServiceRegistration {
+      organization: GitHubOrganizationRef { login: "gunb-ai" },
+      name: JitRunnerName { value: "victim-runner" },
+      app: app,
+      installation: installation,
+    },
+  }
+}
+
+// (h) THE STOPPING MINT CALLED WITH A SUBJECT OF THE CALLER'S CHOOSING. Refuses at stopping_service_registration_of:
+// only the binding's own derivation may mint one.
+fn outside_stopping_mint(subject: JitRegistrationSubject, authority: GitHubCredentialAuthority) -> StoppingServiceRegistration? {
+  stopping_service_registration_of(organization: GitHubOrganizationRef { login: "gunb-ai" }, subject: subject, authority: authority)
+}
+
+// (i) THE STOP'S DEREGISTRATION CALLED FROM OUTSIDE THE SERVICE SLOT'S STOP ENTRY. Refuses at
+// deregister_binding_stopping_unit.
+fn outside_stop(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBindingStopDeregistration uses net: Network {
+  deregister_binding_stopping_unit(binding: binding, state: state, exit: SlotListenerExitedClean)
 }

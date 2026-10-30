@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.function_parameter_call_emitted_as_a_same_na
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data function_parameter_call_emitted_as_a_same_named_top_level_fn: RecurringFailureMode = RecurringFailureMode {
   identity: "function_parameter_call_emitted_as_a_same_named_top_level_fn" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a call through a function-typed PARAMETER whose name matches a top-level fn declared in another module is emitted by the Rust emitter as a call to that top-level fn. The local binding loses to the module-level name, even though the interpreter and the checker bind the parameter correctly.",

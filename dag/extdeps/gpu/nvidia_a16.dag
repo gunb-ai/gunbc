@@ -1,0 +1,156 @@
+module extdeps.gpu.nvidia_a16
+
+import std.measure { Micrometer, micrometer, watt, hertz, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import std.optional { Present, Absent }
+import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.gpu.types {
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, ConfigurableBoardPower, GpuNamedPowerPoint,
+  PcieAddInBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda, gpu_board_power_ceiling,
+}
+import extdeps.gpu.passive_card_row {
+  CardRow, FromCitedFigure, NeedsReading, CardLength, BracketInclusionUnstated, AuxiliaryPowerInput, CpuEightPin,
+  CardEastEdge, AirflowBidirectional,
+}
+import extdeps.standards.pcie_cem { CemFullHeight, CemFullHeightBracket }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { PcieLink, Gen4 }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { FactCitation, ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA A16 PCIe GPU Accelerator product brief PB-10518-001_v02, March 2022, read 2026-10-19.
+// Table 1 states SKU PG171 (NVPN 699-2G171-0200-xxx), passive thermal solution, and mechanical form
+// factor "Full-height, full-length (FHFL) 10.5", dual-slot". It publishes no dimension drawing, no
+// thickness and no airflow requirement; "Airflow Direction Support" states only that the heat sink
+// is bidirectional. The A16 is ONE board carrying FOUR GA107 GPUs, so it is a GpuBoardCatalogRow
+// whose `gpu` is one GA107 device row: board power, thermal and the PCIe attachment are the card's,
+// and no GPU of it has them alone.
+//
+// Table 1 (Product Specifications) and Table 2 (Memory Specifications), pages 3 and 4, read
+// 2026-10-26 from the PDF text layer of a held copy, sha256
+// 832cb47e79bdf23fd4ba49407d18504666869d19e7bfa97412918291da7bbeff:
+//   Total board power: 250 W default, 250 W maximum, 235 W MaxQ (maximum performance per watt),
+//     195 W minimum. Thermal solution: Passive. GPU SKU: GA107-890 (quantity four). Zero Power: Not
+//     supported.
+//   Board PCI Device ID 0x25B6 (recorded in extdeps.pci.identity's spelling, "25b6"). GPU clocks: base 1312 MHz, boost 1755 MHz.
+//   PCI Express interface: physical x16, PCIe Gen4 x16 or Gen3 x16 supported.
+//   Memory: GDDR6, 64 GB (16 GB per GPU), 6.25 GHz, 128-bit bus, peak bandwidth "up to 4x 200 GB/sec".
+// The bandwidth is an "up to" ceiling, so `memory_bandwidth` stays absent (extdeps.gpu.types rule).
+// How the driver divides the board range among the four GPUs is a device reading, not a brief fact:
+// 595.91.07 reports 48.75 to 62.50 W per GPU, which is the board range over four, and that reading is
+// the receipt's to carry.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "images.nvidia.com/content/Solutions/data-center/vgpu-a16-product-brief.pdf"
+  }
+}
+
+// 10.5 inches is exactly 266.7 mm. The brief does not say whether the figure includes the I/O
+// bracket; a consumer comparing it with a drawn outline must carry that ambiguity, not resolve it.
+data a16_stated_length: Micrometer = micrometer(count: 266700)
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu.nvidia_a16",
+      decl_name: "a16_stated_length",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data nvidia_a16_gpu_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "GA107-890",
+  microarchitecture: "Ampere",
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: none,
+  boost_clock: Present { value: hertz(count: 1755000000) },
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_gpu_catalog", field_name: "memory"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_gpu_catalog", field_name: "boost_clock"), authority: extdeps_external_authority_anchor },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "A16",
+  gpu: nvidia_a16_gpu_catalog,
+  gpu_count: 4,
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+  board_power: Present { value: ConfigurableBoardPower {
+    default: Present { value: watt(count: 250) },
+    minimum: watt(count: 195),
+    maximum: watt(count: 250),
+    named_points: [GpuNamedPowerPoint { name: "MaxQ (maximum performance per watt)", power: watt(count: 235) }],
+  } },
+  zero_power: Present { value: ZeroPowerNotSupported },
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "25b6" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA A16" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "board_power"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "zero_power"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "thermal"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "attachment"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "pci_device_id"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+// The row a consumer reads is the admitted one; the facts above are what the brief states.
+data nvidia_a16_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_a16_board_facts)
+
+// DESIGN section 3c declared frontier.
+data nvidia_a16_board_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a fleet card census binds each installed A16 to nvidia_a16_board_catalog, and a power policy reads board_power to bound the cap it selects, thermal to decide that the card needs a fan zone that follows it, and zero_power so a park policy cannot select a state the board does not have. SUFFICIENT FOR: the board row has a production consumer; until then only test.claim.gpu_board_catalog_witness reads it, which exercises admission and is not a consumer." as NonEmptyStr
+)
+
+// ═══ THE A16 AS A DUCT CARD (extdeps.gpu.passive_card_row CardRow) ═══
+//
+// Read from the same brief (PB-10518-001_v02, sha256 above). Table 1: "Full-height, full-length (FHFL)
+// 10.5", dual-slot", one bracket ("Bracket with screws: 20 Grams"). "Power Connector Placement" (p.9):
+// "The PCIe card provides a CPU 8-pin power connector on the east edge of the board", and Table 7
+// lists one CPU 8-pin input. "Airflow Direction Support": a bidirectional heat sink that accepts
+// airflow left-to-right or right-to-left. The brief has no dimension drawing, so the card's height is
+// not stated anywhere this repository holds, and its length is the 10.5-inch class with the bracket's
+// inclusion unstated. Board power is read off nvidia_a16_board_facts rather than retyped, so the row
+// and the catalog cannot disagree.
+data a16_card_row: CardRow = CardRow {
+  id: "a16",
+  product: "NVIDIA A16 PCIe (PG171 SKU 200)",
+  height_class: FromCitedFigure { value: CemFullHeight, standing: a16_brief_standing },
+  slot_count: FromCitedFigure { value: 2, standing: a16_brief_standing },
+  length: FromCitedFigure { value: CardLength { length: a16_stated_length, reference: BracketInclusionUnstated }, standing: a16_brief_standing },
+  height: NeedsReading { read_obligation: "an NVIDIA drawing of the A16 (the brief PB-10518-001_v02 publishes none; NVIDIA's 2D mechanical drawings are distributed through NVOnline) for the card's overall height. A caliper reading of a held card is an observation and is recorded in product.printed_chassis.duct_card_catalog, not here." },
+  brackets: FromCitedFigure { value: [CemFullHeightBracket], standing: a16_brief_standing },
+  auxiliary_power: FromCitedFigure { value: [AuxiliaryPowerInput { connector: CpuEightPin, edge: CardEastEdge }], standing: a16_brief_standing },
+  board_power: match nvidia_a16_board_facts.board_power {
+    Present { value: spec } => FromCitedFigure { value: gpu_board_power_ceiling(spec: spec), standing: a16_brief_standing }
+    Absent => NeedsReading { read_obligation: "nvidia_a16_board_facts carries no board power" }
+  },
+  required_airflow: NeedsReading { read_obligation: "NVIDIA document, not read by this repository: the airflow the A16's passive heatsink needs (CFM or m3/h, at what inlet temperature and static pressure). PB-10518-001_v02 publishes none; NVIDIA's System Design Guide for Enterprise GPU Products (DG-07562-001, which the T4 brief names) is the likeliest home. Convert to ml/s when transcribing." },
+  airflow_direction: FromCitedFigure { value: AirflowBidirectional, standing: a16_brief_standing },
+  sources: [
+    "NVIDIA A16 PCIe GPU Accelerator product brief PB-10518-001_v02 (March 2022), images.nvidia.com/content/Solutions/data-center/vgpu-a16-product-brief.pdf, sha256 832cb47e79bdf23fd4ba49407d18504666869d19e7bfa97412918291da7bbeff, re-read 2026-10-29: Table 1, Table 7, Power Connector Placement, Airflow Direction Support",
+  ],
+}
+
+data a16_brief_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }

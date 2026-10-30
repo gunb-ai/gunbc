@@ -1,0 +1,405 @@
+module test.claim.runner.runner_service_slot_admission_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
+import gunbc.runner.runner_unit_file { RunnerJobUserUidReading, JobUserUidObserved, JobUserUidUnobserved, runner_job_user_uid_reading }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.uuid { uuid_of }
+import extdeps.filesystem.filesystem_io
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host, NoOutOfBandRoute }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
+import gunbc.runner.runner_slot_allocation { RunnerWidthDerived }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
+import gunbc.runner.runner_host_unit_slot {
+  ServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotStanding, ServiceBootId, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationEmpty, HostUnitSlotHostNotControlled,
+  host_unit_slot_over, service_slot_unit, service_slot_selected_workflow, current_service_population_over, service_boot_id_of,
+}
+import gunbc.runner.runner_service_slot_controller {
+  ServiceSlotRebuild, ServiceSlotRebuilt, ServiceSlotNotBound, ServiceSlotAdmission, ServiceSlotAdmitted, ServiceSlotAdmissionRefused, service_slot_admit,
+}
+import extdeps.github.actions_runner { actions_runner_jitconfig_env_name, actions_runner_base_dir }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCredentialCustodyRow, HostCredentialCustodyRow, host_credential_custody_row, ServiceSlotAppKey, FabricStateWriterKey,
+  CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathWrongMedium, CustodyPathWrongOwner,
+}
+import gunbc.runner.runner_host_unit_slot { host_unit_slot_pass_root, HostUnitSlot }
+import gunbc.runner.runner_service_slot_controller {
+  ServiceSlotKeyStanding, ServiceSlotKeyHeldStanding, ServiceSlotKeyNotHeld, service_slot_key_standing_of,
+  ServiceSlotIsolation, ServiceSlotIsolated, ServiceSlotListenerCouldReadKey, ServiceSlotListenerUserUnspecified, ServiceSlotIdentityUngrounded, service_slot_isolate_listener_as,
+  ServiceSlotListenerCommand, ServiceSlotListenerReady, ServiceSlotListenerUnbuilt, service_slot_listener_command, ServiceSlotPassIdReading, ServiceSlotPassIdRead, ServiceSlotPassIdRefused, service_slot_pass_id_of,
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data boot_a: String = "00000000-0000-4000-8000-0000000000a1"
+data boot_b: String = "00000000-0000-4000-8000-0000000000b2"
+
+data labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { labels: ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"] }
+
+fn the_host() -> ManagedHost? { first(managed_hosts()) }
+
+fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
+
+fn boot_of(id: String) -> ServiceBootId? {
+  match uuid_of(text: id) {
+    Absent => none
+    Present { value: u } => service_boot_id_of(run: KernelBootId { boot_id: u })
+  }
+}
+
+// The sealed population of `id`'s boot over a SUPPLIED width and labels (the real producer for this host
+// leaves them unresolved until its offer enters the catalog; DESIGN section 3 pairing frontier, listed
+// beside the sibling witness).
+fn population_for(m: ManagedHost, id: String) -> CurrentServicePopulationStanding admit_callers: [decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admission_over")] {
+  match boot_of(id: id) {
+    Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationEmpty }
+    Present { value: b } => current_service_population_over(host: controlled(m: m), width: RunnerWidthDerived { slots: 5 }, registration_labels: labels, boot: b)
+  }
+}
+
+fn rebuilt_for(m: ManagedHost, id: String, index: Int) -> ServiceSlotRebuild {
+  match boot_of(id: id) {
+    Absent => ServiceSlotNotBound { refusal: HostUnitSlotHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } } }
+    Present { value: b } =>
+      match host_unit_slot_over(host: controlled(m: m), purpose: ServiceSlot { boot: b, index: index }, workflow: service_slot_selected_workflow(), registration_labels: labels) {
+        HostUnitSlotBound { slot: s } => ServiceSlotRebuilt { slot: s }
+        HostUnitSlotRefused { refusal: r } => ServiceSlotNotBound { refusal: r }
+      }
+  }
+}
+
+// ADMISSION OVER: the population of `population_id`, the kernel's current boot `current_id`, the unit
+// of `unit_id`/`index` rebuilt under the unit's own boot.
+fn admission_over(m: ManagedHost, population_id: String, current_id: String, unit_id: String, index: Int) -> ServiceSlotAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "fixture_stop"),
+] {
+  match boot_of(id: current_id) {
+    Absent => ServiceSlotAdmissionRefused { cause: "no current boot" }
+    Present { value: current } =>
+      service_slot_admit(
+        current_boot: current,
+        population: population_for(m: m, id: population_id),
+        rebuilt: rebuilt_for(m: m, id: unit_id, index: index),
+        unit: unit_name(m: m, id: unit_id, index: index),
+      )
+  }
+}
+
+fn admit_over(m: ManagedHost, population_id: String, current_id: String, unit_id: String, index: Int) -> Bool admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_current_boot_population_member_is_admitted"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_stale_boot_is_refused"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "an_out_of_population_index_is_refused"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_unit_of_another_boot_is_refused"),
+] {
+  match admission_over(m: m, population_id: population_id, current_id: current_id, unit_id: unit_id, index: index) {
+    ServiceSlotAdmitted { admission: _ } => true
+    ServiceSlotAdmissionRefused { cause: _ } => false
+  }
+}
+
+fn unit_name(m: ManagedHost, id: String, index: Int) -> String {
+  match boot_of(id: id) {
+    Absent => ""
+    Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
+  }
+}
+
+test fn a_current_boot_population_member_is_admitted() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => admit_over(m: m, population_id: boot_a, current_id: boot_a, unit_id: boot_a, index: 3)
+  }
+}
+
+// RED: the kernel reports another boot than the population was derived for.
+test fn a_stale_boot_is_refused() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => !admit_over(m: m, population_id: boot_a, current_id: boot_b, unit_id: boot_a, index: 3)
+  }
+}
+
+// RED: index 999 is outside the committed width, so the population does not name it.
+test fn an_out_of_population_index_is_refused() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => !admit_over(m: m, population_id: boot_a, current_id: boot_a, unit_id: boot_a, index: 999)
+  }
+}
+
+// RED: a unit created under the other boot, with the population and the kernel agreeing on this one.
+test fn a_unit_of_another_boot_is_refused() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => !admit_over(m: m, population_id: boot_a, current_id: boot_a, unit_id: boot_b, index: 3)
+  }
+}
+
+// ── the outside routes, as source handed to the compiler ────────────────────────────────────────
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn probe() -> CompileDiagnosticCensus {
+  census_of(source: filesystem_read(path: "dag/test/probe/service_slot_mint_forged_probe.dag").content)
+}
+
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data control_source: String = "module probe_service_slot_mint_control\nimport std.types { Bool }\nimport gunbc.runner.runner_service_slot_controller { ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated }\nfn nothing() -> Bool { true }\n"
+
+data sealed_records: List<String> = ["ServiceSlotMintAdmission", "ServiceSlotKeyHeld", "ServiceSlotListenerIsolated", "ServiceSlotPassId", "JitMintBinding"]
+data admitted_fns: List<String> = ["service_slot_pass", "service_slot_admit", "service_slot_key_standing_of", "service_slot_isolate_listener_as", "run_listener_with", "service_slot_pass_id_of", "jit_mint_binding", "service_slot_mint_binding", "attempt_mint_binding", "mint_attempt_credential", "slot_controller_launch_admitted"]
+
+test fn a_source_that_only_names_the_modules_forges_nothing() -> Bool {
+  let c = census_of(source: control_source)
+  (sealed_records |> all(s => blocking(c: c, wanted: "SoleConstructorViolation", subject: s) == 0))
+    && (admitted_fns |> all(f => blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: f) == 0))
+}
+
+// RED: each forged record refuses at its own name.
+test fn every_forged_record_refuses_at_its_own_name() -> Bool {
+  let c = probe()
+  sealed_records |> all(s => blocking(c: c, wanted: "SoleConstructorViolation", subject: s) >= 1)
+}
+
+// RED: an outside bypass of the pass, the admit, the key standing, the isolation or the listener run refuses.
+test fn an_outside_bypass_of_the_mint_path_is_refused() -> Bool {
+  let c = probe()
+  admitted_fns |> all(f => blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: f) >= 1)
+}
+
+// ── blocker 3: the key is held only when file AND directory read back as the row declares ──────
+
+fn key_over(file: CustodyPathMetadata, dir: CustodyPathMetadata) -> ServiceSlotKeyStanding admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "the_key_is_held_only_when_both_paths_read_back_as_declared"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "fixture_stop"),
+] {
+  service_slot_key_standing_of(row: host_credential_custody_row(c: ServiceSlotAppKey), file: file, dir: dir)
+}
+
+fn key_held(s: ServiceSlotKeyStanding) -> Bool {
+  match s {
+    ServiceSlotKeyHeldStanding { held: _ } => true
+    ServiceSlotKeyNotHeld { causes: _ } => false
+  }
+}
+
+test fn the_key_is_held_only_when_both_paths_read_back_as_declared() -> Bool {
+  key_held(s: key_over(file: CustodyPathAsDeclared, dir: CustodyPathAsDeclared))
+    && !key_held(s: key_over(file: CustodyPathWrongMedium, dir: CustodyPathAsDeclared))
+    && !key_held(s: key_over(file: CustodyPathAsDeclared, dir: CustodyPathWrongMedium))
+    && !key_held(s: key_over(file: CustodyPathAsDeclared, dir: CustodyPathWrongOwner))
+}
+
+// ── blocker 2: the listener's user cannot read the key ──────────────────────────────────────────
+
+fn uid_reading(uid: Int) -> RunnerJobUserUidReading {
+  JobUserUidObserved { uid: uid, passwd_line: "name:x:uid:0:::/bin/sh" as NonEmptyStr }
+}
+
+fn ungrounded_reading() -> RunnerJobUserUidReading {
+  JobUserUidUnobserved { cause: "getent passwd exit=2" as NonEmptyStr }
+}
+
+fn isolate_as_readings(row: HostCredentialCustodyRow, user: String, listener: RunnerJobUserUidReading) -> ServiceSlotIsolation admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "isolate_as"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_listener_whose_uid_is_the_owners_under_another_spelling_could_read_the_key"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "an_identity_that_did_not_resolve_is_refused_not_assumed_different"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_numeric_key_is_read_by_its_uid_field_into_isolation"),
+] {
+  service_slot_isolate_listener_as(row: row, user: user as NonEmptyStr, listener: listener, file_owner: uid_reading(uid: 0), dir_owner: uid_reading(uid: 0))
+}
+
+fn isolate_as(row: HostCredentialCustodyRow, user: String) -> ServiceSlotIsolation admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_listener_user_that_cannot_read_the_key_is_isolated_and_one_that_can_is_refused"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "command_text"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+] {
+  isolate_as_readings(row: row, user: user, listener: uid_reading(uid: if user == "root" { 0 } else { 1001 }))
+}
+
+// A numeric key (getent passwd 0) answers the entry whose uid field is the key, not whose name is: the reading matches
+// the key by name OR uid, and the zero it grounds is the owner's, so the listener is refused; an admitted different uid
+// beside it is isolated.
+fn isolation_tag(i: ServiceSlotIsolation) -> String {
+  match i {
+    ServiceSlotIsolated { isolated: _ } => "isolated"
+    ServiceSlotListenerCouldReadKey { user: _ } => "could_read_key"
+    ServiceSlotListenerUserUnspecified { host: _ } => "user_unspecified"
+    ServiceSlotIdentityUngrounded { name: _, cause: _ } => "ungrounded"
+  }
+}
+
+test fn a_numeric_key_is_read_by_its_uid_field_into_isolation() -> Bool {
+  let row = host_credential_custody_row(c: ServiceSlotAppKey)
+  let zero = runner_job_user_uid_reading(job_user: "0" as NonEmptyStr, exit_code: 0, stdout: "root:x:0:0:root:/root:/bin/bash\n", stderr: "")
+  let other = runner_job_user_uid_reading(job_user: "gunbc-runner" as NonEmptyStr, exit_code: 0, stdout: "gunbc-runner:x:1001:1001::/home/gunbc-runner:/bin/bash\n", stderr: "")
+  let wrong = runner_job_user_uid_reading(job_user: "5" as NonEmptyStr, exit_code: 0, stdout: "root:x:0:0:root:/root:/bin/bash\n", stderr: "")
+  isolation_tag(i: isolate_as_readings(row: row, user: "0", listener: zero)) == "could_read_key"
+    && isolation_tag(i: isolate_as_readings(row: row, user: "gunbc-runner", listener: other)) == "isolated"
+    && isolation_tag(i: isolate_as_readings(row: row, user: "5", listener: wrong)) == "ungrounded"
+}
+
+fn is_isolated(i: ServiceSlotIsolation) -> Bool {
+  match i {
+    ServiceSlotIsolated { isolated: _ } => true
+    ServiceSlotListenerCouldReadKey { user: _ } => false
+    ServiceSlotListenerUserUnspecified { host: _ } => false
+    ServiceSlotIdentityUngrounded { name: _, cause: _ } => false
+  }
+}
+
+test fn a_listener_user_that_cannot_read_the_key_is_isolated_and_one_that_can_is_refused() -> Bool {
+  is_isolated(i: isolate_as(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "gunbc-runner"))
+    && !is_isolated(i: isolate_as(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "root"))
+    && !is_isolated(i: isolate_as(row: host_credential_custody_row(c: FabricStateWriterKey), user: "gunbc-runner"))
+}
+
+// ── blocker 1 and 2: the listener command ───────────────────────────────────────────────────────
+
+fn slot_for(m: ManagedHost, id: String, index: Int) -> HostUnitSlot? {
+  match rebuilt_for(m: m, id: id, index: index) {
+    ServiceSlotRebuilt { slot: s } => Present { value: s }
+    _ => none
+  }
+}
+
+data pass_one: String = "0123456789abcdef0123456789abcdef"
+data pass_two: String = "fedcba9876543210fedcba9876543210"
+
+fn pass_of(text: String) -> ServiceSlotPassIdReading admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "command_text"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "host_unit_slot_root_of"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "a_pass_identity_is_a_valid_invocation_id_and_nothing_else"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+] {
+  service_slot_pass_id_of(raw: Present { value: text })
+}
+
+fn command_text(m: ManagedHost, index: Int, pass: String) -> String {
+  match slot_for(m: m, id: boot_a, index: index) {
+    Absent => ""
+    Present { value: s } =>
+      match isolate_as(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "gunbc-runner") {
+        ServiceSlotIsolated { isolated: i } =>
+          match pass_of(text: pass) {
+            ServiceSlotPassIdRefused { cause: _ } => ""
+            ServiceSlotPassIdRead { pass: p } =>
+              match service_slot_listener_command(slot: s, isolated: i, pass: p) {
+                ServiceSlotListenerReady { command: c } => join(c.arguments, " ")
+                ServiceSlotListenerUnbuilt { cause: _ } => ""
+              }
+          }
+        _ => ""
+      }
+  }
+}
+
+// The listener runs in a transient unit as the isolated user with a delegated cgroup, rooted at its own
+// slot's tree; the JIT value is exported from stdin and is in no argument. Two slots show distinct roots,
+// and neither is the shared binary tree.
+test fn the_listener_runs_under_its_own_unit_user_delegate_and_slot_root() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let c0 = command_text(m: m, index: 0, pass: pass_one)
+      let c1 = command_text(m: m, index: 1, pass: pass_one)
+      c0 != "" && c1 != "" && c0 != c1
+        && c0.contains("User=gunbc-runner") && c0.contains("Delegate=yes")
+        && c0.contains(actions_runner_jitconfig_env_name())
+        && c0.contains(host_unit_slot_root_of(m: m, index: 0, pass: pass_one))
+        && c1.contains(host_unit_slot_root_of(m: m, index: 1, pass: pass_one))
+        && !c0.contains(host_unit_slot_root_of(m: m, index: 1, pass: pass_one))
+    }
+  }
+}
+
+fn host_unit_slot_root_of(m: ManagedHost, index: Int, pass: String) -> String {
+  match slot_for(m: m, id: boot_a, index: index) {
+    Absent => "?"
+    Present { value: s } =>
+      match pass_of(text: pass) {
+        ServiceSlotPassIdRefused { cause: _ } => "?"
+        ServiceSlotPassIdRead { pass: p } => host_unit_slot_pass_root(unit: s.unit, pass: p.invocation) as String
+      }
+  }
+}
+
+// THE RED (blocker: the root is per slot and boot, not per pass): the supervisor restarts the controller within one
+// boot, so index 0 is run twice under the SAME unit name. Two passes (two invocation ids) give two distinct roots,
+// and the listener command names each pass's own; a root keyed by the unit alone would be equal here.
+test fn two_passes_of_the_same_slot_do_not_share_a_root() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let r1 = host_unit_slot_root_of(m: m, index: 0, pass: pass_one)
+      let r2 = host_unit_slot_root_of(m: m, index: 0, pass: pass_two)
+      r1 != r2 && r1 != "?" && r2 != "?"
+        && command_text(m: m, index: 0, pass: pass_one).contains(r1) && !command_text(m: m, index: 0, pass: pass_one).contains(r2)
+        && command_text(m: m, index: 0, pass: pass_two).contains(r2)
+    }
+  }
+}
+
+test fn a_pass_identity_is_a_valid_invocation_id_and_nothing_else() -> Bool {
+  (match pass_of(text: pass_one) { ServiceSlotPassIdRead { pass: _ } => true  _ => false })
+    && (match pass_of(text: "") { ServiceSlotPassIdRefused { cause: _ } => true  _ => false })
+    && (match pass_of(text: "0123456789ABCDEF0123456789ABCDEF") { ServiceSlotPassIdRefused { cause: _ } => true  _ => false })
+    && (match pass_of(text: "0123456789abcdef") { ServiceSlotPassIdRefused { cause: _ } => true  _ => false })
+}
+
+// RED: the shared binary tree is not a slot root.
+test fn no_slot_root_is_the_shared_binary_tree() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => host_unit_slot_root_of(m: m, index: 0, pass: pass_one) != (actions_runner_base_dir as String) && host_unit_slot_root_of(m: m, index: 0, pass: pass_one) != host_unit_slot_root_of(m: m, index: 1, pass: pass_one)
+  }
+}
+
+// A NON-ROOT JOB READS A BOUNDED memory.max ONLY IF THE UNIT DELEGATES ITS SUBTREE AND SETS A NUMERIC MemoryMax:
+// read off the argv systemd-run is actually given, so the value is the one the slot's own desired carries
+// (gunbc.runner.runner_slot_desired), not a presence check.
+test fn the_listener_unit_delegates_and_carries_the_slots_numeric_memory_max() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } =>
+      command_text(m: m, index: 0, pass: pass_one).contains("Delegate=yes")
+        && command_text(m: m, index: 0, pass: pass_one).contains(concat("MemoryMax=", to_string(gunbc_runner_slot_memory_max_bytes)))
+    }
+}
+
+// THE RED (blocker: the principal spelling is compared): the listener is spelled `0`, not `root`, and resolves to
+// uid 0 -- the key's owner. A spelling comparison admits it; the resolved-uid comparison refuses it.
+test fn a_listener_whose_uid_is_the_owners_under_another_spelling_could_read_the_key() -> Bool {
+  match isolate_as_readings(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "0", listener: uid_reading(uid: 0)) {
+    ServiceSlotListenerCouldReadKey { user: _ } => true
+    _ => false
+  }
+}
+
+// An identity the host did not resolve is refused, never assumed different from the owner.
+test fn an_identity_that_did_not_resolve_is_refused_not_assumed_different() -> Bool {
+  match isolate_as_readings(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "gunbc-runner", listener: ungrounded_reading()) {
+    ServiceSlotIdentityUngrounded { name: _, cause: _ } => true
+    _ => false
+  }
+}

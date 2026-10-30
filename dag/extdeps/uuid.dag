@@ -1,6 +1,10 @@
 module extdeps.uuid
 
-import std.types { String, NonEmptyStr, Int, List, brand }
+import std.types { String, NonEmptyStr, Int, List, Bool, brand }
+import std.algebra { list_at_optional }
+import std.optional { Present, Absent }
+import extdeps.numeric.base16 { base16_is_digit_code_point }
+import std.unicode.scalar { ascii_lowercase }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
@@ -41,3 +45,39 @@ type Uuid = NonEmptyStr where brand("Uuid")
 
 data uuid_canonical_length: Int = 36
 data uuid_canonical_group_lengths: List<Int> = [8, 4, 4, 4, 12]
+
+// DECODE: a text is a Uuid exactly when it is the canonical 8-4-4-4-12 form of RFC 9562 section 4, in
+// any hex case (section 4 lets a consumer read upper and mixed case; the decode folds to lowercase, the
+// producer spelling, so text comparison is case-stable). A stricter spelling belongs at the boundary that
+// compares text. A text of any other shape is no Uuid: the brand alone never checked the layout, so
+// a consumer that reads a Uuid from text goes through here and refuses on Absent.
+// THE LAYOUT IS READ FROM uuid_canonical_group_lengths: each group is hex digits (the one RFC 4648
+// alphabet, extdeps.numeric.base16) and a dash precedes every group but the first. uuid_canonical_length
+// is the other transcription of the same RFC fact, so the fold must end exactly at it: a row that
+// disagrees with the length refuses every text rather than being read past it.
+fn uuid_group_holds(t: String, start: Int, length: Int, i: Int) -> Bool {
+  if i >= length { true } else { base16_is_digit_code_point(cp: code_point(char_at(s: t, pos: start + i))) && uuid_group_holds(t: t, start: start, length: length, i: i + 1) }
+}
+
+fn uuid_groups_hold(t: String, groups: List<Int>, index: Int, start: Int) -> Bool {
+  match list_at_optional(xs: groups, index: index) {
+    Absent => start == string_length(s: t) + 1
+    Present { value: length } =>
+      start + length <= string_length(s: t)
+        && (index == 0 || char_at(s: t, pos: start - 1) == "-")
+        && uuid_group_holds(t: t, start: start, length: length, i: 0)
+        && uuid_groups_hold(t: t, groups: groups, index: index + 1, start: start + length + 1)
+  }
+}
+
+fn uuid_canonical_text_over(t: String, groups: List<Int>) -> Bool {
+  string_length(s: t) == uuid_canonical_length && uuid_groups_hold(t: t, groups: groups, index: 0, start: 0)
+}
+
+fn uuid_canonical_text(t: String) -> Bool {
+  uuid_canonical_text_over(t: t, groups: uuid_canonical_group_lengths)
+}
+
+fn uuid_of(text: String) -> Uuid? {
+  if uuid_canonical_text(t: text) { Present { value: ascii_lowercase(s: text) as Uuid } } else { none }
+}

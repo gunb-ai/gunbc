@@ -1,0 +1,58 @@
+module gunbc.recurring_failure_mode.fn_type_parameter_header_is_never_indexed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE GRAMMAR ADMITS IT AND THE INDEX DOES NOT RECORD ITS BINDERS. A `fn` declaration may carry a
+// type-parameter header (dag/extdeps/languages/dag/syntax.dag gives the `fn` item form
+// has_type_params: true, and v1.compiler.parse parse_item_prefix collects that header for any item
+// form), and v2.compiler.resolve opens a scope frame for it when it resolves the item's Arrow. But the
+// symbol index never records that header's binders CONJUNCT at the fn's own declaring path. The chain
+// that produces that record is v2.compiler.symbol_index_fill symbol_index_fill_declared_child ->
+// symbol_index_declared (which reads the type-parameter conjunct through v2.std.type_binder
+// type_decl_view, whose binder-bearing arms are GenericTypeDecl, TypeAlias and OpaqueTypeDecl) ->
+// symbol_index_mark_declared_binders -> v2.std.symbol_index symbol_index_mark_declared_type_params,
+// which is the insert into the `declared_type_params` map that
+// v2.std.symbol_index symbol_index_declared_binders_at reads. An `fn` item is NotATypeDecl under
+// type_decl_view, and that arm answers binders: optional_absent, so symbol_index_mark_declared_binders
+// is handed Absent and the insert never happens. What IS recorded for an fn's kinded parameters is
+// something else: symbol_index_fill_kinded_type_params indexes each kinded parameter's VALUE READING at
+// <fn>.<name> into `entries`, so a body can read the parameter at its kind. That is the entries map, not
+// the declared_type_params map. So a parameter of an fn header is in scope, is kinded if written kinded,
+// opens a frame, and has a value reading -- while having no binder conjunct at the fn's declaring path
+// for symbol_index_declared_binders_at to find. Any judgment that grounds a kind on a binder therefore
+// cannot see one, and refuses. That is not a wrong refusal and not a hole in the wall: it is a
+// capability the index does not have.
+data fn_type_parameter_header_is_never_indexed: RecurringFailureMode = RecurringFailureMode {
+  identity: "fn_type_parameter_header_is_never_indexed" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "RUNG FOUND AT: refused at compile time but by the WRONG reason -- the judgment's own unresolved-link refusal, fired because a required input is missing rather than because the argument fails its kind. That is mitigation, not the guarantee: the position is reached, decided and refused, yet nothing has been established about the parameter's inhabitants. CEILING: attainable, and cheaply -- the index already records the conjunct for every type declaration; an fn header needs the same record read through the item's Arrow. Not structurally impossible, so the rung cannot be claimed as reached and the fn half of the forwarded-parameter guarantee stays unexecuted.",
+
+    "COVERAGE HOLE, and the reason a required witness is missing. v2.compiler.resolve resolve_forwarded_parameter_kind_matches grounds a forwarded type argument on the kind its BINDER declares, read through symbol_index_declared_binders_at at the declaration that owns the parameter. DESIGN section 4b requires the guarantee to be observed by execution, so an authorable kinded fn header needs a RED and a positive control. None exists, and none can be authored today: the row that would be the positive control refuses, so it cannot distinguish a working judgment from one that refuses everything.",
+
+    "THE SPECIMEN, and the stage that refuses. `type Slot<b: Resolution>` with `fn width_of<b: Resolution>(s: Slot<b>) -> Nat { 0 }`, module p, assembled through v2.compiler.program_assembly assemble_program_from_ingest. Resolution is a two-arm coproduct (Static | Pointer). MEASURED 2026-10-18, session silent-raven-360, head 8d395a93d5b plus this branch's judgment, runner 66 GiB / 19 cores, build_rc=0: the assembly REFUSES, and the refusal's reason is resolve_reason_forwarded_parameter_kind_unresolved -- the judgment's own unresolved link, named exactly. Nothing else fires: no parse-stage reason, no unbound_symbol, no arity, no arrow/return/body reason. So the front end admits the header and my wall is what refuses, at the binder lookup.",
+
+    "THE LINK THAT IS EMPTY, measured against a control. Reading the assembled index directly: symbol_index_declared_binders_at at p.width_of returns Absent, while the SAME reading at a type declaration's path (p.Forward, from `type Forward<b: Resolution> = Plain<b>`) returns the binder and its declared kind. That is the difference between the two specimens, and it is upstream of the wall: symbol_index_fill_declared_child obtains the conjunct from symbol_index_declared, which reads it through type_decl_view; that classifies an fn item as NotATypeDecl and answers binders: optional_absent, whereas a GenericTypeDecl answers the conjunct, and only a Present conjunct reaches symbol_index_mark_declared_type_params. What an fn DOES get is symbol_index_fill_kinded_type_params, which indexes each kinded parameter's VALUE READING at <fn>.<name> into the entries map -- a different map from the declared_type_params map that symbol_index_declared_binders_at reads. So the claim is narrow and measured: the entries map holds the fn's kinded parameter reading, the declared_type_params map holds no record at the fn's declaring path.",
+
+    "WHY THE FRONT END IS NOT THE DEFECT, AND WHY THE WALL IS NOT EITHER. The grammar admits the header, so this is not a front end refusing what its grammar allows -- had a parse-stage reason fired, this row would name that instead, and the battery was built to catch exactly that (it refused). And the wall refusing is CORRECT under the 2026-10-15 ruling: a name whose binder's kind cannot be established establishes nothing about its inhabitants, so it must not be admitted, and no fallback or ambient admission is added. The defect is the missing record, which is why this row files against the index and not against either judgment.",
+
+    "WHAT MAKES THE MISSING WITNESS ADMISSIBLE RATHER THAN MERELY ABSENT, and its NEXT-RUNG TRIGGER. The Arrow push at resolve_arrow_node_admitted is NOT unreachable -- the specimen reaches resolve_forwarded_parameter_kind_matches and decides there, which is what the exact-reason row proves. So section 3c's deletion does not apply: the branch is live and merely unobservable. The trigger that closes this row is the capability, stated as a test: once symbol_index_fill_declared_child records an fn header's binders at the fn's declaring path -- that is, once symbol_index_declared supplies the type-parameter conjunct for an item whose Arrow carries a header instead of only for the three binder-bearing arms of type_decl_view, so a Present conjunct reaches symbol_index_mark_declared_binders and then symbol_index_mark_declared_type_params -- the two rows a_functions_own_kinded_parameter_forwarded_to_the_slot_is_admitted and a_functions_own_parameter_of_a_different_kind_refuses in test.claim.forwarded_type_parameter_kind_witness become authorable and must run -- admitted for the matching kind, refused with resolve_reason_forwarded_parameter_kind_differs for a different kind. Until then the fn half of the forwarded-parameter guarantee is unexecuted, and this row is the record of that, so no PR body or census may claim the Arrow branch is covered.",
+
+    "SCOPE BOUNDARY. This row does not claim fn type parameters are unusable in general: unkinded fn headers, kinded type-declaration headers, and concrete arguments to a kinded type parameter are all unaffected, and the census at this head shows zero resolve_reason_forwarded_parameter_* occurrences across 158 modules, i.e. no corpus site depends on the missing capability. It claims one narrower thing: the index has no record for an fn header's parameters, so any binder-grounded judgment on one must refuse, and the witness that would prove the fn half of this judgment cannot be written until the record exists."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_declared_child", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_declared", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_mark_declared_binders", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_kinded_type_params", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_mark_declared_type_params", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_decl_view", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "symbol_index_declared_binders_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_arrow_node_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_forwarded_parameter_kind_matches", field: WholeDeclaration }
+  ]
+}

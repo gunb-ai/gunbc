@@ -3,23 +3,11 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, List, Bool, Int }
-import std.algebra { fold_list, length, list_head }
+import gunbc.rung_drop { rung_drop_population, Enumerated, DerivedBy, DeclaredBy, NotYetCounted }
+import std.algebra { fold_list, length, list_head, list_map, non_empty_to_list }
+import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  ArgvRowClassification,
-  ArgvRowMaterialized,
-  ArgvRowExpressionResidue,
-  ArgvRowExecutablePositionRefused,
-  ArgvRowOtherRefusal,
-  ShellTransportOperationRow,
-  operation_argv_bind_text,
-  operation_argv_classify,
-  operation_argv_refusal_label,
-  operation_argv_row_bindings,
-}
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, ArgvRowClassification, ArgvRowMaterialized, ArgvRowExpressionResidue, ArgvRowExecutablePositionRefused, ArgvRowExecutableClosedUnevaluated, ArgvRowOtherRefusal, operation_argv_row_classify, operation_argv_ref_label, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_classify, operation_argv_refusal_label, operation_argv_row_bindings, shell_materialize_operation_argv }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -69,7 +57,96 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // class is empty -- the census found this one by reading the module, not by joining.
 // The relation remains blind on composed argv regardless.
 
-data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
+// THE UNMATERIALIZED POPULATION IS FOUR NAMED CLASSES, each a symbol-named list below and each
+// derived from the declarations at row identity (std.operation_argv operation_argv_row_classify),
+// not a count: a count copied from the tree is a change detector (DESIGN 5). A claim joins the
+// classified corpus against these lists by identity, so a new unclassified row, a removed member
+// and a member that changed class each red.
+//  - expression residue: an argv element past position 0 is a call or field access, which
+//    materialization does not evaluate (a deficit held constant; dissolves with argv element
+//    evaluation over the declaring module's closure in the native v2 materializer).
+//  - closed-unevaluated executable: argv[0] reads no declared input and is not evaluated (observed: ProgramIdentity catalog
+//    call, moved there by #14174), which the wall cannot judge. LOST COVERAGE, declared as
+//    gunbc.rung_drop operation_argv_closed_unevaluated_executable_unjudged, whose population this list projects (one source) as its
+//    bounded population.
+//  - input-reading executable: argv[0] reads a declared input, so the wall correctly refuses.
+//  - unbound data reference: an argv element names a module `data` declaration; the materializer
+//    reports it as DeclaredInputUnbound because it only resolves declared inputs.
+
+type ArgvClassifiedOperation {
+  operation: String
+  reason: String
+}
+
+data operation_argv_reason_catalog: String = "argv[0] reads no declared input and is not evaluated (observed: a ProgramIdentity catalog call, extdeps.exec.command / extdeps.exec.program; the callee is not checked); materialization does not evaluate it, so the executable-position wall cannot judge the program"
+data operation_argv_reason_residue_call: String = "an argv element after position 0 is a call expression, which materialization binds around but does not evaluate"
+data operation_argv_reason_residue_field: String = "an argv element is a field access on a bound input (TransportScript.body), which materialization does not evaluate"
+data operation_argv_reason_data_ref: String = "an argv element names a module data declaration, which materialization reads as an unbound declared input"
+data operation_argv_reason_env_assignment: String = "argv[0] is an env-assignment expansion over a declared input (GIT_INDEX_FILE=<index> or HOME=<home> inside the executable position); the wall fires correctly, and the assignment belongs in the env binding, not the executable (modeling smell, follow-up)"
+data operation_argv_reason_caller_program: String = "argv[0] is the caller-supplied program input by design (general runner); the wall fires correctly"
+data operation_argv_reason_interp_path: String = "argv[0] interpolates the declared executable input path; the wall fires correctly"
+data operation_argv_reason_fixture: String = "the negative-control fixture whose argv[0] interpolates input `bin`; the wall must fire here"
+
+data operation_argv_expression_residue_operations: List<ArgvClassifiedOperation> = [
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.HashObjectWrite", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.HashObjectWriteStdin", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CatFileBlob", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CatFileExists", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CatFileSize", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.UnpackObject", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CommitTree", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.InitAt", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.InitBareAt", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.ObserveRef", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CreateRefIfAbsent", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.AdvanceRefIfExpected", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.DeleteRefIfExpected", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.DiffUnified0", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.DiffNameStatus", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/http/client.dag http.Client.GetLocalhostBounded", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/http/client.dag http.Client.GetBounded", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/http/client.dag http.Client.GetBoundedReportingPeer", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/http/client.dag http.Client.Probe", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.Check", reason: operation_argv_reason_residue_field },
+  ArgvClassifiedOperation { operation: "dag/extdeps/sudo/nopasswd_execute_probe_check_op.dag sudo.NopasswdExecuteProbe.Check", reason: operation_argv_reason_residue_field },
+  ArgvClassifiedOperation { operation: "dag/gunbc/cli_services.dag gunbc.Cli.Run", reason: operation_argv_reason_residue_call },
+  ArgvClassifiedOperation { operation: "dag/gunbc/cli_services.dag claim_executor.Executor.VerifyBuildArtifacts", reason: operation_argv_reason_residue_call }
+]
+
+data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOperation> = [
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndex", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndexPrefixed", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.AddAllIntoIndex", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.UpdateIndexCacheInfo", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.WriteTreeFromIndex", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CheckoutIndexToPrefix", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.PushRefInRepo", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/llm/codex_app_server.dag codex_app_server.Cli.GenerateJsonSchema", reason: operation_argv_reason_interp_path },
+  ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgv", reason: operation_argv_reason_caller_program },
+  ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgvStdin", reason: operation_argv_reason_caller_program },
+  ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgvOutcome", reason: operation_argv_reason_caller_program },
+  ArgvClassifiedOperation { operation: "dag/test/claim/shell_spawn_refused_real_execution_witness.dag test.ShellSpawnProbe.Observed", reason: operation_argv_reason_caller_program },
+  ArgvClassifiedOperation { operation: "dag/test/fixture/argv_executable_position_probe.dag ArgvExecutablePositionProbe.SmuggleExecutable", reason: operation_argv_reason_fixture }
+]
+
+fn operation_argv_closed_unevaluated_executable_operations() -> List<ArgvClassifiedOperation> {
+  list_map(
+    xs: match rung_drop_population(d: operation_argv_closed_unevaluated_executable_unjudged) {
+      Present { value: Enumerated { members: m } } => non_empty_to_list(xs: m)
+      Present { value: DerivedBy { label: _ } } => []
+      Present { value: DeclaredBy { declaration: _ } } => []
+      Present { value: NotYetCounted { cause: _ } } => []
+      Absent => []
+    },
+    f: fn(label) { ArgvClassifiedOperation { operation: label, reason: operation_argv_reason_catalog } }
+  )
+}
+
+data operation_argv_unbound_data_reference_operations: List<ArgvClassifiedOperation> = [
+  ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ActivateHeld", reason: operation_argv_reason_data_ref },
+  ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ReleaseHeld", reason: operation_argv_reason_data_ref },
+  ArgvClassifiedOperation { operation: "dag/gunbc/owned_process.dag gunbc.owned_process.launch.LaunchOwned", reason: operation_argv_reason_data_ref }
+]
 
 data operation_argv_legacy_vocabulary: List<String> = ["package", "bin", "args", "unit", "property"]
 
@@ -79,9 +156,11 @@ type ArgvCorpusTally {
   rows: Int
   materialized: Int
   expression_residue: Int
-  executable_position: Int
-  executable_position_outside_fixture: Int
-  unexplained: Int
+  input_reading_executable: Int
+  closed_unevaluated_executable: Int
+  unbound_data_reference: Int
+  other_refusal_not_unbound: Int
+  unlisted: Int
   outside_legacy: Int
   outside_legacy_materialized: Int
 }
@@ -90,9 +169,11 @@ data operation_argv_empty_tally: ArgvCorpusTally = ArgvCorpusTally {
   rows: 0,
   materialized: 0,
   expression_residue: 0,
-  executable_position: 0,
-  executable_position_outside_fixture: 0,
-  unexplained: 0,
+  input_reading_executable: 0,
+  closed_unevaluated_executable: 0,
+  unbound_data_reference: 0,
+  other_refusal_not_unbound: 0,
+  unlisted: 0,
   outside_legacy: 0,
   outside_legacy_materialized: 0
 }
@@ -121,21 +202,37 @@ fn operation_argv_row_materialization(row: ShellTransportOperationRow) -> ArgvMa
   )
 }
 
+fn operation_argv_is_listed(list: List<ArgvClassifiedOperation>, label: String) -> Bool {
+  any(xs: list, predicate: fn(entry) { entry.operation == label })
+}
+
 fn operation_argv_tally_row(acc: ArgvCorpusTally, row: ShellTransportOperationRow) -> ArgvCorpusTally {
-  let classification = operation_argv_classify(m: operation_argv_row_materialization(row: row))
-  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
-  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
-  let exec_position = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowOtherRefusal => false }
-  let unexplained = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => true }
+  let m = operation_argv_row_materialization(row: row)
+  let classification = operation_argv_row_classify(row: row, m: m)
+  let label = operation_argv_ref_label(at: row.at)
+  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let input_exec = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => false }
+  let catalog = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => true, ArgvRowOtherRefusal => false }
+  let other = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowExecutableClosedUnevaluated => false, ArgvRowOtherRefusal => true }
+  let listed = match classification {
+    ArgvRowMaterialized => true
+    ArgvRowExpressionResidue => operation_argv_is_listed(list: operation_argv_expression_residue_operations, label: label)
+    ArgvRowExecutablePositionRefused => operation_argv_is_listed(list: operation_argv_input_reading_executable_operations, label: label)
+    ArgvRowExecutableClosedUnevaluated => operation_argv_is_listed(list: operation_argv_closed_unevaluated_executable_operations(), label: label)
+    ArgvRowOtherRefusal => operation_argv_is_listed(list: operation_argv_unbound_data_reference_operations, label: label)
+  }
+  let other_unbound = other && string_contains(operation_argv_refusal_label(m: m), "=> DeclaredInputUnbound:")
   let outside = operation_argv_row_is_outside_legacy_vocabulary(row: row)
-  let exec_outside_fixture = exec_position && (row.at.path != operation_argv_fixture_path)
   ArgvCorpusTally {
     rows: acc.rows + 1,
     materialized: acc.materialized + operation_argv_flag(b: materialized),
     expression_residue: acc.expression_residue + operation_argv_flag(b: residue),
-    executable_position: acc.executable_position + operation_argv_flag(b: exec_position),
-    executable_position_outside_fixture: acc.executable_position_outside_fixture + operation_argv_flag(b: exec_outside_fixture),
-    unexplained: acc.unexplained + operation_argv_flag(b: unexplained),
+    input_reading_executable: acc.input_reading_executable + operation_argv_flag(b: input_exec),
+    closed_unevaluated_executable: acc.closed_unevaluated_executable + operation_argv_flag(b: catalog),
+    unbound_data_reference: acc.unbound_data_reference + operation_argv_flag(b: other),
+    other_refusal_not_unbound: acc.other_refusal_not_unbound + operation_argv_flag(b: other && !other_unbound),
+    unlisted: acc.unlisted + operation_argv_flag(b: !listed),
     outside_legacy: acc.outside_legacy + operation_argv_flag(b: outside),
     outside_legacy_materialized: acc.outside_legacy_materialized + operation_argv_flag(b: outside && materialized)
   }
@@ -154,31 +251,51 @@ test fn operation_argv_corpus_is_non_vacuous() -> Bool {
 }
 
 test fn operation_argv_corpus_every_row_is_materialized_or_counted() -> Bool {
-  operation_argv_corpus_tally().unexplained == 0
+  let t = operation_argv_corpus_tally()
+  t.unlisted == 0 && t.other_refusal_not_unbound == 0
 }
 
 test fn operation_argv_corpus_tally_is_total() -> Bool {
   let t = operation_argv_corpus_tally()
-  (t.materialized + t.expression_residue + t.executable_position) == t.rows
+  (t.materialized + t.expression_residue + t.input_reading_executable + t.closed_unevaluated_executable + t.unbound_data_reference) == t.rows
 }
 
-// 7 -> 8: `shell.Exec.Check` joined the residue when `TransportScript` became a sole_constructor
-// record. Its argv element went from `{command}` — a bound name the materializer resolves — to
-// `{command.body}`, a field access, which materialization refuses as ArgvExpressionUnsupported.
-// That is a real, counted increment on a ratchet whose direction is down, and it is recorded here
-// rather than absorbed: the alternative shapes were widening Check's input back to a bare String
-// (deleting the construction wall to satisfy a census, which DESIGN forbids outright) or asserting
-// a smaller number than the corpus contains. The live path is unaffected — Check executes through
-// the interpreter's dispatch_shell, which evaluates argv expressions, and that is the path the
-// wall's transport witness exercises. Returns to 7 on the same trigger the residue note already
-// names: argv element evaluation in materialization, a separate lane.
-test fn operation_argv_corpus_expression_residue_is_pinned() -> Bool {
-  operation_argv_corpus_tally().expression_residue == 8
-}
-
-test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only() -> Bool {
+// The identity join: every unmaterialized row is in its class's list (unlisted == 0, in
+// every_row_is_materialized_or_counted) and every listed name is a live member (the derived class
+// count equals the list length). Counts here are DERIVED from the lists, never a number in this file.
+test fn operation_argv_corpus_classified_set_equals_the_named_lists() -> Bool {
   let t = operation_argv_corpus_tally()
-  t.executable_position == 1 && t.executable_position_outside_fixture == 0
+  t.unlisted == 0
+    && t.expression_residue == length(xs: operation_argv_expression_residue_operations)
+    && t.input_reading_executable == length(xs: operation_argv_input_reading_executable_operations)
+    && t.closed_unevaluated_executable == length(xs: operation_argv_closed_unevaluated_executable_operations())
+    && t.unbound_data_reference == length(xs: operation_argv_unbound_data_reference_operations)
+}
+
+// The wall's true scope: it fires on the negative-control fixture plus exactly the named list of
+// operations whose argv[0] reads a declared input, each carrying its reason.
+// closed-unevaluated executables are NOT in this claim: the wall cannot judge them (declared drop).
+test fn operation_argv_corpus_executable_position_wall_fires_on_the_fixture_and_the_named_input_readers() -> Bool {
+  let t = operation_argv_corpus_tally()
+  t.unlisted == 0
+    && t.input_reading_executable == length(xs: operation_argv_input_reading_executable_operations)
+    && operation_argv_is_listed(
+      list: operation_argv_input_reading_executable_operations,
+      label: "dag/test/fixture/argv_executable_position_probe.dag ArgvExecutablePositionProbe.SmuggleExecutable"
+    )
+}
+
+// Positive control by symbol: a closed-unevaluated row (the bytes of a literal executable are controlled by
+// RED_literal_executable_control_materializes; such a row cannot materialize, which is the drop). Its executable is a ProgramIdentity the
+// wall cannot judge, so it is classified as such (not as the wall firing on an input).
+test fn operation_argv_corpus_closed_unevaluated_row_is_classified_and_not_an_input_reader() -> Bool {
+  operation_argv_is_listed(
+    list: operation_argv_closed_unevaluated_executable_operations(),
+    label: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet"
+  ) && !operation_argv_is_listed(
+    list: operation_argv_input_reading_executable_operations,
+    label: "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedGet"
+  )
 }
 
 test fn operation_argv_corpus_outside_legacy_vocabulary_now_materializes() -> Bool {

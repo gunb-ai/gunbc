@@ -3,8 +3,9 @@ module gunbc.machine_intake.megarac_operation_evidence
 import std.types { EpochMs, List }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
-import extdeps.bmc.endpoint { AmiMegaRac }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.ipmitool_observed_output {
+  mtcollins1_boot_run_40082618814_hpm_check_artifact_path, mtcollins1_boot_run_40082618814_hpm_check_digest,
+}
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
@@ -12,6 +13,7 @@ import gunbc.host.megarac_operation_standing {
 }
 import gunbc.machine_intake.mtcollins1_access_observation {
   mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
+  mtcollins1_current_build_firmware, mtcollins1_current_build_identity,
 }
 import gunbc.machine_intake.mtcollins1_diskless_boot_receipt {
   mtcollins1_diskless_boot_artifact_path, mtcollins1_diskless_boot_capture_digest, mtcollins1_diskless_boot_observed_at,
@@ -30,14 +32,76 @@ import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_s
 //     The KVM canvas still has no standing at 0.32: no committed still exists from that build.
 //   - Reflashed to BMC 0.45.3 on 2026-10-02 (the firmware converge's recorded credential effect).
 //   - Fleet-converge run 37102391062, 2026-10-03, about 21 h after the reflash, committed its media
-//     attach (diagnostics), its KVM journal with five sha256-bound stills, and a BMC sensor read. Those
-//     are receipts of a run, and NO READING OF THE 0.45.3 BUILD IS COMMITTED: the read-only probe
-//     (mc info / hpm check) is owed. Until it lands as a reading row these receipts join no build, so
-//     no operation is grounded at 0.45.3.
+//     attach (diagnostics), its KVM journal with five sha256-bound stills, and a BMC sensor read. For a
+//     month those were receipts of a run with NO READING OF THAT BUILD COMMITTED -- the read-only probe
+//     was owed -- and they joined no build. THE DEBT IS PAID: boot run 40082618814 (2026-10-24T18:00:43Z)
+//     ran the read-only pre-power `ipmitool hpm check` and its raw stdout is committed beside that run,
+//     digested above. The controller REPORTS that build as "0.45" (the Active APP cell reads
+//     `0.45 03000000`); THE VENDOR PAGE CALLS IT 0.45.3 and that label lives in
+//     extdeps.ampere.mt_collins_firmware_release, not as a key here. All three Oct-3 receipts fall after
+//     the reflash window closed (not_after 2026-10-03T00:00:00Z) and before the reading, so they join the
+//     NEW reading: media attach, the KVM still and SDR socket naming are grounded at the current build.
 //   - That run's sensor read was taken with the host off: every CPU0_ and CPU1_ record answered "No
 //     Reading", but the SDR RECORD NAMES are present in the capture, which is what socket naming reads.
-//     So the receipt evidences the naming, not only that a read executed; it still grounds nothing at
-//     0.45.3 until the build is read.
+//     So the receipt evidences the naming, not only that a read executed.
+
+// THE FIXTURE EVIDENCE MINT, public on purpose and living HERE rather than in a witness. The carriers
+// (reading/receipt/transition) and their one mint (megarac_operation_evidence_of) are sole_constructor and
+// sealed to the committed evidence rows plus the megarac standing witnesses; a boot witness must not reach
+// for that mint to invent a controller build. This function is the sanctioned door: it builds the ONE shape
+// a boot fixture needs -- "at this endpoint, one reading recorded this build" -- from arguments the caller
+// supplies, and it names no unit, so it is not a host branch. The reading's evidence ref and instant are the
+// CALLER's to name, so a fixture cannot quietly borrow a committed artifact as backing for a build that
+// artifact never recorded: pass the real ref when the reading is real, and a ref that says "hypothetical
+// fixture" when it is not.
+//
+// This is what lets the boot path's capability lookup be keyed by megarac_current_build(evidence:,
+// endpoint:) (manager HOLD defect 1): a witness asserting "this controller now runs build X" says it by
+// producing a reading or a transition for X, exactly as production does, instead of rewriting the firmware
+// field of an immutable access-probe receipt -- which, once the release stops being read off the receipt,
+// would be a claim asserting nothing.
+// THE MINT IS SEALED TO ITS CLAIMS AND ITS TWO SANCTIONED HELPERS (side-chat blocker 2). Public and
+// unsealed, this fn let ANY caller build the genuine-shaped 0.32 reading with transitions: [] and get
+// 0.32 back -- the roster in megarac_operation_evidence_of judges only the immediate caller, so an
+// unsealed public mint re-opened the population from outside it. Now the roster names every terminal
+// claim that needs a fixture build, plus the two evidence-returning helpers the witnesses use
+// (test.claim.host.managed_host_boot_witness fixture_evidence_at and
+// test.claim.host.managed_host_witness witness_evidence_reporting); those helpers are themselves
+// sealed to their own claim rosters below, so sealing the helpers seals the claims that reach them
+// THROUGH them -- and an unrostered caller is refused at either step, which is what the direct AND
+// indirect forged probes measure, each beside the admitted control.
+fn megarac_operation_evidence_fixture_for(
+  endpoint: BmcControllerEndpoint,
+  identity: BmcObservedIdentity,
+  evidence: EvidenceRef,
+  observed_at: EpochMs,
+) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "fixture_evidence_at"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "witness_evidence_reporting"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_build_reading_for_another_controller_grounds_no_capability_row"),
+  ]
+{
+  megarac_operation_evidence_of(
+    readings: [megarac_build_reading(endpoint: endpoint, identity: identity, evidence: evidence, observed_at: observed_at)],
+    receipts: [],
+    transitions: [],
+  )
+}
+
+// THE EMPTY FIXTURE EVIDENCE: "no reading and no reflash has ever been recorded at this controller". The
+// lookup answers that with HostCapabilityRowNoCurrentRelease, so it must be writable without fabricating a
+// reading. Named and public for the same reason as above -- the population is sole_constructor.
+fn megarac_operation_evidence_fixture_none() -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "fixture_evidence_at"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "witness_evidence_reporting"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_admitted_machine_boots_off_the_current_release_and_not_the_probed_one"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_build_reading_for_another_controller_grounds_no_capability_row"),
+  ]
+{
+  megarac_operation_evidence_of(readings: [], receipts: [], transitions: [])
+}
 
 data mtcollins1_intake_reading_evidence: EvidenceRef = EvidenceRef {
   label: "mtcollins1 intake capture and write exercise (gunbc.machine_intake.mtcollins1_access_observation mtcollins1_evidence_manifest_digest)",
@@ -76,16 +140,50 @@ data mtcollins1_run_37102391062_kvm_at: EpochMs = 1791016710837
 data mtcollins1_run_37102391062_sensors_by: EpochMs = 1791016934906
 
 // THE 2026-10-02 REFLASH. The vendor names the release 0.45.3 (extdeps.ampere.mt_collins_firmware_release
-// mt_collins_bmc_0_45_3_hpm); what the controller reports for it is the probe's to read, and a reading
-// row supersedes this name as the current build the moment it lands.
+// mt_collins_bmc_0_45_3_hpm) and that NAME is where the vendor's page lives -- the operator-attested page
+// label, kept by the catalogue row's evidence and by the transition below. What the controller REPORTS for
+// that release is no longer owed: boot run 40082618814 read it, and the controller reports `0.45` (the
+// Active APP cell reads `0.45 03000000`). So this window's `to:` names the READING, not the page label.
+// Naming the label here instead would make the ledger assert a build that the ledger's own readings do not
+// contain, and the join's reading-window match against the transition's build would never fire. Nothing
+// here asserts 0.45.3 == "0.45 03000000"; the transition records WHEN the unit moved and the reading
+// records WHAT it now reports, and the two are kept separate on purpose.
 data mtcollins1_reflash_not_before: EpochMs = 1790899200000
 data mtcollins1_reflash_not_after: EpochMs = 1790985600000
 
+// THE MACHINE READING OF THE CURRENT BUILD, and the EPOCH IT WAS READ. Boot run 40082618814's
+// pre-power read-only phase ran `ipmitool hpm check` against this controller; its raw stdout, its
+// retention path, and its digest have ONE home each, in extdeps.bmc.ipmitool_observed_output, and this
+// row names THAT data -- retyping the path or the hex here would be a second copy of one fact (review
+// 86103 finding 2; DESIGN.md §3). The digest this row vouches for is derived from the very literal the
+// catalogue row's standing holds, so the bytes the ledger grounds and the bytes the identity derives from
+// are one fact told once. This row is what makes those run receipts join a build: before it landed they
+// joined nothing, because the ledger held no reading of 0.45.
+data mtcollins1_current_build_hpm_check_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+  digest: Sha256Hash(mtcollins1_boot_run_40082618814_hpm_check_digest),
+}
+
+// 2026-10-24T18:00:43Z: the instant the boot's read-only pre-power phase ran `hpm check` on this unit.
+data mtcollins1_current_build_read_at: EpochMs = 1792864843000
+
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
   megarac_operation_evidence_of(
-    readings: [
-      megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
-    ],
+    // THE CURRENT-BUILD ROW EXISTS ONLY IF THE MACHINE READ ESTABLISHED IT (reviews 86103/86139;
+    // DESIGN.md §5). The intake row is a committed reading and stands unconditionally. The current-build
+    // row is written ONLY on the Present arm of the derived identity: when the committed hpm check
+    // refuses -- the row missing, duplicated, or unreadable -- there is NO reading to record, so recording
+    // one is not an option. The ledger cannot hold "a reading of a build called no-version-stored",
+    // because no such value can reach this list at all.
+    readings: match mtcollins1_current_build_identity {
+      Present { value: current_build_identity } => [
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: current_build_identity, evidence: mtcollins1_current_build_hpm_check_evidence, observed_at: mtcollins1_current_build_read_at),
+      ]
+      Absent => [
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+      ]
+    },
     receipts: [
       megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_diskless_boot_evidence, executed_at: mtcollins1_diskless_boot_observed_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_sdr_32dimm_evidence, executed_at: mtcollins1_sdr_32dimm_read_on),
@@ -93,15 +191,24 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       megarac_operation_receipt(operation: MegaRacKvmCanvasStill, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_kvm_journal, executed_at: mtcollins1_run_37102391062_kvm_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_sensors_by),
     ],
-    transitions: [
-      megarac_firmware_transition(
-        endpoint: mtcollins1_endpoint,
-        from: mtcollins1_firmware,
-        to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"),
-        not_before: mtcollins1_reflash_not_before,
-        not_after: mtcollins1_reflash_not_after,
-        record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
-      ),
-    ],
+    // THE REFLASH DESTINATION IS THE MACHINE-READ BUILD, AND ONLY IF THERE IS ONE. The 2026-10-02
+    // reflash happened whatever the catalogue says -- but the LEDGER ROW says which build it moved TO, and
+    // that fact comes from the committed reading (the section comment above). With no machine-read build
+    // there is no destination to name, so the window carries no transition rather than a guessed one:
+    // the Oct-3 receipts then join no build -- the honest state of the ledger when the reading it needed
+    // is missing, which is exactly the state this PR's witnesses keep the ledger out of.
+    transitions: match mtcollins1_current_build_firmware {
+      Present { value: current_build_firmware } => [
+        megarac_firmware_transition(
+          endpoint: mtcollins1_endpoint,
+          from: mtcollins1_firmware,
+          to: current_build_firmware,
+          not_before: mtcollins1_reflash_not_before,
+          not_after: mtcollins1_reflash_not_after,
+          record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
+        ),
+      ]
+      Absent => []
+    },
   )
 }

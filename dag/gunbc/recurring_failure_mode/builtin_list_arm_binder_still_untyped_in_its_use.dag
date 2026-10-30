@@ -2,15 +2,17 @@ module gunbc.recurring_failure_mode.builtin_list_arm_binder_still_untyped_in_its
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data builtin_list_arm_binder_still_untyped_in_its_use: RecurringFailureMode = RecurringFailureMode {
   identity: "builtin_list_arm_binder_still_untyped_in_its_use" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: in gunbc.native_serve_probe native_serve_wire_parse, `match split(s: response, ...) { Cons { head: head, tail: rest } => ... }` binds `head` from a builtin's List<String>, and using `head` directly as the `s` of a further builtin split refuses `function 'split' not found in scope` (effect summary incomplete). The source re-binds it as `let head_text: String = head`. Checked by execution 2026-10-16 (re-bind removed, module re-run). The declared-variant binder typing restored under the retired rung drop match_arm_binder_typing_lost_to_lexical_carrier does not reach a builtin collection's arm binder. HARM: a workaround survives in production source and the refusal text names scope, not typing. RUNG FOUND AT: mitigatable (refused loudly, worked around by an authored annotation).",
     "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: infer types a Cons arm binder from a builtin List<T> scrutinee at the scrutinee's instantiation, and a builtin call's argument position accepts the binder's use, SUFFICIENT FOR the `let head_text: String = head` re-bind in native_serve_wire_parse to be deleted with the module still resolving. The cause (typing vs builtin-call scope admission) is not yet separated; the first step is to read which of the two refuses.",
   ],
   evidence: [
-    DeclarationRef { module_path: "gunbc.native_serve_probe", decl_name: "native_serve_wire_parse", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.native_serve_probe_plan", decl_name: "native_serve_wire_parse", field: WholeDeclaration },
   ],
 }

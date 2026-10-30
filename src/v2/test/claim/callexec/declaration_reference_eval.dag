@@ -28,7 +28,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   ParameterReferenceBody,
   DeclarationReferenceKind,
   Symbol,
@@ -42,9 +42,9 @@ import v2.std.node {
   TypeNode,
   ComputationNode,
   Transform,
-  fold_node
+  fold_node,
+  NotADeclaration
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.test.lens_common.infer_fixture {
   ClaimParam,
   claim_int_literal,
@@ -205,7 +205,7 @@ fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
   fold_list(
     xs: xs,
     empty: false,
-    cons: fn(rest, item) { if item == wanted { true } else { rest } }
+    cons: fn(rest, item) { if node_same_occurrence(a: item, b: wanted) { true } else { rest } }
   )
 }
 
@@ -350,7 +350,7 @@ fn cref_supplied(callee: Symbol, params: List<ClaimParam>, codomain: Symbol, bod
 }
 
 fn cref_actual(lexeme: String) -> List<Edge> {
-  [Edge { label: Authored { name: ^only_arg }, target: claim_int_literal(lexeme: lexeme, n: 23) }]
+  [Edge { label: Authored { name: ^only_arg }, target: claim_int_literal(lexeme: lexeme, n: 23), declaration: NotADeclaration }]
 }
 
 fn cref_zero_arg_reading() -> CrefReading {
@@ -674,7 +674,7 @@ fn cref_unbound_call() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: [^p, ^absent_callee], occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: [^p, ^absent_callee], occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

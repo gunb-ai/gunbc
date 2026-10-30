@@ -20,8 +20,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme, NotADeclaration }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.list_introduction { list_introduction_elements_optional }
 
@@ -453,8 +452,8 @@ test fn a_resolved_list_introduction_reads_as_not_an_application() -> Bool {
   llv_application_class(n: Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: declaration_reference_node(qn: [^llv_elem], occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: declaration_reference_node(qn: [^llv_elem], occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }) == ^llv_not_application

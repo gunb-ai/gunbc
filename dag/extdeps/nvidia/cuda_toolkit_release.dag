@@ -1,0 +1,44 @@
+module extdeps.nvidia.cuda_toolkit_release
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE MINIMUM LINUX DRIVER A CUDA TOOLKIT RELEASE NEEDS, as NVIDIA's CUDA toolkit release notes state it
+// (table "CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility"; CUDA 13.0 GA
+// requires driver >= 580.65.06). Only the driver MAJOR is carried: a host's driver is read as a major
+// (extdeps.cloud.vast_ai VastAiDriverVersion). A host that reports it can run CUDA N (Vast: cuda_max_good >= N)
+// has a driver at or above that release's floor, so a serving recipe derives its driver floor from the CUDA
+// major it needs instead of restating a driver number.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.cuda_toolkit_release",
+      decl_name: "CudaToolkitDriverRequirement",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type CudaToolkitDriverRequirement {
+  toolkit_major: Nat
+  min_driver_major: Nat
+  standing: CitedFigureStanding
+}
+
+data cuda_13_0_driver_requirement: CudaToolkitDriverRequirement = CudaToolkitDriverRequirement {
+  toolkit_major: 13,
+  min_driver_major: 580,
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}

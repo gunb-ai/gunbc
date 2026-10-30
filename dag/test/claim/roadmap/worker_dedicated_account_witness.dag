@@ -1,16 +1,60 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
-import std.types { Bool, NonEmptyStr, List, String }
+import gunbc.roadmap.dispatch_worker_unit_confinement {
+  dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list,
+  dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance, session_process_bounds,
+}
+import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
+// THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
+// find walk. Read from the tool module rather than spelled "find" here, so the claim cannot agree with a
+// model that had quietly started running a different program.
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.findutils { find_program }
+// THE TWO ACTION WORDS, so the pairing claim can tell a re-group walk from a mode walk by WHAT IT RUNS
+// rather than by its position in a list -- a model that swapped the two families would keep its count and
+// still be refused here.
+import extdeps.tools.chown { chgrp_path_resolved_program }
+import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.optional { Present, Absent }
+import std.algebra { trim }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
-  dashboard_instance_provider_state_directory, dashboard_instance_worker_git_directories,
+  dashboard_instance_provider_state_directory, dashboard_instance_provider_state_root, dashboard_instance_worker_git_directories,
+  dashboard_git_worker_unwritable_children, dashboard_git_worker_local_config_keys,
+  dashboard_git_worker_directory_children, dashboard_git_worktrees_child,
+  dashboard_git_worker_objects_child,
+  dashboard_instance_worker_git_subtree_migration,
+  dashboard_git_worker_subtree_path, dashboard_git_worker_subtree_confined_children,
+  dashboard_git_worker_directory_mode_is_granted, dashboard_git_worker_file_mode_is_granted,
+  dashboard_git_worker_subtree_granted_directory_mode,
+  dashboard_git_worker_subtree_granted_directory_mode_octal, dashboard_git_worker_subtree_needs_sticky,
+  dashboard_git_worker_commit_write_set, dashboard_instance_worker_git_unwritable_paths,
+  dashboard_git_worker_granted_shared_directory_mode, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_interior_directory_mode_is_accepted, dashboard_git_worker_file_modes_are_equal,
+  dashboard_git_worker_directory_mode_is_unmigrated,
+  dashboard_git_subtree_readback_is_granted,
+  dashboard_git_maintenance_unit_stem, dashboard_git_maintenance_principal,
+  dashboard_git_maintenance_timer_on_calendar, dashboard_git_maintenance_owned_config_keys,
+  dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
+  dashboard_git_maintenance_exec_commands,
+  dashboard_instance_dispatch_worktree_root,
+  DashboardInstanceProvisionOp, DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree,
+  DashboardVerifyProviderAuth, dashboard_instance_provision_plan,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_unit_stem, dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_review_unit_properties, dispatch_attempt_worker_git_entry_directories,
+  dispatch_attempt_worker_git_entry_migration, dispatch_repository_shared_posture_commands,
+  dispatch_worker_unit_properties,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.host.host_layout { attempt_exit_spool_root }
 import extdeps.systemd { NoNewPrivilegesProperty, RestrictSUIDSGIDProperty }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
 import gunbc.roadmap.attempt_system_unit_launch {
@@ -18,13 +62,15 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_admitted,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged }
-import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode_octal }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode, declared_directory_mode_octal }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_worker_shared_group_gid,
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
   fleet_srv1_observed_numeric_ids,
-  fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names,
+  fleet_posix_worker_supplementary_groups,
 }
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
@@ -60,14 +106,14 @@ fn admits_user(instance: HostDashboardInstance, user: NonEmptyStr) -> Bool {
 
 fn declared_owner_group(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _ } => owner.group as String
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _, group_adoption: _} => owner.group as String
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }
 
 fn declared_mode_octal(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode } => declared_directory_mode_octal(m: mode)
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode, group_adoption: _} => declared_directory_mode_octal(m: mode)
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }
@@ -108,6 +154,22 @@ test fn the_lab_attempt_directories_are_shared_with_the_worker() -> Bool {
     && declared_mode_octal(t: dashboard_instance_dispatch_attempt_state_directory(instance: lab)) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
 }
 
+// THE PROVIDER-CREDENTIAL DIRECTORY IS THE ATTEMPT'S HOME, AND ITS MODE KEEPS OTHERS OUT (the security
+// reading bright-moth-475 asked me to confirm FROM THE MODEL): a dedicated-worker attempt runs the
+// provider with HOME = the provider-state directory -- codex_spawn_argv reads that home from the
+// instance's provider-state root, the authority asserted below -- so the worker must be able to read it (it is the
+// provider's own auth/config/session state), and grouping it to the shared attempt group is required,
+// not incidental. The declared mode is DirectoryOwnerGroupWritableSetgid (02770): owner rwx, group rwx,
+// NO other bits -- so the regroup hands the attempt group access and nothing to any other account.
+test fn the_provider_credential_directory_is_the_attempt_home_and_admits_only_the_group() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let provider_dir = dashboard_instance_provider_state_directory(instance: lab)
+  (owned_path_text(t: provider_dir) == (dashboard_instance_provider_state_root(instance: lab) as String))
+    && declared_owner_group(t: provider_dir) == (fleet_posix_worker_shared_group_name as String)
+    && declared_mode_octal(t: provider_dir) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
+    && declared_mode_octal(t: provider_dir) == "2770"
+}
+
 test fn the_live_attempt_directories_keep_their_staged_owner_and_mode() -> Bool {
   let live = srv1_live_dashboard_instance()
   declared_owner_group(t: dashboard_instance_dispatch_attempt_state_directory(instance: live)) == (live.directory_owner.group as String)
@@ -129,23 +191,40 @@ test fn the_worker_ids_collide_with_no_other_declared_or_observed_account() -> B
 }
 
 // CLAIM 2 (RED on main: the git directories had no declaration). The lab derives objects, refs and logs
-// as gunbc-attempt group-writable setgid, and not .git itself, hooks, config or info; the staged prod arm
-// declares none.
+// as gunbc-attempt group-writable setgid -- objects/ at the STICKY arm (3770) and refs/ and logs/ at the
+// plain one (2770), each derived from the single mode authority rather than pinned to one flat constant --
+// and not .git itself, hooks, config or info; the staged prod arm declares none.
 test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let dirs = dashboard_instance_worker_git_directories(instance: lab)
-  let setgid = declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
   length(dirs) == 3
-    && all(dirs, d => declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
-      && declared_mode_octal(t: d) == setgid)
     && length(dashboard_instance_worker_git_directories(instance: srv1_live_dashboard_instance())) == 0
     && any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git/objects"], ""))
     && !any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git"], ""))
+    // EACH CHILD IS CHECKED AGAINST THE AUTHORITY THAT DECIDES ITS MODE: the expectation walks the same
+    // child list the declaration maps over and asks dashboard_git_worker_subtree_granted_directory_mode
+    // what that subtree's top must be. A claim that compared all three against one constant could not
+    // tell the arms apart and would go green over the lab losing the fence on objects/; a claim naming an
+    // octal of its own would be a fourth spelling of the mode. This shape (pair child -> expectation ->
+    // find its declaration) is also why the child's PATH must be the child under .git: a declaration
+    // missing or mispathed fails here, not in a later deploy.
+    && all(dashboard_git_worker_directory_children, c => any(dirs, d =>
+      owned_path_text(t: d) == dashboard_git_worker_subtree_path(instance: lab, child: c)
+        && declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
+        && declared_mode_octal(t: d) == file_mode_octal(mode: dashboard_git_worker_subtree_granted_directory_mode(child: c))))
+    // THE TWO ARMS ARE ACTUALLY DIFFERENT, pinned at the renderer so the per-child check above cannot be
+    // satisfied by an authority that collapsed both to one mode: the sticky arm differs by exactly the
+    // sticky bit, and exactly one of the three children asks for it.
+    && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgidSticky) == "3770"
+    && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid) == "2770"
+    && dashboard_git_worker_subtree_needs_sticky(child: dashboard_git_worker_objects_child)
+    && !any(dashboard_git_worker_directory_children, c => dashboard_git_worker_subtree_needs_sticky(child: c)
+      && (c as String) != (dashboard_git_worker_objects_child as String))
 }
 
 fn owned_path_text(t: OwnedDirectoryTarget) -> String {
   match t {
-    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _ } => path as String
+    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _, group_adoption: _} => path as String
     OwnedDirectoryManaged { directory: _ } => ""
   }
 }
@@ -177,4 +256,1234 @@ test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> 
 // that sets User= (the belt's SystemdUnitContainer arm enqueues through attempt_system_unit_enqueue_start).
 test fn the_lab_system_launch_applies_the_dedicated_user() -> Bool {
   admits_user(instance: srv1_lab_dashboard_instance(), user: fleet_posix_worker_user.name)
+}
+
+// ==============================================================================================
+// WORKER-ROOT-EQUIVALENT-3 (follow-up to #14246 and #14270, on main): a lab worker running as
+// gunbc-worker can COMMIT. #14270 asserted the group-writable setgid ownership on the three TOP-LEVEL
+// git directories; the owned-directory provider does not recurse, and srv1 measured what that leaves
+// (bright-moth-475, 2026-10-17, gunbc-worker 1004/1004 and gunbc-attempt 1003 created exactly as
+// fleet_posix_accounts declares): .git/objects, .git/refs, .git/logs AND their existing subdirectories
+// -- e.g. .git/objects/f9 -- at 0775 briansrls:briansrls, a group the worker is not a member of. The
+// first commit died inside the existing fan-out directory. The claims below are the model's answer.
+// The write-set they check against is not documentation read at one remove: it is a commit run and the
+// tree diffed (git 2.43 and 2.47), with the OWNER path closed inside the granted subtree so only the
+// group bit can carry a write. Under that posture, 20 consecutive commits land with rc 0 and empty
+// stderr while .git itself is 0555 and config, HEAD, description and index are 0444.
+//
+// THE THREE CLAIMS, and which was RED on main:
+//   (1) the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_directory_itself
+//       -- RED on main. Three top-level directories were granted and nothing else: the per-attempt
+//       entry under .git/worktrees was not granted at all, so a linked-worktree commit could not write
+//       its own index.lock.
+//   (2) the_existing_subtree_is_covered_by_the_declared_migration
+//       -- RED on main. The provider asserted one directory and stopped, so an existing objects/f9
+//       stayed in the service user's group with no setgid, and the commit failed inside it.
+//   (3) the_confined_git_interior_and_sibling_isolation_survive_the_subtree_grant
+//       -- GREEN on main (#13942's work). #13942's carve-outs stay exactly as they were; this slice
+//       only ADDS grants, and this claim is what fails if a grant ever reaches the confined interior.
+// ==============================================================================================
+
+// An attempt worktree path, for the per-attempt derivations. The entry name is the worktree's basename,
+// which is how `git worktree add` names the private entry it creates.
+fn lab_worktree(instance: HostDashboardInstance, key: String) -> String {
+  join([dashboard_instance_dispatch_worktree_root(instance: instance) as String, "/", key], "")
+}
+
+// THE COMMIT WRITE-SET AS PATHS, not prose: the shapes the derivation observed, resolved under this
+// instance's .git. A write-set row that no grant covers is the defect these claims exist to catch, so
+// the list is the input and the grant set is the check -- never the other way round. The fan-out
+// directory 8a is NEW (nothing in the measured repo had it) which is why the PARENT .git/objects has to
+// be group-writable and setgid; refs/heads/dispatch-attempt-claim-1 and its reflog are new files under
+// EXISTING parents; the entry rows are where a linked worktree keeps its own index, HEAD and reflog.
+// ONE CLASS OF THE MODEL'S WRITE-SET AS THE CONCRETE PATH IT NAMES. A class is a template over the same
+// fact, so instantiating it here -- rather than keeping a parallel list that happens to agree -- keeps the
+// claim and the model row one fact: rename a class in the model and this claim stops covering it and
+// says so. The claim key is the branch name the commit is made on.
+fn lab_repo_write_row(git: String, template: NonEmptyStr, key: NonEmptyStr) -> String {
+  if template == ".git/objects/<fan-out>/<object>" {
+    join([git, "/objects/8a", "/5f3b2c1d4e6f8a0b2c4d6e8f0a1b2c3d4e5f6a7b"], "")
+  } else if template == ".git/refs/heads/<branch>" {
+    join([git, "/refs/heads", "/", key as String], "")
+  } else if template == ".git/logs/refs/heads/<branch>" {
+    join([git, "/logs/refs/heads", "/", key as String], "")
+  } else {
+    ""
+  }
+}
+
+// THE REPOSITORY HALF OF THE WRITE-SET: every class of dashboard_git_worker_commit_write_set instantiated,
+// PLUS THE TWO STRUCTURAL CONSEQUENCES A CLASS NAMES BUT DOES NOT REPEAT -- the fan-out DIRECTORY (a class
+// names the object; the commit also creates the directory above it, which is why the PARENT .git/objects
+// must be group-writable and setgid) and the ref's LOCK FILE (the class names the ref; the update renames
+// a lock over it). They are appended here and named again below, so the list cannot grow silently.
+fn lab_repo_write_paths(instance: HostDashboardInstance) -> List<String> {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  let key: NonEmptyStr = "dispatch-attempt-claim-1"
+  concat(
+    map(dashboard_git_worker_commit_write_set, t => lab_repo_write_row(git: git, template: t, key: key)),
+    [
+      join([git, "/objects/8a"], ""),
+      join([git, "/refs/heads", "/", key as String, ".lock"], ""),
+    ],
+  )
+}
+
+// THE FULL WRITE-SET A LINKED-WORKTREE COMMIT WRITES: the model's repository classes plus the attempt's
+// own private entry, which the model row deliberately does not carry because those paths live under
+// .git/worktrees/<key> and belong to one attempt.
+fn lab_commit_write_paths(instance: HostDashboardInstance) -> List<String> {
+  let entry = dispatch_attempt_private_git_dir(
+    instance: instance, attempt_worktree: lab_worktree(instance: instance, key: "dispatch-attempt-claim-1"))
+  concat(lab_repo_write_paths(instance: instance), [
+    join([entry, "/index.lock"], ""),
+    join([entry, "/index"], ""),
+    join([entry, "/HEAD"], ""),
+    join([entry, "/logs", "/HEAD"], ""),
+    join([entry, "/ORIG_HEAD"], ""),
+    join([entry, "/COMMIT_EDITMSG"], ""),
+  ])
+}
+
+// EVERY MODEL CLASS MUST APPEAR IN THE WRITE-SET -- otherwise the claim could drop a class and still pass
+// its containment leg, proving less than the model row does.
+fn lab_write_set_covers_every_declared_class(instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  let writes = lab_commit_write_paths(instance: instance)
+  all(dashboard_git_worker_commit_write_set, t =>
+    trim(s: t) != ""
+      // EVERY class must instantiate to a real path INSIDE the repository. A template the claim does not
+      // know instantiates to the empty string, and without this leg the empty string would match itself
+      // in the list it produced -- the claim would report full coverage for a class it never wrote.
+      && lab_repo_write_row_is_a_real_written_path(
+        git: git, writes: writes, template: t,
+      ))
+}
+
+// THE INSTANTIATED ROW, JUDGED WHERE IT CAN BE NAMED: inside the repository, and present in the write-set
+// the claim built. Named rather than inlined because the judgment needs the instantiated row twice, and a
+// second call to the instantiator is a second place for the key to be spelled.
+fn lab_repo_write_row_is_a_real_written_path(
+  git: String,
+  writes: List<String>,
+  template: String,
+) -> Bool {
+  let row = lab_repo_write_row(git: git, template: template, key: "dispatch-attempt-claim-1" as NonEmptyStr)
+  starts_with(s: row, prefix: concat(git, "/")) && any(writes, w => w == row)
+}
+
+// NO REPOSITORY-LEVEL ROW WITHOUT A MODEL CLASS -- otherwise the claim could invent a path and widen what
+// it proves. Rows under the attempt's private entry are exempt (the model row covers the repository), as
+// are the two structural consequences named above.
+fn lab_repo_rows_are_all_declared(instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  let declared = map(dashboard_git_worker_commit_write_set, t =>
+    lab_repo_write_row(git: git, template: t, key: "dispatch-attempt-claim-1" as NonEmptyStr))
+  let entry = dispatch_attempt_private_git_dir(
+    instance: instance, attempt_worktree: lab_worktree(instance: instance, key: "dispatch-attempt-claim-1"))
+  all(lab_repo_write_paths(instance: instance), w =>
+    path_is_within(child: w, parent: entry)
+      || any(declared, d => d == w)
+      || w == join([git, "/objects/8a"], "")
+      || w == join([git, "/refs/heads/dispatch-attempt-claim-1.lock"], ""))
+}
+
+// THE CONFINEMENT QUANTIFIER, in ONE place, because the two claims that read it must read it the same
+// way and a disagreement between them would be a hole rather than a check.
+// dashboard_git_worker_unwritable_children carries TWO shapes of "unwritable", and they mean different
+// things, so they are asserted differently:
+//   .git ITSELF -- no grant may BE it. Every grant the derivation justifies is a DESCENDANT of .git
+//     (.git/objects, .git/refs, .git/logs, .git/worktrees/<key>), so a "nothing inside .git" reading of
+//     this row is refuted by the very rows this PR exists to assert -- which is how the first version of
+//     this quantifier failed: it bidirectionally prefix-matched .git against the grants and called
+//     objects/ a violation. What .git's OWN write bit buys is what stays root's: the ability to create a
+//     file at the top of the git directory, which is exactly packed-refs.lock and the repository-level
+//     index.lock. That is the fact the row carries, and it is checked as equality.
+//   A NAMED ENTRY (.git/config, .git/hooks, .git/info, .git/objects/pack, ...) -- no grant may BE it and
+//     none may be INSIDE it. A grant may legitimately be its ANCESTOR: objects/ must be group-writable so
+//     git can create tomorrow's fan-out directory, while objects/pack stays root's because the migration's
+//     walk PRUNES it -- a leg the migration claim owns, not this one.
+fn lab_confinement_holds(grants: List<String>, instance: HostDashboardInstance) -> Bool {
+  let git = join([instance.repo_root as String, "/.git"], "")
+  !any(grants, g => g == git)
+    && all(
+      // THE DENIED SET IS THE MODEL'S ROW, not a list copied into this file. The row is instance-shaped
+      // and derives from dashboard_git_worker_unwritable_children, so one rename moves the model and the
+      // claim together. ".git" itself is exempt from this DESCENDANT test -- objects/, refs/, logs/ and
+      // the attempt entry all sit inside it and ARE granted -- and is pinned instead by the equality leg
+      // above, which is the direction that means something for it.
+      filter(dashboard_instance_worker_git_unwritable_paths(instance: instance),
+        denied => (denied as String) != git),
+      denied => !any(grants, g => path_is_within(child: g, parent: denied as String)),
+    )
+}
+
+// THE DECLARED GRANT SET: what #14270 already declared, plus the per-attempt entry this slice adds, as
+// path text. The provider asserts ONE directory and does not recurse, so coverage of an EXISTING
+// descendant is not this set's job -- that is claim (2)'s migration.
+fn lab_granted_git_paths(instance: HostDashboardInstance) -> List<String> {
+  let dirs = dashboard_instance_worker_git_directories(instance: instance)
+  let entry = dispatch_attempt_worker_git_entry_directories(
+    instance: instance, attempt_worktree: lab_worktree(instance: instance, key: "dispatch-attempt-claim-1"))
+  map(concat(dirs, entry), d => owned_path_text(t: d))
+}
+
+// CLAIM 1 (RED on main). EVERY path the derived commit write-set names sits inside a declared grant,
+// and NOTHING inside .git itself is covered by one. The second half is the confinement half of the same
+// derivation: a grant that reached .git itself would make the first half trivially true and this claim
+// worthless, so both halves are one claim about one write-set.
+test fn the_lab_worker_commit_write_set_is_fully_granted_and_nothing_in_the_git_directory_itself() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let grants = lab_granted_git_paths(instance: lab)
+  let writes = lab_commit_write_paths(instance: lab)
+  let git = join([lab.repo_root as String, "/.git"], "")
+  let entry = dispatch_attempt_private_git_dir(
+    instance: lab, attempt_worktree: lab_worktree(instance: lab, key: "dispatch-attempt-claim-1"))
+  // (a) every written path is inside a granted directory (or is one), and
+  all(writes, w => any(grants, g => path_is_within(child: w, parent: g)))
+    // (b) the write-set IS the derivation, in both directions: every class the model row names appears
+    //     in it, and no repository-level row in it lacks a class. A count of eleven could be kept while
+    //     a class was swapped out; these two legs cannot.
+    && lab_write_set_covers_every_declared_class(instance: lab)
+    && lab_repo_rows_are_all_declared(instance: lab)
+    // (c) NOTHING in .git itself is granted -- the directory, or a descendant of a named unwritable
+    //     entry. .git is the one path a "grant the whole repo git dir" would cover, and the one the
+    //     derivation proves a commit never writes (25 commits with it at 0555); the lock file a
+    //     packed-refs rewrite needs can ONLY be created there.
+    && lab_confinement_holds(grants: grants, instance: lab)
+    // (d) the per-attempt entry IS granted -- the row #14270's handoff named, and the one that made the
+    //     first commit die on index.lock -- and its mode is the shared-posture mode git itself asks for.
+    && any(grants, g => g == entry)
+    // (e) the ONLY writes ever made to .git/config are the three posture keys, written by the
+    //     instance's own principal (shared repo group, and the two that defer the automatic repack to
+    //     the named maintenance job). Three config keys,
+    //     three argv steps, no more -- the file itself stays read-only to the worker.
+    && length(dashboard_git_worker_local_config_keys) == 3
+    && length(dispatch_repository_shared_posture_commands(instance: lab)) == 3
+    && length(dispatch_repository_shared_posture_commands(instance: srv1_live_dashboard_instance())) == 0
+    // (f) THE RED-ON-MAIN DEMONSTRATION, executable rather than remembered: main's grant set is the
+    //     three shared subtrees and nothing else. Read the SAME derived write-set against ONLY those,
+    //     and it is not covered -- the entry rows (index.lock above all) have no grant to sit in. That
+    //     is the state #14270 left, and this row is why claim (1) says RED: it fails there, by this
+    //     predicate, not by memory of an error message.
+    && !all(lab_commit_write_paths(instance: lab), w => any(
+      map(dashboard_instance_worker_git_directories(instance: lab), d => owned_path_text(t: d)),
+      g => path_is_within(child: w, parent: g),
+    ))
+}
+
+// ONE RECEIPT LINE, BUILT THE WAY find_subtree_mode_readback_command PRINTS IT: `<letter> <mode> <group>
+// <path>`. Every receipt this claim writes goes through here so the GROUP LEG CANNOT BE FORGOTTEN in one
+// of them -- a receipt that omitted the group would be a line the parser refuses, and a claim that
+// quietly built three-field lines would be testing a format no tool emits. `group` is a parameter
+// precisely so the refusals below can put a DIFFERENT group in the field the grant checks.
+fn readback_line(kind: String, mode: String, group: String, path: String) -> String {
+  join([kind, " ", mode, " ", group, " ", path], "")
+}
+
+// THE RECEIPT'S OWN GROUP, spelled once: the name the production migration groups to. A receipt carrying
+// it is the granted state; a receipt carrying anything else is the refusal, and the fold decides by
+// comparing this string to what find printed for the inode.
+fn readback_granted_group() -> String = (fleet_posix_worker_shared_group_name as String)
+
+// THE FOREIGN GROUP FOR THE REFUSALS: briansrls, the owner-group the host reading recorded on the lab
+// tree (briansrls:briansrls 0775) -- the state this slice exists to repair, used here as the thing the
+// fold must refuse.
+data readback_foreign_group: NonEmptyStr = "briansrls"
+
+// THE READBACK FOLD, OVER A RECEIPT THE CLAIM WRITES. THE WITNESS RUNS THE WALK ON A REAL TREE; this is
+// where the DECISION is tested, against receipts the claim composes, because this fold is what the apply
+// and the spawn refuse on -- and a fold tested only by execution is tested by whatever the host happened
+// to contain. Each receipt is one line per entry in the shape find_subtree_mode_readback_command prints,
+// `<type-letter> <mode> <path>`, and the set is chosen so the fold is shown to REFUSE the states that are
+// not a grant rather than merely to accept the one that is (DESIGN 5: a discriminating input). THE FIRST
+// REFUSAL IS REVIEW 82165'S FINDING ON THIS PR: a regular file at 02770. A setgid FILE sets the
+// owner-execute leg, so a fold that classified entries by that bit -- as an earlier cut of this PR did --
+// reported a repository holding a setgid file as granted, while the migration's own comment says setgid
+// on a file is a privilege shape that belongs on directories alone.
+//
+// `top` / `foreign_top` are the subtree's own required top mode and the OTHER subtree's, so the same set
+// of refusals is run for the sticky subtree (objects/, top 3770) and the plain one (refs/, logs/, top
+// 2770) and neither can be satisfied by the other's shape.
+fn readback_grants_the_declared_state(child: NonEmptyStr, top: String) -> Bool {
+  dashboard_git_subtree_readback_is_granted(
+    child: child,
+    group: fleet_posix_worker_shared_group_name,
+    receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      // THE SWEPT INTERIOR IS 02775, NOT 0775. The declared walk adds g+w AND g+s to every directory it
+      // crosses, existing fan-out directories included, so a correctly-migrated object fan-out dir is
+      // group-writable AND setgid -- and a fan-out dir git creates tomorrow inherits that setgid from its
+      // parent (though not the sticky bit, which does not propagate, which is why the interior leg is a
+      // window rather than the top's exact mode). An interior at 0775 -- group-writable but with no setgid,
+      // the shape a tree keeps when the walk never reached it -- is a REFUSAL, and readback_refuses_the_
+      // ungranted_states below feeds exactly that shape and demands it be refused. The granted receipt must
+      // therefore carry the swept 02775, the same reason the top carries the declared mode.
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
+  )
+}
+
+// THE SAME RECEIPT, ONCE PER SUBTREE, WITH THE FILE AT THE MODE GIT WRITES IT IN -- 0444, which is what a
+// loose object comes out at even under core.sharedRepository=group. THE EXPECTATION IS AN ORACLE STATED BY
+// THIS CLAIM, not a call into the model's rule: `holds_reflog` is passed in, and the claim names which
+// subtree holds one. A subtree git only ever REPLACES entries in (objects/, refs/) needs the parent
+// directory's write and nothing from the file, so a 0444 file there is granted; a subtree git OPENS ITS
+// FILES IN APPEND MODE (logs/, the branch reflogs) cannot commit against a 0444 file -- git dies with
+// "unable to append ... Permission denied" -- so 0444 must be refused there. A single "every file must be
+// group-writable" rule got BOTH wrong: it refused the first and would have accepted the second. Measured on
+// git 2.47.3, 2026-10-19, real linked-worktree commits with every object and ref file at 0444.
+fn readback_grants_a_readonly_file_only_where_git_replaces_it(
+  child: NonEmptyStr,
+  top: String,
+  holds_reflog: Bool,
+) -> Bool {
+  // BOTH interiors are the swept 02775, for the same reason readback_grants_the_declared_state carries it:
+  // the declared walk adds g+w AND g+s to every directory it crosses, so a correctly-migrated interior is
+  // group-writable AND setgid. In the holds_reflog branch the interior is deliberately clean so the refusal
+  // isolates the ONE thing that subtree refuses -- a 0444 file where git appends in place -- and not an
+  // incidental un-swept directory; in the granted branch the 0444 file is what git only ever replaces
+  // (loose objects, refs), which the readonly rule accepts.
+  if holds_reflog {
+    !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "refs/heads"),
+        readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "refs/heads/main"),
+      ], "\n"),
+    )
+  } else {
+    dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+        readback_line(kind: "f", mode: "444", group: readback_granted_group(), path: "f9/obj"),
+      ], "\n"),
+    )
+  }
+}
+
+fn readback_refuses_the_ungranted_states(
+  child: NonEmptyStr,
+  top: String,
+  foreign_top: String,
+) -> Bool {
+  // (i) a SETGID REGULAR FILE where a directory belongs -- the review's case;
+  // (ii) the state srv1 measured on 2026-10-17: the subtree top still 0775, every leg right and no setgid;
+  // (iii) a world-writable file, which #13942 confines;
+  // (iv) an EMPTY receipt, which proves nothing about an existing tree;
+  // (v) a line whose type letter is neither of the two the model names -- a symlink planted in the object
+  //     store is not a granted entry, and guessing would be a verdict over an entry the walk never
+  //     classified;
+  // (vi) the top at the OTHER subtree's shape, so refs/ cannot quietly drift to the sticky shape (where
+  //     +t would EPERM the worker's own first `git add`) nor objects/ to the plain one (where the worker
+  //     could rename the maintenance job's pack directory out of the way).
+  !dashboard_git_subtree_readback_is_granted(
+    child: child,
+    group: fleet_posix_worker_shared_group_name,
+    receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "2770", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
+  )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      // (ii) ONLY the top is wrong (0775, never walked); the interior is the swept 2775 so the interior
+      // window is NOT a second refusal source -- this leg isolates the top, exactly as its comment claims.
+      receipt: join([
+      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "f", mode: "666", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: "",
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "l", mode: "777", group: readback_granted_group(), path: "f9"),
+    ], "\n"),
+    )
+    // (vii) THE GROUP, AND ONLY THE GROUP: every mode in this receipt is the granted shape and every
+    //       entry belongs to somebody else's group -- the host reading's briansrls:briansrls 0775 tree,
+    //       with the modes this migration would give it. A fold that reads modes and not the group calls
+    //       this granted and starts the worker unit on a tree its commits cannot write. This is also the
+    //       leg that makes the %g field load-bearing: delete the group from the printf and this claim
+    //       cannot parse, delete the group CHECK and it stops refusing.
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+        readback_line(kind: "d", mode: top, group: readback_foreign_group as String, path: ""),
+        readback_line(kind: "d", mode: "2775", group: readback_foreign_group as String, path: "f9"),
+        readback_line(kind: "f", mode: "664", group: readback_foreign_group as String, path: "f9/obj"),
+      ], "\n"),
+    )
+    && !dashboard_git_subtree_readback_is_granted(
+      child: child,
+      group: fleet_posix_worker_shared_group_name,
+      receipt: join([
+      readback_line(kind: "d", mode: foreign_top, group: readback_granted_group(), path: ""),
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
+      readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
+    ], "\n"),
+    )
+}
+
+// IS `child` THE SAME PATH AS, OR UNDER, `parent`? One helper, because the boundary is the whole
+// content of the question. A bare string prefix is NOT containment: "<repo>/.git/objects-x" starts with
+// "<repo>/.git/objects" but is a SIBLING of the granted subtree, not inside it -- a claim that called
+// that "inside the grant" would pass while a path the worker has no business touching sat outside every
+// grant it was checked against. So: equal, or the parent with a trailing "/" as the prefix. The denial
+// side of claim (1) had the "/" and the containment side did not; both now read this, and
+// the two directions of the same question cannot disagree about what a path segment is.
+fn path_is_within(child: String, parent: String) -> Bool {
+  child == parent || starts_with(s: child, prefix: concat(parent, "/"))
+}
+
+// THE MODES, AS FileMode -- the type extdeps.access.posix owns (Open Group sys_stat.h). An earlier cut
+// of this claim compared hand-decoded DECIMALS (509, 1533, 2045, 436, 438, 292) against the model's own
+// decimal rows, which failed twice over: it minted a second authority for a concept that exists (§2), and
+// the "expected" values were the model's, so the claim could only ever check that a decoder agreed with an
+// encoder. Here the claim states the OBSERVATIONS IT ACTUALLY HAS -- what srv1 measured, and the four
+// counterexamples that make the predicates mean something -- as structured modes, and the model's rows are
+// compared against them rather than being handed back.
+//
+// THE RED CONTROL for claim (2) is 0775: every leg right (rwxrwxr-x) and no setgid, so a fan-out
+// directory git creates next inherits the creating process's primary group and the attempt worker cannot
+// write into it. The three counterexamples are what stop the predicates from being tautologies: 0666
+// (group-writable AND world-writable -- #13942 refuses it, so a "granted file" predicate that accepted it
+// would be asserting nothing about confinement), 0444 (a loose object, read-only even to its owner: git
+// writes it that way on purpose, so it is NOT a granted file and does not need to be -- nobody writes an
+// object after it is created), and 03775 offered as a plain-grant answer (the sticky shape belongs to
+// exactly one subtree; a predicate that accepted it everywhere would let refs/ drift to 03775, where +t
+// would EPERM the worker's own first `git add` against root's index/HEAD).
+data worker_mode_rwx: PermissionBits = PermissionBits { read: true, write: true, execute: true }
+data worker_mode_r_x: PermissionBits = PermissionBits { read: true, write: false, execute: true }
+data worker_mode_rw_: PermissionBits = PermissionBits { read: true, write: true, execute: false }
+data worker_mode_r__: PermissionBits = PermissionBits { read: true, write: false, execute: false }
+data worker_mode___: PermissionBits = PermissionBits { read: false, write: false, execute: false }
+
+fn worker_mode(owner: PermissionBits, group: PermissionBits, other: PermissionBits, setgid: Bool, sticky: Bool) -> FileMode {
+  FileMode {
+    owner: owner,
+    group: group,
+    other: other,
+    setuid: false,
+    setgid: setgid,
+    sticky: sticky,
+  }
+}
+
+// What srv1 read on 2026-10-17, as the host read it: objects, refs and logs and their existing
+// subdirectories, briansrls:briansrls, 0775, no setgid.
+data measured_srv1_unmigrated_mode: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: false, sticky: false
+)
+// THE EXPECTED TOP MODES ARE THE DECLARED ONES, not a hand spelling: managed_directory's two arms
+// (other = ---) are the single authority the C1 consolidation established, the pins below (2770/3770)
+// state them as strings, and the owned-directory route installs exactly those. An earlier cut of these
+// two rows carried other: r_x -- the host's pre-migration bit pattern -- which made THIS claim
+// internally contradictory (legs compared the model against 2775 while its pins demanded 2770) and was
+// the second authority for one mode the lab finding of 0ed9fbca802 turned up. The counterexample rows
+// below keep their measured spellings on purpose: they are EVIDENCE the model must classify, not grants.
+data granted_directory_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode___, setgid: true, sticky: false
+)
+data granted_shared_directory_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode___, setgid: true, sticky: true
+)
+data granted_file_mode_expected: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_r__, setgid: false, sticky: false
+)
+data world_writable_file_mode: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_rw_, setgid: false, sticky: false
+)
+data loose_object_file_mode: FileMode = worker_mode(
+  owner: worker_mode_r__, group: worker_mode_r__, other: worker_mode_r__, setgid: false, sticky: false
+)
+// A DIRECTORY MODE OFFERED AS A FILE MODE: setgid and sticky are meaningless on a file (chmod accepts
+// them and the kernel ignores them), so the file predicate must not be satisfied by a mode that merely
+// carries them. Without this, a file predicate written as "group.write" alone would be green over a mode
+// nobody can observe on a regular file.
+data setgid_file_mode: FileMode = worker_mode(
+  owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_r__, setgid: true, sticky: false
+)
+
+// How many times one word appears in an argv list: the walk target must appear exactly twice across
+// the whole migration (once for the re-group, once for the modes), which is how this claim knows a
+// subtree was walked and not merely named once.
+fn occurrences(words: List<String>, wanted: String) -> Int {
+  count(filter(xs: words, predicate: w => w == wanted))
+}
+
+// CLAIM 2 (RED on main). The EXISTING contents of every granted subtree are covered -- by a declared,
+// BOUNDED one-time migration rather than by making the provider recursive. WHY A MIGRATION AND NOT A
+// RECURSIVE PROVIDER: a recursive assert over .git would descend into hooks, info and objects/pack,
+// which #13942 keeps out of the worker's reach, and it would re-walk an object store that grows without
+// bound on every apply. A migration runs once, its readback is the receipt, and it can name what it must never touch.
+// The claim reads the migration's OWN argv, so a step that quietly dropped the group, the setgid, the
+// prune or the depth bound fails here rather than on srv1.
+// THE TWO PATHS THE PRUNE LEG NEEDS, both read FROM THE MODEL rather than authored here: the target of
+// one granted subtree, and the confined children that subtree declares. The claim then asserts the argv
+// carries the CONCATENATION -- `<target>/<name>`. That is the whole difference between a path and a
+// pattern: a name alone (or `*/name`) is matched by find at any depth, so at 2dc2b8de the bare prunes cut
+// refs/heads/pack out of the walk and the worker could never update that branch. Authoring the expected
+// strings here instead would let the claim and the model agree on a wrong shape.
+fn lab_subtree_target(instance: HostDashboardInstance, child: NonEmptyStr) -> String {
+  dashboard_git_worker_subtree_path(instance: instance, child: child)
+}
+
+fn anchored_pruned_paths(instance: HostDashboardInstance, child: NonEmptyStr) -> List<String> {
+  let target = lab_subtree_target(instance: instance, child: child)
+  map(xs: dashboard_git_worker_subtree_confined_children(child: child), f: name => concat(target, concat("/", name)))
+}
+
+// ONE ANCHORED PRUNE PATH, read from the model's own confined-children list rather than authored, so
+// the claim and the builder cannot agree on a wrong name.
+fn objects_pruned_path(instance: HostDashboardInstance, name: String) -> String {
+  concat(lab_subtree_target(instance: instance, child: ".git/objects" as NonEmptyStr), concat("/", name))
+}
+
+test fn the_existing_subtree_is_covered_by_the_declared_migration() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  // THE PRODUCTION TOKEN, BOUND BY THE CLAIM THE WAY PRODUCTION BINDS IT -- the same row the plan site
+  // passes (the leg (h) below reads the plan and asserts that). A claim that substituted some other group
+  // here would be testing a route nothing runs; the wet witness is the caller allowed to substitute, and
+  // the pairing claim the_production_route_names_the_declared_group_in_every_grant_command is what keeps
+  // THIS route executed.
+  let steps = dashboard_instance_worker_git_subtree_migration(
+    instance: lab,
+    group: fleet_posix_worker_shared_group_name,
+  )
+  let all_args = fold(steps, init: [] as List<String>, f: (acc, c) => concat(acc, c.arguments))
+  // WHICH STEPS WALK WHICH SUBTREE, split by whether the target appears in the argv at all -- so a leg
+  // about objects' prunes cannot be answered by a refs or logs step that has no business carrying them,
+  // and vice versa. Within objects, the re-group arm (chgrp) and the mode arm (chmod g+w, and g+s guarded
+  // by -type d) are named separately because each carries a bit the other legitimately lacks.
+  let objects_child: NonEmptyStr = ".git/objects"
+  let refs_child: NonEmptyStr = ".git/refs"
+  let logs_child: NonEmptyStr = ".git/logs"
+  let objects_target = lab_subtree_target(instance: lab, child: objects_child)
+  let objects_paths = anchored_pruned_paths(instance: lab, child: objects_child)
+  let objects_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == objects_target))
+  let chgrp_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "chgrp"))
+  let objects_chgrp_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "chgrp"))
+  let objects_chmod_steps = filter(xs: objects_steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  let chmod_steps = filter(xs: steps, predicate: c => any(c.arguments, a => a == "g+s"))
+  let refs_and_logs_steps = filter(xs: steps, predicate: c => !any(c.arguments, a => a == objects_target))
+  // (a) the measured pre-migration state is refused by the model and the post-migration state accepted:
+  //     0775-without-setgid is not a grant, 02775 is, a 0664 file is and a 0666 file is not.
+  dashboard_git_worker_directory_mode_is_unmigrated(mode: measured_srv1_unmigrated_mode)
+    && !dashboard_git_worker_directory_mode_is_granted(mode: measured_srv1_unmigrated_mode)
+    && dashboard_git_worker_directory_mode_is_granted(mode: granted_directory_mode_expected)
+    && dashboard_git_worker_file_mode_is_granted(mode: granted_file_mode_expected)
+    //     AND THE STICKY-BIT SHAPE, which is what the host reading forced: under a
+    //     plain 02775 objects/, rename(2) checks the PARENT, so a confined worker can `mv objects/pack
+    //     objects/pack.x` (the 0555 on pack/ is no bar) and plant a symlink there -- after which the
+    //     ROOT maintenance job writes new packs into, and `repack -d` deletes packs from, a directory the
+    //     worker chose. 03775 keeps the create bit and takes away the rename/unlink of entries the
+    //     caller does not own. THE PREDICATE IS PER SUBTREE: objects/ must be 2045 and refs/ and logs/
+    //     must be 02775, because a global "is it 02775" would make the fix invisible to the model -- the
+    //     receipt would refuse the tree that is actually correct. AND A DIRECTORY GIT CREATES TOMORROW is
+    //     accepted at EITHER shape: mkdir inherits S_ISGID from the parent and not S_ISVTX, and git's
+    //     adjust_shared_perm adds only the group triple, so a fan-out directory born under the 03775
+    //     objects/ is 02775 -- a readback that demanded 03775 throughout would refuse a correctly
+    //     granted repository a day after it passed.
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: objects_child), b: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: refs_child), b: granted_directory_mode_expected)
+    && dashboard_git_worker_file_modes_are_equal(a: dashboard_git_worker_subtree_granted_directory_mode(child: logs_child), b: granted_directory_mode_expected)
+    && !dashboard_git_worker_directory_mode_is_granted(mode: granted_shared_directory_mode_expected)
+    && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_directory_mode_expected)
+    && dashboard_git_worker_interior_directory_mode_is_accepted(mode: granted_shared_directory_mode_expected)
+    //     and the state srv1 measured is accepted by NEITHER shape -- it has no setgid at all.
+    && !dashboard_git_worker_interior_directory_mode_is_accepted(mode: measured_srv1_unmigrated_mode)
+    && dashboard_git_worker_subtree_needs_sticky(child: objects_child)
+    && !dashboard_git_worker_subtree_needs_sticky(child: refs_child)
+    && !dashboard_git_worker_subtree_needs_sticky(child: logs_child)
+    //     AND THE FOLD ITSELF, over receipts this claim writes: the granted shape is accepted for the
+    //     sticky subtree and the plain one alike, and each ungranted shape above REFUSES -- including
+    //     a setgid regular file, which an execute-bit classifier would let through.
+    && readback_grants_the_declared_state(child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child))
+    && readback_grants_the_declared_state(child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child))
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child), holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child), holds_reflog: false)
+    && readback_grants_a_readonly_file_only_where_git_replaces_it(child: logs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: logs_child), holds_reflog: true)
+    && readback_refuses_the_ungranted_states(
+      child: objects_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child),
+      foreign_top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child),
+    )
+    && readback_refuses_the_ungranted_states(
+      child: refs_child,
+      top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: refs_child),
+      foreign_top: dashboard_git_worker_subtree_granted_directory_mode_octal(child: objects_child),
+    )
+    && !dashboard_git_worker_file_mode_is_granted(mode: world_writable_file_mode)
+    // a loose object is 0444 (292 = 256+32+4), read-only to everyone including its owner: git does
+    // that on purpose, so it is NOT a "granted file" and does not need to be -- nobody writes an
+    // object after it is created. The claim says so explicitly rather than leaving the reader to
+    // wonder why the file predicate refuses the very objects the commit writes.
+    && !dashboard_git_worker_file_mode_is_granted(mode: loose_object_file_mode)
+    // THE OCTAL THE READBACK PRINTS PARSES TO THE MODE THE MODEL MEANS -- pinned at the PARSER, not at
+    // the renderer, and the asymmetry is the reason. `find -printf %m` and `stat %a` print the special
+    // digit ONLY WHEN IT IS NON-ZERO (extdeps.access.posix documents this: "660" and "0660" are one
+    // mode spelled two ways), while file_mode_octal always renders four digits. So a claim that compared
+    // the witness's text against the renderer's output would refuse a perfectly correct observation --
+    // my first cut of these legs did exactly that, and asserted `file_mode_octal(granted_file_mode) ==
+    // "664"` over a renderer that answers "0664". What has to hold is the direction the evidence
+    // actually travels: the TEXT find prints, parsed, equals the mode the model grants. Each leg below is
+    // the wet witness's own expected string entering through the one parser, which is also what makes
+    // the witness's literals checkable rather than decorative.
+    && match file_mode_of_octal_text(text: "2770") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_directory_mode_expected)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "3770") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_shared_directory_mode_expected)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "664") {
+      Present { value: m } => dashboard_git_worker_file_modes_are_equal(a: m, b: granted_file_mode_expected)
+      Absent => false
+    }
+    // THE MEASURED STATE, spelled the way `find` spells a directory with no special bits: three digits.
+    && match file_mode_of_octal_text(text: "775") {
+      Present { value: m } => dashboard_git_worker_directory_mode_is_unmigrated(mode: m)
+      Absent => false
+    }
+    // AND THE RENDERER IS FOUR DIGITS ALWAYS, which is the fact the legs above exist to route around --
+    // pinned so a change to the renderer's width cannot silently break the witness's string matching.
+    && file_mode_octal(mode: granted_directory_mode_expected) == "2770"
+    && file_mode_octal(mode: granted_shared_directory_mode_expected) == "3770"
+    && file_mode_octal(mode: granted_file_mode_expected) == "0664"
+    && file_mode_octal(mode: measured_srv1_unmigrated_mode) == "0775"
+    && match file_mode_of_octal_text(text: "2770") {
+      Present { value: m } => dashboard_git_worker_directory_mode_is_granted(mode: m)
+      Absent => false
+    }
+    && match file_mode_of_octal_text(text: "3770") {
+      Present { value: m } => dashboard_git_worker_interior_directory_mode_is_accepted(mode: m)
+        && !dashboard_git_worker_directory_mode_is_granted(mode: m)
+      Absent => false
+    }
+    // A SETGID FILE IS NOT A GRANTED FILE. The bit is inert on a regular file (the kernel ignores it for
+    // access control) -- which is exactly why it must be refused rather than waved through: the readback's
+    // file leg is the only thing that decides whether a receipt line is a granted ENTRY, and `f 2775`
+    // under objects/ is a regular file wearing the directory grant, the very shape the sweep exists to
+    // remove. The migration sets g+s only on `-type d` lines, and the modes git creates inside a granted
+    // subtree (0664 refs/reflogs/worktree files, 0444-then-0664 loose objects) carry no special bit, so
+    // accepting a setgid file would make the readback green over a tree the model says is not granted.
+    // (It is tempting to read "the bit is inert on a file" as "the bit is harmless on a file" and accept
+    // it. Inert for access control is not the same as correct: the readback would then be green over a
+    // tree whose entries are not the entries the migration produces.)
+    && !dashboard_git_worker_file_mode_is_granted(mode: setgid_file_mode)
+    // AND AN UNPARSEABLE OBSERVATION IS REFUSED, not treated as absent permission: `find` can print a
+    // mode we cannot read (a weird locale, a truncated line), and a readback that silently accepted
+    // that would report a granted tree.
+    && match file_mode_of_octal_text(text: "9999") { Absent => true, Present { value: parsed } => false }
+    && match file_mode_of_octal_text(text: "2778") { Absent => true, Present { value: parsed } => false }
+    // (b) the migration covers EVERY granted subtree and only those -- one re-group plus one mode step
+    //     per child, so an existing .git/objects/f9 is walked rather than only its parent.
+    && length(steps) == 2 * length(dashboard_git_worker_directory_children)
+    && all(dashboard_git_worker_directory_children, child => {
+      let target = join([lab.repo_root as String, "/", child as String], "")
+      occurrences(words: all_args, wanted: target) == 2
+    })
+    // (c) it re-GROUPS and never re-OWNS: the shared attempt group is named and --no-dereference is on
+    //     ON THE RE-GROUP ARM, and no step carries chown or a user:group form, so ownership stays the
+    //     service user's everywhere and the only thing that moves is the group.
+    //     QUANTIFIED OVER THE ARM THAT CARRIES THOSE WORDS, not over every step: chmod takes no group
+    //     operand and no --no-dereference (its -R-free walk already refuses symlinks with -not -type l),
+    //     and an earlier version of this leg asserted both over all steps and was refuted by the six
+    //     mode steps doing exactly what chmod should. A leg over a word list has to say which arm owns
+    //     which word, or it tests the claim's own guess about the argv instead of the argv.
+    && all(chgrp_steps, c => any(c.arguments, a => a == (fleet_posix_worker_shared_group_name as String)))
+    && all(chgrp_steps, c => any(c.arguments, a => a == "--no-dereference"))
+    //     THE -EXEC ACTIONS ARE WELL-FORMED, counted rather than eyeballed. Every -exec must carry
+    //     exactly one {} placeholder and exactly one batch terminator, and the parenthesised -type d
+    //     groups must balance. This is the leg that the review round should have had before the first
+    //     push: when chgrp briefly owned its own "{}" "+" and find's action helper appended them again,
+    //     the argv ended `{} + {} +`, find refused it, and NOTHING in the dry set could see it -- every
+    //     leg asked "is chgrp present", "is --no-dereference present", all true of a command that cannot
+    //     run (DESIGN 5, again: a word-list claim green over an argv that fails). A count is the shape
+    //     of that check, because "exactly one" is the property and presence is not.
+    && all(steps, c => {
+      let actions = occurrences(words: c.arguments, wanted: "-exec")
+      occurrences(words: c.arguments, wanted: "{}") == actions
+        && occurrences(words: c.arguments, wanted: "+") == actions
+        && occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")")
+    })
+    && length(chgrp_steps) == length(dashboard_git_worker_directory_children)
+    && !any(all_args, a => a == "chown")
+    // (d) it asserts BOTH bits the commit needs, on the RIGHT steps: g+w on everything the walk reaches,
+    //     and g+s on DIRECTORIES ONLY, guarded by -type d on the mode step -- the guard is what keeps a
+    //     setgid off a file, where RestrictSUIDSGID would otherwise have to catch it (and a setgid on a
+    //     loose object would be a privilege shape, not a grant). The re-group step carries no -type d
+    //     because chgrp --no-dereference needs no such guard. Nothing is ever opened to the world. THE
+    //     PARENTHESES BALANCE: at 2dc2b8de the mode step opened `(` before -type d and never closed it,
+    //     and find refused the whole expression ("Expected a )"), so the chmod never ran while every
+    //     word-list claim stayed green. A word list that cannot be executed is not a grant.
+    && all(chmod_steps, c => any(c.arguments, a => a == "g+w"))
+    && all(chmod_steps, c => any(c.arguments, a => a == "g+s"))
+    && length(chmod_steps) == length(dashboard_git_worker_directory_children)
+    && all(chmod_steps, c => any(c.arguments, a => a == "-type") && any(c.arguments, a => a == "d"))
+    //     ...and the sticky action, where it belongs: on objects' mode step only, behind its own
+    //     -type d guard, so a file can never receive it (a sticky file is meaningless and
+    //     RestrictSUIDSGID-adjacent noise), and NOT on refs/, logs/, or the per-attempt entry -- the
+    //     latter because the instance principal's `git worktree add` leaves index/HEAD owned by IT
+    //     there and the worker's first `git add` renames index.lock OVER index, which +t would refuse
+    //     with EPERM.
+    && all(objects_chmod_steps, c => any(c.arguments, a => a == "a+t"))
+    && all(objects_chmod_steps, c => occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")"))
+    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "a+t" || a == "+t" || a == "1777"))
+    && all(steps, c => occurrences(words: c.arguments, wanted: "(") == occurrences(words: c.arguments, wanted: ")"))
+    && !any(all_args, a => a == "a+w" || a == "o+w")
+    // (e) THE CONFINED SUBTREES ARE PRUNED BY NAME, ANCHORED TO THE TARGET, before the walk -- so the
+    //     migration cannot reach them even if the grant list grows, AND so a legal ref is never cut out
+    //     of the walk. Only .git/objects is pruned, and only of pack and info (#13942's confined
+    //     children of the object store); refs and logs declare NOTHING, because refs/heads/branches and
+    //     refs/heads/pack are legitimate refs. THE BARE PATTERNS ARE GONE: `*/pack` and friends matched
+    //     at ANY depth, so at 2dc2b8de the walk pruned a branch named pack, info, hooks or branches and
+    //     its owner could never update it. The prune is `<target>/pack`, a path, not a pattern.
+    //     THE ARITHMETIC OF ONE PRUNE GROUP, stated correctly this time. A group of N confined names
+    //     carries N `-path` tests and exactly ONE `-prune` (the group is pruned as a unit), so an
+    //     earlier version of this leg -- "-path count == -prune count" -- was false BY CONSTRUCTION for
+    //     every objects step and is the reason claim (2) stayed red at ec03cef3ab2 while its own comment
+    //     warned that a leg must name which arm owns which word. The real shape: a step that prunes
+    //     nothing carries neither word; a step that prunes carries at least one -path and exactly one
+    //     -prune; and objects' steps carry exactly as many -path tests as the model declares confined
+    //     children, so a confined child that quietly stopped being pruned is caught by NAME below and
+    //     by COUNT here.
+    && all(steps, c => {
+      let paths = occurrences(words: c.arguments, wanted: "-path")
+      let prunes = occurrences(words: c.arguments, wanted: "-prune")
+      if paths == 0 { prunes == 0 } else { prunes == 1 }
+    })
+    && all(objects_steps, c =>
+      occurrences(words: c.arguments, wanted: "-path")
+        == length(dashboard_git_worker_subtree_confined_children(child: objects_child)))
+    && all(objects_steps, c => all(objects_paths, p => any(c.arguments, a => a == p)))
+    && all(refs_and_logs_steps, c => !any(c.arguments, a => a == "-prune"))
+    // (e-2) THE PRUNES ARE SEPARATED BY A VISIBLE "-o", AS ONE OR-GROUP. This leg is the shape that
+    //     made a REAL production defect visible, and it needs BOTH confined names to do it: the fold
+    //     that joins the prune terms once decided each term's separator by counting "-o" words in its
+    //     accumulator, so the second term was emitted WITHOUT its separator and the group rendered
+    //     `( -path <t>/pack -path <t>/info )` -- an AND of two -path tests on one path, which never
+    //     holds, so find pruned NOTHING and the migration re-grouped and g+w'd objects/pack and
+    //     objects/info: a confined attempt with a writable objects/info/alternates. With ONE pruned
+    //     name the fold is correct by accident and the bug is invisible; the assertion below therefore
+    //     pins the whole eight-word window, names in order, separator included, over the NUL-joined
+    //     word list (the idiom this repo already uses for argv shape). A word-set assertion could not
+    //     have caught it: every word was present, only the connective was missing.
+    && all(objects_steps, c => string_contains(
+      s: join(c.arguments, separator: "\0"),
+      pattern: join(
+        ["(", "-path", objects_pruned_path(instance: lab, name: "pack"),
+         "-o", "-path", objects_pruned_path(instance: lab, name: "info"),
+         ")", "-prune", "-o"],
+        separator: "\0",
+      ),
+    ))
+    //     WHY THERE IS NO "no -path outside objects" LEG, which is the shape this line once had and why
+    //     it was wrong to write: a walk target is ITSELF one argument, and this instance's target is
+    //     `.../source/.git/logs` -- so a predicate forbidding the word `-path` anywhere in a refs or logs
+    //     step is refuted by the walk's own target, not by a stray prune. The tight statement of "no bare
+    //     patterns anywhere" is leg (b) -- each subtree's target appears EXACTLY TWICE in the whole
+    //     migration, once per arm -- plus the -path/-prune balance above and the forbidden names below.
+    //     Those three together leave no room for a pattern; a fourth leg that duplicates them has to be
+    //     right about the argv's incidental words as well, and was not.
+    && !any(all_args, a => a == "*/hooks" || a == "*/info" || a == "*/branches" || a == "*/pack"
+      || a == "*/hooks/*" || a == "*/info/*" || a == "*/branches/*" || a == "*/pack/*")
+    // (f) the walk is BOUNDED and never follows a link: a depth cap, and symlinks excluded. (chgrp
+    //     --no-dereference alone is not enough: chmod -R follows, so a link under objects/ could
+    //     otherwise carry a mode change to a file outside the repository.)
+    //     THE BOUND IS CHECKED TO BE A BOUND, not merely present: an earlier leg asked only whether the
+    //     word "-maxdepth" appeared anywhere, which a `find . -maxdepth` (no operand) would satisfy --
+    //     and the operand is where the failure hides. So each step must carry the operand IMMEDIATELY
+    //     after the flag, it must parse as a positive number, and it must be the depth the model
+    //     DECLARES. A "0" there would walk nothing at all: the migration would issue cleanly, the
+    //     readback would come back empty, and the granted subtree would stay 0775 forever -- the exact
+    //     silent no-op the last three fixes in this PR were about.
+    && all(steps, c => any(c.arguments, a => a == "-not") && any(c.arguments, a => a == "l"))
+    //     THE OPERAND SITS WHERE FIND REQUIRES IT, and it is the declared depth. A word-list leg that
+    //     only asks "is -maxdepth present" is satisfied by `find . -maxdepth` with no operand at all --
+    //     find then errors, or with the operand somewhere else in the argv where find will not read it.
+    //     So: flag and operand ADJACENT, asserted as a two-word window over the NUL-joined argv (the
+    //     same idiom the prune-window leg uses, and for the same reason -- no index arithmetic, no
+    //     off-by-one of its own), and equal to the depth the model declares.
+    && all(steps, c => string_contains(
+      s: join(c.arguments, separator: "\0"),
+      pattern: concat(concat("-maxdepth\0", to_string(dashboard_git_worker_subtree_walk_depth)), "\0")
+    ))
+    // (g) PROD IS UNTOUCHED: the staged arm declares no migration and no posture step at all.
+    && length(
+      dashboard_instance_worker_git_subtree_migration(
+        instance: srv1_live_dashboard_instance(),
+        group: fleet_posix_worker_shared_group_name,
+      ),
+    ) == 0
+    // (h) THE TOKEN COMES FROM THE PRODUCTION PLAN, not from the claim. dashboard_instance_provision_plan
+    //     is what the apply actually builds and executes; this leg reads the group off the operation THAT
+    //     builds and requires it to be the declared row -- so the claim's own binding above cannot drift
+    //     away from what production passes, and a plan site that invented a group name turns RED here
+    //     rather than shipping a migration that re-groups to nobody.
+    && exactly_one_migration(
+      plan: dashboard_instance_provision_plan(instance: lab),
+      repo: lab.repo_root,
+      group: fleet_posix_worker_shared_group_name,
+    )
+}
+
+// THE PER-ATTEMPT ENTRY, which #14270's handoff named and this slice closes. .git/worktrees/<key> is
+// ROOT-OWNED (`git worktree add` runs as root), so only a root-owned step can put it in the attempt
+// group, and the commit writes both EXISTING files (index, HEAD) and NEW subdirectories (logs/) inside
+// it. It is granted where the attempt key lives, beside the spawn that creates the entry -- and the
+// PARENT stays ungranted: a group-writable .git/worktrees would let a worker mint entries for itself.
+// One measured fact shapes the seeding too: git SILENTLY RENAMES an entry that already exists (probe
+// becomes probe1), so the model does not pre-create it -- the root-owned add names it and the grant
+// follows.
+test fn the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let worktree = lab_worktree(instance: lab, key: "dispatch-attempt-claim-entry")
+  let entry = dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: worktree)
+  let dirs = dispatch_attempt_worker_git_entry_directories(instance: lab, attempt_worktree: worktree)
+  // THE PRODUCTION TOKEN AGAIN, the value the spawn binds at dispatch_spawn_commands_for_launch; the
+  // pairing claim asserts that spawn route, so this claim is free to name the same value.
+  let steps = dispatch_attempt_worker_git_entry_migration(
+    instance: lab,
+    attempt_worktree: worktree,
+    group: fleet_posix_worker_shared_group_name,
+  )
+  let parent = join([lab.repo_root as String, "/.git/", dashboard_git_worktrees_child as String], "")
+  length(dirs) == 1
+    && all(dirs, d => owned_path_text(t: d) == entry
+      && declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
+      && declared_mode_octal(t: d) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid))
+    // THREE STEPS, AND THE FIRST IS THE ONE ROUND 3 ADDED: install the top, then chgrp the subtree, then
+    // sweep it. The install is not decoration -- `git worktree add` created this directory at ~0755 under
+    // the instance principal, and an ADDITIVE sweep (chgrp + g+w + g+s) can never reach the declared mode
+    // from there; it lands at 2775-family and the readback's EXACT top leg refuses its own route, which is
+    // the second-authority defect (finding (4)) in its other direction. install -d -o -g -m states all
+    // three ownership fields absolutely and is the same admitted word builder the deploy's owned-directory
+    // install uses, so this step and that one cannot drift.
+    && length(steps) == 3
+    && all(steps, c => any(c.arguments, a => a == entry))
+    // THE INSTALL STEP IS READ OFF THE SAME WORD BUILDER, not checked token by token: rebuilding the
+    // expected argv with coreutils_install_directory_owned_arguments -- the builder the route itself calls
+    // through install_directory_owned_command -- and comparing whole lists means a change to the -d -m -o -g
+    // spelling moves the route and this claim together, and there is no hand-spelled argv beside the real
+    // one to drift. The mode is rendered from the SAME declared arm the entry's declaration carries above.
+    && any(steps, c => c.arguments == coreutils_install_directory_owned_arguments(
+      mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
+      owner: lab.directory_owner.user,
+      group: fleet_posix_worker_shared_group_name,
+      path: entry,
+    ))
+    // the parent of the entry is a NAME, never a grant: not among the children the apply asserts, and
+    // not among the worker's own writable paths.
+    && !any(dashboard_git_worker_directory_children, c => (c as String) == dashboard_git_worktrees_child)
+    && !any(dispatch_worker_git_writable_paths(instance: lab, attempt_worktree: worktree), p => p == parent)
+    && !any(
+      dispatch_worker_writable_path_list(instance: lab, attempt_worktree: worktree, scratch_directory: worktree),
+      p => p == parent,
+    )
+}
+
+// THE PACKED-REFS RULING, as data rather than prose. A normal commit on a NEW branch never rewrites
+// packed-refs: the branch is written LOOSE and a loose ref shadows the packed one. Only `pack-refs`, a
+// branch delete, or the automatic maintenance sweep rewrites it -- and each of those reaches for
+// packed-refs.lock IN .git ITSELF, which #13942 confines to root, so a worker could NEVER have done it.
+// The grant that named the file was inert, not dangerous; this retires it and pins that it stays
+// closed, together with the ruling that the automatic sweep is DEFERRED TO A NAMED ROOT JOB rather than
+// granted. DESIGN 3c: a deferred trigger with no owner is a cost-shape defect, so the owner is named in
+// the model and its count is part of this claim.
+test fn the_worker_never_rewrites_packed_refs_and_the_repack_has_one_named_owner() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let worktree = lab_worktree(instance: lab, key: "dispatch-attempt-claim-packed")
+  let paths = dispatch_worker_git_writable_paths(instance: lab, attempt_worktree: worktree)
+  let git = join([lab.repo_root as String, "/.git"], "")
+  // (a) packed-refs is not granted, and neither is .git itself -- whose write bit is the only way to
+  //     create the lock file a rewrite needs.
+  !any(paths, p => p == join([git, "/packed-refs"], ""))
+    && !any(paths, p => p == git)
+    // (b) the confinement list still names it, and the worker's four-path carve-out is what it is:
+    //     three shared subtrees and this attempt's entry, no fifth.
+    && any(dashboard_git_worker_unwritable_children, c => (c as String) == ".git/packed-refs")
+    && length(paths) == 4
+    // (c) THE DEFERRAL HAS AN OWNER: exactly the two keys that defer the automatic repack, named by the
+    //     maintenance job whose own argv re-enables the threshold and does the repack (gc, then
+    //     pack-refs -- both rewrite the file the worker must not touch), on a timer, AS THE INSTANCE'S
+    //     OWN PRINCIPAL. The principal is the leg that used to read `== "root"`, which was a claim about
+    //     the host that had never been read off the host: the lab's serve, its actuator's `git worktree
+    //     add`, every object and every .git/worktrees/<key> entry belong to instance.directory_owner.user
+    //     (srv1, 2026-10-17), and the apply's exec route is an SSH command as that same account. So the
+    //     repack runs as the OWNER of the tree it packs -- which is also the only principal the sticky bit
+    //     on objects/ lets unlink and rmdir the worker-created entries `repack -d` removes. An owner that
+    //     is not the instance's is refused here rather than assumed.
+    && length(dashboard_git_maintenance_owned_config_keys) == 2
+    && all(dashboard_git_maintenance_owned_config_keys, k => any(
+      dashboard_git_worker_local_config_keys, c => (c as String) == (k as String)))
+    && length(dashboard_git_maintenance_exec_commands(instance: lab)) == 2
+    && any(dashboard_git_maintenance_exec_commands(instance: lab), c => any(c.arguments, a => a == "gc"))
+    && any(dashboard_git_maintenance_exec_commands(instance: lab), c => any(c.arguments, a => a == "pack-refs"))
+    && (dashboard_git_maintenance_principal(instance: lab) as String)
+      == (lab.directory_owner.user as String)
+    //     and the owner is not the worker: if the repack ran as the confined account it would need the
+    //     packed-refs.lock write this claim just refused, and the whole deferral would be circular.
+    && (dashboard_git_maintenance_principal(instance: lab) as String)
+      != (fleet_posix_worker_user.name as String)
+    && contains(haystack: dashboard_git_maintenance_service_unit_name(instance: lab), needle: dashboard_git_maintenance_unit_stem as String)
+    && contains(haystack: dashboard_git_maintenance_timer_unit_name(instance: lab), needle: dashboard_git_maintenance_unit_stem as String)
+    && length(dashboard_git_maintenance_timer_on_calendar) > 0
+    && length(dashboard_git_maintenance_exec_commands(instance: srv1_live_dashboard_instance())) == 0
+}
+
+// CLAIM 3 (GREEN on main -- #13942's work, and it must STAY green under the new grants). Confinement:
+// nothing in the .git interior except the four granted subtrees is writable by the worker, so hooks,
+// config, info and the repository's own identity files stay root's. Sibling isolation: the worker's
+// writable list contains no sibling attempt's worktree and no sibling attempt's private entry. This is
+// the claim that would fail if the grant had been widened to .git, or if the entry grant had been made
+// against .git/worktrees as a whole.
+test fn the_confined_git_interior_and_sibling_isolation_survive_the_subtree_grant() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let mine = lab_worktree(instance: lab, key: "dispatch-attempt-claim-mine")
+  let sibling = lab_worktree(instance: lab, key: "dispatch-attempt-claim-sibling")
+  let writable = dispatch_worker_writable_path_list(
+    instance: lab, attempt_worktree: mine, scratch_directory: mine)
+  let node = "claim-3" as RoadmapNodeId
+  // (a) no confined interior path is in the worker's writable list, as itself or as a descendant, and
+  //     no grant reaches down into one...
+  lab_confinement_holds(grants: writable, instance: lab)
+    // (b) ...and the granted subtree list is EXACTLY the four the derivation justifies: three shared
+    //     subtrees plus this attempt's own entry, so the grant cannot have widened.
+    && length(lab_granted_git_paths(instance: lab)) == 4
+    // (c) SIBLING ISOLATION, the per-attempt half: neither the sibling's worktree nor its private entry
+    //     is writable, while mine is. (The shared refs/objects/logs residual is #13942's own declared
+    //     residual and is not what this half checks -- this checks per-attempt state.)
+    //     THE BOUNDARY IS PART OF THE CHECK, NOT A DETAIL. A sibling attempt whose key is a PREFIX of
+    //     mine ("claim-2" beside "claim-21") shares its whole name with my entry's parent up to that
+    //     slash, so a bare prefix comparison would let a grant on <sibling> pass as "not mine" while a
+    //     grant on <sibling>-evil passed as "mine". Both directions go through path_is_within.
+    && !any(writable, w => path_is_within(child: w, parent: sibling)
+      || path_is_within(child: w, parent: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: sibling)))
+    && any(writable, w => path_is_within(child: w, parent: dispatch_attempt_private_git_dir(instance: lab, attempt_worktree: mine)))
+    // (d) the grant is a GROUP grant only: the worker's property set still carries #13942's privilege
+    //     confinement unchanged -- no new privilege, no setuid/setgid exec, no capabilities -- and
+    //     NothingNewPrivileges/RestrictSUIDSGID are still there to stop the setgid-bit shapes.
+    && carries_privilege_confinement(props: dispatch_worker_unit_properties(
+      instance: lab,
+      working_directory: mine,
+      attempt_worktree: mine,
+      worker_log_path: dispatch_attempt_worker_log_path_for_instance(
+        instance: lab, node_id: node, attempt_key: "dispatch-attempt-claim-mine"),
+      granted: kibibyte(count: 1048576),
+      process_bounds: session_process_bounds,
+      exit_hook: "mkdir -- /spool/inbox/claim-3+n+x" as NonEmptyStr,
+    ))
+}
+
+// THE POSTURE RUNS BEFORE THE ENTRY IS CREATED, and before the first attempt is ever dispatched.
+// This is the ordering fact the derivation produced and the one an operator gets wrong once:
+// core.sharedRepository governs the modes git gives the private entry's files AT THE MOMENT
+// `git worktree add` creates them. Set afterwards -- the intuitive place, since it is the attempt that
+// needs it -- and the entry arrives 0644/0755 under the umask, so the group write is missing on files
+// that already exist, and no later chgrp of a parent puts it back on content git has already written.
+// The claim reads the DECLARED PLAN rather than a run: the op must be there on the lab arm, must name
+// this instance's own repo root, must appear exactly once, and must sit before the provider
+// verification that begins the serving half of the apply -- so no attempt can be admitted while the
+// repository is still configured to create its own state unreadable to the attempt group.
+test fn the_shared_repository_posture_runs_before_the_attempt_worktree_is_added() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  // (a) exactly one posture op, naming this instance's repo root...
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo } => repo == lab.repo_root
+    _ => false
+  })) == 1
+    // (b) POSITIONS, NOT PRESENCE. "The posture is somewhere in the plan and the provider check is the
+    //     last op" does not order anything: a plan with the posture appended AFTER the verification ops
+    //     would satisfy presence and keep the last-op test green, while configuring the repository only
+    //     after the instance is already servable -- and an attempt admitted in between would add its
+    //     worktree against a repo without core.sharedRepository=group, which is the exact failure this
+    //     follow-up exists to close. So the claim takes the two positions out of ONE fold, in a single
+    //     left-to-right pass, and compares them: the posture must be seen, the provider verification must
+    //     be seen, and the posture's index must be the smaller. The one-time subtree migration is pinned
+    //     into the same chain -- it must come after the posture (its chmods inherit the group from a
+    //     repository git has been told to share) and before the verification ops for the same reason the
+    //     posture does.
+    && (match first_plan_index(plan: plan, predicate: op => match op {
+        DashboardEnsureGitSharedRepositoryPosture { repo } => repo == lab.repo_root
+        _ => false
+      }) {
+        Absent => false
+        Present { value: posture_at } =>
+          match first_plan_index(plan: plan, predicate: op => match op {
+            DashboardMigrateGitWorkerSubtree { repo } => repo == lab.repo_root
+            _ => false
+          }) {
+            Absent => false
+            Present { value: migration_at } =>
+              match first_plan_index(plan: plan, predicate: op => match op {
+                DashboardVerifyProviderAuth { executable: _, state_root: _ } => true
+                _ => false
+              }) {
+                Absent => false
+                Present { value: verified_at } =>
+                  posture_at < migration_at && migration_at < verified_at
+              }
+          }
+      })
+    // (b2) the plan carries EXACTLY ONE op of each kind, so the position compared above is the only
+    //      one and a duplicated posture cannot hide a second, later one.
+    && exactly_one_posture(plan: plan, repo: lab.repo_root)
+    && exactly_one_migration(plan: plan, repo: lab.repo_root, group: fleet_posix_worker_shared_group_name)
+    && last_is_provider_verification(plan: plan)
+    // (c) the staged arm declares NO posture op at all: prod's worker is the service user and owns every
+    //     byte, so git's shared-repository behaviour would be a no-op written into a production config.
+    && !any(dashboard_instance_provision_plan(instance: srv1_live_dashboard_instance()), op => match op {
+      DashboardEnsureGitSharedRepositoryPosture { repo: _ } => true
+      _ => false
+    })
+}
+
+// PROD CARRIES NONE OF IT, on every channel. The lab arm's three steps -- the shared-repository
+// posture, the one-time subtree migration, and the owner-run maintenance unit -- are all answers to the
+// worker being a DIFFERENT uid than the repo owner. On the staged arm the worker runs as the service
+// user itself (DashboardExecutionMode.WorkerIsServiceUser), so it owns every byte git writes: a
+// group-writable subtree there would widen the exposure of a production repository to buy nothing, and a
+// shared-repository config would be a no-op written into a production configuration. The claim reads the
+// declared plan for both arms, so adding any of these to the prod arm fails here rather than on the
+// host, and it reads the maintenance unit's principal from the instance so the two authorities for
+// "who owns the repo" cannot drift apart.
+test fn the_production_instance_carries_none_of_the_worker_writable_git_steps() -> Bool {
+  let prod_plan = dashboard_instance_provision_plan(instance: srv1_live_dashboard_instance())
+  let lab_plan = dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())
+  let carries_posture = any(xs: prod_plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo: _ } => true
+    _ => false
+  })
+  let carries_migration = any(xs: prod_plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo: _ } => true
+    _ => false
+  })
+  let lab_posture = count(filter(xs: lab_plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo } => repo == srv1_lab_dashboard_instance().repo_root
+    _ => false
+  }))
+  let lab_migration = count(filter(xs: lab_plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo } => repo == srv1_lab_dashboard_instance().repo_root
+    _ => false
+  }))
+  // The maintenance step runs as the repo owner, named from the instance -- never as the worker, and
+  // never as a uid the model did not derive.
+  let principal = dashboard_git_maintenance_principal(instance: srv1_lab_dashboard_instance())
+  !carries_posture && !carries_migration
+    && lab_posture == 1 && lab_migration == 1
+    && principal == srv1_lab_dashboard_instance().directory_owner.user
+}
+
+// THE ONE LEFT-TO-RIGHT PASS THAT SAYS WHERE AN OP SITS: `found` is the index of the FIRST op the
+// predicate names, and an accumulator that has already found one never moves, so no later op can
+// displace it. `none` means the plan does not contain it at all -- which the caller must handle as a
+// refusal, not as "less than zero".
+type PlanIndexScan {
+  next: Int
+  found: Int?
+}
+
+fn first_plan_index(
+  plan: List<DashboardInstanceProvisionOp>,
+  predicate: fn(DashboardInstanceProvisionOp) -> Bool,
+) -> Int? {
+  fold(plan, init: PlanIndexScan { next: 0, found: none }, f: fn(acc, op) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if predicate(op) {
+          PlanIndexScan { next: acc.next + 1, found: Present { value: acc.next } }
+        } else {
+          PlanIndexScan { next: acc.next + 1, found: none }
+        }
+    }
+  }).found
+}
+
+// Exactly one op of each kind, for the same repo, so the position the ordering leg compares is the only
+// position there is.
+fn exactly_one_posture(plan: List<DashboardInstanceProvisionOp>, repo: FilePath) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo: r } => r == repo
+    _ => false
+  })) == 1
+}
+
+// THE PLAN'S MIGRATION STEP, COUNTED BY BOTH ITS TARGET AND THE GROUP IT CARRIES. The group is part of
+// the identity being counted because it is part of the operation: an op re-grouping to some other group is
+// not this migration, and reading it off the plan here is what stops a claim from asserting a token that no
+// production caller passes (the leg is called with fleet_posix_worker_shared_group_name).
+fn exactly_one_migration(
+  plan: List<DashboardInstanceProvisionOp>,
+  repo: FilePath,
+  group: NonEmptyStr,
+) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo: r, group: g } => r == repo && g == group
+    _ => false
+  })) == 1
+}
+
+// The provider-verification op is the boundary the posture must precede: it is the last thing the apply
+// does before the instance is servable, so the repository is configured by then.
+fn last_is_provider_verification(plan: List<DashboardInstanceProvisionOp>) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardVerifyProviderAuth { executable: _, state_root: _ } => true
+    _ => false
+  })) == 1
+}
+
+// THE GROUP IS THE PRODUCTION PLAN'S, AND THE ARGV FOLLOW IT -- THE PAIRING OBLIGATION (DESIGN 3).
+//
+// Every grant in this slice takes its GROUP AS A PARAMETER, because on a machine the test does not
+// administer `chgrp gunbc-attempt` fails closed (verified: find exits 1 on a group the host has never
+// heard) and a witness must name a group its own host resolves. Once a value is a parameter, the value a
+// CLAIM passes stops being evidence about production -- the claim could pass while the production caller
+// bound something else. This claim closes that hole for the route that has a real production mint:
+//
+//   (1) read the group off the OPERATION THAT PRODUCTION BUILDS, from dashboard_instance_provision_plan
+//       itself -- the list the apply executes;
+//   (2) feed THAT VALUE, and no literal this claim wrote, back through the builder and read the argv.
+//
+// Together they say: the group production grants with IS the declared row, and the argv built from it
+// name it -- every subtree's chgrp and every subtree's chmod, with no group name written by this claim at
+// all. If the plan site invented a token, leg (1) refuses (it compares against the one declared row); if
+// the builder stopped putting the token into the argv, leg (2) refuses; if a claim somewhere started
+// asserting a private group, leg (1) is still the production reading and stays green only while the plan
+// and the row agree.
+//
+// WHY THE PER-ATTEMPT ENTRY GRANT IS NOT ASSERTED THROUGH ITS OWN PRODUCTION CALLER HERE: that caller is
+// dispatch_spawn_commands_for_launch, which for a WorkerDedicatedAccount instance on the lab refuses a
+// snapshot-free launch before it reaches the grant -- the credential snapshot has one mint, held by a real
+// take, which is why dispatch_credential_snapshot_wet_witness is wet. So this claim asserts the entry
+// grant with the same declared row the spawn binds at its sole production call site (asserted by
+// the_per_attempt_git_entry_is_granted_where_the_attempt_key_lives, which builds the argv from the
+// declared row), and the wet witness drives the gate itself.
+test fn the_production_route_names_the_declared_group_in_every_grant_command() -> Bool {
+  // THE LAB ROW, the one this witness uses everywhere its claims need a WorkerDedicatedAccount instance.
+  // The pairing claim reads production's BINDING off the plan; it does not choose an instance shape, it
+  // asks what the plan for this instance carries.
+  let lab = srv1_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  match only_migration_group(plan: plan, repo: lab.repo_root) {
+    Absent => false
+    Present { value: planned_group } =>
+      // (1) THE PLAN'S OWN BINDING IS THE DECLARED ROW, read rather than assumed.
+      planned_group == fleet_posix_worker_shared_group_name
+        // (2) THE ARGV THE PRODUCTION TOKEN PRODUCES, read as the TWO FAMILIES the migration is: one
+        //     `-exec chgrp <group>` walk per granted subtree and one `-exec chmod <modes>` walk per
+        //     granted subtree. The two halves are asserted separately because they carry DIFFERENT facts
+        //     and a single "every argv mentions the group" leg would be false of the chmod walks (they
+        //     carry MODES, and must not carry a group name -- which is asserted as its own leg below, so
+        //     the grant cannot quietly widen into setting ownership from the mode step).
+        && all(
+          dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          //     every argv is a find walk: a grant that lost its walk, or became a bare chgrp/chmod call,
+          //     could not be the migration this model derives.
+          cmd => cmd.program.invocation == find_program().invocation,
+        )
+        && grant_group_family(
+          steps: dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          group: planned_group,
+        )
+        && grant_mode_family(
+          steps: dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+          group: planned_group,
+        )
+        //     the count the model declares, read rather than written: two argv per granted subtree, so a
+        //     subtree silently dropped from the migration (or a third action sprayed over the tree) is red.
+        && length(
+          dashboard_instance_worker_git_subtree_migration(instance: lab, group: planned_group),
+        ) == 2 * length(dashboard_git_worker_directory_children)
+  }
+}
+
+// THE RE-GROUP HALF OF THE MIGRATION'S ARGV: every walk whose action is `chgrp`, and every one of those
+// must carry the group as a WHOLE ARGUMENT -- `any(cmd.arguments, a => a == group)` compares whole words,
+// so a PATH that happened to contain the group name, or a mode string that merely shares letters with it,
+// cannot satisfy this. The count is read from the same row the migration maps over, so a family that lost
+// a subtree is red rather than merely shorter.
+fn grant_group_family(steps: List<ArgvCommand>, group: NonEmptyStr) -> Bool {
+  let group_steps = filter(
+    steps,
+    cmd => any(cmd.arguments, a => a == (chgrp_path_resolved_program as String)),
+  )
+  length(group_steps) == length(dashboard_git_worker_directory_children)
+    && all(group_steps, cmd => any(cmd.arguments, a => a == (group as String)))
+}
+
+// THE MODE HALF: every walk whose action is `chmod`, at least as many as there are granted subtrees, and
+// THE ABSENCE THAT MATTERS -- no chmod walk names a group. The chmod step exists to set modes; if it ever
+// grew an ownership argument, ownership would be asserted in two places with two different authorities and
+// the group pairing above would no longer describe the whole grant.
+fn grant_mode_family(steps: List<ArgvCommand>, group: NonEmptyStr) -> Bool {
+  let mode_steps = filter(
+    steps,
+    cmd => any(cmd.arguments, a => a == (chmod_path_resolved_program as String)),
+  )
+  length(mode_steps) == length(dashboard_git_worker_directory_children)
+    && all(mode_steps, cmd => !any(cmd.arguments, a => a == (group as String)))
+}
+
+// THE GROUP THE PLAN CARRIES FOR THE MIGRATION STEP, or Absent unless the plan carries exactly one.
+// Absent rather than a default: a plan with zero such steps, or two that disagree, is a world this claim
+// refuses to draw a conclusion about, and "no group to compare" must never read as "granted".
+fn only_migration_group(
+  plan: List<DashboardInstanceProvisionOp>,
+  repo: FilePath,
+) -> NonEmptyStr? {
+  // STRINGS, NOT OPTIONS, WHILE COLLECTING: an option inside an option is how a "missing" and a "present
+  // but missing" start meaning the same thing. An empty string marks a row that is not the migration, and
+  // is filtered out; two rows for this repo -- identical or not -- leave TWO entries and the count leg
+  // refuses, because a plan that migrates the same repository twice is not a plan this claim can name a
+  // single group for.
+  let groups = filter(
+    map(plan, op => match op {
+      DashboardMigrateGitWorkerSubtree { repo: r, group: g } => if r == repo { g as String } else { "" }
+      _ => ""
+    }),
+    g => g != "",
+  )
+  if length(groups) == 1 {
+    match groups.first() {
+      Absent => none
+      Present { value: g } => Present { value: g as NonEmptyStr }
+    }
+  } else {
+    none
+  }
 }

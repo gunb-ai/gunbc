@@ -27,9 +27,9 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_wif_attribute_mapping, heal_publisher_federation_attribute_condition,
   heal_publisher_federation_principal_set, heal_publisher_federation_service_account_member
 }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_ensure_for_member }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
-import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user, role_iam_service_account_token_creator }
 
 // ONE-TIME PROVISIONING OF THE PUBLISHER'S OWN IDENTITY, run by an operator with a control-plane
 // token (gunbc.auth.access_token_source secret_access_token_path_env). It handles no key material at
@@ -62,8 +62,15 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 // binding would hand the account to unreviewed code -- and a run gains the account only through a
 // time-conditioned cell naming that run's id, written after the operator approves that exact run
 // (gunbc.auth.branch_run_grant).
+//
+// A DELEGATING federation binds its pool standing too, but as token creator rather than workload
+// identity user, because its account is the first link of a delegation chain and not the identity the
+// run acts as: GenerateAccessToken with delegates needs iam.serviceAccounts.implicitDelegation on the
+// first delegate, which roles/iam.workloadIdentityUser does not carry. The account's own reach is the
+// next link, written on the target's policy (gunbc.review_sheet_federation is the one inhabitant).
 type FederationImpersonation
   = StandingPoolImpersonation { principal_set: String }
+  | StandingPoolDelegation { principal_set: String }
   | RunScopedImpersonation
 
 type DedicatedFederation {
@@ -140,6 +147,7 @@ fn standing_impersonation_cell(principal_set: String) -> GcpIamBindingCell {
 fn impersonation_cells(f: DedicatedFederation) -> List<GcpIamBindingCell> {
   match f.impersonation {
     StandingPoolImpersonation { principal_set: ps } => [standing_impersonation_cell(principal_set: ps)]
+    StandingPoolDelegation { principal_set: ps } => [GcpIamBindingCell { role: role_iam_service_account_token_creator, member: ps, condition: none }]
     RunScopedImpersonation => []
   }
 }
@@ -147,6 +155,7 @@ fn impersonation_cells(f: DedicatedFederation) -> List<GcpIamBindingCell> {
 fn standing_principal_set(f: DedicatedFederation) -> String? {
   match f.impersonation {
     StandingPoolImpersonation { principal_set: ps } => Present { value: ps }
+    StandingPoolDelegation { principal_set: ps } => Present { value: ps }
     RunScopedImpersonation => none
   }
 }
@@ -268,8 +277,12 @@ type AccountReading
   | AccountForbidden { cause: String }
   | AccountUnreadable { cause: String }
 
+// PERMISSION_DENIED IS ITS OWN ARM, never a reason string: what it means depends on the reader. For a
+// resource-local reader (the converge's iam-observe) it is "absent or unbound", which only
+// gunbc.auth.gcp_iam_bootstrap_delta classifies; for an operator token it is a refused read.
 type FederationClassification
   = FederationClassified { create_pool: Bool, create_provider: Bool, create_account: Bool }
+  | FederationPermissionDenied { pool: Bool, account: Bool, causes: List<String> }
   | FederationUnclassified { reasons: List<String> }
 
 fn outcome_is_not_found(o: RestRefusal) -> Bool {
@@ -286,19 +299,6 @@ fn outcome_is_forbidden(o: RestRefusal) -> Bool {
     RestTransportRefused { cause: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
-}
-
-// A 403 ON A DECLARED POOL OR ACCOUNT CANNOT SAY WHICH OF TWO THINGS HOLDS: the subject does not
-// exist, or it exists and the reader holds no read binding on it. GCP answers 403 for both, because a
-// per-resource binding cannot exist on a resource that does not. So the text names both, never
-// "absent", and names the one repair that settles it: the operator bootstrap ceremony
-// (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), whose identities stage creates the pool and
-// account and whose capabilities stage binds iam-observe's per-pool and per-account read roles.
-fn not_bootstrapped_text(subject: String, cause: String) -> String {
-  join([
-    "the ", subject, " is absent or not yet bootstrapped: the reading identity holds no read binding on it (", cause,
-    "). Repair: run the bootstrap ceremony, gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply, whose identities stage creates it and whose capabilities stage binds the read roles",
-  ], "")
 }
 
 fn string_or_empty(v: String?) -> String {
@@ -329,7 +329,7 @@ fn mapping_equal(a: Map<String, String>?, b: Map<String, String>) -> Bool {
 fn pool_reasons(f: DedicatedFederation, pool: PoolReading) -> List<String> {
   match pool {
     PoolObservedAbsent => []
-    PoolForbidden { cause: c } => [not_bootstrapped_text(subject: "workload identity pool", cause: c)]
+    PoolForbidden { cause: _ } => []
     PoolUnreadable { cause: c } => [concat("the pool could not be read: ", c)]
     PoolObserved { pool: p } => concat(
       if ends_with_segment(name: p.name, segment: f.pool_id as String) { [] } else { [concat("the pool read back as ", p.name)] },
@@ -376,7 +376,7 @@ fn providers_reasons(f: DedicatedFederation, providers: ProvidersReading) -> Lis
 fn account_reasons(f: DedicatedFederation, account: AccountReading) -> List<String> {
   match account {
     AccountObservedAbsent => []
-    AccountForbidden { cause: c } => [not_bootstrapped_text(subject: "service account", cause: c)]
+    AccountForbidden { cause: _ } => []
     AccountUnreadable { cause: c } => [concat("the service account could not be read: ", c)]
     AccountObserved { email: e } =>
       if e == (f.service_account as String) { [] } else { [join(["the service account read back as ", e, ", not ", f.service_account as String], "")] }
@@ -394,8 +394,12 @@ fn providers_absent(providers: ProvidersReading) -> Bool {
 // is one where every present subject matched field by field.
 fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, providers: ProvidersReading, account: AccountReading) -> FederationClassification {
   let reasons = concat(pool_reasons(f: f, pool: pool), concat(providers_reasons(f: f, providers: providers), account_reasons(f: f, account: account)))
+  let pool_denied = match pool { PoolForbidden { cause } => [concat("pool: ", cause)]  PoolObservedAbsent => []  PoolObserved { pool: _ } => []  PoolUnreadable { cause: _ } => [] }
+  let account_denied = match account { AccountForbidden { cause } => [concat("service account: ", cause)]  AccountObservedAbsent => []  AccountObserved { email: _ } => []  AccountUnreadable { cause: _ } => [] }
   if reasons.length() > 0 {
     FederationUnclassified { reasons: reasons }
+  } else if count(pool_denied) + count(account_denied) > 0 {
+    FederationPermissionDenied { pool: count(pool_denied) > 0, account: count(account_denied) > 0, causes: pool_denied + account_denied }
   } else {
     FederationClassified {
       create_pool: match pool { PoolObservedAbsent => true  PoolObserved { pool: _ } => false  PoolForbidden { cause: _ } => false  PoolUnreadable { cause: _ } => false },
@@ -408,6 +412,7 @@ fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, prov
 fn federation_fully_present(c: FederationClassification) -> Bool {
   match c {
     FederationClassified { create_pool: a, create_provider: b, create_account: d } => !a && !b && !d
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => false
     FederationUnclassified { reasons: _ } => false
   }
 }
@@ -516,6 +521,7 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
 {
   match c {
     FederationUnclassified { reasons: _ } => "unclassified; nothing created"
+    FederationPermissionDenied { pool: _, account: _, causes: cs } => concat("permission denied to the reading identity; nothing created: ", join(cs, "; "))
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } => {
       let pool = if cp {
         create_if(wanted: true, subject: "the pool", creation: match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
@@ -545,25 +551,18 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
   }
 }
 
-fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
-{
-  fold(fed.secret_grants, init: ExitSuccess, f: (acc, g) =>
-    match acc {
-      ExitSuccess => secret_access_ensure_for_member(grant: g, member: fed.service_account_member, token_source: OperatorSuppliedToken { token: token })
-      failed => failed
-    }
-  )
-}
-
 // THE ORDER IS THE PROTOCOL: observe and classify; create only what was absent; re-observe and
-// require every subject present and matching; only then write who may act as the account and what
-// it may read. No policy write precedes a matching readback of the pool, its whole provider
+// require every subject present and matching; only then write who may act as the account. What it
+// may read is NOT written here: a federation's secret_grants are gcp_iam_converge target cells, bound by
+// the converge (and its bootstrap delta) under one approval, never under this operator token (writer
+// census, gunbc#14360). No policy write precedes a matching readback of the pool, its whole provider
 // population and the account.
 fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> ProcessExit
 {
   let before = observe_and_classify(f: f, token: token)
   match before {
     FederationUnclassified { reasons: rs } => return unclassified_exit(f: f, phase: "an existing subject does not match its declaration", reasons: rs)
+    FederationPermissionDenied { pool: _, account: _, causes: cs } => return unclassified_exit(f: f, phase: "the reading identity is denied a declared subject", reasons: cs)
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } => {}
   }
   let created = create_absent_subjects(f: f, token: token, c: before)
@@ -573,14 +572,12 @@ fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> Proc
   let after = observe_and_classify(f: f, token: token)
   match after {
     FederationUnclassified { reasons: rs } => unclassified_exit(f: f, phase: "the readback after creating does not match the declaration", reasons: rs)
+    FederationPermissionDenied { pool: _, account: _, causes: cs } => unclassified_exit(f: f, phase: "the readback after creating is denied to the reading identity", reasons: cs)
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } =>
       if !federation_fully_present(c: after) {
         exit_failure(reason: concat(f.label, ": a created subject is not yet visible on readback -- nothing was granted; rerun once it reads back"))
       } else {
-        match bind_impersonation(f: f, token: token) {
-          ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-          ExitSuccess => grant_secret_reads(fed: f, token: token)
-        }
+        bind_impersonation(f: f, token: token)
       }
   }
 }

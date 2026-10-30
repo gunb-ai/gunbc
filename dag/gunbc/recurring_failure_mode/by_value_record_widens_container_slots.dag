@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.by_value_record_widens_container_slots
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
+
+data by_value_record_widens_container_slots: RecurringFailureMode = RecurringFailureMode {
+  identity: "by_value_record_widens_container_slots" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
+
+  receipts: [
+    "The seed emitter fact F (a record whose every field clones without allocating is held by value instead of behind an Rc) took the state-threading specimen from 8116 to 4114 allocator operations (native-allocation-observation, n=2000) and was read as a win. Run end to end on a representative governed arm it was a regression: gunbc test //gunbc/instruments:value-position-block-nests, prebuilt base (5ef31256) against head (5121c34a) built in one dispatch, 9 alternating runs, case reports equal (the arm discards the normalized value), peak RSS equal (~15.6 MB): median 0.637 s at base, 0.752 s at head, and 5.644G against 7.247G instructions under callgrind (+28%).",
+
+    "THE MECHANISM, located by callgrind rather than assumed: the profile localized the added work to two flipped records, v2_compiler_parse LookaheadKey (two Rc fields) (16 B by value, 8 B as an Rc) and LookaheadPrefix (two Rc fields and a Bool) (24 B), both ELEMENTS of im::Vector, whose chunks hold 64 inline slots, so a chunk allocation and every copy-on-write scale with sizeof(element): 512 B at base, ~1 KB and ~1.5 KB at head. The malloc family (libc _int_malloc 137M -> 780M, memcpy 650M -> 972M, chunk free paths) was ~1.2G of the 1.6G increase; the rest of the program matched to ~0.1%. That a chunk crossing glibc's ~1032 B tcache limit is the dominant term is an inference from that size arithmetic and the _int_malloc jump, not a measured allocation-size histogram. The refcount arithmetic (a by-value clone is one increment per Rc field, an Rc clone is one) is real but not the dominant term.",
+
+    "THE NARROWED RULE AND WHY THE IMPLEMENTATION WAS WITHDRAWN: width(R) <= width(Rc<R>) addresses element width only and is not a nonregression theorem. Restricting the clone-allocation-free candidates to non-increasing element width excludes the specimen records (SpecCursor and SpecAcc are 16 B and wider). The about 60 of the 372 flipped records that remain are single-handle newtypes (an Rc around a Vec, HashMap, Node or DeclarationRef) with no demonstrated benefit on the measured arms. We therefore withdrew the implementation rather than retaining it for an unestablished benefit. An ownership-based route to the specimen's allocation reduction (S, linear unwrap of a dying owned record) is a candidate to test, not an established win.",
+
+    "RECOGNITION RULE: an allocation-only improvement does not establish a runtime improvement. When a representation change widens elements held in containers, assess the affected container paths, including copying and allocation behavior. A runtime win requires evidence from prebuilt variants executing those uses; its scope is the measured workload.",
+
+    "RUNG FOUND AT: mitigatable. The allocation reading did not expose the runtime regression. A reviewer-requested runtime comparison exposed it, and the implementation was withdrawn. No enrolled gate prevented this class.",
+
+    "CEILING, three separate claims. (1) Detecting that a representation change widens an element held in a container is decidable from representation. (2) Enforcing a DECLARED non-widening obligation, where the representation decision consumes the before and after layout facts and refuses a change that violates the obligation, can be structurally guaranteed: rung 3, for that narrower obligation only, and not a runtime-nonregression proof. A wider representation is legitimate, so widening is not refused categorically. (3) An enrolled runtime comparison is mechanical prevention (rung 2) within its workload contract; whether a change slows a workload outside the compared workloads is not established by it.",
+
+    "NEXT-RUNG TRIGGER, at capability grain. For the runtime claim: an enrolled runtime-comparison gate over identified prebuilt base and head variants and the affected container uses, with behavior-agreement observations, a declared noise policy, and discriminating regression and positive controls. Missing or unusable comparison evidence cannot satisfy the gate. The guarantee is scoped to that comparison contract. For the structural sub-class: the representation decision consumes before and after layout facts and enforces a declared layout obligation; merely reading widths does not count. S (an ownership-based route to the specimen allocation reduction) is a candidate optimization to test; it is not this class's trigger.",
+  ],
+
+  evidence: [],
+}

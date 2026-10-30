@@ -1,0 +1,295 @@
+module test.claim.cursor_runtime_root_wet_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.clock { Clock }
+import extdeps.exec.command { LocalExec, argv_words }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, filesystem_entry_presence, filesystem_listing_observation }
+import extdeps.llm.cursor_cli { cursor_api_key_env_var }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused, PosixShKeepFile }
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
+import gunbc.dispatch_credential_acquisition {
+  CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config,
+  credential_taken_cursor_runtime_root,
+}
+import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot }
+import gunbc.cursor_harness_credential {
+  cursor_bound_key_probe_command, cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyRejected, CursorKeyAccepted,
+  CursorKeyProbeUnreadable, cursor_worker_turn_api_key_host_path,
+}
+import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir }
+
+// WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
+// here, so the operator's real ~/.config/cursor is neither read nor written nor asserted. Every control is
+// parameterized by the ProgramIdentity. The key reaches the child ONLY through the export-from-file wrapper the
+// snapshot path uses (never argv). A root is removed and read back absent ("removed and observed absent").
+//
+// MERGE GATE (srv2, same-build stand-in): (b) and (d). The test-only identity is a wrapper the test writes that
+// appends its argv to a witness-confined log and then execs the user copy of the pinned build. There is NO
+// second production identity and no fallback: production supplies cursor_agent_pinned_program().
+// ACTIVATION GATE (after the pinned install, before C1a): (a) and (c), on the pinned path with the custody
+// key. Written now, run nothing until the install readback holds.
+data cursor_wet_user_copy: String = "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursor-agent"
+data cursor_wet_invalid_key: String = "gunbc-wet-invalid-key\n"
+
+fn wet_scratch(label: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/cursor-wet-", label, ".XXXXXX"], "")).path
+}
+
+fn wet_root_under(scratch: String, label: String) -> CursorAttemptRuntimeRoot {
+  let root = cursor_attempt_runtime_root(instance_root: scratch, reference: label)
+  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
+  let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
+  root
+}
+
+fn wet_auth_inside_config(root: CursorAttemptRuntimeRoot) -> Bool {
+  Filesystem.Read(path: join([cursor_attempt_runtime_config(root: root), "cursor", "auth.json"], "/")).success
+}
+
+fn wet_auth_under_home(root: CursorAttemptRuntimeRoot) -> Bool {
+  Filesystem.Read(path: join([cursor_attempt_runtime_home(root: root), ".config", "cursor", "auth.json"], "/")).success
+}
+
+fn wet_remove_and_observe_absent(scratch: String) -> Bool {
+  let _ = shell.Remove.RecursiveForce(path: scratch as FilePath)
+  !Filesystem.Read(path: join([scratch, "/"], "")).success && !Filesystem.List(path: scratch).success
+}
+
+// The key probe exactly as the standing runs it: the ONE production command (export-from-file under the
+// production timeout), so (a), (b), (c), (g) exercise the production bound and not a parallel copy.
+fn wet_probe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_file: String) -> CursorKeyProbeReading {
+  match cursor_bounded_keyed_probe_command(program: program, root: root, key_path: key_file as NonEmptyStr) {
+    CursorBoundedProbeNameRefused { spelling: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "variable name refused" }
+    CursorBoundedProbeEmitRefused { name: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "emitter refused" }
+    CursorBoundedProbeReady { command } => {
+      let run = run_shell_command_observe(command: command, transport: LocalExec)
+      cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+    }
+  }
+}
+
+fn wet_is_accepted(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => true
+    CursorKeyRejected { detail: _ } => false
+    CursorKeyProbeUnreadable { exit_code: _, detail: _ } => false
+  }
+}
+
+fn wet_is_rejected(r: CursorKeyProbeReading) -> Bool {
+  match r {
+    CursorKeyAccepted => false
+    CursorKeyRejected { detail: _ } => true
+    CursorKeyProbeUnreadable { exit_code: _, detail: _ } => false
+  }
+}
+
+fn wet_plant_key(scratch: String, name: String, content: String) -> String {
+  let path = join([scratch, "/", name], "")
+  let _ = Filesystem.WriteOwnerOnly(path: path, content: content)
+  let _ = shell.Chmod.OwnerReadWriteFile(path: path as FilePath)
+  path
+}
+
+// (b) An invalid key under a fresh root reads Rejected and leaves no auth state.
+fn wet_invalid_key_is_rejected_and_leaves_no_auth(program: ProgramIdentity) -> Bool {
+  let scratch = wet_scratch(label: "b")
+  let root = wet_root_under(scratch: scratch, label: "b")
+  let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+  let rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: key))
+  let clean = !wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+  let removed = wet_remove_and_observe_absent(scratch: scratch)
+  rejected && clean && removed
+}
+
+// The test-only identity: a wrapper that appends its argv to a witness-confined log, then execs the user copy.
+// The log is read back by the (d) control; the identity exists only in this witness.
+// The log records key PRESENCE only, never a value. With hang_on_list_models the --list-models arm execs a finite
+// sleep well past the production probe bound, so (g) can observe the bound firing.
+fn wet_logging_stand_in(scratch: String, hang_on_list_models: Bool) -> ProgramIdentity {
+  let wrapper = join([scratch, "/cursor-agent-stand-in"], "")
+  let log = join([scratch, "/invocations.log"], "")
+  let hang = if hang_on_list_models { "case \"$*\" in *--list-models*) exec sleep 90;; esac\n" } else { "" }
+  let _ = Filesystem.Write(path: wrapper, content: join(["#!/bin/sh\nk=; if [ -n \"$CURSOR_API_KEY\" ]; then k=set; fi\nprintf 'key=%s argv=%s\\n' \"$k\" \"$*\" >> ", log, "\n", hang, "exec ", cursor_wet_user_copy, " \"$@\"\n"], ""))
+  let _ = shell.Exec.RunArgv(program: "chmod", arguments: ["0700", wrapper])
+  uncataloged_program(invocation: wrapper as NonEmptyStr)
+}
+
+fn wet_standing_reason(s: ProviderStanding) -> String {
+  match s {
+    ProviderStandingUnobserved { reason } => reason as String
+    _ => "an observed standing: the fold did not stop at a refusal"
+  }
+}
+
+// (d) With the sandbox unavailable the production ordering stops at the SANDBOX refusal: the reason is the
+// sandbox cause (never a key result), the log shows the preflight invocation ran, and it holds NO
+// --list-models entry (the discriminating fact: an invalid probe persists nothing anyway, so no-auth proves
+// nothing). Then root D is removed and read back absent. The snapshot is taken from a planted custody holding a
+// deliberately fake key; no real key is read.
+fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: FilesystemEntryPresence, ambient_key_required: Bool) -> Bool {
+  let ambient_ok = !ambient_key_required || wet_ambient_key_is_set()
+  let scratch = wet_scratch(label: "d")
+  let custody = wet_scratch(label: "dcust")
+  let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
+  let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
+    Absent => false
+    Present { value: snapshot } => {
+      let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
+      let log = Filesystem.Read(path: join([scratch, "/invocations.log"], "")).content
+      string_contains(s: reason, pattern: cursor_sandbox_unavailable_reason_prefix)
+        && string_contains(s: log, pattern: "sandbox")
+        && !string_contains(s: log, pattern: "--list-models")
+        && string_contains(s: log, pattern: "key= argv=--disable-auto-update sandbox")
+        && !string_contains(s: log, pattern: "key=set")
+        && !wet_auth_inside_config(root: credential_taken_cursor_runtime_root(snapshot: snapshot))
+        && !wet_auth_under_home(root: credential_taken_cursor_runtime_root(snapshot: snapshot))
+    }
+  }
+  let removed_s = wet_remove_and_observe_absent(scratch: scratch)
+  let removed_c = wet_remove_and_observe_absent(scratch: custody)
+  ambient_ok && verdict && removed_s && removed_c
+}
+
+// FAIL CLOSED PRECONDITION for (f): the control first observes that its own ambient key is set, by an exit-code-only
+// probe that never prints it. Without the ambient key (f) is red, not vacuously green.
+fn wet_ambient_key_is_set() -> Bool {
+  shell.Exec.RunArgv(program: "sh", arguments: ["-c", "[ -n \"$CURSOR_API_KEY\" ]"]).exit_code == 0
+}
+
+// (g) The key probe has a LOCAL BOUND: a stand-in whose --list-models execs a 90 s sleep must return under the
+// production bound + grace + margin as Unreadable with exit 124 or 137, and the root and key file are still
+// removed and observed absent afterwards.
+fn wet_stalled_key_probe_is_bounded() -> Bool {
+  let scratch = wet_scratch(label: "g")
+  let root = wet_root_under(scratch: scratch, label: "g")
+  let key = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+  let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: true)
+  let started = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
+  let reading = wet_probe(program: stand_in, root: root, key_file: key)
+  let finished = parse_int(s: trim(s: Clock.UnixSecs().unix_secs))
+  let timed = match reading {
+    CursorKeyProbeUnreadable { exit_code, detail: _ } => exit_code == 124 || exit_code == 137
+    CursorKeyAccepted => false
+    CursorKeyRejected { detail: _ } => false
+  }
+  let quick = match started {
+    Present { value: t0 } =>
+      match finished {
+        Present { value: t1 } => t1 - t0 < 45
+        Absent => false
+      }
+    Absent => false
+  }
+  let removed = wet_remove_and_observe_absent(scratch: scratch)
+  timed && quick && removed
+}
+
+// (e) An ABSENT pinned realization reaches NO invocation. The presence is the REAL producer's reading of an
+// EMPTY directory (a deterministic FilesystemEntryAbsent), the fold runs with the logging stand-in, the reason
+// is the not-installed cause, and invocations.log does not exist because nothing was invoked.
+fn wet_absent_realization_reaches_no_invocation() -> Bool {
+  let scratch = wet_scratch(label: "e")
+  let custody = wet_scratch(label: "ecust")
+  let empty = wet_scratch(label: "eempty")
+  let listed = Filesystem.List(path: empty)
+  let presence = filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: empty, success: listed.success, entries: listed.entries, error: listed.error),
+    name: "cursor-agent",
+  )
+  let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
+  let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1", snap: join([scratch, "/P"], "")) {
+    Absent => false
+    Present { value: snapshot } => {
+      let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
+      string_contains(s: reason, pattern: "pinned cursor-agent realization is not installed")
+        && !Filesystem.Read(path: join([scratch, "/invocations.log"], "")).success
+    }
+  }
+  let removed_s = wet_remove_and_observe_absent(scratch: scratch)
+  let removed_c = wet_remove_and_observe_absent(scratch: custody)
+  let removed_e = wet_remove_and_observe_absent(scratch: empty)
+  verdict && removed_s && removed_c && removed_e
+}
+
+// ACTIVATION (a): the CUSTODY key through the same wrapper, --list-models only, fresh root A: Accepted, and all
+// persisted auth is under A's config and nowhere under A's home.
+fn wet_custody_key_persists_inside_the_root_only(program: ProgramIdentity) -> Bool {
+  let scratch = wet_scratch(label: "a")
+  let root = wet_root_under(scratch: scratch, label: "a")
+  let accepted = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
+  let confined = wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+  let removed = wet_remove_and_observe_absent(scratch: scratch)
+  accepted && confined && removed
+}
+
+// ACTIVATION (c): with root A holding the custody key's stored auth, the env key replaced by a deliberate
+// invalid value must still read REJECTED (the supplied key decides, not ambient stored auth). Root A is then
+// removed and read back absent.
+fn wet_supplied_invalid_key_decides_over_stored_auth(program: ProgramIdentity) -> Bool {
+  let scratch = wet_scratch(label: "c")
+  let root = wet_root_under(scratch: scratch, label: "c")
+  let stored = wet_is_accepted(r: wet_probe(program: program, root: root, key_file: cursor_worker_turn_api_key_host_path as String))
+  let invalid = wet_plant_key(scratch: scratch, name: "invalid-key", content: cursor_wet_invalid_key)
+  let still_rejected = wet_is_rejected(r: wet_probe(program: program, root: root, key_file: invalid))
+  let kept = wet_auth_inside_config(root: root)
+  let removed = wet_remove_and_observe_absent(scratch: scratch)
+  stored && kept && still_rejected && removed
+}
+
+// srv2 MERGE-GATE entries (stand-in, no real key): the production call sites supply the pinned program for the
+// activation controls and the logging stand-in only here.
+test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_leaves_no_auth_state() -> Bool {
+  let scratch = wet_scratch(label: "bstand")
+  let result = wet_invalid_key_is_rejected_and_leaves_no_auth(program: wet_logging_stand_in(scratch: scratch, hang_on_list_models: false))
+  let removed = wet_remove_and_observe_absent(scratch: scratch)
+  result && removed
+}
+
+test fn an_unavailable_sandbox_stops_the_ordering_at_the_sandbox_refusal_before_any_list_models() -> Bool {
+  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: wet_stand_in_presence(), ambient_key_required: false)
+}
+
+test fn an_absent_pinned_realization_reaches_no_invocation() -> Bool {
+  wet_absent_realization_reaches_no_invocation()
+}
+
+// The stand-in's own presence observation (the user copy's directory), so the real fold runs past the
+// pinned-path check; the pinned check itself is covered by the pure witness.
+fn wet_stand_in_presence() -> FilesystemEntryPresence {
+  let directory = "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e"
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error),
+    name: "cursor-agent",
+  )
+}
+
+// ACTIVATION-GATE entries (pinned path, custody key): NOT RUN until the install readback holds.
+test fn activation_custody_key_persists_auth_inside_fresh_root_only() -> Bool {
+  wet_custody_key_persists_inside_the_root_only(program: cursor_agent_pinned_program())
+}
+
+test fn activation_supplied_invalid_key_decides_over_retained_stored_auth() -> Bool {
+  wet_supplied_invalid_key_decides_over_stored_auth(program: cursor_agent_pinned_program())
+}
+
+// (f) runs under an AMBIENT FAKE KEY, e.g. `CURSOR_API_KEY=gunbc-wet-ambient-fake claim_batch --wet ...`; the preflight
+// child must receive it unset (the log shows `key=` empty) and the sandbox refusal still wins.
+test fn the_keyless_preflight_receives_no_ambient_key() -> Bool {
+  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: wet_stand_in_presence(), ambient_key_required: true)
+}
+
+test fn a_stalled_key_probe_is_bounded_and_cleanup_still_runs() -> Bool {
+  wet_stalled_key_probe_is_bounded()
+}

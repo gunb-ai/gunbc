@@ -1,0 +1,362 @@
+module gunbc.instruments.native_serve_device_crypto_probe
+
+import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { Cons, Empty }
+import extdeps.standards.rfc_6979 {
+  rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
+}
+import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data }
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
+  operator_device_attestation_octets, operator_device_client_data, operator_device_key_id_b64,
+  operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
+}
+import extdeps.apple.app_attest { AttestationExpectation, AttestKeyId, AppIdPrefix, AppAttestDevelopment, app_attest_app_id }
+import gunbc.auth.approval_device_crypto_self_check {
+  octets_text, first_octet_changed, rfc6979_check, sample_attestation_expectation, sample_assertion_expectation, assertion_expectation_with,
+}
+import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, no_observation, native_serve_probe_not_held_code,
+}
+import extdeps.crypto.signature { SignatureVerified, SignatureInvalid }
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoAdmission, DeviceCryptoHandlerReceipt, device_crypto_receipt_admission, device_crypto_obligations,
+  DeviceCryptoExpectation, DeviceCryptoRequirement, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
+}
+import gunbc.auth.approval_device_crypto_client { SidecarAnswered, SidecarFailed, signature_from_answer }
+import gunbc.auth.approval_device_crypto_wire {
+  decode_device_crypto_answer, decode_device_crypto_echoed_answer,
+  device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
+  SignatureCheck, P256Multiple, OrderItself, OrderMinusOne,
+  signature_check_request_json, p256_multiple_request_json, attestation_check_request_json, assertion_check_request_json,
+}
+
+// THE READER FOR `gunbc test //gunbc/instruments:native-serve-device-crypto`. The seed host emits and
+// builds gunbc.auth.approval_device_crypto_serve, starts it, writes each request below to a real TCP
+// connection and hands back what came off the wire, unjudged; every verdict is made here. It is the
+// inhabitance claim of the verifier service (DESIGN section 3, a witness discriminates at one
+// interface): the real emitted binary, over real TCP, answering the folds' own verdicts -- not a
+// supplied verdict beside a fold that never ran.
+//
+// THE CASES AND WHAT EACH ONE ESTABLISHES (every REQUEST is built by the wire module's own writers):
+//   - signature, RFC 6979 A.2.5 sample: verified, SignatureVerified. A service that answered `verified`
+//     to everything passes this and fails the next two.
+//   - signature, the same carrier with its first signature octet changed: invalid, SignatureInvalid
+//     (the RED the brief owes: a mutated signature is not verified).
+//   - signature, the sample signature over a different message: invalid.
+//   - P-256 base point order: n*G is infinity; (n-1)*G is finite (the control that makes the first an
+//     observation: a scalar multiplication that always answered infinity fails the second).
+//   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4)
+//     and the operator's iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2):
+//     none carries an authData extensions map, so the verdicts the folds owe are the success arms
+//     AttestationVerified and AssertionAuthentic, with the two P-384 chain links and the P-256
+//     assertion signature run in the emitted binary (gunbc.instruments.native_app_attest states the
+//     same standing for the fold run directly).
+//   - the same attestation with a client data that is not the one the nonce commits to: refused with
+//     AttestationNonceMismatch, which distinguishes a service that reads the request's expectation from
+//     one that answers the owed arm for any object.
+//   - an unreadable body is the wire's 400 (never a verdict), an unrouted path 404, a GET 405.
+//
+// THE PHASES: none. The service has no peer, no refused-launch arm the instrument needs beyond the
+// door's own (which gunbc.native_serve_probe judges on the fixture) and no budget case; the row
+// declares the empty phase set and native_serve_probe_phases says the same, so the host's join of
+// declared to judged phases is satisfied for exactly this reason and no other.
+
+fn native_serve_probe_phases() -> List<NativeServePhase> {
+  []
+}
+
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+
+fn native_serve_probe_release_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+// Generous: the verifier's P-256 and P-384 arithmetic is native but a cold first request pays for it,
+// and no case here is a budget case. (That startup does not inherit the request deadline is judged by
+// //gunbc/instruments:native-serve-startup-slow, whose startup is a declared, ratio-bounded spin.)
+fn native_serve_probe_request_deadline_ms() -> String {
+  "30000"
+}
+
+// ── The cases ────────────────────────────────────────────────────────────────────────────────
+// WHAT THE BROKER'S CLIENT MAKES OF THE ANSWER THAT CAME OFF THE WIRE (gunbc.auth.approval_device_crypto_client).
+// The real service's answer is decoded by the client's own decode and handed to the admitted mint, so the
+// payload the service writes is the payload the broker reads: a payload the decode refuses, or one that
+// disagrees with the request, fails here and not in production. Only the signature route has a real verified
+// producer in this corpus; Apple's published sample predates the validation category, so the attestation and
+// assertion routes are judged on their refusals and their verified payloads are exercised on supplied answers by
+// test.claim.approval_device_crypto_client_witness (the declared whole-fold positive control of
+// gunbc.instruments.native_app_attest).
+type DeviceCryptoClientReading
+  = ClientReadingNotJudged
+  | ClientReadsSignatureVerifiedFor { message: String }
+  | ClientReadsSignatureInvalid
+  | ClientReadsEchoJoin
+
+type DeviceCryptoProbeCase {
+  identity: String
+  request: String
+  status: Int
+  body_contains: String
+  client_reading: DeviceCryptoClientReading
+}
+
+fn crypto_post(path: String, body: String) -> String {
+  concat("POST ", concat(path, concat(" HTTP/1.1\r\nHost: probe\r\nContent-Length: ", concat(to_string(value: string_length(s: body)), concat("\r\n\r\n", body)))))
+}
+
+// The operator iPhone's expectation as the broker sent it to the verifier (the request that was refused in production).
+fn operator_device_attestation_expectation(client_data: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: client_data, app_id: app_attest_app_id(prefix: operator_device_team_identifier as AppIdPrefix, bundle_id: operator_device_bundle_identifier))
+}
+
+fn operator_device_with_app_id(a: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: operator_device_client_data, app_id: a)
+}
+
+fn operator_device_with(client_data: NonEmptyStr, app_id: NonEmptyStr) -> AttestationExpectation {
+  AttestationExpectation {
+    key_id: operator_device_key_id_b64 as AttestKeyId,
+    client_data: client_data,
+    app_id: app_id,
+    environment: AppAttestDevelopment,
+    observed_at: operator_device_observed_at as String,
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
+fn answer_words(verdict: String, arm: String) -> String {
+  concat("\"verdict\": \"", concat(verdict, concat("\", \"arm\": \"", concat(arm, "\""))))
+}
+
+fn crypto_cases() -> List<DeviceCryptoProbeCase> {
+  [
+    DeviceCryptoProbeCase {
+      identity: "signature_rfc6979_sample_verifies",
+      request: crypto_post(path: device_crypto_signature_path, body: signature_check_request_json(c: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: rfc6979_a25_message_sample))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "SignatureVerified"),
+      client_reading: ClientReadsSignatureVerifiedFor { message: rfc6979_a25_message_sample as String },
+    },
+    DeviceCryptoProbeCase {
+      identity: "echo_of_the_running_binary_joins_only_its_own_digest",
+      request: crypto_post(path: device_crypto_signature_path, body: signature_check_request_json(c: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: rfc6979_a25_message_sample))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "SignatureVerified"),
+      client_reading: ClientReadsEchoJoin,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_signature_with_a_changed_octet_is_invalid",
+      request: crypto_post(path: device_crypto_signature_path, body: signature_check_request_json(c: rfc6979_check(octets: first_octet_changed(octets: rfc6979_a25_p256_sha256_sample_signature), message: rfc6979_a25_message_sample))),
+      status: 200,
+      body_contains: answer_words(verdict: "invalid", arm: "SignatureInvalid"),
+      client_reading: ClientReadsSignatureInvalid,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_signature_over_a_different_message_is_invalid",
+      request: crypto_post(path: device_crypto_signature_path, body: signature_check_request_json(c: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: rfc6979_a25_message_test))),
+      status: 200,
+      body_contains: answer_words(verdict: "invalid", arm: "SignatureInvalid"),
+      client_reading: ClientReadsSignatureInvalid,
+    },
+    DeviceCryptoProbeCase {
+      identity: "p256_base_point_has_order_n",
+      request: crypto_post(path: device_crypto_p256_order_path, body: p256_multiple_request_json(m: OrderItself)),
+      status: 200,
+      body_contains: answer_words(verdict: "infinity", arm: "Infinity"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_n_minus_one_times_g_is_finite",
+      request: crypto_post(path: device_crypto_p256_order_path, body: p256_multiple_request_json(m: OrderMinusOne)),
+      status: 200,
+      body_contains: answer_words(verdict: "finite", arm: "Finite"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "attestation_ios_14_4_sample_verifies",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: sample_attestation_octets, url_safe: false) as NonEmptyStr, e: sample_attestation_expectation(client_data: sample_client_data))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "attestation_operator_iphone_verifies",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: operator_device_client_data))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_app_id_is_an_app_id_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_with_app_id(a: "72HGYAMBVQ.ai.gunb.other" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationAppIdMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_client_data_is_a_nonce_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: "not-the-operator-client-data" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationNonceMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_attestation_with_another_client_data_is_a_nonce_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: sample_attestation_octets, url_safe: false) as NonEmptyStr, e: sample_attestation_expectation(client_data: "not-the-sample-client-data" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationNonceMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "assertion_ios_14_4_sample_is_authentic",
+      request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: sample_assertion_expectation())),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "AssertionAuthentic"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_assertion_with_another_app_id_is_an_app_id_mismatch",
+      request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: assertion_expectation_with(e: sample_assertion_expectation(), client_data: sample_assertion_expectation().client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AssertionAppIdMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "wire_refuses_an_unreadable_body_as_400",
+      request: crypto_post(path: device_crypto_signature_path, body: "{\"key\":"),
+      status: 400,
+      body_contains: "\"refused_at\"",
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "wire_refuses_an_unknown_member_as_400",
+      request: crypto_post(path: device_crypto_p256_order_path, body: "{\"multiple\":\"n\",\"scalar\":\"1\"}"),
+      status: 400,
+      body_contains: "unknown member",
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "an_unrouted_path_is_404",
+      request: crypto_post(path: "/verify/nothing", body: "{}"),
+      status: 404,
+      body_contains: "no verifier route /verify/nothing",
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "a_get_is_405",
+      request: "GET /verify/signature HTTP/1.1\r\nHost: probe\r\n\r\n",
+      status: 405,
+      body_contains: "POST only",
+      client_reading: ClientReadingNotJudged,
+    },
+  ]
+}
+
+// What the host writes, in case order. The peer port is -1 (no peer phase) and is unused.
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  crypto_cases() |> map(c => c.request)
+}
+
+fn crypto_case_failure(c: DeviceCryptoProbeCase, response: String) -> String {
+  match native_serve_wire_parse(response: response) {
+    Absent => concat(c.identity, ": the response is not an HTTP/1.1 status line and body")
+    Present { value: w } =>
+      if w.status != c.status { concat(c.identity, concat(": status ", concat(to_string(value: w.status), concat(" [", concat(w.body, "]"))))) }
+      else if (split(s: w.body, delimiter: c.body_contains) |> count) < 2 { concat(c.identity, concat(": body [", concat(w.body, concat("] lacks [", concat(c.body_contains, "]"))))) }
+      else { client_reading_failure(c: c, body: w.body) }
+  }
+}
+
+// The admission the broker would hold: the realization is bound over every obligation with the fixture receipt.
+fn probe_admission() -> DeviceCryptoAdmission {
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "probe", exact_revision: "0000000", covered: device_crypto_obligations }, required: device_crypto_obligations)
+}
+
+// THE ECHO THE REAL BINARY WROTE, JOINED TO AN EXPECTATION. The positive control: the expectation naming the digest the
+// running binary echoed (its own startup self-check, gunbc.auth.approval_device_crypto_self_check) joins. The REDs: an
+// expectation naming any other digest, and the same echo with any one obligation dropped, are each refused -- the broker
+// would answer a typed 503 for either (gunbc.auth.approval_device_crypto_client sidecar_reply_from_status).
+fn echo_join_failure(c: DeviceCryptoProbeCase, body: String) -> String {
+  match decode_device_crypto_echoed_answer(text: body) {
+    WireRefused { at: a, cause: x } => concat(c.identity, concat(": the answer carries no decodable echo at ", concat(a as String, concat(": ", x as String))))
+    WireDecoded { value: e } =>
+      let own = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: e.echo.exact_revision }
+      let other = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: concat(e.echo.exact_revision as String, "0") as NonEmptyStr }
+      let joins_own = match device_crypto_echo_join(expectation: own, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => true  DeviceCryptoEchoRefused { cause: _ } => false }
+      let refuses_other = match device_crypto_echo_join(expectation: other, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true }
+      let refuses_each_drop = device_crypto_obligations |> all(dropped =>
+        match device_crypto_echo_join(
+          expectation: own,
+          echo: DeviceCryptoHandlerReceipt { handler_identity: e.echo.handler_identity, exact_revision: e.echo.exact_revision, covered: e.echo.covered |> filter(o => o != dropped) },
+        ) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true })
+      let covers_all = (e.echo.covered |> count) == (device_crypto_obligations |> count)
+      if !joins_own { concat(c.identity, ": the expectation naming the echoed digest did not join") }
+      else if !refuses_other { concat(c.identity, ": an expectation naming another digest joined the echo") }
+      else if !refuses_each_drop { concat(c.identity, ": an echo missing an obligation joined") }
+      else if !covers_all { concat(c.identity, ": the running binary's echo does not cover every obligation") }
+      else { "" }
+  }
+}
+
+fn client_reading_failure(c: DeviceCryptoProbeCase, body: String) -> String {
+  match c.client_reading {
+    ClientReadingNotJudged => ""
+    ClientReadsEchoJoin => echo_join_failure(c: c, body: body)
+    ClientReadsSignatureVerifiedFor { message: m } =>
+      match decode_device_crypto_answer(text: body) {
+        WireRefused { at: a, cause: x } => concat(c.identity, concat(": the client cannot decode the answer at ", concat(a as String, concat(": ", x as String))))
+        WireDecoded { value: answer } =>
+          match signature_from_answer(admission: probe_admission(), answer: answer, key: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: m).key, message: m as NonEmptyStr) {
+            SidecarAnswered { verification: SignatureVerified { verified: v } } =>
+              if (v.message as String) == m { "" } else { concat(c.identity, ": the verified payload names another message") }
+            _ => concat(c.identity, ": the client did not read a verified signature")
+          }
+      }
+    ClientReadsSignatureInvalid =>
+      match decode_device_crypto_answer(text: body) {
+        WireRefused { at: a, cause: x } => concat(c.identity, concat(": the client cannot decode the answer at ", concat(a as String, concat(": ", x as String))))
+        WireDecoded { value: answer } =>
+          match signature_from_answer(admission: probe_admission(), answer: answer, key: rfc6979_check(octets: rfc6979_a25_p256_sha256_sample_signature, message: rfc6979_a25_message_sample).key, message: rfc6979_a25_message_sample as NonEmptyStr) {
+            SidecarAnswered { verification: SignatureInvalid { suite: _ } } => ""
+            _ => concat(c.identity, ": the client did not read an invalid signature")
+          }
+      }
+  }
+}
+
+fn crypto_case_failures(cases: List<DeviceCryptoProbeCase>, responses: List<String>, acc: List<String>) -> List<String>? {
+  match cases {
+    Empty =>
+      match responses {
+        Empty => Present { value: acc }
+        Cons { head: _, tail: _ } => none
+      }
+    Cons { head: c, tail: more } =>
+      match responses {
+        Empty => none
+        Cons { head: r, tail: rs } =>
+          let f = crypto_case_failure(c: c, response: r)
+          crypto_case_failures(cases: more, responses: rs, acc: if f == "" { acc } else { acc |> list_push(f) })
+      }
+  }
+}
+
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+  if !starts_with(s: announcement, prefix: "native-serve listening on ") {
+    no_observation(reason: concat("the service did not announce a bound address: ", announcement))
+  } else {
+    match crypto_case_failures(cases: crypto_cases(), responses: responses, acc: []) {
+      Absent => no_observation(reason: "the responses do not join the cases one for one")
+      Present { value: failures } =>
+        if (failures |> count) > 0 {
+          ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) }
+        } else { ExitSuccess }
+    }
+  }
+}

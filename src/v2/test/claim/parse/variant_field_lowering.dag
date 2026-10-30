@@ -10,9 +10,9 @@ import v2.extdeps.languages.dag { dag_lex }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.optional_layers { type_node_occupancy_child }
+import v2.std.node { node_equal_ignoring_provenance, positional_child_target_nodes,
   Atom,
-  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -31,20 +31,7 @@ import v2.std.node {
   StructuralLabel,
 }
 import std.constructors { Cardinality, Required, Optional }
-import v2.std.node_query {
-  DeclaredField,
-  construct_field_edges,
-  construct_tag_path_optional,
-  declared_field_list,
-  declared_field_named,
-  find_arrow_body_child,
-  find_binder_type,
-  is_wildcard_pattern,
-  node_labeled_child_edges,
-  node_positional_child_targets,
-  positional_payload_field_name,
-  find_core_child,
-}
+import v2.std.node_query { DeclaredField, construct_field_edges, construct_tag_path_optional, declared_field_list, declared_field_named, find_arrow_body_child, find_binder_type, is_wildcard_pattern, node_labeled_child_edges, positional_payload_field_name, find_core_child }
 import std.optional { Absent, Optional, Present }
 import std.algebra { list_at_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
@@ -250,13 +237,9 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
               Absent => false
               Present { value: f } =>
                 (f.cardinality == Optional)
-                  && (match f.type_node.kind {
-                    TypeNode { connective: Occupancy } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
-                        Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "Int")
-                        Absent => false
-                      }
-                    _ => false
+                  && (match type_node_occupancy_child(n: f.type_node) {
+                    Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "Int")
+                    Absent => false
                   })
             })
             && (match declared_field_named(payload: payload, name: ^xs) {
@@ -264,8 +247,8 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
               Present { value: f } =>
                 match f.type_node.kind {
                   TypeNode { connective: Instantiation } =>
-                    (count(node_positional_child_targets(node: f.type_node)) == 2)
-                      && (match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
+                    (count(positional_child_target_nodes(node: f.type_node)) == 2)
+                      && (match list_at_optional(xs: positional_child_target_nodes(node: f.type_node), index: 0) {
                         Present { value: head } => vf_type_atom_is(n: head, lexeme: "List")
                         Absent => false
                       })
@@ -328,7 +311,7 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
     Present { value: body } =>
       match body.kind {
         ComputationNode { behavior: Transform } =>
-          let operands = node_positional_child_targets(node: body)
+          let operands = positional_child_target_nodes(node: body)
           (count(operands) == 2)
             && (match list_at_optional(xs: operands, index: 0) { Present { value: c } => vf_type_atom_is(n: c, lexeme: "A")  Absent => false })
             && (match list_at_optional(xs: operands, index: 1) { Present { value: a } => vf_type_atom_is(n: a, lexeme: "x")  Absent => false })
@@ -366,7 +349,7 @@ fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Opti
     Present { value: body } =>
       match body.kind {
         ComputationNode { behavior: Match } =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+          match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
             Absent => Absent
             Present { value: arm } =>
               match find_core_child(root: arm, marker: MatchArmPatternEdge) {
@@ -452,7 +435,7 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
         match vf_named_member_optional(root: nt.root, lexeme: "pick") {
           Absent => false
           Present { value: arrow } =>
-            match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+            match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
               Absent => false
               Present { value: domain } =>
                 match find_binder_type(root: domain, name: ^x) {
@@ -473,7 +456,7 @@ test fn vf_distinct_payloads_normalize_distinct() -> Bool {
       match vfs_normalized_10() {
         Rejected { diagnostics: _ } => false
         Accepted { value: right, diagnostics: _ } =>
-          canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
+          !node_equal_ignoring_provenance(a: canonicalize_node_strip_provenance(n: left.root), b: canonicalize_node_strip_provenance(n: right.root))
       }
   }
 }

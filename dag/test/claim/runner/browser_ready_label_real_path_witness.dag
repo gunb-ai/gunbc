@@ -24,8 +24,8 @@ import extdeps.tools.gnu_coreutils { cat_command }
 // remove-then-proceed folds, the bytes read back from the scratch drop-in. The reload leg is the
 // typed posture skip -- daemon-reload requires root and is skipped, not fabricated. The production
 // fleet route itself stays the declared STALL (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall):
-// no CI lane, and no bootstrap, executes the converge over FleetSsh until the shared host-effect
-// transport admits that arm.
+// the shared host-effect transport admits FleetSsh, but no CI lane and no bootstrap has executed the
+// converge over it.
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_ready_label.XXXXXX").path
 }

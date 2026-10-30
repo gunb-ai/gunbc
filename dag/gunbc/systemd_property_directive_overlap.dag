@@ -10,8 +10,8 @@ import extdeps.systemd {
   MemoryCurrent, MemoryPeak, TasksCurrent, ControlGroup,
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
-  InvocationIDProperty, FragmentPathProperty, JobProperty,
-  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty,
+  InvocationIDProperty, FragmentPathProperty, DropInPathsProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty,
   systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
@@ -155,6 +155,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     IdProperty => ObservationOnly
     KillModeProperty => SettableDirective
     ExitTypeProperty => SettableDirective
+    StandardInputProperty => SettableDirective
     StandardOutputProperty => SettableDirective
     StandardErrorProperty => SettableDirective
     ProtectSystemProperty => SettableDirective
@@ -174,9 +175,12 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     WantsProperty => SettableDirective
     InvocationIDProperty => ObservationOnly
     FragmentPathProperty => ObservationOnly
+    DropInPathsProperty => ObservationOnly
     JobProperty => ObservationOnly
     NoNewPrivilegesProperty => SettableDirective
     RestrictSUIDSGIDProperty => SettableDirective
+    UMaskProperty => SettableDirective
+    DelegateProperty => SettableDirective
   }
 }
 
@@ -213,11 +217,11 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty, ExecStopProperty, ExecStopPostProperty,
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
-  StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
+  StandardInputProperty, StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
   PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty, BindPathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
-  InvocationIDProperty, FragmentPathProperty, JobProperty,
-  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
+  InvocationIDProperty, FragmentPathProperty, DropInPathsProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty,
 ]
 
 fn settable_property_wires() -> List<String> {

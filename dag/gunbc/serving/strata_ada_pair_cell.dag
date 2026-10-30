@@ -1,0 +1,79 @@
+module gunbc.serving.strata_ada_pair_cell
+
+import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest }
+import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count, minute, second }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import extdeps.docker { BindMount }
+import extdeps.strata.serve_flags {
+  StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
+}
+import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact, ServingArtifactFile, ServingTopology }
+import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, EngineImagePending, KitImagePending }
+
+// THE srv3 SERVING CELL: Strata over the pair of RTX 2000 Ada cards, one engine split across both
+// (calm-crab-645's settings for this pair, gunbc-private docs/strategy/2026-10-25-serving-benchmarks.md
+// "Settings used"): IQ3_S weights, q4_0 KV with a 65,536-token resident window, the pool's context cap
+// (gunbc.serving.serving_context_cap serving_fleet_context_cap), 8 slots in auto batch groups, a layer
+// split at 24 with stage-trimmed weights, and 3 pool workers per GPU (the operator's default). One
+// engine on the host, so the experts are its own and not mapped.
+//
+// THE IMAGES DO NOT EXIST YET. srv3 has no Docker until the rootless-Docker lane (eager-heron-746)
+// lands; the engine and kit images are built and pinned after it, and until then this row says so and the
+// instrument answers no observation.
+
+data srv3_strata_flags: StrataServeFlags = StrataServeFlags {
+  kv_format: StrataKvQ4_0,
+  kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
+  max_context: serving_fleet_context_cap,
+  parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+  batch_groups: Present { value: StrataBatchGroupsAuto },
+  pool_workers: Present { value: 6 },
+  stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
+  experts: StrataExpertsPrivate,
+  vram_reserve: none,
+}
+
+// The IQ3_S artifact as two GGUF shards under srv3's Strata data root, with the digests calm-crab-645 read
+// on srv3 (2026-10-25). The packs and the MTP files beside them are derived from these shards and the
+// upstream MTP release; they are the engine's working form, not a second identity of the weights.
+data srv3_iq3_s_artifact: ServingArtifact = ServingArtifact {
+  name: "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S" as NonEmptyStr,
+  quantization: "IQ3_S" as NonEmptyStr,
+  files: [
+    ServingArtifactFile { name: "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf" as NonEmptyStr, digest: Sha256Digest { hex: "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3" } },
+    ServingArtifactFile { name: "models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf" as NonEmptyStr, digest: Sha256Digest { hex: "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113" } },
+  ],
+}
+
+data srv3_strata_ada_pair_plan: ServingBenchmarkCellPlan = ServingBenchmarkCellPlan {
+  host: operator_host_srv3,
+  engine: EngineImagePending {
+    awaiting: "the Strata arm64 sm_89 image built from https://github.com/Niko1221/Strata 8183c6b6 plus the ARM port patch (gunbc-private#239 docs/strategy/2026-10-25-serving-benchmarks/engine/strata-arm-on-main-8c5fafc1.patch, sha256 9b8ed7056352a60c004bf40702b9914ec1648d0ed90b865e28509963ebca3f99), pinned by digest with its in-image argv once rootless Docker reaches srv3" as NonEmptyStr,
+  },
+  engine_flags: srv3_strata_flags,
+  engine_mounts: [BindMount { host_path: "/home/ubuntu/strata-test/Strata-data", container_path: "/data", readonly: true }],
+  engine_port: 8080,
+  artifact: srv3_iq3_s_artifact,
+  topology: ServingTopology { engines: 1, gpus_per_engine: 2 },
+  kit: KitImagePending {
+    awaiting: "the gpu-bench v4 kit image (a python image plus gunbc-private tools/gpu-bench/longctx.py at bc50f631d0cdf65b953ccf69cd3b69802277107d), pinned by digest with the script's in-image path" as NonEmptyStr,
+  },
+  kit_model_name: "qwen3.8-flash-next-iq3_s" as NonEmptyStr,
+  // The v4 smoke run against this engine primed 6,361 tokens at CTX 8,000 (gunbc-private
+  // tools/gpu-bench/runs/v4-smoke-srv3-strata.jsonl): ~0.795 tokens per CTX unit, so 250,900 aims at the
+  // version's 199,466-token context. Admission's band, not this estimate, decides whether it landed.
+  kit_ctx: 250900,
+  kit_duration: minute(count: 120),
+  // ubuntu:24.04 by its multi-arch index digest (Docker Hub, read 2026-10-25); the NVIDIA container
+  // toolkit injects nvidia-smi from the host driver, so the sampler needs no CUDA image.
+  sampler_image: "ubuntu@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac" as NonEmptyStr,
+  idle_gpu_memory_bound: mebibyte(count: 1024),
+  // The engine must answer /v1/models within 900 tries 2 s apart, each request bounded to 10 s:
+  // a Strata model load on this cell takes minutes (the same bound the hand-run probe used).
+  readiness_attempts: 900,
+  readiness_delay: second(count: 2),
+  readiness_max_time: second(count: 10),
+}

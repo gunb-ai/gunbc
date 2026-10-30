@@ -4,16 +4,17 @@ import std.types { Int, List, String }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.integer { qualified_octets }
 import std.power_of_two { bitwise_pow2 }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
+import std.machine_word { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.md_padding { md_append_octets, md_blocks_64, md_length_octets, md_zero_octets }
 import extdeps.numeric.base16 { base16_encode_lower }
+import std.algebra { collection_count_shape, list_push }
 
 // SHA-256 and SHA-384 per FIPS 180-4 (Secure Hash Standard), computed in the substrate.
 // extdeps.crypto.hash owns the Digest carrier and cites the same standard; this module is the
 // computation that produces the bytes such a digest names. Every operation it needs is in
-// std.bitwise: 32-bit words for SHA-256 (§6.2), 64-bit words for SHA-384 (§6.5, the SHA-512
+// std.machine_word: 32-bit words for SHA-256 (§6.2), 64-bit words for SHA-384 (§6.5, the SHA-512
 // computation with its own initial state and the output truncated to 384 bits).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -199,7 +200,7 @@ fn sha256_computed_digest(message: List<Int>) -> Sha256Digest {
 // over one parameter -- the word (32 or 64 bits), with the rotation amounts, round count, block size
 // and length-field width following from it -- and the family fold beside this module
 // (extdeps.crypto.nist_prime_curve) is exactly that move for the curves. The word, though, is not a
-// value this substrate can fold over yet: std.bitwise carries 32-bit words in Int and a two-halves
+// value this substrate can fold over yet: std.machine_word carries 32-bit words in Int and a two-halves
 // Word64 as two unrelated carriers with two operation families, and a fold parameterised by the word
 // needs the width of MachineWidth<N> readable in a body -- the compile-time reification gunbc#11819
 // names (operator ruling 2026-09-20). THAT REIFICATION IS NOT WHAT BLOCKED NATIVE EMISSION, which an

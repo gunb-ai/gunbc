@@ -1,6 +1,6 @@
 module extdeps.package_managers.pip
 
-import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.program { ProgramIdentity }
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -19,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.package_managers.pip",
-      decl_name: "pip_program",
+      decl_name: "pip_module_install_command",
       field: WholeDeclaration
     }
   },
@@ -27,18 +27,29 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-fn pip_program() -> ProgramIdentity = uncataloged_program(invocation: "pip")
+// A PINNED REQUIREMENT, as PEP 440 spells it: one distribution name and one exact version. The
+// version is not optional, and that is the reason the type exists: an unpinned install resolves to
+// whatever the index serves at that moment, so two hosts could provision different toolchains from
+// one declaration -- a meaning fork with the index as its author. Not sole_constructor: a name and
+// a version admit no decision, and a seal that admits everything claims a check that does not exist.
+type PythonDistributionRequirement {
+  distribution: NonEmptyStr
+  version: NonEmptyStr
+}
 
-// THE VERSION IS NOT OPTIONAL IN THIS BUILDER, and that is the whole reason it exists rather than a
-// caller passing a bare package name. An unpinned install resolves to whatever the index serves at
-// the moment it runs, so two sessions can provision materially different toolchains from the same
-// declaration and neither is wrong about what it asked for. DESIGN section 3 calls a fact whose
-// meaning drifts under a constant name a meaning fork; an unpinned dependency is that fork with the
-// index as the author. The requirement string is assembled here so no caller can spell == itself
-// and no caller can omit it.
-fn pip_install_pinned_command(distribution: NonEmptyStr, version: NonEmptyStr) -> ArgvCommand {
+fn python_distribution_name(r: PythonDistributionRequirement) -> NonEmptyStr { r.distribution }
+fn python_distribution_version(r: PythonDistributionRequirement) -> NonEmptyStr { r.version }
+
+fn pinned_requirement_specifier(r: PythonDistributionRequirement) -> String {
+  join([r.distribution as String, "==", r.version as String], "")
+}
+
+// pip RUN AS ITS INTERPRETER'S MODULE (`<python> -m pip`), which is how pip documents installing into
+// a specific interpreter's environment: a PATH `pip` belongs to whichever environment PATH finds
+// first, so it can install into a different place than the interpreter that will import the result.
+fn pip_module_install_command(interpreter: ProgramIdentity, requirements: List<PythonDistributionRequirement>) -> ArgvCommand {
   argv_command(
-    program: pip_program(),
-    arguments: ["install", concat(concat(distribution as String, "=="), version as String)],
+    program: interpreter,
+    arguments: concat(["-m", "pip", "install", "--no-input", "--disable-pip-version-check"], map(requirements, r => pinned_requirement_specifier(r: r))),
   )
 }

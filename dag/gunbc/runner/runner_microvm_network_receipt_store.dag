@@ -40,12 +40,18 @@ fn parse_host_network_receipt(text: String, host: HostIdentity) -> NetworkReceip
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployUnmodeled { host: _ } => StoredNetworkReceiptUnreadable { reason: "network receipt host has no enrolled deployment" }
     RunnerHostDeployRefused { host: _, cause } => StoredNetworkReceiptUnreadable { reason: cause }
-    RunnerHostDeployFound { deploy } => match parse_converged_slot_network(text: text,
-      candidates: runner_slot_identities_of(deploy: deploy)) {
-      ConvergedSlotNetworkParsed { receipt } => if receipt.host == host { NetworkReceiptPresent { receipt: receipt } }
-        else { StoredNetworkReceiptUnreadable { reason: "network receipt names another host" } }
-      ConvergedSlotNetworkMalformed { cause } => StoredNetworkReceiptUnreadable { reason: to_string(cause) }
-    }
+    RunnerHostDeployFound { deploy } => parse_host_network_receipt_over(text: text, host: host, population: runner_slot_identities_of(deploy: deploy))
+  }
+}
+
+// The population the receipt is read against is a SUPPLIED boundary input, so a witness can read bytes
+// observed under an earlier population (see test.claim.workspace_network_receipt_population) while the
+// production route above keeps reading the host's real committed one.
+fn parse_host_network_receipt_over(text: String, host: HostIdentity, population: List<RunnerSlotIdentity>) -> NetworkReceiptRead {
+  match parse_converged_slot_network(text: text, candidates: population) {
+    ConvergedSlotNetworkParsed { receipt } => if receipt.host == host { NetworkReceiptPresent { receipt: receipt } }
+      else { StoredNetworkReceiptUnreadable { reason: "network receipt names another host" } }
+    ConvergedSlotNetworkMalformed { cause } => StoredNetworkReceiptUnreadable { reason: to_string(cause) }
   }
 }
 

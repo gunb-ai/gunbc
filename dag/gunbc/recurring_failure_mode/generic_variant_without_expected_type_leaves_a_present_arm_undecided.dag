@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_variant_without_expected_type_leaves_a_present_arm_undecided
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data generic_variant_without_expected_type_leaves_a_present_arm_undecided: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_variant_without_expected_type_leaves_a_present_arm_undecided" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a generic variant constructed with no expected type leaves a downstream `Present` arm undecided, and the interpreter answered it silently** (INVALID STATE: an accepted program with a `match` whose scrutinee type the checker could not resolve, holding a `Present { value: .. }` arm whose meaning -- does it read an optional's present value? -- is decided from exactly that type).",

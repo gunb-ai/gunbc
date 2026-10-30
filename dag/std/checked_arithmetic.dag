@@ -6,7 +6,7 @@ import std.types { String }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
-// std.integer models Int as AbelianGroup<GroupCompletion<Nat>> - the mathematical integers, which
+// std.integer models Int as NonNegative { n: Nat } | Negative { pred: Nat } - the mathematical integers, which
 // have no bound. Every realization of that model does: the v1 seed and the emitted Rust both carry
 // an Int as i64. Those are two different statements, and code that says "this operation is total
 // and exact" while running on the second one is asserting the first about the second.
@@ -77,6 +77,25 @@ type CheckedIntOperands
 type IntegerOverflow {
   operation: IntegerArithmeticOperation
   operands: CheckedIntOperands
+}
+
+// THE TEXT OF AN OVERFLOW CAUSE, written from its declared fields. A cause handed to a String
+// position as itself would be rendered by the host's debug form
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text),
+// so a consumer that reports one in prose asks this module, which owns the type. The operands are
+// written through the kernel to_string rather than std.integer int_to_decimal_string, because
+// std.integer reaches this module through std.induction and the import would be a cycle.
+fn integer_overflow_text(cause: IntegerOverflow) -> String {
+  let operation = match cause.operation {
+    IntegerAdd => "addition"
+    IntegerSubtract => "subtraction"
+    IntegerMultiply => "multiplication"
+    IntegerNegate => "negation"
+  }
+  match cause.operands {
+    UnaryOperand { value: v } => concat(operation, " of ", to_string(value: v), " overflows Int")
+    BinaryOperands { lhs: l, rhs: r } => concat(operation, " of ", to_string(value: l), " and ", to_string(value: r), " overflows Int")
+  }
 }
 
 type CheckedInt
@@ -248,36 +267,6 @@ fn checked_int_to_nat(n: Int) -> Nat? {
       CheckedNatOverflow { cause: _ } => none
       CheckedNatReady { value: v } => Present { value: v }
     }
-  }
-}
-
-// LAST SPACE-SEPARATED TOKEN AS NAT: parse_int then the nonnegative crossing above. Process-log
-// lines in independently versioned upstreams (a kit CAPACITY_OK line, a ninfer metric line) share
-// this shape; the crossing lives once so they cannot drift.
-fn nat_from_last_space_token(line: String) -> Nat? {
-  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
-  match parse_int(s: last) {
-    Absent => none
-    Present { value: n } => checked_int_to_nat(n: n)
-  }
-}
-
-// A MARKER-PREFIXED PROCESS-LOG LINE: the line starts with the prefix, then the last space token
-// is a Nat. Contains-match is not this fact — it would mint a reading from an unrelated log line
-// that happened to mention the marker.
-type PrefixedLineNat
-  = PrefixedLineMiss
-  | PrefixedLineNatUnreadable
-  | PrefixedLineNat { value: Nat }
-
-fn prefixed_line_last_space_nat(line: String, prefix: String) -> PrefixedLineNat {
-  if starts_with(s: line, prefix: prefix) {
-    match nat_from_last_space_token(line: line) {
-      Absent => PrefixedLineNatUnreadable
-      Present { value: n } => PrefixedLineNat { value: n }
-    }
-  } else {
-    PrefixedLineMiss
   }
 }
 

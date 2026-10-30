@@ -3,6 +3,7 @@ module extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
+import std.algebra { collection_join_shape }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -31,6 +32,25 @@ fn filesystem_read_outcome(
     FilesystemReadSucceeded { content: content }
   } else {
     FilesystemReadRefused { error: error }
+  }
+}
+
+// THE SAME FOLD FOR A WHOLE-FILE WRITE (`Write`, `WriteOwnerOnly`): the bytes landed at the path,
+// or the host refused with its own words. `WriteOwnerOnly` declares no `error_kind`, so nothing here
+// classifies the refusal; a consumer that needs the kind uses the create-new fold, which has it.
+type FilesystemWriteOutcome
+  = FilesystemWritten { path: String }
+  | FilesystemWriteRefused { path: String, error: String }
+
+fn filesystem_write_outcome(
+  path: String,
+  success: Bool,
+  error: String,
+) -> FilesystemWriteOutcome {
+  if success {
+    FilesystemWritten { path: path }
+  } else {
+    FilesystemWriteRefused { path: path, error: error }
   }
 }
 
@@ -596,6 +616,13 @@ fn filesystem_entry_presence(
         )
       }
   }
+}
+
+// THE EFFECTFUL FORM: list the directory now and fold the reading. Every consumer that asks whether
+// one named entry exists binds this rather than re-sequencing List and the fold itself.
+fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPresence {
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
 }
 
 // THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is

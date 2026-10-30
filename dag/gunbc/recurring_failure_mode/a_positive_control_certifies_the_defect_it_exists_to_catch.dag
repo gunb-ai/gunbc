@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_positive_control_certifies_the_defect_it_exists_to_catch
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_positive_control_certifies_the_defect_it_exists_to_catch: RecurringFailureMode = RecurringFailureMode {
   identity: "a_positive_control_certifies_the_defect_it_exists_to_catch" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A POSITIVE CONTROL IS EXACTLY WHERE NOBODY CHECKS THE SUBJECT, BECAUSE THE ASSERTION PASSING IS READ AS THE SUBJECT BEING RIGHT.** A negative control is interrogated: it is expected to red, so when it greens somebody asks why. A positive control is expected to green, and it does, so the question never forms. The failure is therefore invisible in exactly proportion to how trusted the control is - and the control that proves an accessor works is the most trusted artifact in a module. The defect is not a wrong row: a wrong row is ordinary and gets found. It is that the instrument pointed at the row reports agreement with it, so the row and its check are wrong TOGETHER and no disagreement is available to anyone.",

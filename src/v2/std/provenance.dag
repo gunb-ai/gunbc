@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   Unavailable,
   invariant_port_locus
 }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, NodeOccurrenceIdentity, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   OccurrenceId,
@@ -237,7 +237,14 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witne
 // it feeds is this module's: `NodeOccurrenceIdentity` is `v2.std.node`'s, `OccurrenceId` is
 // `std.occurrence_identity`'s, and the place those two meet a SpanIndex is here.
 fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
+  occurrence_identity_id_optional(identity: node.occurrence_id)
+}
+
+// THE SAME PROJECTION FOR AN IDENTITY HELD APART FROM ITS NODE -- a binder site resolve recorded
+// (v2.compiler.resolve LexicalBinding.binder_site) -- so a consumer joining that site to the tree's
+// nodes keys both sides through one rule.
+fn occurrence_identity_id_optional(identity: NodeOccurrenceIdentity) -> Optional<OccurrenceId> {
+  match identity {
     OccurrenceSynthetic => Absent
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }

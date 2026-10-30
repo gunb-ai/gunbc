@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.carrier_by_spelling
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data carrier_by_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "carrier_by_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**carrier by spelling** (INVALID STATE: a module imports the structural text carrier `v2.std.text` `String` and then authors a BARE `String` as if that import bound it; KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (`v1.compiler.infer_env` `overlay_skips_kernel_name`, kernel overlay unconditional since #9813), so the bare spelling binds the KERNEL host carrier beside the unused import.",

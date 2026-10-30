@@ -17,6 +17,7 @@ import std.algebra { Cons, Empty }
 import std.resources { Network }
 import std.serialization { Text }
 import extdeps.transports.rest { RestResult }
+import std.integer { int_to_decimal_string }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
@@ -70,6 +71,65 @@ data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
 // question waiting to be answered with no one to falsify it).
 type WorkflowRunPullRequest {
   number: Int
+}
+
+// THE ONE CARRIER FOR GITHUB'S WORKFLOW RUN ID (the `id` of a workflow run, the `run_id` of a job, the
+// `workflow_run_id` of a dispatch receipt, the `{run_id}` path parameter). GitHub's wire sends it as an
+// integer, so the carrier is { value: Int } like the sibling record ids (GitHubAppId,
+// GitHubAppInstallationId, GitHubRepositoryId in extdeps.github.app; GitHubDeploymentProtectionRuleId
+// beside the rule). It is a distinct NOMINAL type: a rule id, an installation id or a bare Int at a
+// position holding this carrier is refused, and the converse. (A carrier given BY REFERENCE at a
+// position declared Int is accepted today, gunbc.recurring_failure_mode
+// product_value_at_a_scalar_formal_is_accepted, so every run-id position holds THIS type and not Int;
+// test.claim.workflow_run_id_axis_witness executes both halves.)
+//
+// WHY HERE. Each record id lives with its upstream object, and the run is this module's object
+// (WorkflowRun, WorkflowJobRun). The import edges are facts of the tree at this head: this module
+// imports extdeps.github.errors, extdeps.github.github and extdeps.github.workflow_runs_contracts;
+// github imports github_contracts; none of those reaches actions_runs, workflows,
+// deployment_protection_rule or workflow_run_event, which are the consumers and import this module.
+//
+// THE WIRE IS DECIMAL TEXT IN PATHS AND IN THE ACTIONS ENVIRONMENT, AN INTEGER IN JSON. The two
+// conversions below are the only ones: one decode (text to carrier), one encode (carrier to text).
+// std.types WorkflowRunId, a branded string that was never GitHub's id, is deleted; there is no
+// string-shaped run identity beside this one.
+//
+// POSITIVITY. GitHub run ids are positive; that is an upstream wire fact, so its single check is here
+// and every consumer calls it. { value: Int } still REPRESENTS zero and negatives, so this is a
+// validation rung (4b: mechanically preventable), not a construction one; the where-refinements that
+// could make it unwritable are unenforced today, and the restoration trigger is a positive-Int
+// refinement the compiler enforces at construction. WHAT HOLDS TODAY: the numeric crossing
+// (github_workflow_run_id_of_wire) does NOT judge positivity, because it carries GitHub's own number from
+// a decoded body; positivity is judged where it matters, at the review-path builder in
+// extdeps.github.deployment_protection_rule; and the text decode (github_workflow_run_id_from_wire_text)
+// refuses a non-positive value.
+type GitHubWorkflowRunId {
+  value: Int,
+}
+
+fn github_workflow_run_id_is_positive(id: GitHubWorkflowRunId) -> Bool {
+  id.value > 0
+}
+
+// The wire records (WorkflowRun.id, WorkflowJobRun.run_id, and the dispatch receipt's workflow_run_id)
+// stay Int because the response body carries a JSON number and the decode is derived from the declared
+// type. This is the one named crossing from that wire Int into the carrier.
+fn github_workflow_run_id_of_wire(n: Int) -> GitHubWorkflowRunId {
+  GitHubWorkflowRunId { value: n }
+}
+
+fn github_workflow_run_id_wire_text(id: GitHubWorkflowRunId) -> String {
+  int_to_decimal_string(value: id.value)
+}
+
+fn github_workflow_run_id_from_wire_text(text: String) -> GitHubWorkflowRunId? {
+  match parse_int(s: text) {
+    Present { value: n } => {
+      let id = GitHubWorkflowRunId { value: n }
+      if github_workflow_run_id_is_positive(id: id) { Present { value: id } } else { none }
+    }
+    _ => none
+  }
 }
 
 // FIVE FIELDS THE RESPONSE CARRIES THAT NO CONSUMER COULD READ. actor, triggering_actor,
@@ -141,7 +201,7 @@ type WorkflowRunList {
 // tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
 // so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
 // carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
-// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// input as `state: PullRequestListStateFilter = ListStateOpen`. Two variants and a fold make the bad spelling
 // unwritable rather than validated.
 //
 // THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision

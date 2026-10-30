@@ -2,6 +2,7 @@ module gunbc.lifecycle_bounded_referent
 
 import std.types { String, Bool }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.dashboard_node_uri { dashboard_node_uri_scheme }
 
 // A REFERENT WHOSE EXISTENCE IS BOUNDED BY A LIFECYCLE THAT CAN END WHILE THE SENTENCE CITING IT
 // STAYS BYTE-IDENTICAL. `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`
@@ -14,7 +15,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // OPERATIVE half, which is the condition a later reader must re-measure.
 //
 // THE DISTINCTION IS NOT NEW HERE; IT WAS ARGUED IN PROSE AND IS NOW CARRIED AS STRUCTURE.
-// `gunbc.guarantee_stall.roster` already records, against a dated dashboard reading, that three
+// `gunbc.guarantee_stall.roster_pins` already records, against a dated dashboard reading, that three
 // cited work items reported done while their conditions were unmet, and states the rule it had to
 // state in a paragraph because nothing could hold it: the node ids are provenance for who was
 // asked, never evidence that the climb happened, and each trigger's operative half is the semantic
@@ -41,22 +42,7 @@ fn dashboard_work_item_referent(node: RoadmapNodeId) -> DashboardWorkItemReferen
   DashboardWorkItemReferent { node: node }
 }
 
-// THE URI SCHEME IS DECLARED HERE SO THE SPELLING HAS ONE OWNER. Rendering a referent and
-// recognising one spelled into prose are the same fact read in two directions, and a consumer that
-// spelled `node://` itself would be a second authority for it.
-data dashboard_node_uri_scheme: String = "node://"
-
 fn dashboard_work_item_referent_uri(referent: DashboardWorkItemReferent) -> String {
   concat(dashboard_node_uri_scheme, referent.node as String)
 }
 
-// WHAT THIS RECOGNISER IS AND IS NOT. It decides one exact question: does this text spell the
-// declared URI scheme. That is not a heuristic -- the scheme is owned three declarations above and
-// a match on it is a match on this repository's own spelling -- and it is not a general detector
-// for prose naming a lifecycle-bounded thing, which is not a property the source decides at all.
-// A trigger sentence saying "when the assimilate lane finishes" is unreachable by this and by
-// anything else; the class row is explicit that free prose sits outside the modeled guarantee
-// rather than at a low rung on it.
-fn text_spells_a_dashboard_node_uri(text: String) -> Bool {
-  text.contains(dashboard_node_uri_scheme)
-}

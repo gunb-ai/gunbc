@@ -1,0 +1,110 @@
+module v2.test.claim.ordering_comparison_bool
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data ocb_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ordering_comparison_bool_artifact,
+  file_path: "src/v2/pilot/ordering_comparison_bool_pilot.dag"
+}
+
+data ocb_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ordering_comparison_bool_std_artifact,
+  file_path: "src/v2/pilot/ordering_comparison_bool_std_pilot.dag"
+}
+
+fn ocb_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: ocb_std_artifact,
+        compilation_unit: ^ordering_comparison_bool_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: ocb_artifact,
+          compilation_unit: ^ordering_comparison_bool_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn ocb_reason(src: String, subject: List<Symbol>) -> String {
+  match ocb_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+
+
+// ORDERING COMPARISONS ARE TYPED BOOL THROUGH THE DECLARED PREDICATE SIGNATURE (A4(b), N7 root
+// std.unicode.types). `<`, `<=`, `>`, `>=` read the ordered structure's compare field through the operator route
+// equality uses, so the operands are judged one type; the field answers Ordering, and
+// v2.std.algebra_structure_signature ordering_predicate_signature_node reads that to Bool. On main the first
+// three refused (grounding_not_derived / branch_cond_not_bool) and the Int-vs-Bool and Int-return specimens were
+// silently ACCEPTED; a carrier with no order row stays on the not-derived frontier, so no Bool is assumed.
+
+test fn an_ordering_conjunction_is_bool_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Int) -> Bool {\n  x >= 0 && x <= 5\n}\n", subject: ocb_p()) == "ACCEPTED"
+}
+
+test fn an_ordering_branch_condition_is_bool_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Int) -> Int {\n  if x < 128 {\n    1\n  } else {\n    2\n  }\n}\n", subject: ocb_p()) == "ACCEPTED"
+}
+
+test fn the_unicode_in_block_shape_infers_holds() -> Bool {
+  ocb_reason(src: "module p\n\ntype B {\n  start: Int\n  end_inclusive: Int\n}\n\nfn i(cp: Int, b: B) -> Bool {\n  cp >= b.start && cp <= b.end_inclusive\n}\n", subject: ocb_p()) == "ACCEPTED"
+}
+
+test fn an_int_compared_with_a_bool_refuses_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Int, y: Bool) -> Bool {\n  x < y\n}\n", subject: ocb_p()) == "infer:infer_transform_operand_type_mismatch"
+}
+
+test fn an_ordering_returned_as_int_refuses_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Int) -> Int {\n  x < 1\n}\n", subject: ocb_p()) == "infer:arrow_body_does_not_inhabit_declared_return"
+}
+
+test fn an_ordering_over_a_carrier_with_no_order_row_assumes_no_bool_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Bool, y: Bool) -> Bool {\n  x < y && true\n}\n", subject: ocb_p()) == "infer:infer_grounding_not_derived"
+}
+
+test fn the_equality_control_is_unchanged_holds() -> Bool {
+  ocb_reason(src: "module p\n\nfn a(x: Int) -> Bool {\n  x == 0 && x == 5\n}\n", subject: ocb_p()) == "ACCEPTED"
+}
+
+fn ocb_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+
+
+fn ordering_comparison_bool_receipt() -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("ge_and_le=", ocb_reason(src: "module p\n\nfn a(x: Int) -> Bool {\n  x >= 0 && x <= 5\n}\n", subject: ocb_p())), "\n"), concat("if_lt=", ocb_reason(src: "module p\n\nfn a(x: Int) -> Int {\n  if x < 128 {\n    1\n  } else {\n    2\n  }\n}\n", subject: ocb_p()))), "\n"), concat("in_block=", ocb_reason(src: "module p\n\ntype B {\n  start: Int\n  end_inclusive: Int\n}\n\nfn i(cp: Int, b: B) -> Bool {\n  cp >= b.start && cp <= b.end_inclusive\n}\n", subject: ocb_p()))), "\n"), concat("gt_returned=", ocb_reason(src: "module p\n\nfn a(x: Int) -> Bool {\n  x > 0\n}\n", subject: ocb_p()))), "\n"), concat("int_lt_bool=", ocb_reason(src: "module p\n\nfn a(x: Int, y: Bool) -> Bool {\n  x < y\n}\n", subject: ocb_p()))), "\n"), concat("bool_lt_bool_and=", ocb_reason(src: "module p\n\nfn a(x: Bool, y: Bool) -> Bool {\n  x < y && true\n}\n", subject: ocb_p()))), "\n"), concat("lt_returned_as_int=", ocb_reason(src: "module p\n\nfn a(x: Int) -> Int {\n  x < 1\n}\n", subject: ocb_p()))), "\n"), concat("eq_control=", ocb_reason(src: "module p\n\nfn a(x: Int) -> Bool {\n  x == 0 && x == 5\n}\n", subject: ocb_p())))
+}

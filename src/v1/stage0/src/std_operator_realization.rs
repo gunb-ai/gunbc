@@ -8,6 +8,7 @@ use self::OperatorRealization::*;
 use self::OperatorRealizationRefusal::*;
 use self::OrderingTest::*;
 use self::StructuralOrderingLookup::*;
+pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -400,7 +401,7 @@ pub fn structural_ordering_realization(
     match ordering_test_for(op.clone()) {
         std::option::Option::None => structural_arithmetic_refusal(op.clone(), declaration.clone()),
         Some(test) => {
-            match (*structural_ordering_for(ordering_rows.clone(), declaration.clone())).clone() {
+            match (*structural_ordering_for(ordering_rows, declaration.clone())).clone() {
                 StructuralOrderingLookup::StructuralOrderingFound { row: row, .. } => {
                     Rc::new(OperatorRealization::StructuralComparison {
                         declaration: declaration.clone(),

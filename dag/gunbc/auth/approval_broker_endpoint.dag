@@ -9,29 +9,18 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, 
 import gunbc.serve_liveness { serve_liveness_path }
 import extdeps.shell
 import std.optional { Present, Absent }
-import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
+import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_revoke_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
-// ONE FACT, FOUR READERS. The four approval paths are read by the broker's route table
-// (gunbc.auth.approval_broker_serve), by the notification link the filing fold issues
-// (gunbc.auth.approval_request_submission), by the front door that maps them onto the broker's
-// loopback port, and by the boot client that posts a submission and polls a status. While the
+// ONE FACT, SEVERAL READERS. The approval paths are read by the broker's route table
+// (gunbc.auth.approval_broker_serve), by the front door that maps them onto the broker's loopback
+// port, by the app, and by the boot client that posts a submission and polls a status. While the
 // routes lived in the roadmap's table there was one reader that mattered and the literals were
 // spelled at it; with the broker split out, a path spelled once per reader would agree exactly
 // until one of them moved -- and the one that moves silently is the one nothing reads back
 // (review 63317, and the same class the roadmap's served-path de-fork already fixed).
 //
 // So this module is the path authority, and everything that needs an approval path consumes it.
-
-data approval_broker_confirm_path_prefix: NonEmptyStr = "/approve/"
-
-data approval_broker_confirm_path_template: NonEmptyStr = "/approve/\{capability\}"
-
-// THE PAIR IS TWO ROUTES ON ONE PATH and therefore ONE literal read twice, not two literals that
-// happen to agree: the GET renders the confirmation page and the POST on the SAME path commits.
-// Spelling the decide path separately would make "same path, different consequence" a coincidence
-// of two strings rather than a construction.
-data approval_broker_decide_path_template: NonEmptyStr = approval_broker_confirm_path_template
 
 data approval_broker_submit_path: NonEmptyStr = "/approvals"
 
@@ -46,6 +35,7 @@ data approval_broker_store_receipt_path_template: NonEmptyStr = join([approval_b
 // four fixed routes are the wire's literals. Every device operation is a POST.
 data approval_device_request_path_template: NonEmptyStr = join([approval_device_request_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
 data approval_device_enrollment_path_template: NonEmptyStr = join([approval_device_enrollment_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
+data approval_device_revoke_path_template: NonEmptyStr = join([approval_device_revoke_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
 
 // ── The broker's own listener ────────────────────────────────────────────────────────────────
 // A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that
@@ -166,10 +156,12 @@ fn approval_broker_front_door(https_port: Port, backend_port: Port, mount_path: 
   }
 }
 
-data approval_broker_confirm_mount_path: NonEmptyStr = "/approve" as NonEmptyStr
+// THE /approve MOUNT CARRIES THE DEVICE ROUTES (gunbc.auth.approval_device_wire paths all sit under
+// it); the bearer confirm page that once shared it was deleted in the device cutover.
+data approval_broker_approve_mount_path: NonEmptyStr = "/approve" as NonEmptyStr
 
-fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
-  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_confirm_mount_path)
+fn approval_broker_approve_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_approve_mount_path)
 }
 
 fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
@@ -252,7 +244,7 @@ fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> No
 // broker is installed on (gunbc.auth.approval_broker_placement, from the prod-role holder token the
 // spec carries), so the emitter binds the base URL into the process's environment: the broker unit's
 // Environment= line (gunbc.live_deploy.emit) and the enrolment verb's env prefix
-// (gunbc.auth.approval_device_enrolment_code_issue). The broker reads the value it was given -- no
+// (the retired enrolment-code verb). The broker reads the value it was given -- no
 // host-effect read, so its closure never reaches the instance roster (#13132) and there is one
 // authority for where it runs. An unset binding, or one that is not an https URL (the emitter's
 // refusal marker), refuses; it is never replaced by a host.

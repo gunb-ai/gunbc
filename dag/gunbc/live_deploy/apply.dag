@@ -1,5 +1,6 @@
 module gunbc.live_deploy.apply
 
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 
@@ -105,19 +106,36 @@ import gunbc.host.host_effect {
   LiveDeployDigestReadback,
   LiveDeployServeRoute,
   DeployAccessPreflight,
+  LocalShell,
+  FleetSsh,
+  host_effect_read_evidence,
 }
-import gunbc.host.host_effect_realize { host_effect_apply_gated, live_deploy_pre_mutation_access }
+import gunbc.host.host_effect_realize { host_effect_apply_gated, live_deploy_pre_mutation_access, host_effect_apply }
+import gunbc.ci.ci_deploy_access { deploy_access_read_principal_effect, deploy_access_principal_line }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_inherited_grant, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
+  microvm_controller_install_root_scopes,
+}
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.tailnet_door_cutover {
   ServeCutoverEffects, ServeCutoverOutcome, CapturedServeBackend, CapturedRestorableBackend, CapturedNoRoute,
   tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
 }
 import gunbc.live_deploy.tailnet_door_cutover_host {
-  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write,
-}
+  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write, tailnet_door_cutover_store }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
+import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization }
+import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
+import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
@@ -133,13 +151,12 @@ import gunbc.live_deploy.readiness {
   live_deploy_proxied_readiness,
 }
 import gunbc.live_deploy.service_ready {
-  approval_broker_expected_startup,
-  live_deploy_service_ready_poll_bound_margin_factor,
+  approval_broker_readback_poll_bound,
   live_deploy_service_ready_poll_cadence,
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
-  microvm_controller_vmm_receipt_path,
+  microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
@@ -166,7 +183,7 @@ import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.actions_run_binding {
-  ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
+  ActionsRunBinding, ActionsRunBound, ActionsRunUnbound,
   admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
 import gunbc.fleet.fleet_converge_receipt {
@@ -454,8 +471,8 @@ fn live_deploy_tailnet_door_cutover_effects(
 ) -> ServeCutoverEffects {
   let binding = tailnet_door_cutover_binding(spec: spec, candidate: candidate)
   ServeCutoverEffects {
-    journal_read: fn() { tailnet_door_cutover_journal_read(store: journal, binding: binding) },
-    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: journal, binding: binding, expected_generation: expected_generation, record: record) },
+    journal_read: fn() { tailnet_door_cutover_journal_read(store: tailnet_door_cutover_store(binding: journal), binding: binding) },
+    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: tailnet_door_cutover_store(binding: journal), binding: binding, expected_generation: expected_generation, record: record) },
     observe: fn(n) { live_deploy_serve_route_observe(spec: spec, transport: transport) },
     repoint: fn(permit) {
       serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: spec.names.tailscale_serve_endpoint, enabled: true }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
@@ -940,13 +957,15 @@ fn approval_broker_dark_install_wet_with_access(
 // the first attempt and is something else entirely. That distinction is the not-met versus
 // cannot-tell split this module keeps everywhere else.
 //
-// THE BOUND IS THE BROKER'S OWN, derived from one measured srv1 start (see
-// gunbc.live_deploy.service_ready approval_broker_expected_startup for the reading and its
-// thinness), never from the roadmap's 240 s: the two units load different closures. The cadence and
+// THE BOUND IS THE BROKER'S OWN, declared once at gunbc.live_deploy.service_ready
+// approval_broker_readback_poll_bound (measured against one srv1 start; see the rationale there for
+// its thinness), never from the roadmap's 240 s: the two units load different closures. This is a
+// CONSUMER of that single derivation, not a re-derivation of expected_startup times the margin -- the
+// CI step budget that runs the install reads the same figure, per DESIGN section 6b. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
-  second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+  second_count(s: approval_broker_readback_poll_bound)
 }
 
 fn approval_broker_liveness_poll(
@@ -981,6 +1000,23 @@ fn approval_broker_liveness_poll(
   }
 }
 
+fn device_crypto_sidecar_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let installed = device_crypto_sidecar_binary_path(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision })
+  match observe_executable(arm: OnTheHostItself, path: installed) {
+    MemberObserved { identity: ExecutableIdentity { digest: d } } =>
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d.hex) {
+        Absent => exit_failure(reason: "device-crypto sidecar readback: the broker's own realization is not bound, so it would answer 503 on every device route")
+        Present { value: expectation } =>
+          match device_crypto_sidecar_readback(expectation: expectation) {
+            SidecarReplied { answer: _, admission: _ } => ExitSuccess
+            SidecarReplyFailed { cause: c } =>
+              exit_failure(reason: join(["device-crypto sidecar readback: the running sidecar does not join the installed binary: ", c as String], ""))
+          }
+      }
+    other => exit_failure(reason: join(["device-crypto sidecar readback: the installed sidecar binary ", installed, " could not be observed"], ""))
+  }
+}
+
 fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let port = spec.approval_broker.listen.port
   let read = approval_broker_liveness_poll(
@@ -1007,10 +1043,10 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     tree_receipt: tree_receipt,
     expected_release: candidate.revision as String as NonEmptyStr,
   ) {
-    StageAdmitted { stage: _ } => ExitSuccess
+    StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }
@@ -1035,51 +1071,98 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // second door.
 // ── THE microVM SLOT CONTROLLER INSTALL (the microvm_controller_install mode) ─────────────────
 //
-// THE SAME FOLD AS THE DARK INSTALL, OVER THE SAME ACCESS: ghrunner on the host-pinned runner, the
-// srv1 deployment spec for the target and the gate, and one additive effect
-// (gunbc.host.host_effect LiveDeployMicrovmControllerInstall) that writes the controller's release
-// locus, the VMM and jailer, and the template unit, then reloads the manager. The spec is consumed
-// for WHERE (target host, access gate) and not for WHAT: the effect carries the candidate alone,
-// because the controller is not a member of the dashboard deployment (gunbc.runner.runner_microvm_slot_unit
-// states the locus root and owner), which is the one section 3b divergence this install declares.
+// ONE ADDITIVE EFFECT (gunbc.host.host_effect LiveDeployMicrovmControllerInstall) that writes the
+// controller's release locus, the VMM and jailer, the template units and the dispatch grant, then
+// reloads the manager. The spec is consumed for WHERE (the target host) and not for WHAT: the effect
+// carries the candidate alone, because the controller is not a member of the dashboard deployment
+// (gunbc.runner.runner_microvm_slot_unit states the locus root and owner), which is the one section 3b
+// divergence this install declares.
 //
-// THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the script ran; what
-// this asks afterwards is whether the locus carries THIS candidate's tree receipt and a VMM
-// receipt, and whether systemd loads the template for the shakedown slot's instance. An installer
-// asserting it installed is the control-plane acknowledgement gunbc.recurring_failure_mode
+// ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
+// gunbc.plans.srv1_deploy_principal_split D1, D5). Run 39284886844 and run 40704727549 died at the first
+// `sudo -n dd` because no job-user grant names it, and granting it would make the job user
+// root-equivalent. So the install is admitted three ways before any leg runs, and every elevated leg
+// runs as the fleet administrator over its SSH edge (HostEffectElevationRoute):
+//   1. TENANCY: srv1's deploy route may switch (gunbc.runner.runner_slot_job_role
+//      srv1_deploy_route_switch_admitted) -- the job runs on the deploy slot, whose uid no pull request
+//      job shares, so the administrator's key in this job's agent is reachable by no other job -- and
+//      the job reads back that it runs as that slot's user;
+//   2. AUTHORITY: the job's own srv1 root-mutation approval, re-read and authorized here, covers every
+//      scope the install exercises (gunbc.fleet.srv1_root_mutation_approval_run
+//      srv1_root_mutation_inherited_grant over microvm_controller_install_root_scopes);
+//   3. PRINCIPAL: the administrator edge's context is prepared from the run, or nothing runs.
+// There is no fallback to the job user's sudo: a refusal at any of the three is the job's verdict.
+//
+// THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the plan ran; what this asks
+// afterwards is whether the locus carries THIS candidate's tree receipt and a VMM receipt, and whether
+// systemd loads the template for the shakedown slot's instance. An installer asserting it installed is
+// the control-plane acknowledgement gunbc.recurring_failure_mode
 // control_plane_acknowledgement_minted_as_effect refuses.
-fn microvm_controller_install_wet() -> ProcessExit {
-  match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
-    DesiredApplyRefused { reason } => exit_failure(reason: reason)
-    DesiredApplySelected { deployment } =>
-      microvm_controller_install_wet_with_access(spec: selected_deployment_spec(row: deployment), access: ci_deploy_srv1_access)
+data microvm_controller_install_attempt_raw: String = "microvm-controller-install"
+
+fn microvm_controller_install_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  if !srv1_deploy_route_switch_admitted() {
+    return exit_failure(reason: "microvm_controller_install: srv1's deploy route is not admitted (gunbc.ci.deploy_route_requirement deploy_route_requirement_frontier_rows): no deploy slot whose uid no pull request job shares has been read back, so the administrator edge is not opened from this job; nothing ran")
+  }
+  match microvm_controller_install_job_user() {
+    Absent => exit_failure(reason: "microvm_controller_install: the job's effective user could not be read, so the deploy slot's tenancy is not confirmed; nothing ran")
+    Present { value: u } =>
+      if (u as String) != (deploy_slot_job_user as String) {
+        exit_failure(reason: join(["microvm_controller_install: the job runs as ", u as String, ", not the deploy slot's ", deploy_slot_job_user as String, "; the administrator edge is opened only from the deploy slot; nothing ran"], ""))
+      } else {
+        match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
+          Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
+          Srv1InheritedGrantAdmitted { grant: _ } =>
+            match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+              DesiredApplyRefused { reason } => exit_failure(reason: reason)
+              DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
+            }
+        }
+      }
   }
 }
 
-fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
-  match observe_candidate_release() {
-    CandidateUnobservable { cause: why } =>
-      exit_failure(reason: candidate_unobservable_detail(cause: why))
-    CandidateObserved { candidate: candidate } => {
-      let preflight = live_deploy_access_preflight_for(access: access)
-      if !reconciliation_converged(r: preflight) {
-        live_deploy_reconciliation_exit(r: preflight)
-      } else {
-        let mutation = live_deploy_fold(
-          spec: spec,
-          effect: LiveDeployMicrovmControllerInstall { candidate: candidate },
-          transport: access.transport,
-          access: access,
-          fixture_actor: Absent,
-          fixture_host: Absent,
-        )
-        if !reconciliation_converged(r: mutation) {
-          live_deploy_reconciliation_exit(r: mutation)
-        } else {
-          microvm_controller_install_readback_exit(candidate: candidate)
-        }
+// The job's own effective user, read on the host the job runs on.
+fn microvm_controller_install_job_user() -> NonEmptyStr? {
+  match host_effect_apply(
+    target: HostOs { node: srv1_host },
+    effect: deploy_access_read_principal_effect(),
+    evidence: host_effect_read_evidence,
+    transport: LocalShell,
+  ) {
+    Converged { evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: _ }, applied: _ } =>
+      deploy_access_principal_line(success: code == 0, stdout: out)
+    Converged { evidence: _, applied: _ } => none
+    NotConverged { reason: _, applied: _ } => none
+  }
+}
+
+fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
+  match administrator_ssh_target(host: operator_host_srv1) {
+    SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: concat("microvm_controller_install: the administrator edge has no target: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
+    SshTargetResolved { target: target } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: microvm_controller_install_attempt_raw) {
+        FleetSshContextRefused { cause: c } => exit_failure(reason: concat("microvm_controller_install: the administrator edge refused before any leg: ", c))
+        FleetSshContextReady { context: context, receipt: _ } =>
+          match observe_candidate_release() {
+            CandidateUnobservable { cause: why } => exit_failure(reason: candidate_unobservable_detail(cause: why))
+            CandidateObserved { candidate: candidate } => {
+              let mutation = host_effect_apply(
+                target: HostOs { node: spec.target.host },
+                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh { target: target, context: context } },
+                evidence: host_effect_identity_evidence,
+                transport: LocalShell,
+              )
+              if !reconciliation_converged(r: mutation) {
+                live_deploy_reconciliation_exit(r: mutation)
+              } else {
+                microvm_controller_install_readback_exit(candidate: candidate)
+              }
+            }
+          }
       }
-    }
   }
 }
 
@@ -1502,7 +1585,7 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
 }
 
 fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.wet_witness_premise_read_from_the_runner_it_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data wet_witness_premise_read_from_the_runner_it_happens_to_land_on: RecurringFailureMode = RecurringFailureMode {
   identity: "wet_witness_premise_read_from_the_runner_it_happens_to_land_on" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a wet witness's premise read from the runner it happens to land on** (a required-floor claim is ABOUT a host of one kind -- here, an executor with no event log placement -- but observes the executing runner's identity instead of supplying the subject, so its expected verdict is true only on the runners that happen to be of that kind; on any other runner it is red with no change to the code).",
@@ -24,6 +26,5 @@ data wet_witness_premise_read_from_the_runner_it_happens_to_land_on: RecurringFa
   evidence: [
     decl_ref(module_path: "gunbc.spark.host_privileged_apply", decl_name: "spark_pair_privileged_leg"),
     decl_ref(module_path: "gunbc.fabric.fabric_event_log_host", decl_name: "event_log_store_for_host"),
-    decl_ref(module_path: "test.claim.approval_ntfy_access_readback_wet_witness", decl_name: "the_root_refuses_before_minting_on_this_host_by_real_execution"),
   ],
 }

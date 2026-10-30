@@ -24,7 +24,9 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::type_realization_decision;
 pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
-pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
+pub use crate::v1_compiler_emit_rust::{
+    emit_native_serve_driver_main_rs, function_value_params, is_host_text_carrier_type,
+};
 pub use crate::v1_compiler_infer::{build_emit_graph_info, declared_return_type_node};
 pub use crate::v1_compiler_infer_emit_info::{
     resolve_type_decl_routed, type_decl_routed_resolution_label, TypeDeclIndex,
@@ -51,7 +53,7 @@ use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
     type_reference_identity, type_reference_provenance, Connective, InferredNode, NewlineIndex,
-    Node, ParsedModuleItemKind,
+    Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -160,7 +162,7 @@ pub fn environment_identity_provenance(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
 ) -> Rc<TypeDeclarationProvenance> {
-    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+    match crate::v1_compiler_infer_env::lookup_type_for(env, n) {
         Some(d) => crate::v1_std_core::declaration_provenance_of(d.clone()),
         std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
     }
@@ -195,14 +197,14 @@ pub fn identity_query_provenance(
 }
 
 pub fn legacy_claims_text(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
-    crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone(), si.clone())
+    crate::v1_compiler_emit_rust::is_host_text_carrier_type(n, si)
 }
 
 pub fn authority_realizes(name: String, provenance: Rc<TypeDeclarationProvenance>) -> bool {
     match (*crate::v1_compiler_coercion::type_realization_decision(
         RenderTarget::Rust,
-        name.clone(),
-        provenance.clone(),
+        name,
+        provenance,
     ))
     .clone()
     {
@@ -213,7 +215,7 @@ pub fn authority_realizes(name: String, provenance: Rc<TypeDeclarationProvenance
 }
 
 pub fn legacy_base_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    if crate::v1_compiler_emit_rust::is_host_text_carrier_type(n.clone(), si.clone()) {
+    if crate::v1_compiler_emit_rust::is_host_text_carrier_type(n, si) {
         "String".to_string()
     } else {
         "<not-short-circuited>".to_string()
@@ -223,8 +225,8 @@ pub fn legacy_base_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>)
 pub fn authority_base_of(name: String, provenance: Rc<TypeDeclarationProvenance>) -> String {
     match (*crate::v1_compiler_coercion::type_realization_decision(
         RenderTarget::Rust,
-        name.clone(),
-        provenance.clone(),
+        name,
+        provenance,
     ))
     .clone()
     {
@@ -258,11 +260,11 @@ pub fn typed_decision_row(
 ) -> Rc<TypedCarrierRow> {
     {
         let inferred = inferred_identity_provenance(n.clone());
-        let environment = environment_identity_provenance(env.clone(), n.clone());
+        let environment = environment_identity_provenance(env, n.clone());
         let legacy_key = crate::v1_std_core::provenance_reported_file(
             crate::v1_std_core::type_reference_provenance(n.clone()),
         );
-        let identity = identity_observation(inferred.clone(), environment.clone());
+        let identity = identity_observation(inferred.clone(), environment);
         let query_provenance = identity_query_provenance(identity.clone());
         let query_file = crate::v1_std_core::provenance_reported_file(query_provenance.clone());
         let name = crate::v1_std_core::authored_name_at(si.clone(), n.clone());
@@ -275,7 +277,7 @@ pub fn typed_decision_row(
             identity: identity.clone(),
             legacy: legacy_observation(
                 (crate::v1_std_core::provenance_reported_file(inferred.clone()) != "".to_string()),
-                legacy_key.clone(),
+                legacy_key,
             ),
             split: crate::v1_std_core::type_reference_identity(n.clone()),
             decl_identity: decl_identity.clone(),
@@ -285,15 +287,15 @@ pub fn typed_decision_row(
             emitter_decl_route:
                 crate::v1_compiler_infer_emit_info::type_decl_routed_resolution_label(
                     crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-                        type_decls.clone(),
+                        type_decls,
                         n.clone(),
                         si.clone(),
                     ),
                 ),
             outcome: outcome_of(
-                claims_text.clone(),
+                claims_text,
                 authority_realizes(name.clone(), query_provenance.clone()),
-                query_file.clone(),
+                query_file,
             ),
         })
     }
@@ -321,7 +323,7 @@ pub fn typed_occurrence_rows(
             {
                 let param_rows = n.params.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, p: Rc<Node>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, p: Rc<Node>| {
                         v1_rt::concat(
                             acc,
                             typed_occurrence_rows(
@@ -373,24 +375,23 @@ pub fn typed_occurrence_rows(
                 } else {
                     n.children.clone()
                 };
-                let arg_rows =
-                    arg_children
-                        .iter()
-                        .cloned()
-                        .fold(no_typed_rows(), |acc: _, a: Rc<Node>| {
-                            v1_rt::concat(
-                                acc,
-                                typed_occurrence_rows(
-                                    module_file.clone(),
-                                    enclosing.clone(),
-                                    v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
-                                    a.clone(),
-                                    env.clone(),
-                                    type_decls.clone(),
-                                    si.clone(),
-                                ),
-                            )
-                        });
+                let arg_rows = arg_children.iter().cloned().fold(
+                    no_typed_rows(),
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, a: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            typed_occurrence_rows(
+                                module_file.clone(),
+                                enclosing.clone(),
+                                v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
+                                a.clone(),
+                                env.clone(),
+                                type_decls.clone(),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                );
                 v1_rt::concat(
                     Rc::new(vec![typed_decision_row(
                         module_file.clone(),
@@ -417,10 +418,9 @@ pub fn typed_field_rows(
     type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
-    fields
-        .iter()
-        .cloned()
-        .fold(no_typed_rows(), |acc: _, fld: Rc<Node>| {
+    fields.iter().cloned().fold(
+        no_typed_rows(),
+        |acc: Rc<Vec<Rc<TypedCarrierRow>>>, fld: Rc<Node>| {
             v1_rt::concat(
                 acc,
                 typed_occurrence_rows(
@@ -433,7 +433,8 @@ pub fn typed_field_rows(
                     si.clone(),
                 ),
             )
-        })
+        },
+    )
 }
 
 pub fn typed_item_rows(
@@ -451,7 +452,7 @@ pub fn typed_item_rows(
             if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
                 item.children.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, variant: Rc<Node>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, variant: Rc<Node>| {
                         v1_rt::concat(
                             acc,
                             typed_field_rows(
@@ -482,20 +483,23 @@ pub fn typed_item_rows(
             crate::v1_compiler_emit_rust::function_value_params(item.params.clone())
                 .iter()
                 .cloned()
-                .fold(no_typed_rows(), |acc: _, prm: Rc<Node>| {
-                    v1_rt::concat(
-                        acc,
-                        typed_occurrence_rows(
-                            module_file.clone(),
-                            enclosing.clone(),
-                            "fn_signature_param".to_string(),
-                            crate::v1_std_core::param_node_type_expr(prm.clone()),
-                            env.clone(),
-                            type_decls.clone(),
-                            si.clone(),
-                        ),
-                    )
-                })
+                .fold(
+                    no_typed_rows(),
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, prm: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            typed_occurrence_rows(
+                                module_file.clone(),
+                                enclosing.clone(),
+                                "fn_signature_param".to_string(),
+                                crate::v1_std_core::param_node_type_expr(prm.clone()),
+                                env.clone(),
+                                type_decls.clone(),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                )
         };
         let return_rows = if ((item.body.clone() == std::option::Option::None)
             || crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()))
@@ -526,11 +530,9 @@ pub fn typed_module_rows(
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
         let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
-        m.items
-            .clone()
-            .iter()
-            .cloned()
-            .fold(no_typed_rows(), |acc: _, item: Rc<Node>| {
+        m.items.clone().iter().cloned().fold(
+            no_typed_rows(),
+            |acc: Rc<Vec<Rc<TypedCarrierRow>>>, item: Rc<Node>| {
                 v1_rt::concat(
                     acc,
                     typed_item_rows(
@@ -541,7 +543,8 @@ pub fn typed_module_rows(
                         si.clone(),
                     ),
                 )
-            })
+            },
+        )
     }
 }
 
@@ -736,19 +739,20 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
 }
 
 pub fn typed_census_tsv(rows: Rc<Vec<Rc<TypedCarrierRow>>>) -> String {
-    rows.iter()
-        .cloned()
-        .fold(typed_census_header(), |acc: String, r: _| {
+    rows.iter().cloned().fold(
+        typed_census_header(),
+        |acc: String, r: Rc<TypedCarrierRow>| {
             v1_rt::concat(
                 v1_rt::concat(acc, "\n".to_string()),
                 typed_row_tsv(r.clone()),
             )
-        })
+        },
+    )
 }
 
 pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
-        let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources);
         match result.graph.clone() {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
@@ -762,7 +766,7 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
                 .clone();
                 typed_census_tsv(g.modules.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, m: Rc<TypedModule>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, m: Rc<TypedModule>| {
                         v1_rt::concat(
                             acc,
                             typed_module_rows(
@@ -775,6 +779,122 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
                 ))
             }
         }
+    }
+}
+
+pub fn crc_serve_before_bind(startup: bool) -> String {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            startup,
+            false,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"TcpListener::bind((".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(head) => head.clone(),
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the_startup_deadline(
+) -> bool {
+    {
+        let head = crc_serve_before_bind(true);
+        (v1_rt::string_contains(
+            &head,
+            "realize_generation(&stuck, ready_within)".to_string(),
+        ) && v1_rt::string_contains(&head, "contract.startup_deadline".to_string()))
+    }
+}
+
+pub fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_request_deadline() -> bool
+{
+    {
+        let head = crc_serve_before_bind(false);
+        (!v1_rt::string_contains(&head, "realize_generation(&stuck".to_string())
+            && !v1_rt::string_contains(&head, "startup_deadline".to_string()))
+    }
+}
+
+pub fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> bool {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            true,
+            true,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"TcpListener::bind((".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(head) => {
+                (v1_rt::string_contains(
+                    &head,
+                    "second_count(native_serve_startup_bound())".to_string(),
+                ) && !v1_rt::string_contains(
+                    &head,
+                    "second_count(contract.startup_deadline.clone())".to_string(),
+                ))
+            }
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn crc_realize_generation_body(startup: bool) -> String {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            startup,
+            false,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"fn realize_generation(".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .last()
+        .cloned()
+        {
+            Some(tail) => tail.clone(),
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait(
+) -> bool {
+    {
+        let body = crc_realize_generation_body(true);
+        (((v1_rt::string_contains(
+            &body,
+            "started_rx.recv_timeout(ready_within).is_err()".to_string(),
+        ) && !v1_rt::string_contains(&body, "AtomicBool".to_string()))
+            && !v1_rt::string_contains(&body, "started.load".to_string()))
+            && !v1_rt::string_contains(&body, "started_flag".to_string()))
     }
 }
 

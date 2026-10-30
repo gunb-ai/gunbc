@@ -1,0 +1,137 @@
+module v2.test.claim.emit.decl_nested_layout
+
+import v2.compiler.emit_semantic_decl { emit_decl_surface }
+import v2.std.grammar { formal_productions_catalog_to_node, grammar_formal_nested_occurrence, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal }
+import v2.std.compilers.target_model { target_model_named_edge }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, Edge, Node, NotADeclaration, Positional, TypeNode }
+import v2.compiler.translate { serialize_concrete_syntax_layout_to_source }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclEmitTransformRow, TargetSemanticDeclSerializeProfile, semantic_decl_binding_spelling_row, semantic_decl_emission_from_target, semantic_decl_serialize_target }
+import v2.std.compilers.target_model { ConcreteSyntaxLayoutItem, EmitLineBreaks, FixedToken, LayoutNest, LayoutToken }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_lexeme }
+import std.algebra { list_append }
+import std.types { List }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECL ROUTE KEEPS A NESTED BLOCK AND ITS UNIT (DESIGN 5: a declared grammar fact is never dropped). The
+// items are SUPPLIED at the serializer boundary over the Swift decl target's own lex rows, with the profile this
+// claim states: the unit ^dnl_indent spelled as four spaces, a line break before the colon and rbrace token
+// classes. The profile is the claim's, so the goldens do not depend on the Swift rows' layout choices; the
+// Swift routing claims pair this with the real producer.
+
+fn dnl_tok(class: Symbol) -> ConcreteSyntaxLayoutItem { LayoutToken { token: FixedToken { token_class: class } } }
+
+fn dnl_line() -> List<ConcreteSyntaxLayoutItem> { [ dnl_tok(class: ^swift_token_colon) ] }
+
+fn dnl_depth_one(unit: Symbol) -> List<ConcreteSyntaxLayoutItem> {
+  [ dnl_tok(class: ^swift_token_lbrace), LayoutNest { unit: unit, items: dnl_line() }, dnl_tok(class: ^swift_token_rbrace) ]
+}
+
+fn dnl_depth_two(unit: Symbol) -> List<ConcreteSyntaxLayoutItem> {
+  [ dnl_tok(class: ^swift_token_lbrace), LayoutNest { unit: unit, items: list_append(left: dnl_line(), right: [ LayoutNest { unit: unit, items: dnl_line() } ]) }, dnl_tok(class: ^swift_token_rbrace) ]
+}
+
+fn dnl_flat() -> List<ConcreteSyntaxLayoutItem> {
+  [ dnl_tok(class: ^swift_token_lbrace), dnl_tok(class: ^swift_token_colon), dnl_tok(class: ^swift_token_rbrace) ]
+}
+
+fn dnl_profile(base: TargetSemanticDeclSerializeProfile) -> TargetSemanticDeclSerializeProfile {
+  TargetSemanticDeclSerializeProfile {
+    lex_rule_rows: base.lex_rule_rows,
+    binding_spelling_rows: list_append(left: base.binding_spelling_rows, right: [ semantic_decl_binding_spelling_row(binding: ^dnl_indent, spelling: "    ") ]),
+    emit_transform_rows: [
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_colon, transform: EmitLineBreaks { before: 1, after: 0 } },
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_rbrace, transform: EmitLineBreaks { before: 1, after: 0 } }
+    ]
+  }
+}
+
+fn dnl_text(items: List<ConcreteSyntaxLayoutItem>) -> String {
+  match semantic_decl_emission_from_target(target: swift_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match semantic_decl_serialize_target(profile: dnl_profile(base: emission.struct_serialize_profile), rules: emission.struct_translation_rules, host_binding_spellings: swift_target_model().binding_spellings) {
+        Accepted { value: serialize_target, diagnostics: _ } =>
+          match serialize_concrete_syntax_layout_to_source(target: serialize_target, items: items) {
+            Accepted { value: medium, diagnostics: _ } => medium.carried
+            Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+          }
+        Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+      }
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+test fn a_nested_block_indents_by_its_spelled_unit_one_level() -> Bool {
+  dnl_text(items: dnl_depth_one(unit: ^dnl_indent)) == " {\n    : \n}"
+}
+
+test fn a_nested_block_inside_a_nested_block_indents_two_levels() -> Bool {
+  dnl_text(items: dnl_depth_two(unit: ^dnl_indent)) == " {\n    : \n        : \n}"
+}
+
+// RED: the same tokens with the nest removed print flush left, so the goldens above discriminate the nest.
+test fn the_same_tokens_without_a_nest_print_flush_left() -> Bool {
+  dnl_text(items: dnl_flat()) == " {\n: \n}"
+}
+
+test fn a_nest_whose_unit_the_target_does_not_spell_refuses() -> Bool {
+  dnl_text(items: dnl_depth_one(unit: ^dnl_no_such_unit)) == "translate_layout_unit_unspelled"
+}
+
+// THE REAL PRODUCER ROUTE. The rules are a grammar whose declaration production holds a NESTED occurrence;
+// the row is selected by the reverse parse of an emitted node and its tokens are read by
+// concrete_syntax_layout_items_from_node inside emit_decl_surface, then serialized with this claim's profile.
+// Nothing here builds a LayoutNest: a nest-dropping items fold would print flush left and fail the golden.
+
+fn dnl_rules() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(
+          productions: [
+            grammar_formal_production(
+              lhs: ^dnl_decl,
+              rhs: [
+                grammar_formal_terminal(identity: ^swift_token_lbrace),
+                grammar_formal_nested_occurrence(identity: ^dnl_items, unit: ^dnl_indent),
+                grammar_formal_terminal(identity: ^swift_token_rbrace)
+              ]
+            ),
+            grammar_formal_production(lhs: ^dnl_items, rhs: [ grammar_formal_terminal(identity: ^swift_token_colon) ])
+          ]
+        )
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn dnl_surface() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn dnl_surface_text() -> String {
+  match semantic_decl_emission_from_target(target: swift_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match emit_decl_surface(surface: dnl_surface(), rules: dnl_rules(), profile: dnl_profile(base: emission.struct_serialize_profile), host_binding_spellings: swift_target_model().binding_spellings) {
+        Accepted { value: medium, diagnostics: _ } => medium.carried
+        Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+      }
+    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+test fn the_door_route_keeps_the_nest_from_a_grammar_node_to_text() -> Bool {
+  dnl_surface_text() == " {\n    : \n}"
+}

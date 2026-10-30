@@ -3,6 +3,7 @@ module extdeps.bmc.ipmitool_hpm_check
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import extdeps.numeric.base16 { base16_is_digit_code_point }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -53,16 +54,12 @@ fn hpm_digit(c: String) -> Bool {
   c >= "0" && c <= "9"
 }
 
-fn hpm_hex_digit(c: String) -> Bool {
-  hpm_digit(c: c) || (c >= "A" && c <= "F") || (c >= "a" && c <= "f")
-}
-
 fn hpm_digits_from(t: String, i: Int) -> Bool {
   if i >= string_length(s: t) { true } else { hpm_digit(c: char_at(s: t, pos: i)) && hpm_digits_from(t: t, i: i + 1) }
 }
 
 fn hpm_hex_from(t: String, i: Int) -> Bool {
-  if i >= string_length(s: t) { true } else { hpm_hex_digit(c: char_at(s: t, pos: i)) && hpm_hex_from(t: t, i: i + 1) }
+  if i >= string_length(s: t) { true } else { base16_is_digit_code_point(cp: code_point(char_at(s: t, pos: i))) && hpm_hex_from(t: t, i: i + 1) }
 }
 
 fn hpm_decimal(t: String) -> Bool {

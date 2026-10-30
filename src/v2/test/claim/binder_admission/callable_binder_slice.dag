@@ -30,12 +30,11 @@ import v2.compiler.resolve {
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.fold_lowering { fold_carrier_binder_atom }
 import std.types { Map }
-import v2.std.node_query { node_positional_child_targets }
 import std.algebra { Cons, Empty, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.language_model { void_language_model }
 import v2.std.text { String }
 import v2.std.symbol_index { empty_symbol_index }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Arrow,
   Loop,
   Atom,
@@ -48,7 +47,7 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-
+  NotADeclaration
 }
 import std.optional { Absent, Present, optional_absent }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
@@ -75,8 +74,8 @@ fn cbs_carrier_loop(body: Node, carrier: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: body },
-      Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: carrier) }
+      Edge { label: Positional, target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: carrier), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -97,14 +96,15 @@ fn cbs_fn_literal_shaped_arrow() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Authored { name: ^found }, target: cbs_atom(id: ^tv_found) },
-            Edge { label: Authored { name: ^e }, target: cbs_atom(id: ^tv_e) }
+            Edge { label: Authored { name: ^found }, target: cbs_atom(id: ^tv_found), declaration: NotADeclaration },
+            Edge { label: Authored { name: ^e }, target: cbs_atom(id: ^tv_e), declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) },
-      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) }
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret), declaration: NotADeclaration },
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -141,7 +141,7 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
 test fn cbs_the_fold_encoding_step_admits_handler_binders_holds() -> Bool {
   let loop_node = cbs_carrier_loop(body: cbs_fn_literal_shaped_arrow(), carrier: ^found)
   let loop_locals = arrow_domain_frame_binders(n: loop_node).locals
-  match list_at_optional(xs: node_positional_child_targets(node: loop_node), index: 0) {
+  match list_at_optional(xs: positional_child_target_nodes(node: loop_node), index: 0) {
     Absent => false
     Present { value: step } =>
       let step_locals = arrow_domain_frame_binders(n: step).locals

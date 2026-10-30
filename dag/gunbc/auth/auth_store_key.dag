@@ -1,6 +1,7 @@
 module gunbc.auth.auth_store_key
 
 import std.types { String, NonEmptyStr, Bool, Int }
+import std.host_text { chars }
 
 // THE ONE SHAPE AN EXTERNALLY SUPPLIED IDENTIFIER MAY HAVE BEFORE IT NAMES A FILE. A login
 // transaction's state arrives in the callback query and a session id arrives in the Cookie header;
@@ -8,8 +9,8 @@ import std.types { String, NonEmptyStr, Bool, Int }
 // base64url (RFC 4648 section 5) of 32 entropy octets, so the admitted alphabet is exactly
 // [A-Za-z0-9_-]: no "/", no ".", no NUL, never empty -- a value that could climb out of its store
 // ("../x", "a/b") or name nothing has no AuthStoreKey. The type is sole_constructor, so the store
-// path functions that take it (gunbc.auth.login_transaction_store login_transaction_file_path,
-// gunbc.auth.session_store session_store_file_path) cannot be handed a raw request string: every
+// path functions that take it (gunbc.auth.login_transaction_store_root login_transaction_file_name,
+// gunbc.auth.session_store_root session_store_file_name) cannot be handed a raw request string: every
 // route from the wire to the filesystem passes auth_store_key_of, and a value it refuses is refused
 // by the store operation with its own typed arm.
 type AuthStoreKey sole_constructor {

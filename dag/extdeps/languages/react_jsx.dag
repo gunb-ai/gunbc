@@ -2,9 +2,12 @@ module extdeps.languages.react_jsx
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr }
+import std.algebra { Empty, FreeSemigroup }
 import std.markup {
-  Fragment, MarkupMedium, EscapeHtml, SelfClose,
+  Fragment, MarkupMedium, CommentGrammar, DocumentGrammar, NoDocumentGrammar, EscapeHtml, SelfClose,
   serialize_fragment_with,
+  Serialized, Rejected,
 }
 import extdeps.languages.html {
   html_markup_medium,
@@ -48,6 +51,25 @@ fn jsx_component_prefix(fn_name: String) -> String {
   join(["export function ", fn_name, "(): JSX.Element { return "], "")
 }
 
+// JSX's own comment delimiters, in JSX's own module. Deliberately NOT the HTML rows: a comment
+// written "<!-- -->" inside JSX is parsed as text, so the two languages genuinely differ here and
+// each needs a home of its own.
+data jsx_comment_open_sequence: NonEmptyStr = "{/* " as NonEmptyStr
+data jsx_comment_close_sequence: NonEmptyStr = " */}" as NonEmptyStr
+// The sequence that ENDS a JSX comment is "*/" — and it is not " */}" minus the brace. A comment
+// closes at the first "*/", so "*/}" contains the terminator and the trailing brace becomes code.
+// That distinction is why the medium carries the terminator separately from comment_close: the emitter
+// writes " */}", the checker must look for "*/". Both rows sit here, in JSX's own module, because both
+// are facts about JSX.
+// One member, and that is JSX's grammar rather than an omission: a JSX comment is a block comment, which
+// ends at the first "*/" and has no bang alternative. The carrier is the same non-empty set the HTML
+// medium uses, so the guard asks one question of every medium -- see html_comment_terminators for why a
+// single row is not enough where a language has two ways out.
+data jsx_comment_terminators: FreeSemigroup<NonEmptyStr> = FreeSemigroup {
+  head: "*/" as NonEmptyStr,
+  tail: Empty,
+}
+
 fn jsx_markup_medium() -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [],
@@ -56,24 +78,65 @@ fn jsx_markup_medium() -> MarkupMedium {
     void_tags: html5_void_tags,
     void_rendering: SelfClose,
     raw_text_tags: [],
+    // Inside JSX the comment form is {/* … */}. An HTML comment there is parsed as TEXT, which is
+    // exactly why the medium requires the field instead of defaulting it to the HTML spelling. Rows,
+    // not literals: these are JSX's comment syntax, a fact about this language, named once and read.
+    comment_grammar: CommentGrammar {
+      open: jsx_comment_open_sequence,
+      close: jsx_comment_close_sequence,
+      terminators: jsx_comment_terminators,
+    },
+    // NO doctype field exists to fill. The previous shape had `doctype_open: html_doctype_open_sequence`
+    // beside `document_declaration_allowed: false`, i.e. the medium was forced to carry a spelling its own
+    // comment called "not applicable" — a sum written as a flag (review 82209 on #14351). A JSX file is
+    // an ECMAScript module and has no document type to declare, so this medium states that once, as the
+    // value of document_grammar, rather than as a Bool beside a spelling it has to deny using.
+    // The single comment_grammar above is what makes JSX covered without a JSX-specific hazard function
+    // of its own — the gap review 82181 found (a comment holding "*/" closed early and the rest was
+    // parsed as TSX; a Document emitted "<!DOCTYPE html>" inside a JSX expression; both came back JsxOk).
+    document_grammar: NoDocumentGrammar,
   }
 }
 
-fn serialize_jsx_fragment(node: Fragment) -> String {
-  serialize_fragment_with(frag: node, medium: jsx_markup_medium())
+// FALLIBLE, WHICH IS THE POINT. These two are the routes review 82279 on #14351 named: they went straight
+// to the serializer while the comment check lived in a walk only try_serialize_jsx_component called, so
+// MarkupComment { body: "*/ evil" } closed its comment early and the remainder was emitted as TSX. There is
+// no String-returning path to a comment any more -- the check is in the arm that writes the comment, so a
+// caller cannot obtain the unsafe bytes by choosing a different function.
+fn serialize_jsx_fragment(node: Fragment) -> JsxEmitResult {
+  match serialize_fragment_with(frag: node, medium: jsx_markup_medium()) {
+    Serialized { html: out } => JsxOk { tsx: out }
+    Rejected { reason: why } => JsxRejected { reason: why }
+  }
 }
 
-fn serialize_jsx_component(fn_name: String, node: Fragment) -> String {
-  join([jsx_component_prefix(fn_name: fn_name), serialize_jsx_fragment(node: node), "; }"], "")
+fn serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult {
+  match serialize_jsx_fragment(node: node) {
+    JsxRejected { reason: why } => JsxRejected { reason: why }
+    JsxOk { tsx: body } => JsxOk { tsx: join([jsx_component_prefix(fn_name: fn_name), body, "; }"], "") }
+  }
 }
 
 type JsxEmitResult
   = JsxOk { tsx: String }
   | JsxRejected { reason: String }
 
+// THE GUARDED JSX ROUTE, guarding the same three things the HTML one does. Before review 82181 it
+// checked URLs and nothing else, because the comment and doctype checks had been written per language
+// and only HTML got one; the walk they now share lives in std.markup and reads this medium's comment
+// grammar, so JSX is covered by the same code path rather than by someone remembering to add it.
+//
+// What it refuses, and why each is not merely filtered:
+//   - a comment body holding "*/" closes the comment and the remainder is parsed as TSX — a comment
+//     that changes the meaning of the file it is in, which is not a comment;
+//   - a Document emits "<!DOCTYPE html>" inside a JSX expression container, which is not valid TSX;
+//     the name check and the walk run on the root, so the declaration itself is checked too;
+//   - raw-text content carrying its own close sequence, for the same early-termination reason.
+// An empty medium terminator is itself refused by the walk, so a medium cannot opt out by omission.
 fn try_serialize_jsx_component(fn_name: String, node: Fragment) -> JsxEmitResult {
   match find_first_rejected_url(node: node) {
     Present { value: r } => JsxRejected { reason: r.url }
-    Absent => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
+    Absent =>
+      serialize_jsx_component(fn_name: fn_name, node: node)
   }
 }

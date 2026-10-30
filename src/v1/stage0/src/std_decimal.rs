@@ -8,7 +8,7 @@ use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntRe
 pub use crate::std_checked_arithmetic::{
     checked_int_multiply, checked_int_subtract, CheckedInt, IntegerOverflow,
 };
-pub use crate::std_error_primitives::pure_dag_seam_unreachable;
+pub use crate::std_error_primitives::pure_dag_seam_unreachable_int;
 pub use crate::std_render_repeat_string_bootstrap::repeat_string;
 pub use crate::std_types::{range, Bool};
 use crate::v1_rt;
@@ -77,6 +77,28 @@ pub fn fixed_point_wire(value: i64, decimals: i64) -> String {
     }
 }
 
+pub fn fixed_point_trimmed_wire(mut __tco_loop_value: i64, mut __tco_loop_decimals: i64) -> String {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut value = __tco_loop_value;
+            #[allow(unused_mut)]
+            let mut decimals = __tco_loop_decimals;
+            if ((decimals.clone() > 0) && (v1_rt::int_rem(value.clone(), 10) == 0)) {
+                {
+                    let __tco_0 = v1_rt::int_div(value, 10);
+                    let __tco_1 = v1_rt::int_sub(decimals, 1);
+                    __tco_loop_value = __tco_0;
+                    __tco_loop_decimals = __tco_1;
+                    continue;
+                }
+            } else {
+                break fixed_point_wire(value.clone(), decimals.clone());
+            }
+        }
+    }
+}
+
 pub fn fixed_point_domain_ok(value: i64, decimals: i64) -> bool {
     ((value.clone() >= 0) && (decimals.clone() >= 0))
 }
@@ -110,36 +132,38 @@ pub fn admit_exact_decimal(units: i64, fraction_digits: i64) -> Rc<ExactDecimalA
 }
 
 pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
-    loop {
-        #[allow(unused_mut)]
-        let mut d = __tco_loop_d;
-        if (d.fraction_digits.clone() < 0) {
-            break ExactDecimal {
-                units: v1_rt::pure_dag_seam_unreachable(),
-                fraction_digits: 0,
-            };
-        } else {
-            if (d.fraction_digits.clone() == 0) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut d = __tco_loop_d;
+            if (d.fraction_digits.clone() < 0) {
                 break ExactDecimal {
-                    units: d.units.clone(),
+                    units: crate::std_error_primitives::pure_dag_seam_unreachable_int(),
                     fraction_digits: 0,
                 };
             } else {
-                if (v1_rt::int_sub(
-                    d.units.clone(),
-                    v1_rt::int_mul(v1_rt::int_div(d.units.clone(), 10), 10),
-                ) == 0)
-                {
-                    {
-                        let __tco_0 = ExactDecimal {
-                            units: v1_rt::int_div(d.units.clone(), 10),
-                            fraction_digits: v1_rt::int_sub(d.fraction_digits.clone(), 1),
-                        };
-                        __tco_loop_d = __tco_0;
-                        continue;
-                    }
+                if (d.fraction_digits.clone() == 0) {
+                    break ExactDecimal {
+                        units: d.units.clone(),
+                        fraction_digits: 0,
+                    };
                 } else {
-                    break d.clone();
+                    if (v1_rt::int_sub(
+                        d.units.clone(),
+                        v1_rt::int_mul(v1_rt::int_div(d.units.clone(), 10), 10),
+                    ) == 0)
+                    {
+                        {
+                            let __tco_0 = ExactDecimal {
+                                units: v1_rt::int_div(d.units.clone(), 10),
+                                fraction_digits: v1_rt::int_sub(d.fraction_digits.clone(), 1),
+                            };
+                            __tco_loop_d = __tco_0;
+                            continue;
+                        }
+                    } else {
+                        break d.clone();
+                    }
                 }
             }
         }
@@ -148,8 +172,8 @@ pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
 
 pub fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> bool {
     {
-        let ca = canonical_exact_decimal(a.clone());
-        let cb = canonical_exact_decimal(b.clone());
+        let ca = canonical_exact_decimal(a);
+        let cb = canonical_exact_decimal(b);
         ((ca.units.clone() == cb.units.clone())
             && (ca.fraction_digits.clone() == cb.fraction_digits.clone()))
     }
@@ -181,9 +205,9 @@ pub fn checked_decimal_pow10(exponent: i64) -> Rc<CheckedInt> {
 }
 
 pub fn checked_decimal_rescale(units: i64, by: i64) -> Rc<CheckedInt> {
-    match (*checked_decimal_pow10(by.clone())).clone() {
+    match (*checked_decimal_pow10(by)).clone() {
         CheckedInt::CheckedIntReady { value: p, .. } => {
-            crate::std_checked_arithmetic::checked_int_multiply(units.clone(), p.clone())
+            crate::std_checked_arithmetic::checked_int_multiply(units, p.clone())
         }
         CheckedInt::CheckedIntOverflow { cause: c, .. } => {
             Rc::new(CheckedInt::CheckedIntOverflow { cause: c.clone() })
@@ -266,7 +290,7 @@ pub fn exact_decimal_sub_admitted(a: ExactDecimal, b: ExactDecimal) -> Rc<ExactD
 
 pub fn exact_decimal_wire(d: ExactDecimal) -> String {
     {
-        let c = canonical_exact_decimal(d.clone());
+        let c = canonical_exact_decimal(d);
         if (c.units.clone() < 0) {
             crate::std_algebra::string_concat_join(
                 Rc::new(vec![
@@ -301,5 +325,5 @@ pub fn decimal_digits_from(s: String, i: i64) -> bool {
 }
 
 pub fn decimal_digits_only(s: String) -> bool {
-    decimal_digits_from(s.clone(), 0)
+    decimal_digits_from(s, 0)
 }

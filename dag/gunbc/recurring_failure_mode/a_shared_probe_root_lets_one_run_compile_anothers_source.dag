@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_shared_probe_root_lets_one_run_compile_anothers_source
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_shared_probe_root_lets_one_run_compile_anothers_source: RecurringFailureMode = RecurringFailureMode {
   identity: "a_shared_probe_root_lets_one_run_compile_anothers_source" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a shared probe root lets one run compile another run source** (two executions materialize their generated crate into a directory keyed by WHAT is built rather than by WHO builds it. The second writer overwrites the first; the loser compiles the winner source against its own dependencies, and the type errors are attributed to the loser tree. The exclusion that would stop it EXISTS in this corpus and the failing caller does not take it.)",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_convergence_precondition_decided_after_the
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_convergence_precondition_decided_after_the_binary_swap: RecurringFailureMode = RecurringFailureMode {
   identity: "a_convergence_precondition_decided_after_the_binary_swap" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: live_deploy tree convergence has a precondition that is decidable from the object source before any host mutation (the source's git partial-clone standing: extensions.partialClone, remote.*.promisor, remote.*.partialclonefilter; shallow is observed and does not refuse without a specimen), but the apply Decide phase admits that source by path shape only. The first execution of the transfer is gunbc-tree-sync.service ExecStart after Mutate has already installed /opt/gunbc/bin/gunbc.",
@@ -21,10 +23,12 @@ data a_convergence_precondition_decided_after_the_binary_swap: RecurringFailureM
     "RUNG FOUND AT: mitigatable -- the fetch refuses with git's own fatal and the apply does not fabricate convergence, but the binary is already swapped. CEILING: structurally guaranteed once apply Decide inspects the same $PWD expansion written as GUNBC_TREE_SRC (apply_tree_src_expansion_var / apply_object_source_pwd_serve_decide_command) before any Mutate, and a supplied promisor standing cannot reach compose_host_script MutateStepsAdmitted. NEXT-RUNG TRIGGER: those Decide steps are in the production apply script and a promisor $PWD fails them before the binary install.",
 
     "CONSUMPTION: extdeps.git.partial_clone object_source_serve_admission / observe_object_source_serve; gunbc.live_deploy.repository_convergence_placement convergence_operands_for; gunbc.live_deploy.emit apply_object_source_serve_fragments. Claims: test.claim.live_deploy.object_source_serve_witness, test.claim.repository_convergence_placement_witness, inhabitance test.claim.live_deploy.object_source_serve_real_execution.",
+
+    "THE CITED FRAGMENT IS GONE; THE EVIDENCE NOW CITES ITS TYPED SUCCESSOR (2026-10-24). c11aa2317029 (#14660) deleted the bash apply, and with it gunbc.live_deploy.emit apply_object_source_serve_fragments and compose_host_script. The object-source Decide is now gunbc.live_deploy.apply_legs deploy_apply_object_source_plan: one ApplyLegObjectSource leading the plan, run through extdeps.git.partial_clone observe_object_source_serve over the apply's source root, so a source that cannot serve, or whose standing was not observed, refuses before any later leg (gunbc.host.host_effect_realize deploy_apply_run_leg). The RUNG and NEXT-RUNG receipts above name the deleted script route; this receipt does not re-read the rung, and the row stays RungUnread.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "extdeps.git.partial_clone", decl_name: "object_source_serve_admission", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.live_deploy.emit", decl_name: "apply_object_source_serve_fragments", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_object_source_plan", field: WholeDeclaration },
   ],
 }

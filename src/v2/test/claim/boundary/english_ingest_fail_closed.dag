@@ -1,5 +1,7 @@
 module v2.test.claim.boundary.english_ingest_fail_closed
 
+import v2.std.node { NotADeclaration }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: OccurrenceSynthetic
@@ -11,11 +13,13 @@ data arbitrary_english_prose_input: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^english_boundary_field },
-      target: atom_node(s: ^english_ingest_boundary_symbol)
+      target: atom_node(s: ^english_ingest_boundary_symbol),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^english_payload_field },
-      target: atom_node(s: ^english_arbitrary_prose_symbol)
+      target: atom_node(s: ^english_arbitrary_prose_symbol),
+      declaration: NotADeclaration
     },
   ],
   occurrence_id: OccurrenceSynthetic
@@ -26,11 +30,13 @@ data english_shape_b_docs_input: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^english_typed_value_field },
-      target: atom_node(s: ^english_typed_value_symbol)
+      target: atom_node(s: ^english_typed_value_symbol),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^english_walker_field },
-      target: atom_node(s: ^english_doc_walker_symbol)
+      target: atom_node(s: ^english_doc_walker_symbol),
+      declaration: NotADeclaration
     },
   ],
   occurrence_id: OccurrenceSynthetic
@@ -41,11 +47,13 @@ data english_shape_b_docs_output: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^english_typed_value_field },
-      target: atom_node(s: ^english_typed_value_symbol)
+      target: atom_node(s: ^english_typed_value_symbol),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^english_output_field },
-      target: atom_node(s: ^english_prose_output_symbol)
+      target: atom_node(s: ^english_prose_output_symbol),
+      declaration: NotADeclaration
     },
   ],
   occurrence_id: OccurrenceSynthetic

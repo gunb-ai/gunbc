@@ -38,7 +38,7 @@ fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int 
 
 data control_source: String = "module probe_jit_deregistration_harness_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { JitMintDispatch }\nimport gunbc.runner.jit_registration_subject { JitRegistrationSubject }\nimport gunbc.runner.runner_jit_deregistration { JitDeregistration, jit_runner_deregistered }\nfn done(d: JitDeregistration) -> Bool { jit_runner_deregistered(result: d) }\n"
 
-data sealed_records: List<String> = ["AuthorizedJitMintDispatch", "JitRegistration", "JitRegistrationSubject", "OrganizationRunnerListRead", "JitDeregistrationReceipt"]
+data sealed_records: List<String> = ["AuthorizedJitMintDispatch", "JitRegistration", "JitRegistrationSubject", "OrganizationRunnerListRead", "JitDeregistrationReceipt", "RecoveredReservedRegistration", "StoppingServiceRegistration"]
 
 test fn a_source_that_only_names_the_modules_forges_nothing() -> Bool {
   let c = census_of(source: control_source)
@@ -53,4 +53,10 @@ test fn every_forged_record_refuses_at_its_own_name() -> Bool {
 
 test fn the_receipt_constructor_refuses_a_caller_other_than_the_ensure() -> Bool {
   blocking(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "conclude_from_readback") >= 1
+}
+
+test fn the_stopping_mint_and_the_stop_deregistration_refuse_outside_callers() -> Bool {
+  let c = probe()
+  blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "stopping_service_registration_of") >= 1
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "deregister_binding_stopping_unit") >= 1
 }

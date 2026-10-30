@@ -114,7 +114,7 @@ pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
 }
 
 pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
-    match target_cast_syntax(target.clone()) {
+    match target_cast_syntax(target) {
         Some(syntax) => {
             let mut __found = false;
             for r in syntax.cast_rules.clone().iter().cloned() {
@@ -133,7 +133,7 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
 
 pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
     {
-        let syntax = match target_cast_syntax(target.clone()) {
+        let syntax = match target_cast_syntax(target) {
             Some(s) => s.clone(),
             std::option::Option::None => Rc::new(CastSyntax {
                 template: "{expr}".to_string(),
@@ -185,10 +185,7 @@ pub fn provenance_declares_structurally(
     match (*p.clone()).clone() {
         TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
             let mut __found = false;
-            for m in structural_declaration_modules_for(dag_name.clone())
-                .iter()
-                .cloned()
-            {
+            for m in structural_declaration_modules_for(dag_name).iter().cloned() {
                 if v1_rt::contains(f.clone(), m.clone()) {
                     __found = true;
                     break;
@@ -249,7 +246,7 @@ pub fn provenance_host_numeric_alias(
 ) -> Option<String> {
     if ((((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
         || (name.clone() == "std.nat.Nat".to_string()))
-        && provenance_realizes_natively(p.clone()))
+        && provenance_realizes_natively(p))
     {
         Some("i64".to_string())
     } else {
@@ -348,9 +345,9 @@ pub fn type_reference_realization(
     target: RenderTarget,
 ) -> Rc<TypeRealizationDecision> {
     type_realization_decision(
-        target.clone(),
-        dag_name.clone(),
-        crate::v1_std_core::type_reference_provenance(n.clone()),
+        target,
+        dag_name,
+        crate::v1_std_core::type_reference_provenance(n),
     )
 }
 
@@ -360,9 +357,9 @@ pub fn declaration_realization(
     target: RenderTarget,
 ) -> Rc<TypeRealizationDecision> {
     type_realization_decision(
-        target.clone(),
-        dag_name.clone(),
-        crate::v1_std_core::declaration_provenance_of(item.clone()),
+        target,
+        dag_name,
+        crate::v1_std_core::declaration_provenance_of(item),
     )
 }
 
@@ -398,16 +395,13 @@ pub fn realization_host_numeric_spelling(decision: Rc<TypeRealizationDecision>) 
 pub fn rust_lookup_exact_binding(
     source: Option<Rc<DeclarationRef>>,
 ) -> Rc<ExactBindingResolution<RustRepresentation>> {
-    crate::std_target_representation::resolve_exact_binding(
-        source.clone(),
-        rust_source_type_binding_rows(),
-    )
+    crate::std_target_representation::resolve_exact_binding(source, rust_source_type_binding_rows())
 }
 
 pub fn rust_exact_realization_decision(
     source: Option<Rc<DeclarationRef>>,
 ) -> Rc<TypeRealizationDecision> {
-    match (*rust_lookup_exact_binding(source.clone())).clone() {
+    match (*rust_lookup_exact_binding(source)).clone() {
         ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => {
             match crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint(
                 b.clone(),
@@ -419,7 +413,7 @@ pub fn rust_exact_realization_decision(
                 std::option::Option::None => Rc::new(TypeRealizationDecision::RealizationRefused {
                     cause: Rc::new(
                         RealizationRefusalCause::BoundRepresentationHasNoRealizationRow {
-                            decl_name: b.source.clone().decl_name.clone(),
+                            decl_name: b.source.decl_name.clone(),
                         },
                     ),
                 }),
@@ -447,7 +441,7 @@ pub fn declaration_realizes_natively_on_rust(
 ) -> bool {
     match (*rust_exact_realization_decision(Some(declaration.clone()))).clone() {
         TypeRealizationDecision::Realized { .. } => true,
-        _ => (realized_checkpoint(spelling_decision.clone()) != std::option::Option::None),
+        _ => (realized_checkpoint(spelling_decision) != std::option::Option::None),
     }
 }
 
@@ -477,21 +471,21 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
 }
 
 pub fn coerce_primitive_type(decision: Rc<TypeRealizationDecision>, dag_name: String) -> String {
-    match realized_checkpoint(decision.clone()) {
+    match realized_checkpoint(decision) {
         Some(cp) => cp.target_type.clone(),
-        std::option::Option::None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
+        std::option::Option::None => crate::v1_std_core::qualified_last_segment(dag_name),
     }
 }
 
 pub fn is_copy(decision: Rc<TypeRealizationDecision>) -> Option<bool> {
-    match realized_checkpoint(decision.clone()) {
+    match realized_checkpoint(decision) {
         Some(cp) => cp.is_copy.clone(),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn literal_suffix(decision: Rc<TypeRealizationDecision>) -> Option<String> {
-    match realized_checkpoint(decision.clone()) {
+    match realized_checkpoint(decision) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             std::option::Option::None => Some("".to_string()),
@@ -503,7 +497,7 @@ pub fn literal_suffix(decision: Rc<TypeRealizationDecision>) -> Option<String> {
 pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<InhabitantDecl>> {
     Rc::new({
         let mut __result = Vec::new();
-        for inh in target_inhabitants(target.clone()).iter().cloned() {
+        for inh in target_inhabitants(target).iter().cloned() {
             if (inh.algebra.clone() == algebra.clone()) {
                 __result.push(inh);
             }
@@ -515,8 +509,8 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 }
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match crate::std_types::container_template_algebra(container_name.clone()) {
-        Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
+    match crate::std_types::container_template_algebra(container_name) {
+        Some(algebra) => match lookup_inhabitant(target, algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
             std::option::Option::None => std::option::Option::None,
         },
@@ -828,16 +822,11 @@ pub fn rust_variant_value_realization(
     variant: String,
 ) -> Rc<VariantValueRealization> {
     crate::std_target_representation::variant_value_realization(
-        parent.clone(),
+        parent,
         variant.clone(),
         rust_source_type_binding_rows(),
         rust_source_variant_value_rows(),
-        |a, b| {
-            crate::extdeps_languages_rust_representation::rust_representation_eq(
-                a.clone(),
-                b.clone(),
-            )
-        },
+        |a, b| crate::extdeps_languages_rust_representation::rust_representation_eq(a, b),
     )
 }
 

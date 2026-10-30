@@ -1,0 +1,45 @@
+module test.claim.machine_width_range_witness
+
+import std.logic { Bool }
+import std.measure { bit_width }
+import std.integer { Signed, Unsigned }
+import std.machine_width_range { machine_width_admits }
+
+// THE ONE RANGE AUTHORITY, EXERCISED AT ITS EDGES. std.machine_width_range machine_width_admits is read
+// by v2.compiler.infer (literal admission) and by std.machine_word word_of_int, so a wrong edge here is a
+// wrong edge in both; each claim pins a value just inside and just outside a boundary, in both
+// directions, so an off-by-one on either side reds exactly one of the pair.
+// This lives apart from test.claim.machine_word_witness because that file must not import std.integer
+// (it rebinds bare Int there).
+test fn unsigned_eight_admits_zero_through_255_and_nothing_beside() -> Bool {
+  machine_width_admits(signedness: Unsigned, bits: bit_width(count: 8), value: 0)
+    && machine_width_admits(signedness: Unsigned, bits: bit_width(count: 8), value: 255)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 8), value: 256)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 8), value: 300)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 8), value: 0 - 1)
+}
+
+test fn signed_eight_admits_minus_128_through_127_and_nothing_beside() -> Bool {
+  machine_width_admits(signedness: Signed, bits: bit_width(count: 8), value: 0 - 128)
+    && machine_width_admits(signedness: Signed, bits: bit_width(count: 8), value: 127)
+    && !machine_width_admits(signedness: Signed, bits: bit_width(count: 8), value: 128)
+    && !machine_width_admits(signedness: Signed, bits: bit_width(count: 8), value: 0 - 129)
+}
+
+// WIDTH ZERO: unsigned is the range {0}; signed is empty. Whether zero is a valid machine width is the
+// declaration's question (std.machine_word's WordWidth has no zero member), not this function's.
+test fn width_zero_admits_exactly_zero_unsigned_and_nothing_signed() -> Bool {
+  machine_width_admits(signedness: Unsigned, bits: bit_width(count: 0), value: 0)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 0), value: 1)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 0), value: 0 - 1)
+    && !machine_width_admits(signedness: Signed, bits: bit_width(count: 0), value: 0)
+}
+
+// A width at or past the host Int admits every host value of the right sign, because no host Int can
+// lie outside it; the unsigned boundary is 63 (2^63 is not a host Int), the signed one is 64.
+test fn a_width_at_the_host_bound_admits_every_host_value_of_its_sign() -> Bool {
+  machine_width_admits(signedness: Unsigned, bits: bit_width(count: 64), value: 9223372036854775807)
+    && !machine_width_admits(signedness: Unsigned, bits: bit_width(count: 64), value: 0 - 1)
+    && machine_width_admits(signedness: Signed, bits: bit_width(count: 64), value: 0 - 9223372036854775807)
+    && machine_width_admits(signedness: Unsigned, bits: bit_width(count: 63), value: 9223372036854775807)
+}

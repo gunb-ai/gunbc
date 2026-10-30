@@ -1,6 +1,6 @@
 module std.unicode.scalar
 
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_snoc_item, collection_concat_shape, collection_join_shape }
 import std.coercion { unicode_scalar_fold }
 import std.error_primitives { Result, Ok, Err }
 import std.types { Char }

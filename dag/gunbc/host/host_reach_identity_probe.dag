@@ -1,5 +1,6 @@
 module gunbc.host.host_reach_identity_probe
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.id { id_user_name_argv }
 import extdeps.tools.hostname { hostname_read_argv }
@@ -114,14 +115,14 @@ type HostReachIdentityProbeReceipt {
 // Typed, not a prose row (review 50827: run id / job / timestamp / branch are
 // machine-consumed facts, the §4c String-commentary shape if left as one string).
 type ProbeRunProvenance {
-  workflow_run_id: Int
+  workflow_run_id: GitHubWorkflowRunId
   job_id: String
   probed_at: NonEmptyStr
   head_branch: String
 }
 
 data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
-  workflow_run_id: 31346260819,
+  workflow_run_id: GitHubWorkflowRunId { value: 31346260819 },
   job_id: "probe_fleet_reach",
   probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
   head_branch: "session/wise-moth-430",

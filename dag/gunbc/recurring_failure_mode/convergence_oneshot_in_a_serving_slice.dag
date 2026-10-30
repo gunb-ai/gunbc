@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.convergence_oneshot_in_a_serving_slice
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data convergence_oneshot_in_a_serving_slice: RecurringFailureMode = RecurringFailureMode {
   identity: "convergence_oneshot_in_a_serving_slice" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a deploy-time convergence oneshot (Type=oneshot, started by the apply's `systemctl restart` and waited on) runs inside a deployment's serving slice, or with no TimeoutStartSec, so its memory is whatever the resident serving members have not taken and its start has no bound of its own. HARM: once the members grow past the slice's MemoryHigh the oneshot is reclaim-throttled -- alive, silent, in D state -- and the apply that waits on it stalls with no diagnosis until an outer ceiling kills it, leaving the host part-way through a cutover. Near MemoryMax the slice's OOM killer may instead take a serving member.",

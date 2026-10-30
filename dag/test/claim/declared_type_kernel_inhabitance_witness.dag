@@ -80,7 +80,7 @@ import gunbc.compile_diagnostic_census {
 // WHAT THE SCOPE ACTUALLY WAS, because "aliases were unchecked" overstates it in one direction and
 // understates it in another. An alias whose right-hand side is a KERNEL type
 // (`type KIntAlias = Int`) was already covered, but not by this relation:
-// `peel_nominal_alias_identity` drops the brand for a transparent primitive right-hand side, so the
+// `expand_nominal_alias_rhs` drops the brand for a transparent primitive right-hand side, so the
 // formal arrives spelled `Int` and never reaches the arm that failed. An alias over a RECORD or a
 // COPRODUCT keeps its brand, arrives spelled `KAlias`, and was admitted -- at every position that
 // consults the relation without peeling first. The record-literal field seam peels and was covered;

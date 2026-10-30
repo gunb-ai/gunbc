@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.prose_repealed_by_the_change_that_wrote_it
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data prose_repealed_by_the_change_that_wrote_it: RecurringFailureMode = RecurringFailureMode {
   identity: "prose_repealed_by_the_change_that_wrote_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**prose repealed by the change that wrote it** (INVALID STATE: an annotation or prose row states a fact about the tree -- what a roster carries, what a carrier cannot express, what a mechanism guarantees -- which the SAME CHANGE falsifies, either because a later hunk of that diff makes it false or because it was never true of the mechanism the diff ships. The sentence reads as rigor, cites an authority section, and is the thing a later reader trusts instead of checking. DESIGN section 4c: an annotation 'must not restate what the declaration structurally says', and one that states what the tree CONTRADICTS is worse than none.)",

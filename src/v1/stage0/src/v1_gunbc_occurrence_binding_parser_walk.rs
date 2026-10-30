@@ -101,15 +101,9 @@ pub fn declaration_exposure_from_containment_note() -> String {
 
 pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<AuthoredOrderRow> {
     Rc::new(AuthoredOrderRow {
-        occurrence: entry.projection.clone().occurrence.clone(),
+        occurrence: entry.projection.occurrence.clone(),
         ordinal: AuthoredTokenOrdinal {
-            value: entry
-                .projection
-                .clone()
-                .diagnostic_span
-                .clone()
-                .start
-                .clone(),
+            value: entry.projection.diagnostic_span.start.clone(),
         },
     })
 }
@@ -120,15 +114,15 @@ pub fn occurrence_binding_inputs_from_transport(
     grounding: DeclarationExposureGrounding,
 ) -> Rc<OccurrenceBindingCandidateInputs> {
     Rc::new(OccurrenceBindingCandidateInputs {
-    module_paths: v1_rt::reverse(transport.index.clone().entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![Rc::new(OccurrenceModulePathRow {
-    occurrence: entry.projection.clone().occurrence.clone(),
+    module_paths: v1_rt::reverse(transport.index.entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![Rc::new(OccurrenceModulePathRow {
+    occurrence: entry.projection.occurrence.clone(),
     module_path: module_path.clone(),
 })]), acc))),
     exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<DeclarationExposureRow>>>, declaration: Rc<DeclarationOccurrence>| v1_rt::concat(Rc::new(vec![Rc::new(DeclarationExposureRow {
     occurrence: declaration.occurrence.clone(),
     exposure: crate::std_occurrence_binding_candidates::declaration_exposure_from_containment(module_path.clone(), declaration.containment.clone(), grounding.clone()),
 })]), acc))),
-    authored_order_rows: v1_rt::reverse(transport.index.clone().entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<AuthoredOrderRow>>>, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![authored_order_row_from_entry(entry.clone())]), acc))),
+    authored_order_rows: v1_rt::reverse(transport.index.entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: Rc<Vec<Rc<AuthoredOrderRow>>>, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![authored_order_row_from_entry(entry.clone())]), acc))),
 })
 }
 
@@ -145,10 +139,7 @@ pub fn reference_named(
     transport: Rc<OccurrenceTransport>,
     name: String,
 ) -> Option<Rc<ReferenceOccurrence>> {
-    match references_named(transport.clone(), name.clone())
-        .first()
-        .cloned()
-    {
+    match references_named(transport, name).first().cloned() {
         Some(reference) => Some(reference.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -163,12 +154,10 @@ pub fn references_named(
         |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
                 std::option::Option::None => acc.clone(),
-                Some(entry) => {
-                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
-                        false => acc.clone(),
-                    }
-                }
+                Some(entry) => match (entry.projection.authored_name.clone() == name.clone()) {
+                    true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
+                    false => acc.clone(),
+                },
             }
         },
     )
@@ -183,12 +172,10 @@ pub fn declarations_named(
         |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
                 std::option::Option::None => acc.clone(),
-                Some(entry) => {
-                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
-                        false => acc.clone(),
-                    }
-                }
+                Some(entry) => match (entry.projection.authored_name.clone() == name.clone()) {
+                    true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
+                    false => acc.clone(),
+                },
             }
         },
     )
@@ -198,52 +185,36 @@ pub fn index_entry_for_occurrence(
     transport: Rc<OccurrenceTransport>,
     occurrence: OccurrenceId,
 ) -> Option<Rc<OccurrenceIndexEntry>> {
-    transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            std::option::Option::None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
-                Some(_) => found.clone(),
-                std::option::Option::None => {
-                    match (entry.projection.clone().occurrence.clone().value.clone()
-                        == occurrence.value.clone())
-                    {
-                        true => Some(entry.clone()),
-                        false => std::option::Option::None,
-                    }
+    transport.index.entries.clone().iter().cloned().fold(
+        std::option::Option::None,
+        |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            Some(_) => found.clone(),
+            std::option::Option::None => {
+                match (entry.projection.occurrence.value.clone() == occurrence.value.clone()) {
+                    true => Some(entry.clone()),
+                    false => std::option::Option::None,
                 }
-            },
-        )
+            }
+        },
+    )
 }
 
 pub fn occurrence_id_for_authored_name(
     transport: Rc<OccurrenceTransport>,
     name: String,
 ) -> Option<OccurrenceId> {
-    match transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            std::option::Option::None,
-            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
-                Some(_) => found.clone(),
-                std::option::Option::None => {
-                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                        true => Some(entry.projection.clone().occurrence.clone()),
-                        false => std::option::Option::None,
-                    }
+    match transport.index.entries.clone().iter().cloned().fold(
+        std::option::Option::None,
+        |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+            Some(_) => found.clone(),
+            std::option::Option::None => {
+                match (entry.projection.authored_name.clone() == name.clone()) {
+                    true => Some(entry.projection.occurrence.clone()),
+                    false => std::option::Option::None,
                 }
-            },
-        ) {
+            }
+        },
+    ) {
         Some(occurrence) => Some(occurrence.clone()),
         std::option::Option::None => std::option::Option::None,
     }

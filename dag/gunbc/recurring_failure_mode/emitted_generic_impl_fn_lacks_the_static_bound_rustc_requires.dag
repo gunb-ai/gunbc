@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.emitted_generic_impl_fn_lacks_the_static_bou
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data emitted_generic_impl_fn_lacks_the_static_bound_rustc_requires: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_generic_impl_fn_lacks_the_static_bound_rustc_requires" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**the seed Rust emitter renders a `.dag` function whose closure-typed value is generic in a type parameter as `impl Fn(..) -> Rc<..<R>> + Clone` with no lifetime bound, and rustc refuses the crate** (INVALID STATE: `std.emission_provenance`'s fold `emission_append_operations_compose(acc, emission_contribution_fold(part, read))` emits into `src/std_emission_provenance.rs` a returned/captured `impl Fn(Rc<EmissionContribution>) -> Rc<EmissionAppendOperation<R>> + Clone`, and rustc answers E0310, the parameter type may not live long enough. That run also reported one E0599 whose line was not captured here; it is not yet attributed to this class).",

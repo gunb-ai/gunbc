@@ -1,11 +1,14 @@
 module v2.test.claim.workflow.floor_terminal_ledger
 
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import std.types { NonEmptyStr }
+import gunbc.guarantee_measurement { ProbeObservation, ProbeNotRunnable }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 import v2.workflow.required_floor { CompletedWithinSafetyLimits, SafetyInterrupted }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import v2.workflow.floor_terminal_ledger {
   PublishedCommit,
+  EntryMissing,
   RepositorySnapshot,
   UnpublishedWorkingTree,
   ledger_is_candidate_bound,
@@ -34,6 +37,8 @@ import v2.workflow.floor_terminal_ledger {
   ObservedVerdict,
   Passed,
   ObservationUnreadableBeforeVerdict,
+  SubjectUnresolvedBeforeVerdict,
+  SubjectUnresolved,
   Returned,
   claim_disposition,
   ledger_is_complete,
@@ -115,8 +120,23 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
   claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "e"),
     expectation: ExpectedToHold,
-    terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
+    terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" as NonEmptyStr } }
   }) == ObservationUnreadableBeforeVerdict
+}
+
+// A CLAIM WHOSE FILE DID NOT RESOLVE NEVER RAN, SO IT IS NEITHER A FAILING NOR AN UNREADABLE ONE.
+// `ObservationUnreadableBeforeVerdict` means the claim RAN and returned an unreadable value;
+// reusing it here would fork its meaning (DESIGN section 3). The control is the claim above that
+// a false assertion still projects to `Failed`. THE CAUSE IS A MISSING ENTRY OR ROUTE ONLY: a name
+// or type error inside the claim's closure is a finding (claim_batch prints FAIL, exit 1), so it is
+// never a `SubjectUnresolved` specimen; the ledger join must map it to a failing terminal.
+test fn a_claim_whose_subject_did_not_resolve_is_unresolved_not_failed_nor_unreadable() -> Bool {
+  let d = claim_disposition(row: ClaimTerminalRow {
+    identity: ident(f: "u"),
+    expectation: ExpectedToHold,
+    terminal: SubjectUnresolved { entry: "dag/test/claim/x.dag", cause: EntryMissing {} }
+  })
+  d == SubjectUnresolvedBeforeVerdict && d != Failed && d != ObservationUnreadableBeforeVerdict
 }
 
 // A CLAIM REFUSED BEFORE ANY VERDICT EXISTED IS NOT A FAILING CLAIM EITHER, and this arm is
@@ -233,4 +253,22 @@ test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> B
 // producing an unbound ledger that every other test then happily exercises.
 test fn the_fixture_binding_is_candidate_bound() -> Bool {
   ledger_is_candidate_bound(binding: ledger_with(publication: LedgerPartial { reason: "probe" }).binding)
+}
+
+// A CENSUS PROBE'S COULD-NOT-MEASURE CAUSE ENTERS THE LEDGER UNTRANSLATED. `ProbeNotRunnable.cause` and
+// `ObservationUnrepresentable.reason` are the same `NonEmptyStr`, so the carrier is the cause itself
+// and no mapping function stands between them. The control is the verdict arm: a held observation
+// still projects to `Passed`, so the unreadable projection is not satisfied by every row.
+test fn a_probe_not_runnable_cause_is_carried_into_the_ledger_unchanged() -> Bool {
+  let p = ProbeNotRunnable { cause: "census-unrunnable" as NonEmptyStr }
+  match p {
+    ProbeNotRunnable { cause: c } =>
+      claim_disposition(row: ClaimTerminalRow {
+        identity: ident(f: "n"),
+        expectation: ExpectedToHold,
+        terminal: Returned { observation: ObservationUnrepresentable { reason: c } }
+      }) == ObservationUnreadableBeforeVerdict
+        && claim_disposition(row: row(f: "o", expectation: ExpectedToHold, holds: 0 == 0)) == Passed
+    _ => false
+  }
 }

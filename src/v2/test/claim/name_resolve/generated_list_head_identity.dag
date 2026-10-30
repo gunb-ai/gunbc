@@ -19,8 +19,7 @@ import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path, lower_list_introduction }
-import v2.std.node { ComputationNode, Edge, Node, NodeFold, OccurrenceId, OccurrenceMinted, Positional, Symbol, Transform, fold_node, node_with_occurrence_id }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Node, NodeFold, OccurrenceId, OccurrenceMinted, Positional, Symbol, Transform, fold_node, node_with_occurrence_id, NotADeclaration }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_spine_node }
 import v2.std.text { String }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
@@ -174,7 +173,7 @@ fn glh_source() -> Node {
 fn glh_bare_spine_list() -> Node {
   node_with_occurrence_id(
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: qualified_name_spine_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }) }],
+    children: [Edge { label: Positional, target: qualified_name_spine_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }), declaration: NotADeclaration }],
     occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 7 } }
   )
 }
@@ -188,7 +187,7 @@ fn glh_is_present(o: Optional<List<Node>>) -> Bool {
 
 test fn list_introduction_head_is_marked_and_a_bare_spine_is_not_a_list_holds() -> Bool {
   let lowered = lower_list_introduction(elements: [], source: glh_source())
-  let head_is_marked = match list_at_optional(xs: node_positional_child_targets(node: lowered), index: 0) {
+  let head_is_marked = match list_at_optional(xs: positional_child_target_nodes(node: lowered), index: 0) {
     Present { value: head } =>
       match declaration_reference_path_optional(node: head) {
         Present { value: p } => p == list_introduction_head_path() && head.occurrence_id == glh_source().occurrence_id
