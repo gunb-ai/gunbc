@@ -24,6 +24,22 @@ import gunbc.systemd_unit_invocation_liveness {
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
 
+// THE ONE DECLARATION OF THE ACQUISITION JOURNAL SLOT FAMILIES: the actor election slot and the protocol marker
+// slot (see WorkspaceAllocationSlotsDeclaration for the shape). Both keys derive from it.
+type WorkspaceAcquisitionSlotsDeclaration { actor_member: NonEmptyStr, protocol_member: NonEmptyStr }
+
+data workspace_acquisition_slots: WorkspaceAcquisitionSlotsDeclaration = WorkspaceAcquisitionSlotsDeclaration {
+  actor_member: "workspace-acquisition-actor" as NonEmptyStr,
+  protocol_member: "workspace-acquisition-protocol" as NonEmptyStr,
+}
+
+// THE ACQUISITION JOURNAL STORE, SEALED: workspace_acquisition_store is the one mint (binding in, members from the declaration, no path).
+type WorkspaceAcquisitionStore sole_constructor { binding: FabricStorageBinding, actor_member: NonEmptyStr, protocol_member: NonEmptyStr }
+
+fn workspace_acquisition_store(binding: FabricStorageBinding) -> WorkspaceAcquisitionStore {
+  WorkspaceAcquisitionStore { binding: binding, actor_member: workspace_acquisition_slots.actor_member, protocol_member: workspace_acquisition_slots.protocol_member }
+}
+
 // The environment identifier is accepted only when the manager identifies this interpreter as
 // the selected controller's MainPID. An inherited or caller-supplied identifier is insufficient.
 fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> String?
@@ -50,19 +66,19 @@ fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> S
 
 // One immutable actor record per exact reservation plan precedes the hold effect. A restart
 // may observe the hold, but cannot impersonate the old actor or repeat a possibly queued CAS.
-fn workspace_acquisition_actor_admits(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+fn workspace_acquisition_actor_admits(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
 {
   match workspace_current_acquisition_invocation(plan: plan) {
     Absent => false
     Present { value: invocation } => {
       let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
-      let key = concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: plan_wire as NonEmptyStr)) as String) as NonEmptyStr
+      let key = workspace_acquisition_actor_key(store: store, plan: plan)
       let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: invocation))])) as NonEmptyStr
       match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: wire) {
-        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
           CasCommitted { committed: _ } => true
-          other => match fabric_storage_observe_cas_slot(store: store, key: key) {
+          other => match fabric_storage_observe_cas_slot(store: store.binding, key: key) {
             CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == wire
             other => false
           }
@@ -75,17 +91,17 @@ fn workspace_acquisition_actor_admits(store: FabricStorageBinding, plan: Workspa
 
 // Winning against actor election proves no admitted actor can ever issue this plan's hold effect.
 // An existing actor, unreadable journal, or any other value retains the acquisition obligation.
-fn workspace_cancel_unelected_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+fn workspace_cancel_unelected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_settle_unelected_retirement")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
-  let key = concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: plan_wire as NonEmptyStr)) as String) as NonEmptyStr
+  let key = workspace_acquisition_actor_key(store: store, plan: plan)
   let tombstone = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_before_actor", value: json_string(s: "true"))])) as NonEmptyStr
   if !workspace_actor_protocol_observed(store: store, plan: plan) { false }
   else { match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: tombstone) {
-    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
       CasCommitted { committed: _ } => true
-      other => match fabric_storage_observe_cas_slot(store: store, key: key) {
+      other => match fabric_storage_observe_cas_slot(store: store.binding, key: key) {
         CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == tombstone
         other => false
       }
@@ -94,17 +110,17 @@ fn workspace_cancel_unelected_actor(store: FabricStorageBinding, plan: Workspace
   } }
 }
 
-fn workspace_acquisition_protocol_key(plan: WorkspaceReservationPlan) -> NonEmptyStr {
-  concat("workspace-acquisition-protocol-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
+fn workspace_acquisition_protocol_key(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> NonEmptyStr {
+  concat(concat(store.protocol_member as String, "-"), serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
 }
 
 // Legacy Acquiring rows predate actor election. Only a new Recorded transition may install this
 // marker, before its owner CAS, so absence of a legacy journal never becomes proof of no effect.
-fn workspace_establish_actor_protocol(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+fn workspace_establish_actor_protocol(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_begin_acquisition")]
 {
-  match admit_cas_attempt_for_derived_payload(key: workspace_acquisition_protocol_key(plan: plan), expected: ExpectSlotAbsent, proposed: "actor-journal/1" as NonEmptyStr) {
-    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+  match admit_cas_attempt_for_derived_payload(key: workspace_acquisition_protocol_key(store: store, plan: plan), expected: ExpectSlotAbsent, proposed: "actor-journal/1" as NonEmptyStr) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
       CasCommitted { committed: _ } => true
       other => workspace_actor_protocol_observed(store: store, plan: plan)
     }
@@ -112,15 +128,15 @@ fn workspace_establish_actor_protocol(store: FabricStorageBinding, plan: Workspa
   }
 }
 
-fn workspace_actor_protocol_observed(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool {
-  match fabric_storage_observe_cas_slot(store: store, key: workspace_acquisition_protocol_key(plan: plan)) {
+fn workspace_actor_protocol_observed(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> Bool {
+  match fabric_storage_observe_cas_slot(store: store.binding, key: workspace_acquisition_protocol_key(store: store, plan: plan)) {
     CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == "actor-journal/1"
     other => false
   }
 }
 
-fn workspace_acquisition_actor_key(plan: WorkspaceReservationPlan) -> NonEmptyStr {
-  concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
+fn workspace_acquisition_actor_key(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> NonEmptyStr {
+  concat(concat(store.actor_member as String, "-"), serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
 }
 
 // The recorded actor slot, read as a value: the exact generation is what any replacement fences on.
@@ -130,8 +146,8 @@ type WorkspaceRecordedActor
   | RecordedActorCancelled { generation: CasGeneration }
   | RecordedActorUnreadable { reason: NonEmptyStr }
 
-fn workspace_recorded_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> WorkspaceRecordedActor {
-  match fabric_storage_observe_cas_slot(store: store, key: workspace_acquisition_actor_key(plan: plan)) {
+fn workspace_recorded_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> WorkspaceRecordedActor {
+  match fabric_storage_observe_cas_slot(store: store.binding, key: workspace_acquisition_actor_key(store: store, plan: plan)) {
     CasObservedReadable { readable: CasReadableAbsent } => RecordedActorAbsent
     CasObservedReadable { readable: CasReadablePresent { version: recorded } } => workspace_recorded_actor_decode(generation: recorded.generation, wire: recorded.value as String)
     CasObservedUnreadable { cause: _ } => RecordedActorUnreadable { reason: "acquisition actor slot is unreadable" }
@@ -198,7 +214,7 @@ fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvo
 
 // Replace a terminal actor with this invocation, fenced on the exact recorded generation: of two
 // concurrent replacements only one commits, so only one can go on to issue the hold CAS.
-fn workspace_rearm_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: NonEmptyStr) -> Bool
+fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: NonEmptyStr) -> Bool
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor"),
     decl_ref(module_path: "test.claim.workspace_acquisition_storage_wet_witness", decl_name: "actor_rearm_race"),
@@ -211,7 +227,7 @@ fn workspace_rearm_actor(store: FabricStorageBinding, plan: WorkspaceReservation
 
 // Cancel a terminal actor of a retired acquisition, fenced the same way; the tombstone names the
 // invocation it ended so a late reader can attribute the cancellation.
-fn workspace_cancel_elected_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, prior: NonEmptyStr) -> Bool
+fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior: NonEmptyStr) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
@@ -219,10 +235,10 @@ fn workspace_cancel_elected_actor(store: FabricStorageBinding, plan: WorkspaceRe
   workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
 }
 
-fn workspace_actor_slot_replace(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, wire: NonEmptyStr) -> Bool {
-  let key = workspace_acquisition_actor_key(plan: plan)
+fn workspace_actor_slot_replace(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, wire: NonEmptyStr) -> Bool {
+  let key = workspace_acquisition_actor_key(store: store, plan: plan)
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotGeneration { generation: generation }, proposed: wire) {
-    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store.binding, verified: proposed) {
       CasCommitted { committed: _ } => true
       CasPreconditionFailed { expected: _, observed: _ } => false
       CasStoreRefused { cause: _ } => false
