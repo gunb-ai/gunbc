@@ -1,0 +1,58 @@
+module v2.workflow.source_locus_witness
+
+import std.types { String, Int, List }
+import std.algebra { fold_list }
+import v2.workflow.source_locus { line_starts, locus_at }
+
+// Differential claim for v2.workflow.source_locus locus_at against the rendering it replaced (the occurrence join's own
+// filter/last/count form, DESIGN section 3: the replaced X may serve as an offline differential oracle). The oracle lives only
+// here; the join and the sweep read source_locus. Each case asserts string equality at every offset in the list, including a
+// line start, before the first line (-1), and past the end.
+fn locus_oracle(starts: List<Int>, offset: Int) -> String {
+  let before = starts |> filter(s => s <= offset)
+  match last(before) {
+    Present { value: s } => to_string(count(before)) + ":" + to_string(offset - s + 1)
+    Absent => "-"
+  }
+}
+
+fn locus_agrees_over(text: String, offsets: List<Int>) -> Bool {
+  let starts = line_starts(text: text)
+  fold_list(xs: offsets, empty: true, cons: fn(ok, o) { ok && locus_at(starts: starts, offset: o) == locus_oracle(starts: starts, offset: o) })
+}
+
+data locus_offsets: List<Int> = [0 - 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+test fn locus_agrees_on_the_empty_source() -> Bool {
+  locus_agrees_over(text: "", offsets: locus_offsets)
+}
+
+test fn locus_agrees_on_one_line() -> Bool {
+  locus_agrees_over(text: "abc", offsets: locus_offsets)
+}
+
+test fn locus_agrees_on_several_lines_and_every_line_start() -> Bool {
+  locus_agrees_over(text: "ab\ncd\n\nef", offsets: locus_offsets)
+}
+
+test fn locus_agrees_on_a_leading_newline() -> Bool {
+  locus_agrees_over(text: "\nx", offsets: locus_offsets)
+}
+
+test fn locus_agrees_on_a_trailing_newline() -> Bool {
+  locus_agrees_over(text: "ab\n", offsets: locus_offsets)
+}
+
+test fn locus_agrees_on_non_ascii_text() -> Bool {
+  locus_agrees_over(text: "é\n日本\nz", offsets: locus_offsets)
+}
+
+// The oracle could be wrong the same way; these pin the byte (not scalar) column and the absent arm literally.
+test fn locus_columns_are_bytes_past_a_two_byte_scalar() -> Bool {
+  let starts = line_starts(text: "é\nz")
+  locus_at(starts: starts, offset: 2) == "1:3" && locus_at(starts: starts, offset: 3) == "2:1"
+}
+
+test fn locus_before_the_first_line_is_absent_and_the_empty_source_is_line_one() -> Bool {
+  locus_at(starts: line_starts(text: ""), offset: 0 - 1) == "-" && locus_at(starts: line_starts(text: ""), offset: 0) == "1:1"
+}
