@@ -652,6 +652,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "roster_import_sweep_controls_wire",
             },
         ),
+        // The wave-1 occurrence-join gate on its own label. Same hand-maintained-table contract as the
+        // `known-red-derivation` note above: the `.dag` registry row is
+        // `gunbc.instrument_targets` `namespace_wave_occurrence_join_controls_binding` and this row is its
+        // second home, tracked by the `instrument_registry` row of
+        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
+        (
+            instrument_label("namespace-wave-occurrence-join-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/namespace_wave_occurrence_join.dag",
+                function: "namespace_wave_occurrence_join_controls_wire",
+            },
+        ),
         (
             instrument_label("credential-acquisition-systemd-rows"),
             TargetProducer::CliWireProgram {

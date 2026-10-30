@@ -76,7 +76,7 @@ import v2.compiler.type_declaration_use_census {
 import v2.compiler.occurrence_resolution_census {
   occurrence_resolution_contribution, occurrence_resolution_contribution_lines, occurrence_resolution_partial_lines, occurrence_resolution_locus_text
 }
-import v2.compiler.name_resolve { closure_declarations_demand, Admission, ResolutionSubject, ResolutionContext, resolution_context, resolve_walk_in_context, resolve_in_context }
+import v2.compiler.name_resolve { resolution_context_with_blocked_members, closure_declarations_demand, Admission, ResolutionSubject, ResolutionContext, resolution_context, resolve_walk_in_context, resolve_in_context }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
@@ -1005,18 +1005,38 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
   }
 }
 
+// The members this ingest READ AND THEN REFUSED, as the typed names a requester can be pointed at.
+// `native_test_context_absorb` already records one row per read whose front end refused, with the module
+// that read declared (parsed once, from the header the lane's own scan reads); a row with no declared
+// module names nothing and is skipped. This is the same authority that refusal row is, re-read -- not a
+// second pass over the ingest -- so the blocked member's own row keeps the cause and this yields only the
+// identity `validated_module_root_for_name` needs to refuse an import with the right reason.
+fn native_test_context_blocked_members(rows: FreeMonoid<NativeTestFileRefusal>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.module {
+        Present { value: qn } => list_snoc_item(xs: acc, item: qn)
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn native_test_context_finish(
   state: NativeTestContextFoldState,
   front: NativeTestFrontEnd,
   ingest: SourceRootIngest
 ) -> NativeTestContext {
   NativeTestContext {
-    resolution: resolution_context(
+    resolution: resolution_context_with_blocked_members(
       lm: front.lm,
       roots: state.roots,
       index: state.index,
       active_roots: source_root_set_from_ingest(ingest: ingest),
-      policy: v2.std.resolution_policy.default_name_resolution_policy()
+      policy: v2.std.resolution_policy.default_name_resolution_policy(),
+      blocked_members: native_test_context_blocked_members(rows: state.file_refusals)
     ),
     file_refusals: state.file_refusals,
     accepted_file_advisories: state.accepted_file_advisories,
@@ -3829,6 +3849,7 @@ fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
         AmbiguousIntent => optional_absent()
         ExternalContractUnknown => optional_absent()
         CorrectionNotModeled => optional_absent()
+        RequestedModuleMissing { requested: _ } => optional_absent()
       }
   }
 }

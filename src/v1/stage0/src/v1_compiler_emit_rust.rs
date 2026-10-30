@@ -392,12 +392,16 @@ pub fn render_rust_type_without_applied_binding(
                 emit_info.clone(),
             )
         } else {
-            if (((n.connective.clone() == Connective::NoConnective)
+            if ((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
                 && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     n.clone(),
                 )))
+                && !crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
             {
                 render_rust_applied_via_emit_info(
                     n.clone(),
@@ -2433,62 +2437,128 @@ pub fn render_rust_applied_type(
                             )
                         }
                         ClosedAliasPeelVerdict::ClosedAliasHasParams => {
-                            let base = match rust_seed_host_container_base(base_name.clone()) {
-                                Some(host) => host.clone(),
-                                std::option::Option::None => rust_applied_type_base(
-                                    base_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_realization(
-                                        n.clone(),
-                                        base_name.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                ),
-                            };
-                            let peel =
-                                is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                            let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
-                    render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
-                } else {
-                    render_rust_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
-                }); } __result }).join(&", ".to_string());
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(base.clone(), "<".to_string()),
-                                    args.clone(),
-                                ),
-                                ">".to_string(),
+                            render_rust_applied_nonpeeling_type(
+                                n.clone(),
+                                base_name.clone(),
+                                generic_param_names.clone(),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
                             )
                         }
                         ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
-                            let base = match rust_seed_host_container_base(base_name.clone()) {
-                                Some(host) => host.clone(),
-                                std::option::Option::None => rust_applied_type_base(
-                                    base_name.clone(),
-                                    crate::v1_compiler_coercion::type_reference_realization(
-                                        n.clone(),
-                                        base_name.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                ),
-                            };
-                            let peel =
-                                is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                            let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
-                    render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
-                } else {
-                    render_rust_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
-                }); } __result }).join(&", ".to_string());
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(base.clone(), "<".to_string()),
-                                    args.clone(),
-                                ),
-                                ">".to_string(),
+                            render_rust_applied_nonpeeling_type(
+                                n.clone(),
+                                base_name.clone(),
+                                generic_param_names.clone(),
+                                shared_types.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn render_rust_applied_nonpeeling_type(
+    n: Rc<Node>,
+    base_name: String,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    {
+        let base = match rust_seed_host_container_base(base_name.clone()) {
+            Some(host) => host.clone(),
+            std::option::Option::None => rust_applied_type_base(
+                base_name.clone(),
+                crate::v1_compiler_coercion::type_reference_realization(
+                    n.clone(),
+                    base_name.clone(),
+                    RenderTarget::Rust,
+                ),
+            ),
+        };
+        let peel = is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
+        let args = Rc::new({
+            let mut __result = Vec::new();
+            for arg in n.children.clone().iter().cloned() {
+                __result.push(if peel.clone() {
+                    render_rust_phantom_opaque_applied_decl_arg(
+                        arg.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                        env.clone(),
+                        crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(
+                            n.clone(),
+                            arg.clone(),
+                            env.clone(),
+                        ),
+                    )
+                } else {
+                    render_rust_applied_type_arg(
+                        arg.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                        env.clone(),
+                        crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(
+                            n.clone(),
+                            arg.clone(),
+                            env.clone(),
+                        ),
+                    )
+                });
+            }
+            __result
+        });
+        if crate::v1_compiler_infer_types::node_is_keyed_collection(
+            n.clone(),
+            source_indices.clone(),
+        ) {
+            match args.clone().first().cloned() {
+                Some(k) => match args.clone().get((1) as usize).cloned() {
+                    Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(
+                        base_name.clone(),
+                        k.clone(),
+                        v.clone(),
+                        base.clone(),
+                        RenderTarget::Rust,
+                    ),
+                    std::option::Option::None => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(base.clone(), "<".to_string()),
+                            args.clone().join(&", ".to_string()),
+                        ),
+                        ">".to_string(),
+                    ),
+                },
+                std::option::Option::None => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(base.clone(), "<".to_string()),
+                        args.clone().join(&", ".to_string()),
+                    ),
+                    ">".to_string(),
+                ),
+            }
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(base.clone(), "<".to_string()),
+                    args.clone().join(&", ".to_string()),
+                ),
+                ">".to_string(),
+            )
         }
     }
 }
