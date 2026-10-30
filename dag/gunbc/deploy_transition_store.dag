@@ -1,6 +1,6 @@
 module gunbc.deploy_transition_store
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectorySubjectRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
+import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, transition_lease_store }
 
 // THE TRANSITION INHIBITION STORE, SEALED IN PLACE. gunbc.deploy_transition decides what the inhibition MEANS;
 // this leaf module is the only place that knows where it lives. It mints a sealed value from the instance alone
@@ -30,12 +31,10 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 // and it is rewritten in place under a held lease, which the hold protocol has no operation for. Its own
 // consolidation target is a record slot (a FormatConsolidation follow-up), not the hold.
 //
-// THE LEASE IS NOT HERE. transition-lease.json is a hand lock, and stern-ram-763 ruled (2026-10-24) that it moves
-// onto the hold library once std.durable_exclusive_hold models a non-holder release typed by its evidence; until
-// then it stays where it is in gunbc.deploy_transition (Blocked: hold-release-model), with its own listing-joined
-// observation. That fold and transition_inhibition_observe below are the same few lines, kept apart on purpose:
-// a shared helper here would be an observer over a caller-chosen directory (ruling 2026-10-25), and the lease's
-// copy is deleted when the lease moves onto the hold library.
+// THE LEASE IS NOT HERE. It is a hold on gunbc.durable_exclusive_hold_file_store, sealed in its own store,
+// gunbc.deploy_transition_lease_store, with its own declaration in the same instance root; the hand lock it
+// replaced (transition-lease.json and its listing-joined observation) is deleted. This module carries the lease
+// store only as a member of TransitionContext, below.
 
 // THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
 // directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
@@ -114,27 +113,33 @@ fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInh
 }
 
 // ONE TRANSITION, ONE INSTANCE: the context a transition runs in, minted from the instance alone, carrying the
-// inhibition store and the lease's root together. A transition's every location derives from one of these (the
-// guard is bound to it, and every clearance basis carries it), so a guard acquired at instance A has no field
-// through which to write, mark or clear the records of instance B. `lease_root` is the still-blocked hand lock's
-// directory (Blocked: hold-release-model in gunbc.deploy_transition); the sealed lease store replaces this one
-// field when the lease moves onto the hold library. Sole constructor, non-generic and never a variant arm, for the
-// reason TransitionInhibitionStore gives; its field reads are the same declared residual.
+// inhibition store and the sealed lease store together. A transition's every location derives from one of these
+// (the guard is bound to it, and every clearance basis carries it), so a guard acquired at instance A has no field
+// through which to acquire, release, write, mark or clear the records of instance B. Both stores are minted here
+// from the one instance, each by its own sole mint, so they are over one root by construction. Sole constructor,
+// non-generic and never a variant arm, for the reason TransitionInhibitionStore gives; its field reads are the same
+// declared residual.
 type TransitionContext sole_constructor {
   inhibition: TransitionInhibitionStore
-  lease_root: NonEmptyStr
+  lease: TransitionLeaseStore
 }
 
 type TransitionContextReading
   = TransitionContextReady { context: TransitionContext }
   | TransitionContextUnready { detail: String }
 
+// The lease store's mint lists the same root again: its sole mint takes the instance, and minting it from the
+// inhibition store's root would be a second, root-taking route into the lease store.
 fn transition_context(instance: HostDashboardInstance) -> TransitionContextReading {
   match transition_inhibition_store(instance: instance) {
     TransitionInhibitionStoreUnready { detail: d } => TransitionContextUnready { detail: d }
     TransitionInhibitionStoreReady { store: s } =>
-      TransitionContextReady {
-        context: TransitionContext { inhibition: s, lease_root: s.root },
+      match transition_lease_store(instance: instance) {
+        TransitionLeaseStoreUnready { detail: d } => TransitionContextUnready { detail: d }
+        TransitionLeaseStoreReady { store: l } =>
+          TransitionContextReady {
+            context: TransitionContext { inhibition: s, lease: l },
+          }
       }
   }
 }

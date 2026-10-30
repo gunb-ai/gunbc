@@ -133,6 +133,14 @@ fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-name", name_glob, "-printf", "%f\\n"])
 }
 
+// THE ENTRY AT ONE EXACT PATH, FOUND BELOW A ROOT THAT EXISTS, printed when present and nothing when absent
+// (-path is a whole-path match; -maxdepth bounds the walk). A missing ENTRY exits 0 with empty stdout; only a
+// walk that could not complete (unreadable directory, bad root) exits nonzero. That split is the point: it
+// lets a caller tell "not there" from "could not look" by exit status, without reading any tool's stderr.
+fn find_entry_at_path_command(root: String, path: String, max_depth: Int) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", to_string(max_depth), "-path", path, "-print"])
+}
+
 // ENTRIES UNDER ROOTS THAT ARE NOT TRUSTED AS A ROOT-OWNED LOCUS: not owned by `owner`, writable by
 // group or other (-perm /022: any of the two bits), or a symbolic link (find(1) TESTS; -P, the default,
 // does not follow a starting point, so a symlinked root is seen as a link). `top_only` adds

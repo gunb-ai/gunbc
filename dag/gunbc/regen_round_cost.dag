@@ -141,18 +141,39 @@ type RegenRoundCostReceipt {
 // absence is the ordinary shape of every non-heal round, and the witness fixture pins that
 // absence, so a heal line can never be assumed into a non-heal receipt.
 type RoundOneMirrorAuthority
-  = FromBaseMirror { commit: NonEmptyStr, mirror_files: Nat }
+  = FromBaseMirror {
+      commit: NonEmptyStr,
+      crate_paths: Nat,
+      head_added_paths_kept: Nat
+    }
   | SeedBuiltFromHead
 
 fn regen_round_base_mirror_line(authority: RoundOneMirrorAuthority) -> String {
   match authority {
-    FromBaseMirror { commit: c, mirror_files: n } =>
+    FromBaseMirror { commit: c, crate_paths: n, head_added_paths_kept: k } =>
       concat(
-        concat(concat("regen-round-cost: base_mirror_commit=", c), concat(" files=", to_string(n))),
+        concat(
+          concat(
+            concat(concat("regen-round-cost: base_mirror_commit=", c), concat(" crate=", crate_under_authority())),
+            concat(" crate_paths=", to_string(n))
+          ),
+          concat(" head_added_paths_kept=", to_string(k))
+        ),
         "\n"
       )
     SeedBuiltFromHead => ""
   }
+}
+
+// THE SCOPE IS PART OF THE CLAIM. Round 1 restores the whole seed crate from the base commit --
+// mirrors at any depth, hand-maintained files, Cargo.toml, build.rs -- because what cargo compiles
+// is the crate. Naming only a commit and a file count let a reader believe the generated top level
+// was the whole subject, which is the reading that hid the base/head chimera (RFM
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`). The count of head-added
+// paths is recorded too, because a path base never had stays at the head, and that is exactly
+// where a new hand-written call to a new generated method lives.
+fn crate_under_authority() -> String {
+  "src/v1/stage0"
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {

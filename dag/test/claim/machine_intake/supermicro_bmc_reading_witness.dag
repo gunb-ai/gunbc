@@ -1,5 +1,6 @@
 module test.claim.machine_intake.supermicro_bmc_reading_witness
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -25,7 +26,6 @@ import gunbc.machine_intake.supermicro_bmc_reading {
   supermicro_h11ssl_unit1_reading_2026_10_27, supermicro_h11ssl_unit2_reading, supermicro_h11ssl_reading,
   supermicro_h11ssl_unit1_captures_2026_10_27,
 }
-import gunbc.machine_intake.supermicro_h11ssl_unit_observation { supermicro_h11ssl_unit1_bmc_mac }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE H11SSL BMC READINGS, END TO END: each claim runs the unit's committed captures through

@@ -1,0 +1,10 @@
+SecureBoot:    6   0   0   0   0
+SetupMode:    6   0   0   0   1
+### nvme partitions
+Disk /dev/nvme0n1: 931.51 GiB, 1000204886016 bytes, 1953525168 sectors
+Disk model: WD Green SN350 1TB 2G0C                 
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+### efibootmgr
+sudo: efibootmgr: command not found

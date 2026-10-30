@@ -32,6 +32,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
@@ -135,6 +136,11 @@ import gunbc.host.smpro_platform_capability {
   smpro_subject_absence_reason,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BootParam5Clear, BootParam5ClearIssued, BootParam5ClearNotIssued, BootOverrideClears,
+  BootOverrideClear, StaleOverrideClearance, StaleOverrideWouldNotClear,
+  megarac_boot_param5_clear, megarac_override_release, megarac_stale_override_clearance,
+  megarac_handoff_issued_set, boot_param5_owes_clear, boot_param5_clear_not_required_reason,
+  boot_override_clears_not_required, boot_override_clears_none_found,
   BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
   EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
   mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
@@ -2111,6 +2117,12 @@ type MtCollins1BootActuation {
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
+  // WHAT THE ROUTE DID ABOUT THE TWO CLEARS IT OWES -- the override it found pending before its own set,
+  // and the one it set itself -- each standing kept beside the reading it was reduced from. Recorded, not
+  // implied: boot 5 (run 40258937016) refused with 'a boot override matching this attempt's was already
+  // pending before it was set' while parameter 5 read byte-identical before AND after its set, because the
+  // only clear available to it was one that could Noop on the very bytes it was meant to remove.
+  override_clears: BootOverrideClears
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
@@ -2128,6 +2140,7 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     stage: ActuationNotPoweredOn { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
+    override_clears: boot_override_clears_not_required(reason: reason),
     power_after: megarac_power_reading_not_taken(reason: reason),
     screen: kvm_observer_record_not_started(attempt: "", reason: reason),
     timing: boot_phase_timing_not_taken(reason: reason),
@@ -2197,6 +2210,7 @@ fn actuation_after_watch(
   end_media: MegaRacEndMedia,
   override_before: BootParam5Reading,
   override_after: BootParam5Reading,
+  override_clears: BootOverrideClears,
   power_after: HostPowerReading,
   outcome: ProcessExit,
   screen: KvmObserverRecord,
@@ -2211,6 +2225,7 @@ fn actuation_after_watch(
     stage: observed.stage,
     override_before: override_before,
     override_after: override_after,
+    override_clears: override_clears,
     power_after: power_after,
     timing: timing,
     screen: screen,
@@ -2230,6 +2245,7 @@ fn actuation_with_outcome(act: MtCollins1BootActuation, outcome: ProcessExit) ->
     stage: act.stage,
     override_before: act.override_before,
     override_after: act.override_after,
+    override_clears: act.override_clears,
     power_after: act.power_after,
     timing: act.timing,
     screen: act.screen,
@@ -2273,6 +2289,65 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
   match mtcollins1_bmc_username {
     Absent => BootParam5NotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
     Present { value: user } => megarac_boot_param5(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
+  }
+}
+
+// THE CLEAR OF THE OVERRIDE THAT WAS ALREADY PENDING, issued under the same hold and read back by the same
+// primitive every other standing in this row comes from. Only the SOL/credential boundary is this
+// function's; whether a clear is owed, and what its readback means, are the bundle's (its
+// boot_param5_owes_clear and megarac_stale_override_clearance). Not clearing an unread standing is not a
+// skip: nothing is written on a standing nobody read, and the clearance says 'unread' rather than 'none
+// found' in the receipt.
+fn mtcollins1_boot_param5_clear_under_hold(password_file: String, before: BootParam5Reading) -> BootParam5Clear
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  if boot_param5_owes_clear(read: before) {
+    match mtcollins1_bmc_username {
+      Absent => BootParam5ClearNotIssued { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to clear it with" }
+      Present { value: user } => megarac_boot_param5_clear(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
+    }
+  } else {
+    BootParam5ClearNotIssued { reason: boot_param5_clear_not_required_reason(read: before) }
+  }
+}
+
+// THE RELEASE OF WHAT THIS ATTEMPT SET, on the way out of every path that set it, with its own readback.
+// `owed` is the handoff's own answer (megarac_handoff_issued_set): an attempted set -- even one the
+// readback could not confirm -- may have landed, and an override left pending is inherited by the next
+// attempt as though it were that attempt's own (boot 5 run 40258937016, boot 6 run 40264233543).
+fn mtcollins1_boot_param5_release(password_file: String, owed: Bool) -> BootParam5Clear
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  if owed {
+    match mtcollins1_bmc_username {
+      Absent => BootParam5ClearNotIssued { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to clear it with" }
+      Present { value: user } => megarac_boot_param5_clear(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
+    }
+  } else {
+    BootParam5ClearNotIssued { reason: "this attempt never issued a set, so it owns no override to release" as NonEmptyStr }
+  }
+}
+
+// WHY THE CLEAR WITHHOLDS THE SET, in the refusal's own words, or nothing. Kept as its own function so the
+// sentence the operator reads and the witness pins lives in exactly one place. THE SET IS REFUSED UNLESS THE
+// CLEARED STATE IS POSITIVELY ESTABLISHED (side-chat REQUEST_CHANGES at 3a890b02, §5): of the five
+// clearances, only three let a set go in -- nothing was in force (the controller said so), something was and
+// the clear's readback says it is gone, or the standing was never read and the clear's own readback says
+// nothing is in force now. 'Would not clear' and 'never answered' both refuse: the state a set would go in
+// over is unknown, and an unknown standing is not evidence of a clear one.
+fn mtcollins1_boot_stale_clear_refusal(clearance: StaleOverrideClearance) -> String? {
+  match clearance {
+    StaleOverrideWouldNotClear =>
+      Present { value: "mtcollins1 boot: handoff withheld: the override pending before this attempt would not clear; parameter 5 still reads it pending after the clear, and setting this attempt's override on top of bytes this attempt did not remove cannot attribute any consumption to it" }
+    StaleOverrideUnread { reason: r } =>
+      Present { value: concat("mtcollins1 boot: handoff withheld: parameter 5's standing before this attempt was never established and the pre-power clear never read back as cleared (", r as String, "); the set is refused because the state it would go in over is unknown") }
+    StaleOverrideNoneFound => Absent
+    StaleOverrideCleared => Absent
+    StaleOverrideClearedUnread { reason: _ } => Absent
   }
 }
 
@@ -2547,6 +2622,7 @@ fn mtcollins1_boot_actuate(
         stage: refused.stage,
         override_before: refused.override_before,
         override_after: refused.override_after,
+        override_clears: refused.override_clears,
         power_after: refused.power_after,
         screen: refused.screen,
         fan_gate: refused.fan_gate,
@@ -2563,6 +2639,17 @@ fn mtcollins1_boot_actuate(
       let acquired_at = clock_now_probed_at_or_unknown() as String
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_before_read = proc_uptime_read()
+      // CLEAR IT BEFORE SETTING IT (merry-otter-837 ruling msg_36b81708). An override that was already
+      // pending when this attempt arrived can never be attributed to this attempt -- those bytes were there
+      // before anything was written -- so the pre-power step clears what it finds pending and reads the
+      // clear back, and the handoff sets this attempt's own only afterwards. There is NO skip when the
+      // pending bytes happen to equal this attempt's selection: that is boot 5 (run 40258937016, param5
+      // 'Boot parameter data: a014000000' identical before AND after its set), and it is why the pair of
+      // reads could not say anything. `refuse_if_stale_would_not_clear` is the readback's answer honoured,
+      // not a courtesy: an attempt that sets on top of an override it failed to remove cannot tell its own
+      // consumption from the stale one's, so it stops here with the bytes in the receipt.
+      let stale_clear = mtcollins1_boot_param5_clear_under_hold(password_file: password_file, before: p5_before)
+      let stale_clearance = megarac_stale_override_clearance(before: p5_before, clear: stale_clear)
       let screen = mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
       // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
@@ -2597,7 +2684,18 @@ fn mtcollins1_boot_actuate(
         MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
       }
       let attach_verified = proc_uptime_read()
-      let gated = match sol_handoff_admission(sol: before_attach) {
+      // THE CLEAR REFUSES THE SET. The readback said the pending override is STILL pending after the clear,
+      // so this attempt stops here -- before the handoff, before power, before any console byte -- with the
+      // SOL release and the release clear still running in the tail below. Setting on top of bytes this
+      // attempt did not remove is the boot-5 story told backwards: the pair of parameter-5 reads could
+      // never say which attempt's override they were describing.
+      let gated = match mtcollins1_boot_stale_clear_refusal(clearance: stale_clearance) {
+        Present { value: why } => MediaGatedHandoff {
+          result: boot_handoff_not_issued(outcome: exit_failure(reason: why)),
+          media: MegaRacHandoffNotReached { reason: why as NonEmptyStr },
+          live_at: attach_live_at,
+        }
+        Absent => match sol_handoff_admission(sol: before_attach) {
         SolHandoffRefused { cause: why } => MediaGatedHandoff {
           result: boot_handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: no SOL observation of this run holds: ", why))),
           media: MegaRacHandoffNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
@@ -2613,6 +2711,7 @@ fn mtcollins1_boot_actuate(
           capture_path: sol_capture_path,
           last_live_at: attach_live_at,
         )
+        }
       }
       let handoff_live_at = gated.live_at
       let handoff = match gated.media {
@@ -2676,6 +2775,21 @@ fn mtcollins1_boot_actuate(
         remaining: mtcollins1_boot_power_after_samples,
       )
       let power_after_read = proc_uptime_read()
+      // THE RELEASE, ON EVERY EXIT PATH THAT OWES ONE. This tail is where every post-set path converges --
+      // the handoff refusals, the fan-gate stops and the watch endings all fall through here, none of them
+      // returning early -- so one clear here, after the after-read that carries the consumption and before
+      // the console is handed back, is what keeps a refused or stopped attempt from leaving this attempt's
+      // override pending for the next one (boot 5 run 40258937016 and boot 6 run 40264233543 both ended
+      // pending; that is the lockout). It is owed exactly when the handoff drove the controller -- an
+      // UNCONFIRMED set counts, because it may have landed -- and its own readback decides whether the
+      // flag is gone, never the write's echo.
+      let release_clear = mtcollins1_boot_param5_release(password_file: password_file, owed: megarac_handoff_issued_set(h: gated.media))
+      let override_clears = BootOverrideClears {
+        stale: stale_clearance,
+        stale_read: match stale_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
+        released: megarac_override_release(clear: release_clear),
+        release_read: match release_clear { BootParam5ClearIssued { write_answered: _, readback: rb } => rb BootParam5ClearNotIssued { reason: r } => BootParam5NotTaken { reason: r } },
+      }
       // THE SOL RELEASE FOLLOWS THE POWER READING AND PRECEDES THE END MEDIA LOOK AND RELEASE, on every path
       // (merry-fox-82, 2026-10-24, over #12423's sixty-second teardown bound). The host's power is observed
       // first, so a census that ends with poweroff -f has written its last console byte before the collector
@@ -2711,6 +2825,7 @@ fn mtcollins1_boot_actuate(
         end_media: end_media,
         override_before: p5_before,
         override_after: p5_after,
+        override_clears: override_clears,
         power_after: power_after,
         outcome: outcome_with_end_release(
           outcome: match observed.outcome {
@@ -2785,7 +2900,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
-  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id) {
+  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id, tree: host_state_tree()) {
     UnitHoldRefused { reason: r } =>
       MtCollins1HeldBoot {
         actuation: actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written"),
@@ -2795,7 +2910,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         fru: Absent,
       }
     UnitHeld { proof: p } =>
-      match admit_boot_attempt(proof: p, revision: subject.execution_revision) {
+      match admit_boot_attempt(proof: p, revision: subject.execution_revision, tree: host_state_tree()) {
         BootAttemptRefused { cause: c } => {
           let why = concat("mtcollins1 boot: attempt receipt refused: ", attempt_receipt_refusal_text(cause: c))
           MtCollins1HeldBoot {
@@ -2930,6 +3045,7 @@ type MtCollins1BootAttempt {
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
+  override_clears: BootOverrideClears
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
@@ -2965,6 +3081,7 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
     stage: act.stage,
     override_before: act.override_before,
     override_after: act.override_after,
+    override_clears: act.override_clears,
     power_after: act.power_after,
     timing: act.timing,
     screen: act.screen,
@@ -2987,6 +3104,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
+    override_clears: boot_override_clears_not_required(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     power_after: megarac_power_reading_not_taken(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
     screen: kvm_observer_record_not_started(attempt: "", reason: "the attempt ended before the unit hold"),
@@ -3037,7 +3155,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
+        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, clears: attempt.override_clears, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
         screen: attempt.screen,
         configuration: attempt.configuration,
       }
@@ -3057,7 +3175,7 @@ fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> Ter
   }
 }
 
-fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
+fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, clears: BootOverrideClears, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MegaRacRunRecord {
@@ -3069,6 +3187,7 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         smpro_census: SmproNotTaken { reason: why },
         override_before: before,
         override_after: after,
+        override_clears: clears,
         // The override was never handed off: the attempt never got that far. That is a fact of THIS
         // row's actuation (the stage says so), stated with the core's own arm -- the core's decision
         // cannot be run over reads that were never made.
@@ -3087,7 +3206,8 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: megarac_boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
+        override_clears: clears,
+        override: megarac_boot_override_consumption(before: before, after: after, clears: clears, selection: sel, booted_through_override_device: false),
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
@@ -3102,7 +3222,8 @@ fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacH
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: megarac_boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
+        override_clears: clears,
+        override: megarac_boot_override_consumption(before: before, after: after, clears: clears, selection: sel, booted_through_override_device: true),
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
