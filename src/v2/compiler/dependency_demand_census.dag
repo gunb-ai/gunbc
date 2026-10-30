@@ -263,7 +263,7 @@ type DemandFactWalk {
   groups: List<FactGroup>
 }
 
-// ADDITIVE, FOR v2.compiler.effect_pair_census; THIS CENSUS IGNORES BOTH FIELDS. A call-site is the
+// ADDITIVE; THIS CENSUS IGNORES BOTH FIELDS. A call-site is the
 // callee reference occurrence (the key value_use_dependency uses) and the path it names; a body is
 // one declaration's sites in walk order.
 type FactCallSite {

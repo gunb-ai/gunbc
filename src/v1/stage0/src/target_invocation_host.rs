@@ -317,11 +317,6 @@ pub enum TargetProducer {
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
-    /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
-    /// so a further census is a registry row naming its verb, never another variant.
-    NativeCensusVerb {
-        verb: &'static str,
-    },
     SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
@@ -625,24 +620,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("self-host-behavioral-equivalence"),
             TargetProducer::SelfHostBehavioralEquivalence,
-        ),
-        (
-            instrument_label("dependency-demand-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "demand-census",
-            },
-        ),
-        (
-            instrument_label("decl-ref-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "decl-ref-census",
-            },
-        ),
-        (
-            instrument_label("effect-pair-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "effect-pair-census",
-            },
         ),
         (
             instrument_label("self-host-frontier"),
@@ -1228,9 +1205,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::NativeCensusVerb { verb } => {
-            run_census_verb(verb, label, &self_host_source_roots())
-        }
         TargetProducer::SelfHostFrontier => run_self_host_frontier(
             &self_host_source_roots(),
             &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
@@ -5970,12 +5944,6 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     }
 }
 
-/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
-/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
-/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
-/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
-/// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
 /// `v2.compiler.compile` closure are read from disk and handed to
 /// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,
@@ -6046,25 +6014,6 @@ fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> In
             message: format!(
                 "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
             ),
-        },
-        Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: cause,
-        },
-    }
-}
-
-/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
-/// the exit are decided by the emitted verb; the host adds no verdict.
-fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_census_verb(verb, source_roots) {
-        Ok(code) => InvocationOutcome {
-            termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
-            },
-            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
