@@ -785,18 +785,28 @@ fn roster_key_outside_paths(paths_csv: String, scope: RosterHomeScope) -> Option
   let paths = split(s: paths_csv, delimiter: ",")
   match scope {
     AllHomes => Absent
-    OneHome { home: _, rows: sel } =>
-      match sel {
-        OnlyOccurrences { row: _, call: c, occurrences: os } =>
-          fold_list(xs: os, empty: Absent, cons: fn(acc, k) {
-            match acc {
-              Present { value: r } => Present { value: r }
-              Absent => if roster_contains(xs: paths, name: roster_key_file(key: k)) { Absent } else { Present { value: RefusalOccurrenceKeyUnmatched { path: roster_key_file(key: k), call: c, key: k } } }
-            }
-          })
-        EveryRowOfHome => Absent
-        OnlyCall { call: _ } => Absent
-      }
+    OneHome { home: _, rows: sel } => roster_selection_key_outside_paths(paths: paths, sel: sel)
+    OneWave { legs: legs } =>
+      fold_list(xs: legs, empty: Absent, cons: fn(acc, leg) {
+        match acc {
+          Present { value: r } => Present { value: r }
+          Absent => roster_selection_key_outside_paths(paths: paths, sel: leg.rows)
+        }
+      })
+  }
+}
+
+fn roster_selection_key_outside_paths(paths: List<String>, sel: RosterRowSelection) -> Optional<RosterRefusalReason> {
+  match sel {
+    OnlyOccurrences { row: _, call: c, occurrences: os } =>
+      fold_list(xs: os, empty: Absent, cons: fn(acc, k) {
+        match acc {
+          Present { value: r } => Present { value: r }
+          Absent => if roster_contains(xs: paths, name: roster_key_file(key: k)) { Absent } else { Present { value: RefusalOccurrenceKeyUnmatched { path: roster_key_file(key: k), call: c, key: k } } }
+        }
+      })
+    EveryRowOfHome => Absent
+    OnlyCall { call: _ } => Absent
   }
 }
 
@@ -1724,7 +1734,7 @@ fn roster_duplicate_gate_refusal(gates: List<RosterSiteGate>) -> Optional<Roster
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if roster_gate_active(gate: g) && roster_count_matching(xs: gates, test: fn(h) { roster_gate_active(gate: h) && h.home == g.home && h.call == g.call }) > 1 {
+        if roster_count_matching(xs: gates, test: fn(h) { h.home == g.home && h.call == g.call }) > 1 {
           Present { value: RefusalDuplicateWaveGate { home: g.home, call: g.call } }
         } else {
           Absent
@@ -3808,7 +3818,7 @@ fn roster_occ_gate(text: String, keys: List<String>) -> List<RosterSiteGate> {
 
 fn roster_occ_outcome(text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
   let rows = roster_rename_production_row()
-  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: rows, closures: roster_control_closures(), gates: roster_occ_gate(text: text, keys: keys))
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: rows, closures: roster_control_closures(), gates: roster_occ_gate(text: text, keys: keys), multi_home: false)
 }
 
 fn roster_occ_expect_text(name: String, before: String, keys: List<String>, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -3888,7 +3898,7 @@ fn roster_occ_twin_rows() -> List<RosterHeadRow> {
 fn roster_occ_twin_outcome(row_key: String, keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
   let rows = roster_occ_twin_rows()
   let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: row_key, call: "map_get", occurrences: keys } }
-  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text), multi_home: false)
 }
 
 fn roster_occ_two_rows_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
