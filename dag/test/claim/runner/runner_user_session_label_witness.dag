@@ -80,6 +80,9 @@ import gunbc.runner.runner_user_session_receipt {
   LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread,
   runner_user_session_converge_receipt_failure, runner_user_session_converge_receipt_read_argv,
   parse_runner_user_session_converge_receipt, runner_user_session_receipt_input_of_text,
+  parse_user_session_linger_enable, parse_loginctl_linger_reading, parse_user_session_answer,
+  runner_user_session_converge_receipt_document_text, runner_user_session_receipt_header_line,
+  RunnerUserSessionConvergeReceipt,
   runner_user_session_converge_receipt_staleness,
   runner_user_session_converge_receipt_artifact_name, runner_user_session_label_frontier_rows,
   runner_user_session_converge_receipt_names_host,
@@ -110,15 +113,28 @@ fn label_count(labels: List<String>) -> Int {
 // receipt a control reasons about is one the production reader could actually have produced. The bytes
 // for the negative cases are equally honest: a truncated file, a failed reading, a header naming a
 // different host -- each is text a run really could leave behind.
+// THE FIXTURE BYTES ARE RENDERED, NOT TYPED OUT: the receipt fields of the document a control feeds the
+// parser come from the receipt module's own renderer (review 88438 -- the same move that made the live
+// writer and the parser share one vocabulary), and the context line the live converge leg puts ahead of
+// the fields is kept, so the fixture still exercises "a document with a line that is not a receipt field".
+// A control cannot accidentally test a document shape the writer stopped producing.
 fn receipt_bytes_probed_at(host: String, probed_at: String, enable_linger: String, linger: String, bus: String) -> String {
-  join([
-    "runner_user_session_converge host=", host,
-    " job_user=ghrunner probed_at=", probed_at, "\n",
-    "context_receipt: agent accepted\n",
-    "enable_linger=", enable_linger, "\n",
-    "linger=", linger, "\n",
-    "user_manager=", bus, "\n",
-  ], "")
+  join(
+    [
+      "context_receipt: agent accepted\n",
+      runner_user_session_converge_receipt_document_text(
+        receipt: RunnerUserSessionConvergeReceipt {
+          host: host,
+          probed_at: probed_at,
+          enable_linger: parse_user_session_linger_enable(rest: enable_linger),
+          linger: parse_loginctl_linger_reading(rest: linger),
+          bus: parse_user_session_answer(rest: bus),
+        },
+        job_user: "ghrunner",
+      ),
+    ],
+    "",
+  )
 }
 
 // THE PROBE INSTANT the fixtures stamp into every receipt document, and THE READ INSTANT the controls age
@@ -365,6 +381,127 @@ test fn the_grant_refuses_a_stale_undatable_or_skewed_receipt() -> Bool {
   }
 }
 
+// READING EQUALITY, written per vocabulary because these are the readings the label is granted on: the
+// round-trip control below compares what came BACK from the parser against what went INTO the renderer,
+// reading by reading, cause text included.
+fn enable_readings_match(a: UserSessionLingerEnable, b: UserSessionLingerEnable) -> Bool {
+  match a {
+    UserSessionLingerEnableOk => match b {
+      UserSessionLingerEnableOk => true
+      UserSessionLingerEnableFailed { cause: _ } => false
+    }
+    UserSessionLingerEnableFailed { cause: ca } => match b {
+      UserSessionLingerEnableFailed { cause: cb } => ca == cb
+      UserSessionLingerEnableOk => false
+    }
+  }
+}
+
+fn linger_readings_match(a: LoginctlLingerReading, b: LoginctlLingerReading) -> Bool {
+  match a {
+    LoginctlLingerEnabled => match b {
+      LoginctlLingerEnabled => true
+      LoginctlLingerDisabled => false
+      LoginctlLingerUnread { cause: _ } => false
+    }
+    LoginctlLingerDisabled => match b {
+      LoginctlLingerEnabled => false
+      LoginctlLingerDisabled => true
+      LoginctlLingerUnread { cause: _ } => false
+    }
+    LoginctlLingerUnread { cause: ca } => match b {
+      LoginctlLingerUnread { cause: cb } => ca == cb
+      LoginctlLingerEnabled => false
+      LoginctlLingerDisabled => false
+    }
+  }
+}
+
+fn bus_answers_match(a: UserSessionAnswer, b: UserSessionAnswer) -> Bool {
+  match a {
+    UserSessionAnswered => match b {
+      UserSessionAnswered => true
+      UserSessionNotAnswered { cause: _ } => false
+    }
+    UserSessionNotAnswered { cause: ca } => match b {
+      UserSessionNotAnswered { cause: cb } => ca == cb
+      UserSessionAnswered => false
+    }
+  }
+}
+
+fn receipts_match(a: RunnerUserSessionConvergeReceipt, b: RunnerUserSessionConvergeReceipt) -> Bool {
+  a.host == b.host
+    && a.probed_at == b.probed_at
+    && enable_readings_match(a: a.enable_linger, b: b.enable_linger)
+    && linger_readings_match(a: a.linger, b: b.linger)
+    && bus_answers_match(a: a.bus, b: b.bus)
+}
+
+// THE DOCUMENT ROUND-TRIPS THROUGH THE SHARED VOCABULARY (review 88438: the receipt's wire format had TWO
+// sources -- the writer spelled the header, probed_at, enable_linger and linger fields as its own literals
+// in gunbc.runner.runner_user_session while the parser declared prefixes here; someone renaming one side
+// would make every real receipt unparseable and the label would silently stay off, with nothing in the
+// tree tying the two together). One module now owns BOTH directions: the converge leg renders through
+// these functions and the parser reads the same rows. This control renders a receipt and parses the
+// document back, reading by reading, for the HOLDING receipt, the STALE one (the instant must survive
+// verbatim -- it is what the age gate reads), and a FAILED one (a cause must come back as the cause, not
+// as a cause that has swallowed its own marker). It is the check that makes a one-sided edit to the wire
+// vocabulary impossible to keep green: change a spelling on one side and the round trip stops returning
+// the same receipt. The header line's exact spelling is pinned too, so the shared rows cannot be renamed
+// out from under the live leg's document.
+// RED control: fork the vocabulary again -- spell a field differently in the renderer than in the parser.
+test fn the_document_round_trips_through_the_shared_vocabulary() -> Bool {
+  let holding = RunnerUserSessionConvergeReceipt {
+    host: "srv4",
+    probed_at: receipt_probe_instant(),
+    enable_linger: UserSessionLingerEnableOk,
+    linger: LoginctlLingerEnabled,
+    bus: UserSessionAnswered,
+  }
+  let stale = RunnerUserSessionConvergeReceipt {
+    host: "srv4",
+    probed_at: "2026-09-01T00:00:00Z",
+    enable_linger: UserSessionLingerEnableOk,
+    linger: LoginctlLingerEnabled,
+    bus: UserSessionAnswered,
+  }
+  let failed = RunnerUserSessionConvergeReceipt {
+    host: "srv4",
+    probed_at: receipt_probe_instant(),
+    enable_linger: UserSessionLingerEnableFailed { cause: "ssh: connect to host timed out" },
+    linger: LoginctlLingerUnread { cause: "the transport refused: no agent" },
+    bus: UserSessionNotAnswered { cause: "Connection refused" },
+  }
+  header_line_is_the_document_head()
+    && match parse_runner_user_session_converge_receipt(text: runner_user_session_converge_receipt_document_text(receipt: holding, job_user: "ghrunner")) {
+      Present { value: r } =>
+        receipts_match(a: r, b: holding)
+        && match parse_runner_user_session_converge_receipt(text: runner_user_session_converge_receipt_document_text(receipt: stale, job_user: "ghrunner")) {
+          Present { value: s } =>
+            receipts_match(a: s, b: stale)
+            && s.probed_at == "2026-09-01T00:00:00Z"
+            && match parse_runner_user_session_converge_receipt(text: runner_user_session_converge_receipt_document_text(receipt: failed, job_user: "ghrunner")) {
+              Present { value: f } =>
+                receipts_match(a: f, b: failed)
+                && match f.linger {
+                  LoginctlLingerUnread { cause: c } => c == "the transport refused: no agent"
+                  LoginctlLingerEnabled => false
+                  LoginctlLingerDisabled => false
+                }
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+}
+
+fn header_line_is_the_document_head() -> Bool {
+  runner_user_session_receipt_header_line(host: "srv4", job_user: "ghrunner", probed_at: "2026-10-28T00:00:00Z")
+    == "runner_user_session_converge host=srv4 job_user=ghrunner probed_at=2026-10-28T00:00:00Z"
+}
+
 // THE FOLLOW-UP IS A ROW ON A CARRIER, NOT A SENTENCE IN A PR BODY (review 87218: "each frontier comment
 // names its trigger as the follow-up in the PR body; a PR body is not on a carrier and will not be
 // resolvable from the Node tree"). The gap -- no leg yet fetches the converge receipt artifact and feeds
@@ -552,6 +689,7 @@ test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
 type WitnessControl
   = GrantTypedStateStep
   | ParserIsGateMouthpieceStep
+  | RoundTripStep
   | InstantKeptAgedStep
   | StaleReceiptRefusedStep
   | ReadSpecStep
@@ -581,6 +719,7 @@ fn witness_control_name(step: WitnessControl) -> String {
   match step {
     GrantTypedStateStep => "the_grant_states_who_holds_the_label_and_why_the_others_do_not"
     ParserIsGateMouthpieceStep => "the_parser_reads_the_document_and_refuses_to_guess"
+    RoundTripStep => "the_document_round_trips_through_the_shared_vocabulary"
     InstantKeptAgedStep => "the_parser_keeps_the_instant_and_the_grant_ages_it"
     StaleReceiptRefusedStep => "the_grant_refuses_a_stale_undatable_or_skewed_receipt"
     ReadSpecStep => "the_consumer_reads_this_spec"
@@ -598,6 +737,7 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
   match step {
     GrantTypedStateStep => the_grant_states_who_holds_the_label_and_why_the_others_do_not()
     ParserIsGateMouthpieceStep => the_parser_reads_the_document_and_refuses_to_guess()
+    RoundTripStep => the_document_round_trips_through_the_shared_vocabulary()
     InstantKeptAgedStep => the_parser_keeps_the_instant_and_the_grant_ages_it()
     StaleReceiptRefusedStep => the_grant_refuses_a_stale_undatable_or_skewed_receipt()
     ReadSpecStep => the_consumer_reads_this_spec()

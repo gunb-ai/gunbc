@@ -73,10 +73,17 @@ fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
   }
 }
 
+// THE BUS-ANSWER FIELD, RENDERED FROM THE SAME ROWS THE PARSER READS (review 88438: the wire vocabulary
+// had two sources -- the writer spelled "user_manager=..." as its own literals while the parser declared
+// prefixes; a rename on one side then made every real receipt unparseable and the label silently stayed
+// off, with nothing in the tree tying the two together). DESIGN 3: a fact lives in exactly one place, and
+// a fork here is a correctness concern, not a style one. The renderer below, the field renderers beside
+// it, and the parser all read the prefix and value rows further down this module; the converge leg
+// (gunbc.runner.runner_user_session) calls THESE functions and spells no field itself.
 fn user_session_answer_text(a: UserSessionAnswer) -> String {
   match a {
-    UserSessionAnswered => "user_manager=answered"
-    UserSessionNotAnswered { cause: c } => concat("user_manager=not-answered cause=", c)
+    UserSessionAnswered => concat(runner_user_session_receipt_bus_prefix, runner_user_session_receipt_answer_answered)
+    UserSessionNotAnswered { cause: c } => join([runner_user_session_receipt_bus_prefix, runner_user_session_receipt_answer_not_answered, c], "")
   }
 }
 
@@ -84,7 +91,8 @@ fn user_session_answer_text(a: UserSessionAnswer) -> String {
 // three the live leg took; the host is the one the document's own header names -- the parser is what ties
 // them together, so a document cannot be handed to a host it was not written about (see the grant's
 // host-equality refusal). probed_at is the instant the probe was taken, carried in the document's own
-// header (gunbc.runner.runner_user_session user_session_receipt_then writes "probed_at=<word>"), and it is
+// header -- spelled by runner_user_session_receipt_header_line here and supplied by the live leg's clock
+// word (gunbc.runner.runner_user_session user_session_receipt_then), and it is
 // KEPT VERBATIM by the parser: whether it is a canonical UTC instant is the GRANT's question, not the
 // parser's (a document whose clock was unreadable at probe time renders the word "clock-unreadable", and
 // that must refuse with a located diagnostic at the gate that spends the evidence, not vanish at the
@@ -134,15 +142,86 @@ fn runner_user_session_converge_receipt_read_argv(run: GitHubWorkflowRunId, into
   ]
 }
 
-// THE DOCUMENT'S LINE PREFIXES, one home each: the header line user_session_receipt_then writes, and the
-// three reading lines it joins behind it. The parser and its controls read the prefixes from here, so a
-// writer-side rename that the reader misses is caught by the parser's own controls going red, not by a
-// silently widened parse.
+// THE DOCUMENT'S WIRE VOCABULARY, one home each -- BOTH DIRECTIONS read these rows (review 88438). The
+// header line and the three reading lines are RENDERED by the functions below and PARSED by the functions
+// below, from these same spellings; the converge leg calls the renderers and never re-spells a field.
+// A rename here moves both directions at once, and the label witness's round-trip control
+// (test.claim.runner.runner_user_session_label_witness the_document_round_trips_through_the_shared_vocabulary)
+// is what makes a one-sided edit impossible to keep green.
 data runner_user_session_receipt_header_prefix: String = "runner_user_session_converge host="
+data runner_user_session_receipt_job_user_prefix: String = " job_user="
+data runner_user_session_receipt_header_separator: String = " "
+// NO leading space: the parser finds this word by splitting the header on spaces, so the row must be the
+// word's own head; the renderer below supplies the separator explicitly.
 data runner_user_session_receipt_probed_at_prefix: String = "probed_at="
 data runner_user_session_receipt_enable_linger_prefix: String = "enable_linger="
+data runner_user_session_receipt_enable_linger_ok: String = "ok"
 data runner_user_session_receipt_linger_prefix: String = "linger="
+data runner_user_session_receipt_linger_yes: String = "yes"
+data runner_user_session_receipt_linger_no: String = "no"
+data runner_user_session_receipt_linger_unread: String = "unread cause="
 data runner_user_session_receipt_bus_prefix: String = "user_manager="
+data runner_user_session_receipt_answer_answered: String = "answered"
+data runner_user_session_receipt_answer_not_answered: String = "not-answered cause="
+
+// THE HEADER LINE: host, job user, and the instant the probe was taken. The parser cuts the host from the
+// first word and the instant from the probed_at word; the job user is written for the human following the
+// trail and is not part of the typed receipt.
+fn runner_user_session_receipt_header_line(host: String, job_user: String, probed_at: Timestamp) -> String {
+  join(
+    [
+      runner_user_session_receipt_header_prefix,
+      host,
+      runner_user_session_receipt_job_user_prefix,
+      job_user,
+      runner_user_session_receipt_header_separator,
+      runner_user_session_receipt_probed_at_prefix,
+      probed_at,
+    ],
+    "",
+  )
+}
+
+// THE ENABLE-LINGER FIELD: the outcome of the converge's enable-linger step. A failure carries its cause
+// text verbatim, which is what the parser reads back as the same cause (symmetric: render then parse
+// returns the SAME typed reading, asserted by the round-trip control).
+fn runner_user_session_receipt_enable_linger_line(enable: UserSessionLingerEnable) -> String {
+  match enable {
+    UserSessionLingerEnableOk => concat(runner_user_session_receipt_enable_linger_prefix, runner_user_session_receipt_enable_linger_ok)
+    UserSessionLingerEnableFailed { cause: c } => concat(runner_user_session_receipt_enable_linger_prefix, c)
+  }
+}
+
+// THE LINGER FIELD (replaces the writer-side linger_reading_text, which spelled these three values a
+// second time).
+fn runner_user_session_receipt_linger_line(reading: LoginctlLingerReading) -> String {
+  match reading {
+    LoginctlLingerEnabled => concat(runner_user_session_receipt_linger_prefix, runner_user_session_receipt_linger_yes)
+    LoginctlLingerDisabled => concat(runner_user_session_receipt_linger_prefix, runner_user_session_receipt_linger_no)
+    LoginctlLingerUnread { cause: c } => join([runner_user_session_receipt_linger_prefix, runner_user_session_receipt_linger_unread, c], "")
+  }
+}
+
+// THE WHOLE RECEIPT DOCUMENT, rendered from the typed receipt: what the parser accepts, rendered by the
+// module that parses it. The converge leg writes its document from the field renderers above (it also
+// carries a context-receipt line that is not a receipt field); a control or a future producer that wants
+// the canonical document calls THIS. Round trip: parse(runner_user_session_converge_receipt_document_text(r,
+// job_user)) returns r itself -- asserted for the holding and the stale receipt by the label witness.
+fn runner_user_session_converge_receipt_document_text(receipt: RunnerUserSessionConvergeReceipt, job_user: String) -> String {
+  join(
+    [
+      runner_user_session_receipt_header_line(host: receipt.host, job_user: job_user, probed_at: receipt.probed_at),
+      "\n",
+      runner_user_session_receipt_enable_linger_line(enable: receipt.enable_linger),
+      "\n",
+      runner_user_session_receipt_linger_line(reading: receipt.linger),
+      "\n",
+      user_session_answer_text(a: receipt.bus),
+      "\n",
+    ],
+    "",
+  )
+}
 
 fn receipt_after(line: String, prefix: String) -> String {
   if starts_with(s: line, prefix: prefix) {
@@ -216,17 +295,24 @@ fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUs
   }
 }
 
+// THE VALUE READERS, reading the SAME rows the renderers wrote. A value that carries a cause is read back
+// WITH that cause stripped from the marker, so render -> parse returns the identical typed reading rather
+// than a cause that has swallowed its own marker; a value that is neither a known word nor a marked cause
+// still reads as the failed/unread variant with the whole text as its cause -- the parser never invents a
+// HOLDING reading from bytes it does not recognize.
 fn parse_user_session_linger_enable(rest: String) -> UserSessionLingerEnable {
   let v = trim(s: rest)
-  if v == "ok" { UserSessionLingerEnableOk } else { UserSessionLingerEnableFailed { cause: v } }
+  if v == runner_user_session_receipt_enable_linger_ok { UserSessionLingerEnableOk } else { UserSessionLingerEnableFailed { cause: v } }
 }
 
 fn parse_loginctl_linger_reading(rest: String) -> LoginctlLingerReading {
   let v = trim(s: rest)
-  if v == "yes" {
+  if v == runner_user_session_receipt_linger_yes {
     LoginctlLingerEnabled
-  } else if v == "no" {
+  } else if v == runner_user_session_receipt_linger_no {
     LoginctlLingerDisabled
+  } else if starts_with(s: v, prefix: runner_user_session_receipt_linger_unread) {
+    LoginctlLingerUnread { cause: receipt_after(line: v, prefix: runner_user_session_receipt_linger_unread) }
   } else {
     LoginctlLingerUnread { cause: v }
   }
@@ -234,7 +320,13 @@ fn parse_loginctl_linger_reading(rest: String) -> LoginctlLingerReading {
 
 fn parse_user_session_answer(rest: String) -> UserSessionAnswer {
   let v = trim(s: rest)
-  if v == "answered" { UserSessionAnswered } else { UserSessionNotAnswered { cause: v } }
+  if v == runner_user_session_receipt_answer_answered {
+    UserSessionAnswered
+  } else if starts_with(s: v, prefix: runner_user_session_receipt_answer_not_answered) {
+    UserSessionNotAnswered { cause: receipt_after(line: v, prefix: runner_user_session_receipt_answer_not_answered) }
+  } else {
+    UserSessionNotAnswered { cause: v }
+  }
 }
 
 // WHAT A CALLER SUPPLIES TO THE GRANT (gunbc.runner.runner_registration_labels
