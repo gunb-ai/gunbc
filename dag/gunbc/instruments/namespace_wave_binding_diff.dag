@@ -1079,7 +1079,7 @@ fn binding_diff_sharded(base_stdout: String, head_stdout: String, base_status: I
 // any module is joined; never re-derived.
 fn supply_base_refusal(base_sha: String) -> Optional<CliWireResponse> {
   match first(ambient_site_supplies() |> filter(sup => (sup.base as String) != base_sha)) {
-    Present { value: sup } => optional_present(value: CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "supply-base-mismatch module=" + (sup.module as String) + " at=" + to_string(sup.line) + ":" + to_string(sup.column) + " supply-base=" + (sup.base as String) + " run-base=" + base_sha + ": not observed" } })
+    Present { value: sup } => optional_present(value: CliWirePrintable { bytes: "", exit: ExitFailure { code: 2, reason: "supply-base-mismatch module=" + (sup.module as String) + " at=" + to_string(sup.line) + ":" + to_string(sup.column.value) + " supply-base=" + (sup.base as String) + " run-base=" + base_sha + ": not observed" } })
     Absent => optional_absent()
   }
 }

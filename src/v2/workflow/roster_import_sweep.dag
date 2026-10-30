@@ -31,6 +31,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_ite
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
+import v2.std.source_position { SourceByteColumn }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   LabelPosition,
@@ -711,8 +712,8 @@ fn roster_live_supplies(supplies: List<AmbientSiteSupply>, call: String, path: S
         if (s.call as String) != call {
           acc
         } else {
-          let stale = LiveSuppliesRefused { reason: RefusalSupplyStale { call: call, module: s.module as String, locus: int_to_decimal_string(value: s.line) + ":" + int_to_decimal_string(value: s.column) } }
-          let base_at = offset_at(starts: base_starts, line: s.line, column: s.column)
+          let stale = LiveSuppliesRefused { reason: RefusalSupplyStale { call: call, module: s.module as String, locus: int_to_decimal_string(value: s.line) + ":" + int_to_decimal_string(value: s.column.value) } }
+          let base_at = offset_at(starts: base_starts, line: s.line, column: s.column.value)
           if base_at < 0 {
             stale
           } else {
@@ -969,7 +970,7 @@ fn roster_apply_locked(table: List<RosterHeadRow>, held: RosterHeldLock, paths_c
       let supplies = roster_scope_supplies(table: table, scope: scope)
       match list_find_first(xs: supplies, predicate: fn(sup) { !roster_supply_in_paths(sup: sup, paths: paths) }) {
         // A supply whose module's file this run does not visit names no site the run can reach: stale, before anything is written.
-        Present { value: sup } => roster_refuse_row(path: "*", reason: RefusalSupplyStale { call: sup.call as String, module: sup.module as String, locus: int_to_decimal_string(value: sup.line) + ":" + int_to_decimal_string(value: sup.column) })
+        Present { value: sup } => roster_refuse_row(path: "*", reason: RefusalSupplyStale { call: sup.call as String, module: sup.module as String, locus: int_to_decimal_string(value: sup.line) + ":" + int_to_decimal_string(value: sup.column.value) })
         Absent =>
           fold_list(
             xs: paths,
@@ -3212,7 +3213,7 @@ fn roster_supplied_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexR
 }
 
 fn roster_control_supply(line: Int, column: Int, args: List<String>, imports: List<NonEmptyStr>, key_let: Optional<AmbientKeyLet>) -> AmbientSiteSupply {
-  AmbientSiteSupply { base: "control" as NonEmptyStr, call: "sort_by" as NonEmptyStr, module: "c.sortby" as NonEmptyStr, line: line, column: column, args: args, imports: imports, key_let: key_let }
+  AmbientSiteSupply { base: "control" as NonEmptyStr, call: "sort_by" as NonEmptyStr, module: "c.sortby" as NonEmptyStr, line: line, column: SourceByteColumn { value: column }, args: args, imports: imports, key_let: key_let }
 }
 
 fn roster_supplied_control_scope() -> RosterHomeScope {

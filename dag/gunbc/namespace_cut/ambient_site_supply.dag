@@ -2,6 +2,7 @@ module gunbc.namespace_cut.ambient_site_supply
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.optional { Optional }
+import v2.std.source_position { SourceByteColumn }
 
 // THE AUTHORED SITE SUPPLIES OF A SUPPLIED WAVE (NAMESPACE-XL; tidy-ant-251's sort_by rulings, 2026-10-28). A row of
 // gunbc.namespace_cut.ambient_name_home whose home declares a parameter the ambient spelling never took (sort_by(xs, key) ->
@@ -32,7 +33,8 @@ type AmbientSiteSupply {
   // (gunbc.source_layout layout_module_storage_path), never stored beside it.
   module: NonEmptyStr
   line: Int
-  column: Int
+  // The byte column, typed as the census locus types it (v2.std.source_position: a position in bytes, not a quantity).
+  column: SourceByteColumn
   // One text per label of the row's supplied parameters, in order.
   args: List<String>
   // The declarations the supplied texts use, as dotted declaration paths (std.algebra.int_total_order); a name the module
