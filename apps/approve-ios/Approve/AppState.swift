@@ -11,6 +11,16 @@ final class AppState: ObservableObject {
         didSet { errors.enter(state.phase) }
     }
     @Published var pending: [PendingApproval] = []
+    /// The escalation a tapped alert named (ApprovalPushHint.notification_id). It only ORDERS the
+    /// inbox: the card shown is still one the server listed as pending, read over the authenticated
+    /// route, and a locator naming nothing pending selects nothing.
+    @Published var focused: String?
+
+    /// The card the inbox shows first: the tapped request when it is pending, else the oldest.
+    var front: PendingApproval? {
+        if let f = focused, let p = pending.first(where: { $0.escalation_id == f }) { return p }
+        return pending.first
+    }
     /// One current error per operation (the generated OperationErrors): every attempt records its
     /// outcome, so the next success of an operation removes that operation's error.
     @Published private(set) var errors = OperationErrors()
@@ -86,11 +96,24 @@ final class AppState: ObservableObject {
     /// enrolment or token has since changed continues at once with the current pair, so a failed
     /// update for an old enrolment never suppresses the same token for a newly adopted one. After a
     /// stop, the restart is owned by tokenDelivered and signIn(): a newer token or a new enrolment
-    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair.
+    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair in one loop; every foreground resume
+    /// (resyncPush) starts a fresh one, so a failed pair is retried until the broker acknowledges.
     private struct PushAttempt: Equatable {
         var enrollmentId: String
         var attestKeyId: String
         var token: String
+    }
+
+    /// The pair the broker acknowledged in THIS process. `forwarded_apns_token` is persisted and so
+    /// is only a hint (the broker may have lost or never durably stored it); the gate is this.
+    private var acknowledged: PushAttempt?
+
+    /// Foreground resume: forget the acknowledgement and re-register, so the broker is told again.
+    func resyncPush() async {
+        guard installed, state.enrolled != nil else { return }
+        acknowledged = nil
+        UIApplication.shared.registerForRemoteNotifications()
+        await convergePushToken()
     }
 
     func convergePushToken() async {
@@ -98,7 +121,8 @@ final class AppState: ObservableObject {
         converging = true
         var failedAttempt: PushAttempt?
         defer { converging = false }
-        while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired,
+        while case .enrolled(let e) = state, let desired = apnsToken,
+              PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != acknowledged,
               PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != failedAttempt {
             let attempt = PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired)
             do {
@@ -113,6 +137,7 @@ final class AppState: ObservableObject {
                 // was made for is STILL the current one; otherwise loop and re-derive.
                 guard apnsToken == desired, case .enrolled(var now) = state, now.enrollment_id == e.enrollment_id,
                       now.attest_key_id == e.attest_key_id else { continue }
+                acknowledged = attempt
                 now.forwarded_apns_token = desired
                 try transition(.enrolled(now))
                 record(.pushForward, .succeeded)

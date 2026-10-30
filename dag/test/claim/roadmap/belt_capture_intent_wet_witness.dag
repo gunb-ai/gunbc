@@ -21,9 +21,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_attempt_store_root { belt_attempt_member_path, belt_submission_store_slots }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exec, ExecOk, ExecFailed, ExecRefused,
-  belt_attempt_submission_dir_for_instance,
   belt_scm_capture_candidate_tree, belt_scm_persist_capture, ScmCandidateMinted, ScmCandidateCaptured, ScmCaptureMintRefused, ScmCaptureMintPoisoned,
   belt_commit_staged, StagedCommitRecorded,
   belt_commit_capture_candidate, BeltCommitOutcome, CandidateCaptured,
@@ -85,7 +85,7 @@ fn plant_dirty(instance: HostDashboardInstance) -> String {
   let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
   let _st = shell.Mkdir.Parents(path: state as FilePath)
-  let _sub = shell.Mkdir.Parents(path: belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) as FilePath)
+  let _sub = shell.Mkdir.Parents(path: belt_attempt_member_path(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, member: belt_submission_store_slots.member) as FilePath)
   let seed = instance.repo_root as String
   let _seed_dir = shell.Mkdir.Parents(path: seed as FilePath)
   let primed = run_git(dir: seed, args: ["init", "-q"])
@@ -169,7 +169,7 @@ fn commit_exists(path: String, ordinal: Int) -> Bool {
 fn capture_file_at_head(instance: HostDashboardInstance, worktree: String) -> Bool {
   let head = base_of(worktree: worktree)
   head != "" && Filesystem.Read(path: join([
-    belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt),
+    belt_attempt_member_path(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, member: belt_submission_store_slots.member),
     "/", submission_capture_basename(head_sha: head)], "")).success
 }
 

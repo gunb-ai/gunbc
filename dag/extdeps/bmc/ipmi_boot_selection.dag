@@ -85,6 +85,17 @@ fn ipmi_boot_device_label(device: IpmiBootDevice) -> NonEmptyStr {
   }
 }
 
+// THE WORD THAT CLEARS THE OVERRIDE. `ipmitool chassis bootdev none` is the clear: `none` is ipmitool's
+// word for the SAME selector this module already grounds as 0 = 'no override' (ipmi_boot_selector_reading
+// below, IPMI v2.0 rev 1.1 data-2 bits 5:2), and the state it leaves on mtcollins1 is a capture, byte for
+// byte -- extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_no_override: 'Boot parameter data:
+// 0000000000', 'Boot Flag Invalid', 'Boot Device Selector : No override'. It is deliberately NOT an
+// IpmiBootDevice: this model never SELECTS 'none' -- there is no device to force -- so it has no selector
+// arm, no label arm, and no place in IpmiBootSelection or ipmi_boot_selectable_devices (which stays the
+// two devices that CAN be forced). What the command PRINTS is a different question, held beside the other
+// observed output at extdeps.bmc.ipmitool_observed_output ipmitool_bootdev_none_reply_standing.
+data ipmi_boot_device_none: NonEmptyStr = "none"
+
 fn ipmi_boot_mode_label(mode: IpmiFirmwareBootMode) -> NonEmptyStr {
   match mode {
     IpmiBootLegacy => "legacy"

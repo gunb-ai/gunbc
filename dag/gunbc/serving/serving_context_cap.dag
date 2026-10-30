@@ -1,0 +1,19 @@
+module gunbc.serving.serving_context_cap
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { TokenCount, token_count }
+
+// THE ONE CONTEXT CAP EVERY SERVING ENGINE IN THE POOL IS LAUNCHED WITH. The router advertises one
+// max_model_len for the pool and a session may land on any route, so a route launched wider than
+// the pool's cap admits a request another route refuses after its work is spent, and a route
+// launched narrower refuses one the router advertised. The value is an operator's policy, not a
+// derivation from any card's memory: each engine's own fit is its launch's concern, and an engine
+// that cannot hold this cap refuses at launch, never quietly serves a smaller one.
+//
+// Consumers read the value from here and render it in their engine's own spelling:
+// gunbc.serving.srv1_serving_launch (vLLM --max-model-len), gunbc.serving.strata_ada_pair_cell
+// (Strata --max-context), and the harness's working window, gunbc.harness.harness_wire
+// harness_engine_context_window, which spends no more of a session than every route admits.
+data serving_fleet_context_cap: TokenCount = token_count(count: 229376)
+
+data serving_fleet_context_cap_authority: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_serving_context_cap")

@@ -20,6 +20,7 @@ import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
 import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeFailed, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
@@ -165,6 +166,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_seed_origin_resolution,
   site_pxe_edge_seed_origin_probe,
   srv14_install_client,
+  srv15_install_client,
   PlacementNotNeeded,
   PlacementRefused,
   PlacementVerified,
@@ -393,7 +395,7 @@ test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool 
         Present { value: cfg } =>
           cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
             && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
-            && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, concat(concat("dhcp-host=", render_mac_address(addr: mtcollins1_host_nic_mac)), ",set:onboarding-known"))
             && contains(cfg.content, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
             && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
             && length(split(cfg.content, "pxe-service=")) == 2
@@ -1013,17 +1015,24 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD'S ONE REQUEST, srv14, is admitted by the public seed authority, which refuses any credential
-// field by name, and binds its measured NIC to the arm64 chain: nothing is withheld and no gate cause is raised.
-test fn the_production_request_binds_srv14_from_an_admitted_seed() -> Bool {
+// THE PRODUCTION HEAD'S REQUESTS, srv14 and srv15, are admitted by the public seed authority, which refuses any
+// credential field by name, and each binds its own measured NIC to the arm64 chain exactly once: nothing is withheld
+// and no gate cause is raised. Dropping either row, or giving both the same NIC, turns this red.
+test fn the_production_requests_bind_srv14_and_srv15_from_admitted_seeds() -> Bool {
   let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
     && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
-    && (match srv14_install_client {
-      MacParsed { address: srv14 } =>
-        length(filter(site_pxe_edge_request_bindings(admissions: admissions), b => public_nocloud_seed_client_mac(seed: b.seed) == srv14 && b.architecture == Aarch64)) == 1
-      MacParseFailed { error: _ } => false
-    })
+    && production_request_binds_once(client: srv14_install_client, bindings: bindings)
+    && production_request_binds_once(client: srv15_install_client, bindings: bindings)
+}
+
+fn production_request_binds_once(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
+  match client {
+    MacParsed { address: mac } =>
+      length(filter(bindings, b => public_nocloud_seed_client_mac(seed: b.seed) == mac && b.architecture == Aarch64)) == 1
+    MacParseFailed { error: _ } => false
+  }
 }
 
 // THE SEGMENT ANSWERS FOR THE SEED ORIGIN WITH THE EDGE'S OWN ADDRESS, so the production probe is a success.
@@ -1319,7 +1328,7 @@ test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
 
 // The edge's own known-client rows, not a supplied list. Inputs are Present only when every row parses
 // (site_pxe_edge_parsed_macs), and the rendered daemon config tags each named host NIC as known, by identity
-// rather than by count. Dropping srv14's row (or mistyping it) turns this red.
+// rather than by count. Dropping srv14's or srv15's row (or mistyping it) turns this red.
 test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -> Bool {
   let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
   match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
@@ -1330,6 +1339,7 @@ test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -
         Present { value: cfg } =>
           contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
             && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, concat(concat("dhcp-host=", srv15_host_nic_mac as String), ",set:onboarding-known"))
       }
   }
 }
