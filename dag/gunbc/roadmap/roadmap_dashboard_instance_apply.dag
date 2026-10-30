@@ -936,6 +936,15 @@ fn dashboard_apply_provision_op(
           MoveRefused { collision: c } =>
             dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, "; nothing was moved"], ""))
           MoveApply { legacy_names: names } => {
+            // SCAFFOLD, ADMITTED FOR THIS ONE STEP AND NAMED AS SUCH. The slot must hold the hold library's own
+            // payload (an undecodable slot makes file_hold_acquire refuse, measured: a hard-linked legacy entry
+            // kept its bytes and the next claim refused), and the target may be remote, where the Filesystem
+            // effects and file_hold_acquire cannot reach and the argv transport carries no stdin. The only
+            // argv that writes a create-only file with given bytes is this sh redirect under `set -C`.
+            // Dissolution trigger: a target-exec handler that realizes Filesystem.WriteCreateNew on the
+            // instance's transport (local or SSH); then this argv is replaced by file_hold_acquire over the
+            // member and the sh program leaves this arm. Every value reaches sh as a positional parameter, never
+            // interpolated into the script text.
             let moved = dashboard_run_target_argvs(
               instance: instance,
               commands: map(names, n => DashboardArgv {
