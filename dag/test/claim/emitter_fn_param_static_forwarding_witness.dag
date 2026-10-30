@@ -9,15 +9,15 @@ module test.claim.emitter_fn_param_static_forwarding_witness
 // is declared with arrow fields but realized as `Rc<HashMap<K, V>>` by the keyed arm, so a fn that
 // merely RETURNS the keyed carrier earned a `dyn Fn` obligation no emitted type carries. Three arms,
 // each discriminating: (1) a type parameter reaching a `'static` callee while the Fn parameter is not
-// forwarded emits no `'static` on the Fn parameter; (2) a forwarded Fn parameter still gets it, so
+// forwarded emits no `'static` on the Fn parameter; (2) a forwarded Fn parameter still gets it (and a fn returning a record of arrows keeps it, the control that holds on both emitters), so
 // the narrowing did not delete the bound; (3) a keyed-carrier return owes no `'static` at all.
 
 fn w_unforwarded_fn_param_has_no_static_bound() -> Bool {
   compile_dag_rust_emit_check(
     "module estat_a\n\nimport std.types { Int }\n\ntype Bag {\n  run: fn(Int) -> Int\n}\n\nfn make_bag<T>(x: T) -> Bag {\n  Bag { run: n => n }\n}\n\nfn wrap<T>(x: T, f: fn(Int) -> Int) -> Int {\n  let b = make_bag(x: x)\n  f(1)\n}\n",
     "src/estat_a.rs",
-    ["pub fn wrap<T: 'static>(x: T, f: impl Fn(i64) -> i64 + Clone)"],
-    ["pub fn wrap<T: 'static>(x: T, f: impl Fn(i64) -> i64 + Clone + 'static)"]
+    ["pub fn wrap<T: Clone + 'static>(x: T, f: impl Fn(i64) -> i64 + Clone) -> i64"],
+    ["f: impl Fn(i64) -> i64 + Clone + 'static"]
   )
 }
 
@@ -25,7 +25,16 @@ fn w_forwarded_fn_param_keeps_static_bound() -> Bool {
   compile_dag_rust_emit_check(
     "module estat_b\n\nimport std.types { Int }\n\ntype Bag {\n  run: fn(Int) -> Int\n}\n\nfn keep(g: fn(Int) -> Int) -> Bag {\n  Bag { run: n => g(n) }\n}\n\nfn pass(f: fn(Int) -> Int) -> Int {\n  let b = keep(g: f)\n  1\n}\n",
     "src/estat_b.rs",
-    ["pub fn pass(f: impl Fn(i64) -> i64 + Clone + 'static)"],
+    ["pub fn pass(f: impl Fn(i64) -> i64 + Clone + 'static) -> i64"],
+    ["pub fn pass(f: impl Fn(i64) -> i64 + Clone) -> i64"]
+  )
+}
+
+fn w_returned_record_fn_param_keeps_static_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module estat_b\n\nimport std.types { Int }\n\ntype Bag {\n  run: fn(Int) -> Int\n}\n\nfn keep(g: fn(Int) -> Int) -> Bag {\n  Bag { run: n => g(n) }\n}\n",
+    "src/estat_b.rs",
+    ["pub fn keep(g: impl Fn(i64) -> i64 + Clone + 'static) -> Rc<Bag>"],
     []
   )
 }
@@ -34,8 +43,8 @@ fn w_keyed_carrier_return_owes_no_static_bound() -> Bool {
   compile_dag_rust_emit_check(
     "module estat_c\n\nimport std.algebra { FinitelySupportedFunction }\n\nfn same_map<K, V>(m: FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V> {\n  m\n}\n",
     "src/estat_c.rs",
-    ["pub fn same_map<K"],
-    ["K: 'static", "V: 'static"]
+    ["pub fn same_map<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(m: Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>>"],
+    ["+ 'static"]
   )
 }
 
@@ -45,6 +54,10 @@ test fn unforwarded_fn_param_carries_no_static_bound_when_a_type_param_does() ->
 
 test fn forwarded_fn_param_keeps_its_static_bound() -> Bool {
   w_forwarded_fn_param_keeps_static_bound()
+}
+
+test fn returned_record_fn_param_keeps_its_static_bound() -> Bool {
+  w_returned_record_fn_param_keeps_static_bound()
 }
 
 test fn keyed_carrier_return_owes_no_static_bound() -> Bool {
