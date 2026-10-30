@@ -492,16 +492,19 @@ fn dd_overwrite_path_command(path: String) -> ArgvCommand {
   argv_command(program: dd_program(), arguments: [concat("of=", path), "status=none"])
 }
 
-// dd(1) conv=excl -- GNU coreutils manual, "dd invocation", conversion list: "excl: Fail if the output
-// file already exists; dd must create the output file itself." (It is a conv, NOT an oflag: dd rejects
-// oflag=excl as an invalid output flag.) It is open(2) with O_CREAT|O_EXCL, so the existence test and
-// the creation are one act (see gunbc.filesystem_create_new_admission for why that cannot be composed
-// from a check and a write). The floor this repository relies on is min_coreutils_version (>= 8.0)
-// above; behavior measured on coreutils 9.7. Distinct from dd_overwrite_path_command by one word, and
-// the distinction is the fact: the overwrite builder truncates an existing PATH, this one refuses it
-// and leaves its bytes untouched. Payload is stdin.
-fn dd_create_new_path_command(path: String) -> ArgvCommand {
-  argv_command(program: dd_program(), arguments: [concat("of=", path), "conv=excl", "status=none"])
+// dd(1) conv=fsync -- GNU coreutils manual, "dd invocation", conversion list: "fsync: Synchronize output
+// data and metadata just before finishing", so a zero exit means the staged bytes reached stable storage.
+// The target is a STAGING file this caller already created (mktemp_file_command), never a published name,
+// so truncating it is the point. Payload is stdin.
+fn dd_fsync_into_staging_command(path: String) -> ArgvCommand {
+  argv_command(program: dd_program(), arguments: [concat("of=", path), "conv=fsync", "status=none"])
+}
+
+// mktemp(1) WITHOUT -d creates one EMPTY regular file (mode 0600) with a name no other caller holds and
+// prints it (coreutils manual, "mktemp invocation"): the staging name is ALLOCATED by the host, not
+// calculated, the same rule extdeps.filesystem.rust_realization states for the local realization.
+fn mktemp_file_command(template: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: mktemp_program(), arguments: ["--", template as String])
 }
 
 // rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this

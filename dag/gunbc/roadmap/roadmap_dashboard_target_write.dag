@@ -2,31 +2,58 @@ module gunbc.roadmap.roadmap_dashboard_target_write
 
 import std.optional { Present }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
-import extdeps.exec.command { argv_words }
-import extdeps.tools.gnu_coreutils { dd_create_new_path_command }
+import std.algebra { trim }
+import std.filesystem { path_parent_directory }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.tools.gnu_coreutils {
+  mktemp_file_command,
+  dd_fsync_into_staging_command,
+  ln_hard_command,
+  rm_force_command,
+}
 import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_target_run,
+  DashboardTargetRan,
+  DashboardTargetRunMode,
+  TargetExec,
   TargetExecWithStdin,
   TargetRan,
   TargetNotRun,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 
-// THE CREATE-ONLY WRITE OF GIVEN BYTES ON A DASHBOARD INSTANCE'S TARGET HOST. This is the CommandHost
-// realization of the Filesystem.WriteCreateNew effect contract (create-only, never overwrites, refuses
-// when the path exists), NOT a second route beside it: Filesystem has no target transport, and the
-// target host is reached only through typed argv. The contract is realized as ONE modelled argv --
-// extdeps.tools.gnu_coreutils dd_create_new_path_command -- with the payload on stdin, so no byte of it
-// is ever shell-parsed or an argv element. Declared frontier (DESIGN §3c): its consumer is #15413 B1 (DashboardMoveAttemptStateEntries), which will call it in place of its inline sh create-only step (that inline lives on #15413's branch, not main); trigger = this module landing on main.
+// THE COMPLETE-OR-ABSENT CREATE-ONLY WRITE OF GIVEN BYTES ON A DASHBOARD INSTANCE'S TARGET HOST. This is
+// the CommandHost realization of the Filesystem.WriteCreateNew effect contract, NOT a second route beside
+// it: Filesystem has no target transport, and the target host is reached only through typed argv. It has
+// the local realization's shape (extdeps.filesystem.rust_realization: stage under an ALLOCATED name in the
+// target's own directory, publish with one link(2), remove the staging name on every arm), expressed as
+// four modelled argvs:
+//   1. mktemp   -- allocates the staging file beside the target (same filesystem, so the link cannot be
+//                  cross-device);
+//   2. dd conv=fsync -- the payload as stdin into the staging file, synced before it exits;
+//   3. ln       -- hard-links the staging name to the target. ln without -f REFUSES an existing target, so
+//                  the existence test and the publication are one act, and the target name appears with
+//                  all its bytes or not at all: a killed or failed write leaves only the staging name;
+//   4. rm -f    -- removes the staging name on every arm, success included.
+// The payload crosses only as stdin, so no byte of it is shell-parsed or an argv element.
+//
+// DECLARED FRONTIER (DESIGN §3c), enrolled as dashboard_target_write_consumer_frontier_rows: the consumer
+// is #15413 B1, DashboardMoveAttemptStateEntries, which replaces its inline `sh -c 'set -C; printf ...'`
+// with this function. That inline is on #15413's branch, not main.
 //
 // The transport dispatch is gunbc.roadmap.roadmap_dashboard_instance_observe dashboard_target_run, the one
-// dispatch shared with dashboard_target_exec and dashboard_target_probe; this module adds only the
-// create-only argv and the outcome.
+// dispatch shared with dashboard_target_exec and dashboard_target_probe. The outcome is decided INLINE in
+// dashboard_target_write_create_new, beside the runs it reads: there is no exported fold from an exit code
+// to CreateNewWritten, because one would let any module mint "written" for a write that never ran.
 //
-// THE REFUSAL IS UNCLASSIFIED ON PURPOSE. dd's exit status cannot separate "already exists" from
-// "permission denied", and matching stderr text or probing after the fact would be a heuristic in place
-// of an observation. A caller MUST treat CreateNewRefused and CreateNewNotDispatched as a refusal and
-// never as success; in particular nothing may be removed on the strength of a write that did not land.
+// THE REFUSAL IS UNCLASSIFIED ON PURPOSE. ln's exit status cannot separate "target exists" from
+// "permission denied", and matching stderr text or probing after the fact would be a heuristic in place of
+// an observation. A caller MUST treat every arm but CreateNewWritten as a refusal and never as success; in
+// particular nothing may be removed on the strength of a write that did not land. CreateNewStagingResidue
+// reports a staging file that could not be removed and says whether the target landed.
 //
 // FOLLOW-UPS (same gap, not covered here): Filesystem.WriteCreateNewWithMode, LinkCreateNew, Write and
 // WriteOwnerOnly have no target-host realization either.
@@ -34,16 +61,23 @@ type DashboardCreateNewOutcome
   = CreateNewWritten
   | CreateNewRefused { exit_code: Int, stderr: String }
   | CreateNewNotDispatched { reason: String }
+  | CreateNewStagingResidue { stage: String, landed: Bool, stderr: String }
 
-fn dashboard_create_new_argv(path: String) -> List<String> {
-  argv_words(command: dd_create_new_path_command(path: path))
-}
+data dashboard_target_write_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_dashboard_target_write", decl_name: "dashboard_target_write_create_new"),
+    reason: "no production caller on main: the consumer is #15413 B1, DashboardMoveAttemptStateEntries (gunbc.roadmap.roadmap_dashboard_instance_apply), which writes each moved attempt-state entry as a create-only hold slot through this function instead of its inline sh redirect",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_layout_move", decl_name: "move_plan"))
+  )
+]
 
-fn dashboard_create_new_outcome(exit_code: Int, stderr: String) -> DashboardCreateNewOutcome {
-  if exit_code == 0 {
-    CreateNewWritten
-  } else {
-    CreateNewRefused { exit_code: exit_code, stderr: stderr }
+// One argv, one dispatch. Not a mint of any outcome: it only runs a modelled command on the target.
+fn dashboard_target_run_command(instance: HostDashboardInstance, command: ArgvCommand, mode: DashboardTargetRunMode) -> DashboardTargetRan {
+  let argv = argv_words(command: command)
+  match first(argv) {
+    Absent => TargetNotRun { reason: "a modelled command projected to no argv" }
+    Present { value: program } =>
+      dashboard_target_run(instance: instance, program: program as FilePath, args: argv |> skip(n: 1), mode: mode)
   }
 }
 
@@ -52,22 +86,55 @@ fn dashboard_target_write_create_new(
   path: FilePath,
   content: String,
 ) -> DashboardCreateNewOutcome {
-  let argv = dashboard_create_new_argv(path: path as String)
   if !starts_with(s: path as String, prefix: "/") {
     CreateNewNotDispatched { reason: "the create-new path is not absolute; the stdin leg has no instance workdir" }
   } else {
-    match first(argv) {
-      Absent => CreateNewNotDispatched { reason: "the create-new command projected to no argv" }
-      Present { value: program } =>
-        match dashboard_target_run(
-          instance: instance,
-          program: program as FilePath,
-          args: argv |> skip(n: 1),
-          mode: TargetExecWithStdin { payload: content },
-        ) {
-          TargetRan { exit_code, success: _, stdout: _, stderr } =>
-            dashboard_create_new_outcome(exit_code: exit_code, stderr: stderr)
-          TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
+    let template = join([path_parent_directory(path: path as String), "/.gunbc-create-XXXXXX"], "") as NonEmptyStr
+    match dashboard_target_run_command(instance: instance, command: mktemp_file_command(template: template), mode: TargetExec) {
+      TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
+      TargetRan { exit_code: allocated, success: _, stdout: allocated_out, stderr: allocated_err } =>
+        if allocated != 0 {
+          CreateNewRefused { exit_code: allocated, stderr: allocated_err }
+        } else {
+          let stage = trim(s: allocated_out)
+          if !starts_with(s: stage, prefix: "/") {
+            CreateNewNotDispatched { reason: "mktemp reported no absolute staging path; nothing was staged" }
+          } else {
+          let staged = match dashboard_target_run_command(
+            instance: instance,
+            command: dd_fsync_into_staging_command(path: stage),
+            mode: TargetExecWithStdin { payload: content },
+          ) {
+            TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
+            TargetRan { exit_code: wrote, success: _, stdout: _, stderr: wrote_err } =>
+              if wrote != 0 {
+                CreateNewRefused { exit_code: wrote, stderr: wrote_err }
+              } else {
+                match dashboard_target_run_command(
+                  instance: instance,
+                  command: ln_hard_command(source: stage, destination: path as String),
+                  mode: TargetExec,
+                ) {
+                  TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
+                  TargetRan { exit_code: linked, success: _, stdout: _, stderr: linked_err } =>
+                    if linked == 0 {
+                      CreateNewWritten
+                    } else {
+                      CreateNewRefused { exit_code: linked, stderr: linked_err }
+                    }
+                }
+              }
+          }
+          match dashboard_target_run_command(instance: instance, command: rm_force_command(path: stage), mode: TargetExec) {
+            TargetNotRun { reason } => CreateNewStagingResidue { stage: stage, landed: staged == CreateNewWritten, stderr: reason }
+            TargetRan { exit_code: removed, success: _, stdout: _, stderr: removed_err } =>
+              if removed == 0 {
+                staged
+              } else {
+                CreateNewStagingResidue { stage: stage, landed: staged == CreateNewWritten, stderr: removed_err }
+              }
+          }
+          }
         }
     }
   }
