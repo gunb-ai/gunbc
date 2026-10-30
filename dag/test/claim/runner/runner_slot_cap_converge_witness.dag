@@ -1,8 +1,9 @@
 module test.claim.runner.runner_slot_cap_converge_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.tools.grep { grep_files_with_fixed_strings_argv }
 import std.optional { Absent, Present }
-import std.algebra { string_contains, non_empty_singleton, non_empty_to_list }
+import std.algebra { string_contains, non_empty_singleton, non_empty_to_list, FreeSemigroup }
 import std.measure { byte_size_count, hardware_thread_count }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
@@ -25,9 +26,11 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotCapUnitStanding,
   HostCapPlan,
   HostCapsLeaveInPlace,
+  HostCapsWriteInPlace,
   HostCapsDrainWriteRestart,
   HostCapsWithheld,
   host_cap_plan,
+  CapFilesState,
   CapFilesSettled,
   CapFilesDiffer,
   CapFilesUnreadable,
@@ -56,6 +59,15 @@ import gunbc.runner.runner_slot_cap_converge {
   slot_cap_holder_deferral_bound,
 }
 import gunbc.runner.runner_host_file_converge {
+  DropinOverrideReading,
+  DropinsNoLaterSetter,
+  DropinsLaterSetter,
+  DropinsUnread,
+  dropin_setting_keys,
+  dropins_that_could_override,
+  parse_loaded_dropin_paths,
+  classify_dropin_override,
+  cap_in_place_readback_outcome,
   runner_host_cap_files,
   runner_host_cap_retirement_gate,
   runner_host_cap_gate_cause,
@@ -139,9 +151,11 @@ fn standing_of(u: NonEmptyStr, live: SlotCapLive) -> SlotCapUnitStanding {
 }
 
 
-fn plan_drains(p: HostCapPlan) -> Bool { match p { HostCapsDrainWriteRestart => true HostCapsLeaveInPlace => false HostCapsWithheld { cause: _ } => false } }
-fn plan_leaves(p: HostCapPlan) -> Bool { match p { HostCapsLeaveInPlace => true HostCapsDrainWriteRestart => false HostCapsWithheld { cause: _ } => false } }
-fn plan_withheld_naming(p: HostCapPlan, needle: String) -> Bool { match p { HostCapsWithheld { cause: c } => string_contains(s: c, pattern: needle) HostCapsLeaveInPlace => false HostCapsDrainWriteRestart => false } }
+fn plan_drains(p: HostCapPlan) -> Bool { match p { HostCapsDrainWriteRestart => true HostCapsLeaveInPlace => false HostCapsWriteInPlace { paths: _ } => false HostCapsWithheld { cause: _ } => false } }
+fn plan_leaves(p: HostCapPlan) -> Bool { match p { HostCapsLeaveInPlace => true HostCapsDrainWriteRestart => false HostCapsWriteInPlace { paths: _ } => false HostCapsWithheld { cause: _ } => false } }
+fn plan_withheld_naming(p: HostCapPlan, needle: String) -> Bool { match p { HostCapsWithheld { cause: c } => string_contains(s: c, pattern: needle) HostCapsLeaveInPlace => false HostCapsDrainWriteRestart => false HostCapsWriteInPlace { paths: _ } => false } }
+fn plan_writes_in_place_naming(p: HostCapPlan, path: String) -> Bool { match p { HostCapsWriteInPlace { paths: ps } => any(non_empty_to_list(xs: ps), x => (x as String) == path) HostCapsLeaveInPlace => false HostCapsDrainWriteRestart => false HostCapsWithheld { cause: _ } => false } }
+fn differ_20() -> FreeSemigroup<NonEmptyStr> { non_empty_singleton(item: "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf" as NonEmptyStr) }
 
 // RED: a differing cap on an all-idle host plans the drain-bracketed write (drain, write, reload,
 // activate, read back), never a bare restart.
@@ -226,7 +240,7 @@ fn one_at() -> List<SlotCapUnitStanding> { [standing_of(u: unit(n: "01"), live: 
 // reload too, and this route never drains or activates it, so a needed bracket withholds, naming it.
 test fn an_extra_loaded_instance_withholds_the_host() -> Bool {
   plan_withheld_naming(p: host_cap_plan(standings: one_old(), files: CapFilesSettled, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
-    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: [unit(n: "99")]), needle: "actions-runner@srv3-99.service")
 }
 
 // RED (review, 1): a withheld cap phase is what bars the later reload sites.
@@ -235,8 +249,10 @@ test fn a_withheld_cap_phase_bars_the_reload() -> Bool {
 }
 
 // RED (review, 3): live caps matching does not settle a missing, stale or wrong-mode cap file.
+// Since the in-place arm (2026-10-29): with every live cap already at desired, the differing file is
+// written in place, named, rather than drained for; it is still never left in place.
 test fn matching_live_caps_do_not_settle_a_differing_cap_file() -> Bool {
-  plan_drains(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: []))
+  plan_writes_in_place_naming(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: []), path: "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf")
     && plan_leaves(p: host_cap_plan(standings: one_at(), files: CapFilesSettled, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: []))
 }
 
@@ -335,8 +351,8 @@ test fn the_typed_steps_render_the_actuators_argv() -> Bool {
 // the four managed files, so "nothing differs" cannot vouch for it: the ordinary reload would load it
 // onto a busy slot with no drain.
 test fn a_pending_unit_file_change_always_withholds() -> Bool {
-  plan_withheld_naming(p: host_cap_plan(standings: one_old(), files: CapFilesDiffer, pending_reloads: owed_01(), retirement_cause: none, extras: []), needle: "pending reload")
-    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer, pending_reloads: owed_01(), retirement_cause: none, extras: []), needle: "pending reload")
+  plan_withheld_naming(p: host_cap_plan(standings: one_old(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: owed_01(), retirement_cause: none, extras: []), needle: "pending reload")
+    && plan_withheld_naming(p: host_cap_plan(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: owed_01(), retirement_cause: none, extras: []), needle: "pending reload")
     && plan_withheld_naming(p: host_cap_plan(standings: one_at(), files: CapFilesSettled, pending_reloads: owed_01(), retirement_cause: none, extras: []), needle: "pending reload")
 }
 
@@ -545,7 +561,7 @@ fn extras_population_with(extra_show: String, as_fabric: Bool) -> RunnerSlotPopu
 fn extras_plan_for(extra_show: String) -> HostCapPlan { extras_plan_with(extra_show: extra_show, as_fabric: true) }
 fn extras_plan_with(extra_show: String, as_fabric: Bool) -> HostCapPlan {
   let pop = extras_population_with(extra_show: extra_show, as_fabric: as_fabric)
-  host_cap_plan(standings: one_old(), files: CapFilesDiffer, pending_reloads: runner_host_cap_pending_reloads(population: pop, bracket_units: [unit(n: "01")]), retirement_cause: none, extras: runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: pop))
+  host_cap_plan(standings: one_old(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: runner_host_cap_pending_reloads(population: pop, bracket_units: [unit(n: "01")]), retirement_cause: none, extras: runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: pop))
 }
 
 // Positive: the inert masked extra is no hazard in ANY arm -- the caps proceed to the bracket.
@@ -801,4 +817,92 @@ test fn an_unreadable_ledger_refuses_instead_of_deferring_forever() -> Bool {
         && string_contains(s: why, pattern: "resets the ledger")
     _ => false
   }
+}
+
+// ── THE IN-PLACE ARM (parent decision of 2026-10-29), FROM THE L2 RUN 40922121143 SHAPE ────────────────
+// Every live cap at desired, one managed file (50-fleet-tasks.conf) absent, and the only pending unit the
+// inert deploy slot. `files` and `standings` vary the one fact each case turns on.
+fn deploy_slot_plan_files(standings: List<SlotCapUnitStanding>, files: CapFilesState, inert_show: String, running_reload: String, retirement_cause: String?) -> HostCapPlan {
+  let x = "actions-runner@srv3-06.service" as NonEmptyStr
+  host_cap_plan(standings: standings, files: files, pending_reloads: runner_host_cap_pending_reloads(population: deploy_slot_population(inert_show: inert_show, running_reload: running_reload), bracket_units: [unit(n: "01"), x]), retirement_cause: retirement_cause, extras: [])
+}
+fn inert_masked() -> String { masked_show(load: "masked", active: "inactive", cgroup: "") }
+fn tasks_dropin() -> String { "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf" }
+
+// Positive: only a managed file differs and every live cap reads at desired -> written in place, named,
+// with the inert deploy slot's pending reload no bar (the write drains and activates nothing).
+test fn a_differing_cap_file_over_live_caps_at_desired_is_written_in_place() -> Bool {
+  plan_writes_in_place_naming(p: deploy_slot_plan_files(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, inert_show: inert_masked(), running_reload: "no", retirement_cause: none), path: tasks_dropin())
+}
+
+// RED: a live cap VALUE differs -> never in place. With the inert pending unit it withholds, and the
+// cause names the differing file and the differing unit's reading; with nothing pending it drains.
+test fn a_differing_live_cap_value_is_never_written_in_place() -> Bool {
+  let p = deploy_slot_plan_files(standings: one_old(), files: CapFilesDiffer { paths: differ_20() }, inert_show: inert_masked(), running_reload: "no", retirement_cause: none)
+  plan_withheld_naming(p: p, needle: "reload=owed-inert")
+    && plan_withheld_naming(p: p, needle: concat("file ", tasks_dropin()))
+    && plan_withheld_naming(p: p, needle: "actions-runner@srv3-01.service: cgroup memory.max=")
+    && plan_drains(p: host_cap_plan(standings: one_old(), files: CapFilesDiffer { paths: differ_20() }, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: []))
+}
+
+// RED: a running slot owing a reload withholds the in-place write too.
+test fn a_running_slot_pending_withholds_the_in_place_write() -> Bool {
+  plan_withheld_naming(p: deploy_slot_plan_files(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, inert_show: inert_masked(), running_reload: "yes", retirement_cause: none), needle: "actions-runner@srv3-01.service reload=owed (")
+}
+
+// RED: an incomplete retiree (its caps unread) withholds the in-place write, naming the differing file.
+test fn an_incomplete_retiree_withholds_the_in_place_write() -> Bool {
+  let p = deploy_slot_plan_files(standings: one_at(), files: CapFilesDiffer { paths: differ_20() }, inert_show: inert_masked(), running_reload: "no", retirement_cause: Present { value: "surplus slots have not retired: 05" })
+  plan_withheld_naming(p: p, needle: "surplus slots have not retired: 05") && plan_withheld_naming(p: p, needle: concat("file ", tasks_dropin()))
+}
+
+// THE OVERRIDE READ'S PURE HALVES, over srv1's real loaded drop-ins (read 2026-10-29).
+fn srv1_loaded() -> List<String> {
+  ["/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf", "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf", "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf", "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf", "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf", "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf", "/etc/systemd/system/actions-runner@.service.d/depriv.conf", "/etc/systemd/system/actions-runner@srv1-02.service.d/20-slot-role.conf", "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"]
+}
+
+// The candidates are the distinct loaded files sorting at or after 50-fleet-tasks.conf, and an equal name
+// in an instance directory (which replaces the template's file) is one; earlier names are not.
+test fn the_later_sorting_dropins_are_the_override_candidates() -> Bool {
+  let got = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: srv1_loaded(), exempt: []), c => c as String)
+  let shadow = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf", "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf"], exempt: []), c => c as String)
+  got == ["/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf", "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf", "/etc/systemd/system/actions-runner@.service.d/depriv.conf"]
+    && shadow == ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf"]
+}
+
+// The keys searched are the write's own `Key=` lines, from the content this converge renders.
+test fn the_override_keys_are_the_written_files_own_settings() -> Bool {
+  map(dropin_setting_keys(content: "[Service]\nTasksMax=16384\n"), k => k as String) == ["TasksMax="]
+    && map(dropin_setting_keys(content: "# MemoryMax=1\n[Service]\nMemoryHigh=2\n"), k => k as String) == ["MemoryHigh="]
+    && grep_files_with_fixed_strings_argv(patterns: ["TasksMax=" as NonEmptyStr], paths: ["/x/60.conf" as NonEmptyStr]) == ["grep", "-l", "-F", "-e", "TasksMax=", "--", "/x/60.conf"]
+}
+
+fn override_is_none(r: DropinOverrideReading) -> Bool { match r { DropinsNoLaterSetter => true DropinsLaterSetter { files: _ } => false DropinsUnread { cause: _ } => false } }
+fn override_names(r: DropinOverrideReading, path: String) -> Bool { match r { DropinsLaterSetter { files: fs } => any(non_empty_to_list(xs: fs), f => (f as String) == path) DropinsNoLaterSetter => false DropinsUnread { cause: _ } => false } }
+fn override_unread(r: DropinOverrideReading) -> Bool { match r { DropinsUnread { cause: _ } => true DropinsNoLaterSetter => false DropinsLaterSetter { files: _ } => false } }
+
+// grep -l: exit 1 is no setter; exit 0 names the setter (RED); any other exit, or exit 0 naming nothing, is unread (RED).
+test fn the_override_grep_reads_three_ways() -> Bool {
+  let c = ["/x/60.conf" as NonEmptyStr]
+  override_is_none(r: classify_dropin_override(candidates: c, exit_code: 1, stdout: ""))
+    && override_names(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: "/x/60.conf\n"), path: "/x/60.conf")
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 2, stdout: ""))
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: ""))
+    && override_is_none(r: classify_dropin_override(candidates: [], exit_code: 2, stdout: ""))
+}
+
+// One DropInPaths line per unit, unioned; fewer lines than units is an incomplete read, not "no drop-ins".
+test fn the_loaded_dropins_are_read_per_unit_or_not_at_all() -> Bool {
+  let two = "DropInPaths=/a/10.conf /a/60.conf\nDropInPaths=/a/10.conf /b/20-slot-role.conf\n"
+  (match parse_loaded_dropin_paths(show_stdout: two, unit_count: 2) { Present { value: ps } => ps == ["/a/10.conf", "/a/60.conf", "/a/10.conf", "/b/20-slot-role.conf"] Absent => false })
+    && (match parse_loaded_dropin_paths(show_stdout: "DropInPaths=/a/10.conf\n", unit_count: 2) { Present { value: _ } => false Absent => true })
+    && (match parse_loaded_dropin_paths(show_stdout: "DropInPaths=\n", unit_count: 1) { Present { value: ps } => length(ps) == 0 Absent => false })
+}
+
+// The read-back after the in-place write: at desired or stopped-at-desired is left in place; anything else refuses by name.
+test fn the_in_place_readback_leaves_only_a_slot_read_at_desired() -> Bool {
+  let u = unit(n: "01")
+  (match cap_in_place_readback_outcome(x: SlotCapUnitStanding { unit: u, standing: SlotCapsAtDesired }) { SlotCapsLeftInPlace { unit: _ } => true _ => false })
+    && (match cap_in_place_readback_outcome(x: SlotCapUnitStanding { unit: u, standing: SlotCapsStopped }) { SlotCapsLeftInPlace { unit: _ } => true _ => false })
+    && (match cap_in_place_readback_outcome(x: SlotCapUnitStanding { unit: u, standing: SlotCapsNeedRestart { detail: "x" } }) { SlotCapsRefused { unit: _, step: st, reason: _ } => st == "in-place-readback" _ => false })
 }
