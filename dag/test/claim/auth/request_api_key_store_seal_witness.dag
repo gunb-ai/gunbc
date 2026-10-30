@@ -18,3 +18,15 @@ test fn a_foreign_literal_cannot_pair_other_keys_with_a_request_context() -> Pro
   census_exit(census_verdict(census: blocking_subject_census(source: source,
     wanted_class: "SoleConstructorViolation", wanted_subject: "RevisionRequestContext"), holds: fn(n) { n == 1 }))
 }
+
+test fn a_foreign_literal_cannot_select_a_staging_path() -> ProcessExit {
+  let source = "module probe_request_stage_literal\nimport gunbc.durable_handoff_host { HostRequestStaged }\nfn f(s: HostRequestStaged) -> HostRequestStaged { HostRequestStaged { root: s.root, identity: s.identity, payload: s.payload, directory: s.directory, path: s.path } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "HostRequestStaged"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_foreign_literal_cannot_mint_request_acceptance() -> ProcessExit {
+  let source = "module probe_request_acceptance_literal\nimport gunbc.durable_handoff_host { HostAcceptedRequest }\nfn f(s: HostAcceptedRequest) -> HostAcceptedRequest { HostAcceptedRequest { root: s.root, identity: s.identity, payload: s.payload } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "HostAcceptedRequest"), holds: fn(n) { n == 1 }))
+}

@@ -9,7 +9,7 @@ import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, CasCommitt
 import std.content_hash { content_hash_atom }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.durable_cas_file_store { observe_cas_slot_state, file_compare_and_set, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
-import gunbc.durable_handoff_host { host_request_user_read, host_request_user_key, host_request_identity_wire, host_request_wire, HostRequestPresent }
+import gunbc.durable_handoff_host { host_request_user_read, host_request_identity_wire, host_request_wire, HostRequestPresent }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -72,8 +72,7 @@ type RevisionRequestClaim sole_constructor {
 fn revision_request_claim(context: RevisionRequestContext, request: HostAcceptedRequest,
   worker: DurableHoldOwnerRef) -> Result<RevisionRequestClaim, String> {
   if (context.request_root != request.root) { return Err { value: "request claim belongs to another store" } }
-  let outstanding = host_request_user_read(root: request.root, principal: request.identity.principal,
-    observed: observe_cas_slot_state(root: request.root, key: host_request_user_key(principal: request.identity.principal)))
+  let outstanding = host_request_user_read(root: request.root, principal: request.identity.principal)
   match outstanding {
     HostRequestPresent { request: current } => {
       if (current.identity != request.identity || current.payload != request.payload) {
@@ -114,8 +113,7 @@ fn revision_request_claim_wire(request: HostAcceptedRequest, worker: DurableHold
 fn revision_request_claim_is_current(context: RevisionRequestContext,
   claim: RevisionRequestClaim) -> Result<Bool, String> {
   if (context.request_root != claim.request.root) { return Err { value: "request claim belongs to another store" } }
-  match host_request_user_read(root: claim.request.root, principal: claim.request.identity.principal,
-    observed: observe_cas_slot_state(root: claim.request.root, key: host_request_user_key(principal: claim.request.identity.principal))) {
+  match host_request_user_read(root: claim.request.root, principal: claim.request.identity.principal) {
     HostRequestPresent { request: current } => {
       if (current.identity != claim.request.identity || current.payload != claim.request.payload) {
         return Err { value: "request is no longer the user's outstanding responsibility" }

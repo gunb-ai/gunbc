@@ -1,6 +1,7 @@
 module gunbc.runner.runner_revision_request_context
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr, FilePath, List }
+import gunbc.durable_handoff_host { host_request_directory_members, host_request_child_path }
 import std.error_primitives { Result, Ok, Err }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
@@ -34,12 +35,26 @@ fn revision_request_context(tree: HostStateTree) -> Result<RevisionRequestContex
   }
 }
 
-fn revision_request_store_directory(tree: HostStateTree) -> ManagedDirectory {
+fn revision_request_directory(member: NonEmptyStr, path: FilePath) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
   ManagedDirectory {
-    member: revision_request_store_member, path: revision_request_store_path(tree: tree) as String as FilePath,
+    member: member, path: path,
     owner: service, group_principal: service,
     dependents: [DirectoryDependent { who: service, needs: [Read, Write, Execute] }],
     ownership: Ensured, entries: EntriesUnmanaged,
   }
+}
+
+fn revision_request_store_directory(tree: HostStateTree) -> ManagedDirectory {
+  revision_request_directory(member: revision_request_store_member,
+    path: revision_request_store_path(tree: tree) as String as FilePath)
+}
+
+// Install these siblings together. Only pending is watched; all stages, history,
+// results, done and stall records live outside that level-triggered population.
+fn revision_request_store_directories(tree: HostStateTree) -> List<ManagedDirectory> {
+  let root = revision_request_store_path(tree: tree)
+  concat([revision_request_store_directory(tree: tree)], host_request_directory_members().map(member =>
+    revision_request_directory(member: join([revision_request_store_member as String, "/", member as String], "") as NonEmptyStr,
+      path: host_request_child_path(root: root, member: member) as FilePath)))
 }

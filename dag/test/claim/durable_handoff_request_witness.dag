@@ -16,9 +16,15 @@ import product.fabric.identity { FabricIdentity, DemandKey }
 import gunbc.durable_handoff_rest { host_request_rest }
 import gunbc.durable_handoff_host {
   host_request_submit, host_request_observe, host_request_publish_reply, host_request_result,
-  host_request_path, host_request_reply_path,
+  host_request_path, host_request_reply_path, host_request_directories,
+  host_request_stage, host_request_publish_staged, host_request_pending_dir, host_request_pending_path,
+  host_request_history_observe, UserBusy,
   HostRequestAccepted, HostRequestPresent, HostRequestReplyPublished, HostRequestReplyConflict,
   HostRequestResultReady, HostRequestResultUnknown, HostRequestNotObserved,
+}
+
+fn request_fixture_prepare_root(root: NonEmptyStr) -> Bool {
+  host_request_directories(root: root).map(path => shell.Mkdir.Parents(path: path as FilePath).success).all(ok => ok)
 }
 
 fn payload(text: String) -> Result<NonEmptyStr, String> {
@@ -32,6 +38,7 @@ fn identity(principal: NonEmptyStr) -> FabricIdentity<NonEmptyStr, DemandKey> {
 // Same handler and same durable primitives as the service: no mock storage.
 test fn acceptance_is_idempotent_conflicts_refuse_and_principals_do_not_alias() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
   let duplicate = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
   let conflict = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "two", admit_payload: payload)
@@ -46,6 +53,7 @@ test fn acceptance_is_idempotent_conflicts_refuse_and_principals_do_not_alias() 
 
 test fn get_does_not_enqueue_and_rejection_is_distinct_from_storage_uncertainty() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let absent = host_request_rest(root: root, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
   let untouched = match host_request_observe(root: root, identity: identity(principal: "alice")) { HostRequestNotObserved => true _ => false }
   let invalid = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "", admit_payload: payload)
@@ -58,6 +66,7 @@ test fn get_does_not_enqueue_and_rejection_is_distinct_from_storage_uncertainty(
 
 test fn results_are_bound_to_the_accepted_request_and_never_overwritten() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let ok = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
     HostRequestAccepted { request: request } => {
       let published = match host_request_publish_reply(request: request, result: json_string(s: "failed")) { HostRequestReplyPublished => true _ => false }
@@ -111,6 +120,7 @@ fn request_fixture_submit_before_restart() -> Bool {
   match request_fixture_root() {
     Absent => false
     Present { value: root } => {
+      if !request_fixture_prepare_root(root: root) { return false }
       let reply = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "first-payload", admit_payload: payload)
       reply.status == 202
     }
@@ -137,6 +147,7 @@ fn request_fixture_read_after_restart() -> Bool {
 
 test fn another_request_of_the_same_user_is_busy_but_another_user_is_not() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
   let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
   let retry = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
@@ -147,6 +158,7 @@ test fn another_request_of_the_same_user_is_busy_but_another_user_is_not() -> Bo
 
 test fn a_published_result_alone_does_not_release_the_user_slot() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let held = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
     HostRequestAccepted { request: request } => {
       let result = host_request_publish_reply(request: request, result: json_string(s: "completed but cleanup pending"))
@@ -176,7 +188,7 @@ fn request_api_key_fixture_put_in(tree: HostStateTree, digest: NonEmptyStr,
 fn request_api_key_fixture_prepare_in(tree: HostStateTree) -> Bool {
   let keys = shell.Mkdir.Parents(path: request_api_key_store_path(tree: tree) as String as FilePath)
   let requests = shell.Mkdir.Parents(path: revision_request_store_path(tree: tree) as String as FilePath)
-  keys.success && requests.success
+  keys.success && requests.success && request_fixture_prepare_root(root: revision_request_store_path(tree: tree))
 }
 
 fn request_api_key_fixture_tree() -> HostStateTree? {
@@ -200,6 +212,7 @@ fn request_api_key_fixture_put(digest: NonEmptyStr, user: NonEmptyStr, state: No
 
 test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-keys.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let tree = isolated_host_state_tree(dir: root)
   let prepared = request_api_key_fixture_prepare_in(tree: tree)
   let a = match request_api_key_digest(authorization: "Bearer fixture-key-a") { Err { value: _ } => { return false } Ok { value: value } => value }
@@ -242,6 +255,7 @@ test fn a_verified_user_cannot_cross_key_store_placements() -> Bool {
 
 test fn unlisted_api_key_root_cannot_mint_a_store() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-unlisted.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
   let tree = isolated_host_state_tree(dir: root)
   let refused = match request_api_key_store(tree: tree) { Err { value: _ } => true _ => false }
   let prepared = request_api_key_fixture_prepare_in(tree: tree)
@@ -265,4 +279,57 @@ fn request_fixture_publish_named(principal: NonEmptyStr, request_id: NonEmptyStr
       _ => false
     }
   }
+}
+
+// The two producers have both finished staging before either competes for the
+// same principal name. An unwatched stage (including a crashed producer's stage)
+// is not acceptance and cannot make the path unit's pending level nonempty.
+test fn staging_is_not_acceptance_and_only_one_link_can_win() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-link.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let first_id = identity(principal: "alice")
+  let second_id = FabricIdentity { principal: "alice", key: "request-2" as NonEmptyStr as DemandKey }
+  let a = match host_request_stage(root: root, identity: first_id, payload: "first") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let b = match host_request_stage(root: root, identity: second_id, payload: "second") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let pending = Filesystem.List(path: host_request_pending_dir(root: root))
+  let not_accepted = host_request_observe(root: root, identity: first_id) == HostRequestNotObserved
+  let first = match host_request_publish_staged(stage: a) {
+    HostRequestAccepted { request: request } => request.identity == first_id && request.payload == "first"
+    _ => false
+  }
+  let second = host_request_publish_staged(stage: b) == UserBusy { existing_request: first_id.key }
+  let retry = match host_request_submit(root: root, identity: first_id, payload: "first") {
+    HostRequestAccepted { request: _ } => true _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  pending.success && pending.entries == "" && not_accepted && first && second && retry && removed.success
+}
+
+// Crash cut: link has committed acceptance, but neither immutable history nor
+// stage cleanup has happened. A later process's same-id retry repairs history.
+test fn acceptance_before_history_is_recovered_from_pending() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-crash.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let id = identity(principal: "alice")
+  let staged = match host_request_stage(root: root, identity: id, payload: "retained") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let linked = Filesystem.LinkCreateNew(source: staged.path as String,
+    path: host_request_pending_path(root: root, principal: id.principal))
+  let history_absent = host_request_history_observe(root: root, identity: id) == HostRequestNotObserved
+  let observed = match host_request_observe(root: root, identity: id) {
+    HostRequestPresent { request: request } => request.payload == "retained" _ => false
+  }
+  let retry = match host_request_submit(root: root, identity: id, payload: "retained") {
+    HostRequestAccepted { request: _ } => true _ => false
+  }
+  let repaired = match host_request_history_observe(root: root, identity: id) {
+    HostRequestPresent { request: request } => request.payload == "retained" _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  linked.success && history_absent && observed && retry && repaired && removed.success
 }
