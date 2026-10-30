@@ -9,7 +9,7 @@ import std.content_hash { sha256_hex_digest }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
 import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
 import gunbc.durable_cas_file_store { slot_observe }
-import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, file_hold_release_assess, file_hold_release_commit, FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, file_hold_release_assess, file_hold_release_commit, FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.print_request { PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name }
@@ -19,7 +19,7 @@ import gunbc.fleet.printer_actuation { printer_start_claims, PrinterStartClaimsR
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready, printer_execution_hold_path, hold_key }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready, cassette_inventory_path, inventory_slot }
 import gunbc.fleet.printer_state_layout { printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
-import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environment_publication, CadEnvironmentPublished, cad_environment_prefix, cad_environment_ready_marker }
+import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environment_publication, CadEnvironmentPublished, CadEnvironmentNotBuilt, CadEnvironmentUnpublished, CadEnvironmentMarkerWrong, CadEnvironmentStoreUnreadable, cad_environment_prefix, cad_environment_ready_marker }
 import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_text }
 
 // OLD BYTES READ THROUGH THE NEW STORES, over a throwaway host-state tree. Files are planted with raw writes in the
@@ -144,7 +144,12 @@ test fn o_an_old_hold_generation_is_acquired_over_through_the_hold_store() -> Bo
       let who = "old-controller" as NonEmptyStr
       let old_released = match file_hold_acquire(root: printer_starts_path(tree: tree), slot_key: hold_key, requested_owner: who as DurableHoldOwnerRef) {
         FileHoldAcquired { slot_key: _, owner: o, generation: g } => match file_hold_release_assess(root: printer_starts_path(tree: tree), slot_key: hold_key, owner: o, acquired_generation: g, released_by: who as DurableHoldReleaseRef) {
-          FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) { FileHoldReleased { slot_key: _, generation: _ } => true _ => false }
+          FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => true
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+          }
           FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
         }
         FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
@@ -156,9 +161,14 @@ test fn o_an_old_hold_generation_is_acquired_over_through_the_hold_store() -> Bo
       let ok = moved(tree: tree)
       let reacquired = match file_hold_acquire(root: printer_execution_hold_path(tree: tree), slot_key: hold_key, requested_owner: "new-controller" as NonEmptyStr as DurableHoldOwnerRef) {
         FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
-        _ => false
+        FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
+        FileHoldAcquireLost { slot_key: _ } => false
+        FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => false
+        FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
+        FileHoldKeyNotSlotAddressable { slot_key: _ } => false
       }
-      old_released && ok && reacquired
+      let mint = match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: _ } => true PrinterExecutionHoldStoreUnready { detail: _ } => false }
+      old_released && ok && reacquired && mint
     }
   }
 }
@@ -192,7 +202,13 @@ test fn o_an_old_cad_ready_marker_is_published_through_the_cad_store() -> Bool {
       CadRuntimeStoreReady { store: store } => {
         let prefix = cad_environment_prefix(store: store, spec: cad_runtime_spec)
         let planted = shell.Mkdir.Parents(path: prefix as FilePath).success && Filesystem.WriteCreateNew(path: join([prefix, "/", cad_environment_ready_marker], ""), content: cad_runtime_spec_text(spec: cad_runtime_spec)).success
-        planted && match cad_environment_publication(store: store, spec: cad_runtime_spec) { CadEnvironmentPublished => true _ => false }
+        planted && match cad_environment_publication(store: store, spec: cad_runtime_spec) {
+          CadEnvironmentPublished => true
+          CadEnvironmentNotBuilt => false
+          CadEnvironmentUnpublished { prefix: _ } => false
+          CadEnvironmentMarkerWrong { prefix: _ } => false
+          CadEnvironmentStoreUnreadable { reason: _ } => false
+        }
       }
     }
   }
