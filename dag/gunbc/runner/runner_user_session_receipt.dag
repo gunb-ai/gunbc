@@ -114,11 +114,13 @@ data runner_user_session_converge_mode_wire: String = "runner_user_session_conve
 // WHICH PRODUCER RUN'S ARTIFACT TO READ, AS A FOLD OVER A LISTING THE CALLER OBSERVED. The query shape is
 // extdeps.github.workflow_runs ListWorkflowRuns; the POLICY is here, beside the receipt it serves: the run
 // must be a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
-// gunbc.fleet.fleet_converge_run_name), it must have completed with conclusion success, and of those the
-// NEWEST by created_at wins. A run that failed still uploads its receipt, but a failed converge is not the
+// gunbc.fleet.fleet_converge_run_name), it must have completed with conclusion success, it must have run on the
+// repository's DEFAULT BRANCH (gunbc.repository gunbc_repository default_branch: the title is built from dispatch
+// inputs only, so a branch-dispatched run of unreviewed workflow code could otherwise upload a receipt that
+// grants -- review 89001), and of those the NEWEST by created_at wins. A run that failed still uploads its receipt, but a failed converge is not the
 // evidence the label spends, so it is not selectable. Selection is not freshness: the winner's own
-// probed_at is still aged by runner_user_session_converge_receipt_staleness at the gate, so a wrong pick can
-// only refuse, never grant. Nothing qualifying is a TYPED refusal, which the read maps to ReceiptAbsent --
+// probed_at is still aged by runner_user_session_converge_receipt_staleness at the gate. Provenance is the
+// qualification above (mode, host, success, default branch); freshness is the gate; neither implies the other. Nothing qualifying is a TYPED refusal, which the read maps to ReceiptAbsent --
 // the label stays off.
 type RunnerUserSessionProducerRunSelection
   = ProducerRunSelected { run: GitHubWorkflowRunId, created_at: Timestamp }
@@ -135,7 +137,11 @@ fn runner_user_session_producer_run_qualifies(run: WorkflowRun, host: String) ->
     Absent => false
   }
   let completed = match run.status { Completed => true  _ => false }
-  titled && succeeded && completed
+  let on_default_branch = match run.head_branch {
+    Present { value: b } => b == gunbc_repository.default_branch
+    Absent => false
+  }
+  titled && succeeded && completed && on_default_branch
 }
 
 fn runner_user_session_producer_run_select(runs: List<WorkflowRun>, host: String) -> RunnerUserSessionProducerRunSelection {

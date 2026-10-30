@@ -716,13 +716,17 @@ test fn the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
 // THE PRODUCER-RUN FIXTURES: a run is data the listing returns, supplied at the boundary the selection fold
 // reads; title, status, conclusion and created_at are the only fields the fold judges.
 fn producer_run(id: Int, title: String, completed: Bool, conclusion: Optional<Bool>, created_at: String) -> WorkflowRun {
+  producer_run_on(id: id, title: title, completed: completed, conclusion: conclusion, created_at: created_at, branch: "main")
+}
+
+fn producer_run_on(id: Int, title: String, completed: Bool, conclusion: Optional<Bool>, created_at: String, branch: String) -> WorkflowRun {
   WorkflowRun {
     id: id,
     name: Absent,
     display_title: Present { value: title },
     path: Absent,
     head_sha: "1111111111111111111111111111111111111111" as CommitSha,
-    head_branch: Absent,
+    head_branch: Present { value: branch },
     event: "workflow_dispatch",
     status: if completed { Completed } else { InProgress },
     conclusion: match conclusion {
@@ -908,6 +912,24 @@ fn capped_is_unjudged_with_no_replace(cause: String) -> Bool {
   }
 }
 
+// A RUN FROM A BRANCH IS NOT PROVENANCE (review 89001): an otherwise-qualifying run (right title, completed, success,
+// newest) on a non-default branch -- or with no branch recorded -- is never selected, so an older default-branch run wins
+// and, with none, the selection is ProducerRunNone. RED control: drop the default-branch qualification and the
+// branch arms go red.
+test fn a_branch_dispatched_run_is_never_the_producer() -> Bool {
+  let title = user_session_title(host: "srv4", nonce: "nb")
+  let branch_run = producer_run_on(id: 7, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T05:00:00Z", branch: "evil-branch")
+  let main_run = producer_run_on(id: 5, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z", branch: "main")
+  match runner_user_session_producer_run_select(runs: [branch_run, main_run], host: "srv4") {
+    ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "5"
+    ProducerRunNone { cause: _ } => false
+  }
+    && match runner_user_session_producer_run_select(runs: [branch_run], host: "srv4") {
+      ProducerRunNone { cause: _ } => true
+      ProducerRunSelected { run: _, created_at: _ } => false
+    }
+}
+
 // THE CONTROL CENSUS, IN THE ORDER THE FOLD READS THEM. Each control above answers Bool (the claim lane's
 // shape); this vocabulary names them so the fold below can carry the FIRST failing control's name into
 // the refusal -- DESIGN 5: every path fails with a typed, located diagnostic, so a red receipt says where
@@ -930,6 +952,7 @@ type WitnessControl
   | SlotGrainStep
   | ConsumerSelectorStep
   | PageSearchStep
+  | BranchRunStep
 
 fn witness_control_order() -> List<WitnessControl> {
   [
@@ -943,6 +966,7 @@ fn witness_control_order() -> List<WitnessControl> {
     SlotGrainStep,
     ConsumerSelectorStep,
     PageSearchStep,
+    BranchRunStep,
   ]
 }
 
@@ -962,6 +986,7 @@ fn witness_control_name(step: WitnessControl) -> String {
     SlotGrainStep => "the_slot_readback_expects_the_label_exactly_when_the_receipt_grants_it"
     ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else"
     PageSearchStep => "a_full_page_without_a_qualifying_run_does_not_establish_absence"
+    BranchRunStep => "a_branch_dispatched_run_is_never_the_producer"
   }
 }
 
@@ -981,6 +1006,7 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
     SlotGrainStep => the_slot_readback_expects_the_label_exactly_when_the_receipt_grants_it()
     ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_evidence_and_by_nothing_else()
     PageSearchStep => a_full_page_without_a_qualifying_run_does_not_establish_absence()
+    BranchRunStep => a_branch_dispatched_run_is_never_the_producer()
   }
 }
 
