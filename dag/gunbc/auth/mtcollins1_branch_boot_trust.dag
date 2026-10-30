@@ -83,11 +83,16 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 // WHAT IT WIDENS, SAID PLAINLY (the PR body says it in these terms): anyone who can push to a rostered
 // branch of gunb-ai/gunbc can drive mtcollins1's BMC -- power-cycle it and mount its virtual CD -- with
 // no per-run approval. The gate is the roster; the ability to push is the credential. It is confined to
-// this host and this mode; the unit maintenance hold still stops a boot on a held unit from any ref; and
-// what the account may read are the SAME pinned versions the admitted boot federation declares (the
-// BMC's published cd_version, and the fleet automation key's version) -- that key is the fleet operator
-// key which a BMC-only boot never uses and which is not an authorized_keys entry on mtcollins1, so no
-// host root comes of it.
+// this host and this mode; the unit maintenance hold still stops a boot on a held unit from any ref.
+// WHAT THE ACCOUNT MAY READ IS TWO CELLS AND NOTHING ELSE, and the absence is checked rather than
+// asserted: the BMC's own secret at the pinned version the admitted boot federation declares (its
+// published cd_version), and the boot-medium reader keypair once it is minted -- a key authorized on the
+// export host's fleet-automation account with a FORCED COMMAND, so it produces one sha256sum line of one
+// fixed path and nothing else (gunbc.host.boot_medium_reader_key). It is NOT the fleet automation key,
+// which logs in as the fleet's bootstrap principal with root on every runner host
+// (gunbc.fleet.fleet_bootstrap_principal): the main boot's account holds that key and this one must not,
+// and mtcollins1_boot_branch_policy_excludes_the_fleet_key fails the build if a refactor re-mirrors the
+// boot's grants. Neither cell is an authorized_keys entry on mtcollins1, so no host root comes of it.
 
 // THE ROSTER OF BRANCHES HELD TO CARRY THE APPROVAL-FREE BOOT. A roster and not a prefix, on purpose:
 // a new branch earns the route by landing a change to THIS list in a reviewed PR, which is what keeps
