@@ -439,6 +439,14 @@ fn systemctl_user_restart_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<Stri
   ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_restart_verb as String, unit as String]
 }
 
+// A USER UNIT'S STATUS THROUGH THE SAME CONNECTOR AS THE VERBS ABOVE, so a diagnostic reads the manager the
+// failed verb addressed and not root's. `--no-pager --full` keep the ExecStart exit status and the last log
+// lines untruncated; status exits nonzero for a failed unit, which a caller capturing it as evidence must
+// not read as the capture failing.
+fn systemctl_user_status_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), "status", "--no-pager", "--full", unit as String]
+}
+
 fn systemctl_user_is_active_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {
   ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_is_active_verb as String, unit as String]
 }

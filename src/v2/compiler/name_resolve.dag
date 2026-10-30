@@ -65,7 +65,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_find_first, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -75,6 +75,8 @@ import v2.std.witness { map_get_checked }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
+  DeclarationLocus,
+  DeclarerRefused,
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
@@ -83,6 +85,7 @@ import v2.std.diagnostic {
   None,
   Outcome,
   Rejected,
+  RequestedModuleMissing,
   Unavailable,
   diagnostics_merge,
   diagnostics_singleton,
@@ -160,10 +163,49 @@ type Admission {
 // per-subject refusal boundary when the context is constructed before admission.
 // `test_code` is every root's test-marker channel keyed by the paths resolution binds to, built in
 // the same pass that names the roots, so no root can be resolvable while its markers are unread.
+// `blocked_members` names the members this ingest READ AND THEN REFUSED before a root existed -- a
+// member blocked at the front end -- carried once from acquisition into what admission reads (DESIGN 6b:
+// the earliest boundary where the wrong thing is turned into a missing root). A blocked member is neither
+// a root nor absent: it was read, its content was in hand, and something refused it. Without this field
+// the ONLY fact admission can state about a requester's import of it is `resolve_module_not_found`, which
+// is false about a module whose bytes were read; the requester is handed a module-IDENTITY refusal for a
+// module-REFUSAL. `validated_module_root_for_name` reads this field at the arm that refuses an import
+// target, and mints the typed dependency refusal naming the blocked member instead (its cause stays on
+// the blocked member's OWN refusal row -- this is the join identity, not a copy of the refusal).
+// Census acquisition is today the only producer of blocked members; the field is on the shared
+// ValidatedModuleRoots, not on a census type, so a plain native route gets the same answer the day it
+// blocks a member too. A caller that has no blocks passes Empty, which is the pre-existing behaviour.
 type ValidatedModuleRoots {
   roots: FreeMonoid<NormalizedTree>
   by_name: Map<QualifiedName, NormalizedTree>
   test_code: TestCodeIndex
+  blocked_members: FreeMonoid<QualifiedName>
+}
+
+// THE ONE ENRICHMENT OF VALIDATED ROOTS. Validation derives the root population and cannot know what
+// acquisition blocked -- a blocked member never became a root to be validated -- so the block locality
+// is attached here, by the caller that owns the acquisition, and read only at the import refusal.
+fn validated_module_roots_with_blocked_members(
+  roots: ValidatedModuleRoots,
+  blocked_members: FreeMonoid<QualifiedName>
+) -> ValidatedModuleRoots {
+  ValidatedModuleRoots {
+    roots: roots.roots,
+    by_name: roots.by_name,
+    test_code: roots.test_code,
+    blocked_members: blocked_members
+  }
+}
+
+// Is this name a member the ingest read and then blocked? The FIRST such row, in acquisition order.
+// A membership test, so it is `list_find_first` and not a fold written out again. std.algebra promoted that
+// helper precisely because re-expressing this shape as a non-short-circuiting fold grows the concept count by
+// re-invention (DESIGN s2) -- and a fold here is also wrong on its merits: it keeps walking after the hit.
+fn validated_module_roots_blocked_member(
+  roots: ValidatedModuleRoots,
+  name: QualifiedName
+) -> Optional<QualifiedName> {
+  list_find_first(xs: roots.blocked_members, predicate: fn(blocked) { blocked == name })
 }
 
 // ONE PER INGEST (gunbc#11401 R1), AND THE HOME OF WHAT THAT INGEST'S RESOLUTION PRODUCES ONCE.
@@ -228,13 +270,36 @@ fn resolution_context(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolutionContext> {
+  resolution_context_with_blocked_members(
+    lm: lm,
+    roots: roots,
+    index: index,
+    active_roots: active_roots,
+    policy: policy,
+    blocked_members: Empty
+  )
+}
+
+// The context over the same root population, PLUS the members this ingest read and then refused before a
+// root existed. `validated_module_roots_for_name` reads that locality at the arm that refuses an import
+// target, so a requester of a blocked member is told which member blocked it instead of being told the
+// module does not exist. Empty is exactly the pre-existing behaviour, which is why every caller that owns
+// no blocks keeps calling `resolution_context`.
+fn resolution_context_with_blocked_members(
+  lm: LanguageModel,
+  roots: FreeMonoid<NormalizedTree>,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy,
+  blocked_members: FreeMonoid<QualifiedName>
+) -> Outcome<ResolutionContext> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated_roots, diagnostics: d } =>
       Accepted {
         value: resolution_context_of_validated(
           lm: lm,
-          roots: validated_roots,
+          roots: validated_module_roots_with_blocked_members(roots: validated_roots, blocked_members: blocked_members),
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
             roots: normalized_tree_roots_to_binding_sources(roots: validated_roots.roots)
@@ -307,17 +372,35 @@ type ModuleRootLookup
   | ModuleRootAmbiguous { requested: QualifiedName }
   | ModuleRootLookupRejected { diagnostics: NonEmptyDiagnostics }
 
+// WHY DeclarationLocus AND NOT A FILE NAME. The lookup already knows exactly which name is missing, as a
+// `ModuleRootLookup::ModuleRootMissing { requested: QualifiedName }`. This mint used to render that name
+// with `qualified_name_to_dotted_string` and hand the text to `textual_whole_file_diagnostic`, whose `at`
+// slot is a FILE -- so the refusal cited a module name where a file belongs, and any reader that wanted the
+// name back had to parse display text (std.diagnostic's DeclarationLocus comment names this papering-over
+// precisely, and `Locus::DeclarationLocus` is the sanctioned citation for a qualified name). The requested
+// name now travels as the typed value the lookup carries, and no consumer re-folds roots or imports to
+// recover it -- which is what let the self-host frontier probe's second derivation be deleted.
+// `ModuleRootLookupRejected` mints its own diagnostics untouched: a rejected fold is a different fact from
+// an absent name and the two are never collapsed here.
+// THE NAME IS CARRIED TWICE FROM ONE ARGUMENT, ON PURPOSE. `at` cites the refused name as a declaration
+// (WHY DeclarationLocus AND NOT A FILE NAME, above); `correction` carries the SAME value, because `at` is a
+// POSITION and a located caller legitimately owns it: `admit_imported_module_existence` re-stamps the
+// requester's refusal with the import's authored locus -- the only position the requester can be pointed at,
+// which the census reads (native_census_locate_fatal) -- and in doing so drops whatever `at` cited. A reader
+// that wanted the name back from that route would get nothing, so the probe used to re-fold the whole ingest
+// to rediscover it (a second authority, deleted in v2.compiler.self_host.frontier_probe). Carrying the name
+// in the correction is what makes the deletion safe. Both slots come from this function's single `requested`
+// parameter, so they cannot disagree; the name has one producer, and it is the projection of
+// `ModuleRootLookup::ModuleRootMissing` above, named the same way.
 fn resolve_module_not_found_diagnostic_from_missing(
   requested: QualifiedName
 ) -> NonEmptyDiagnostics {
   diagnostics_singleton(
-    d: textual_whole_file_diagnostic(
+    d: Diagnostic {
       reason: ^resolve_module_not_found,
-      module_file: symbol_intern_lexeme(
-        lexeme: qualified_name_to_dotted_string(qn: requested)
-      ),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    )
+      at: DeclarationLocus { declaration: requested },
+      correction: Unavailable { reason: RequestedModuleMissing { requested: requested } }
+    }
   )
 }
 
@@ -405,7 +488,7 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
     }
   ) {
     ModuleRootsValid { seen: by_name, test_code: test_code, diagnostics: d } =>
-      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name, test_code: test_code }, diagnostics: d }
+      Accepted { value: ValidatedModuleRoots { roots: roots, by_name: by_name, test_code: test_code, blocked_members: Empty }, diagnostics: d }
     ModuleRootsDuplicate { diagnostics: d } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -886,13 +969,40 @@ fn admit_captured_import_rows(
 // subject's own root and each import's target (admit_import_visible_entry,
 // admit_imported_module_existence) -- reads here. module_root_lookup's scan, which re-derives every
 // root's name per call, is only for roots nobody has validated.
+// A blocked member is a name the ingest READ AND THEN REFUSED before a root existed, so it is exactly the
+// name that is neither in `by_name` nor absent. Stating `resolve_module_not_found` for it is false (DESIGN
+// 5), so this arm reads the acquisition's block locality and mints the typed dependency refusal naming the
+// blocked member. The blocked member's OWN refusal row keeps its cause; `DeclarerRefused { declarer }` is
+// the identity a census joins on (std.diagnostic), not a second copy of that cause. `at` cites the
+// requested name as a declaration, exactly as the sibling `resolve_module_not_found_diagnostic_from_missing`
+// arm does -- the two arms of ONE lookup differ only in which fact they state, so they must not differ in
+// how they cite (DESIGN 6b: a fork between sibling leaves is the same defect as a fork between routes).
+// This function knows only the names; the located caller, `admit_imported_module_existence`, re-stamps
+// head.reason and head.correction onto the import's own authored locus, which is where the span comes from.
+fn resolve_imported_module_refused_diagnostic(
+  requested: QualifiedName,
+  blocked: QualifiedName
+) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^resolve_imported_module_refused,
+      at: DeclarationLocus { declaration: requested },
+      correction: Unavailable { reason: DeclarerRefused { declarer: blocked } }
+    }
+  )
+}
+
 fn validated_module_root_for_name(
   roots: ValidatedModuleRoots,
   name: QualifiedName
 ) -> Outcome<NormalizedTree> {
   match map_lookup(m: roots.by_name, key: name) {
     Present { value: root } => Accepted { value: root, diagnostics: v2.std.diagnostic.None }
-    Absent => Rejected { diagnostics: resolve_module_not_found_diagnostic_from_missing(requested: name) }
+    Absent => match validated_module_roots_blocked_member(roots: roots, name: name) {
+      Present { value: blocked } =>
+        Rejected { diagnostics: resolve_imported_module_refused_diagnostic(requested: name, blocked: blocked) }
+      Absent => Rejected { diagnostics: resolve_module_not_found_diagnostic_from_missing(requested: name) }
+    }
   }
 }
 

@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import std.optional { Present, Absent }
 import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret, Unit, string_non_empty }
 import std.algebra { non_empty }
+import std.measure { Second, second }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
@@ -16,6 +17,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "cloud.google.com/apis/design"
   }
 }
+
+// THE ONLY PROPAGATION FACT GOOGLE PUBLISHES (cloud.google.com/iam/docs/access-change-propagation): an
+// access change usually takes effect within two minutes and "can take seven minutes or longer". It is a
+// documented figure for when a change is visible, NOT a per-refusal signal: a 403 PERMISSION_DENIED
+// google.rpc.ErrorInfo (AIP-193) names the permission and resource and carries no retry instant, no
+// Retry-After and no revision to wait on, and the grant's etag shows the policy was stored, not that
+// enforcement has caught up. So the only thing a retry may derive from Google is its STOP: a 403 that
+// outlives this figure is a typed refusal, not a reason to wait on. The seven minutes is documented
+// typical-worst, not a guarantee; "or longer" is exactly what the refusal at its end admits.
+data gcp_access_change_propagation_documented_max: Second = second(count: 420)
 
 type GcpProjectId = String where string_non_empty
 

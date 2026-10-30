@@ -3,15 +3,15 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
+import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list, string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
-import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
+import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
-import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, systemd_drop_in_applies_after }
 import extdeps.posix.getent { getent_passwd_command, getent_key_not_found_exit }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.tools.make { make_makeflags_env_name }
@@ -35,7 +35,7 @@ import gunbc.host.host_axis_caps {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
 import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -58,8 +58,8 @@ import extdeps.needrestart {
   needrestart_conf_d_text,
 }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
 import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, executor_managed_directory_mode }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -75,7 +75,7 @@ import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
-  ObservationArm, OverTransport, entry_presence,
+  ObservationArm, OverTransport, entry_presence, path_basename, path_parent,
 }
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
@@ -128,8 +128,10 @@ import gunbc.runner.runner_unit_file {
   RunnerUnitTextRefused,
   runner_unit_slot_role_dropin_text,
   runner_unit_slot_role_dropin_path,
+  runner_unit_slot_role_superseded_dropin_path,
 }
-import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for, runner_job_user_env_name }
+import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
@@ -334,6 +336,124 @@ fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIden
     Present { value: RunnerUnitTextRefused { reason: r } } =>
       [RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: r }]
     _ => []
+  }
+}
+
+// ── Every managed drop-in loads its own keys ─────────────────────────────────────────────────────
+
+fn runner_host_path_is_unit_dropin(path: String) -> Bool { ends_with(s: path_parent(path: path), suffix: ".service.d") }
+
+fn runner_host_path_is_template_dropin(path: String) -> Bool { string_contains(s: path_parent(path: path), pattern: "@.service.d") }
+
+// THE GUARD ON A MANAGED DROP-IN: the loaded drop-ins of the host's desired units are read, and the file is
+// refused if a loaded drop-in that does not sort before it sets one of its keys (read_dropin_override_over).
+// A template drop-in exempts the converge's own INSTANCE drop-ins, whose purpose is to override it for one
+// unit; whether they sort after it is a claim over the managed population, not a runtime finding. A file
+// that is not a unit drop-in is not guarded.
+fn runner_host_dropin_guard_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, file: FleetHostFileDesired, managed: List<FleetHostFileDesired>) -> DropinOverrideReading? {
+  let path = file.path as String
+  if !runner_host_path_is_unit_dropin(path: path) { none } else {
+    let exempt = if runner_host_path_is_template_dropin(path: path) {
+      map(filter(managed, m => runner_host_path_is_unit_dropin(path: m.path as String) && !runner_host_path_is_template_dropin(path: m.path as String)), m => m.path as NonEmptyStr)
+    } else { [] }
+    Present { value: read_dropin_override_over(subject: subject, context: context, units: subject.desired_units, written: [file], exempt: exempt) }
+  }
+}
+
+// A REFUSED GUARD IS A REFUSED PLAN: the file is not written or left as settled, so the run does not
+// reload or actuate on a drop-in whose keys would not load.
+fn runner_host_file_result_guarded(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, file: FleetHostFileDesired, managed: List<FleetHostFileDesired>) -> FleetHostFileResult {
+  let planned = plan_fleet_host_file(subject: fleet_subject_of(s: subject), context: context, file: file)
+  let guarded = match runner_host_dropin_guard_over(subject: subject, context: context, file: file, managed: managed) {
+    Absent => planned
+    Present { value: DropinsNoLaterSetter } => planned
+    Present { value: DropinsLaterSetter { files: fs } } =>
+      FleetHostFilePlanned { file: planned.file, observation: planned.observation, action: HostFileActionRefused { reason: concat("a loaded drop-in that sorts at or after this one sets a key it sets, so its value would not load: ", join(map(non_empty_to_list(xs: fs), x => x as String), " ")) } }
+    Present { value: DropinsUnread { cause: c } } =>
+      FleetHostFilePlanned { file: planned.file, observation: planned.observation, action: HostFileActionRefused { reason: concat("whether a later-sorting drop-in overrides this one could not be read: ", c) } }
+  }
+  fleet_host_file_result_of_planned(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, planned: guarded)
+}
+
+// ── A renamed managed drop-in retires its old name ───────────────────────────────────────────────
+
+// THE ROLE DROP-IN'S SUPERSEDED NAME (gunbc.runner.runner_unit_file
+// runner_unit_slot_role_superseded_dropin_file_name) is a file this converge placed and now removes, so a host
+// never keeps a second copy of a role that loses to the template. Absent is the converged state; present is
+// removed as root and read again, and only a re-read that finds it gone settles. The observation and the
+// removal are the retired-path rule the unit residue uses (retired_path_standing_over,
+// retired_file_removal_leg). It is not a RetiredHostResidue row because that shape retires a UNIT -- it stops
+// and disables it -- and the unit here is the live deploy slot whose old drop-in alone is retired.
+// DISSOLUTION: srv1 is the only host that ever carried the old name; once a converge of every host with a
+// deploy slot reads it absent, runner_unit_slot_role_superseded_dropin_file_name and this step are deleted.
+type SupersededDropinResult
+  = SupersededDropinAbsent { path: String }
+  | SupersededDropinRemoved { path: String }
+  | SupersededDropinPresentObserved { path: String }
+  | SupersededDropinRefused { path: String, reason: String }
+
+fn runner_host_superseded_dropin_paths(host: HostIdentity) -> List<String> {
+  map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => runner_unit_slot_role_superseded_dropin_path(slot: s) as String)
+}
+
+fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, path: String) -> SupersededDropinResult {
+  match retired_path_standing_over(subject: subject, context: context, path: path) {
+    HostFilePathAbsent => SupersededDropinAbsent { path: path }
+    HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: c }
+    HostFilePathPresent =>
+      match mode {
+        FleetHostFilesObserveOnly => SupersededDropinPresentObserved { path: path }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: why } => SupersededDropinRefused { path: path, reason: concat("administrator privilege refused: ", why) }
+            AdministratorPrivilegeAvailable =>
+              match retire_leg(subject: subject, context: context, step: retired_file_removal_leg(path: path).step, argv: retired_file_removal_leg(path: path).argv) {
+                Present { value: why } => SupersededDropinRefused { path: path, reason: why }
+                Absent =>
+                  match retired_path_standing_over(subject: subject, context: context, path: path) {
+                    HostFilePathAbsent => SupersededDropinRemoved { path: path }
+                    HostFilePathPresent => SupersededDropinRefused { path: path, reason: "still present after removal" }
+                    HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: concat("unread after removal: ", c) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn superseded_dropin_settled(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinAbsent { path: _ } => true
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinPresentObserved { path: _ } => false
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_observed(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinAbsent { path: _ } => true
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinPresentObserved { path: _ } => true
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_removed(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinAbsent { path: _ } => false
+    SupersededDropinPresentObserved { path: _ } => false
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_line(r: SupersededDropinResult) -> String {
+  match r {
+    SupersededDropinAbsent { path: p } => join(["superseded-dropin path=", p, " absent"], "")
+    SupersededDropinRemoved { path: p } => join(["superseded-dropin path=", p, " removed-and-read-back"], "")
+    SupersededDropinPresentObserved { path: p } => join(["superseded-dropin path=", p, " PRESENT (observe-only)"], "")
+    SupersededDropinRefused { path: p, reason: r } => join(["superseded-dropin path=", p, " REFUSED ", r], "")
   }
 }
 
@@ -923,6 +1043,57 @@ type RunnerSlotExpectation {
   cpu_quota_identity: String
   compile_jobs: HardwareThreadCount?
   forbid_makeflags: Bool
+  role_environments: List<SlotRoleEnvironment>
+}
+
+// A SLOT WHOSE ROLE DROP-IN REPLACES THE TEMPLATE'S JOB USER IS JUDGED ON THE ENVIRONMENT IT LOADED, not on
+// the file that was written: the manager's merged Environment must assign the role's job user and, where
+// the role runs no containers, carry no DOCKER_HOST but an empty one. srv1-02 was read 'effective' in L2
+// run 40950610061 while depriv.conf's ghrunner won over its role (gunbc.runner.runner_unit_file
+// runner_unit_slot_role_dropin_file_name). Only slots with a role drop-in carry a row: a CI slot's job user
+// is the template's, which a host may not have opted into, so asserting it here would be a new fleet-wide
+// requirement this change does not make.
+type SlotRoleEnvironment {
+  unit: NonEmptyStr
+  job_user: NonEmptyStr
+  docker_host_cleared: Bool
+}
+
+fn runner_host_role_environments(host: HostIdentity) -> List<SlotRoleEnvironment> {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy: d } =>
+      map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => {
+        let role = runner_slot_job_role(slot: s)
+        SlotRoleEnvironment {
+          unit: runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: s) as NonEmptyStr),
+          job_user: runner_slot_job_user(role: role, ci_job_user: d.job_user),
+          docker_host_cleared: !runner_slot_job_role_runs_containers(role: role),
+        }
+      })
+    _ => []
+  }
+}
+
+fn runner_slot_expectation_with_roles(expect: RunnerSlotExpectation, host: HostIdentity) -> RunnerSlotExpectation {
+  RunnerSlotExpectation {
+    intent: expect.intent,
+    cpu_quota_identity: expect.cpu_quota_identity,
+    compile_jobs: expect.compile_jobs,
+    forbid_makeflags: expect.forbid_makeflags,
+    role_environments: runner_host_role_environments(host: host),
+  }
+}
+
+fn slot_role_environment_problem(environment: String, unit: NonEmptyStr, expect: RunnerSlotExpectation) -> String? {
+  match first(filter(expect.role_environments, r => (r.unit as String) == (unit as String))) {
+    Absent => none
+    Present { value: r } =>
+      if !slot_environment_assigns(environment: environment, name: runner_job_user_env_name, value: r.job_user as String) {
+        Present { value: join(["Environment does not assign ", runner_job_user_env_name, "=", r.job_user as String, " (the slot's role); a later-sorting drop-in overrides it"], "") }
+      } else if r.docker_host_cleared && slot_environment_names(environment: environment, name: docker_host_env_var) && !slot_environment_assigns(environment: environment, name: docker_host_env_var, value: "") {
+        Present { value: join(["Environment carries a ", docker_host_env_var, " the slot's role clears"], "") }
+      } else { none }
+  }
 }
 
 fn runner_slot_expectation(per_slot: HardwareThreadCount, fragment_delivered: Bool, residue_absent: Bool) -> RunnerSlotExpectation {
@@ -931,6 +1102,7 @@ fn runner_slot_expectation(per_slot: HardwareThreadCount, fragment_delivered: Bo
     cpu_quota_identity: systemd_cpu_quota_per_sec_magnitude_identity(usec: systemd_cpu_quota_per_sec_of_threads(threads: per_slot)),
     compile_jobs: if fragment_delivered { Present { value: per_slot } } else { none },
     forbid_makeflags: fragment_delivered || residue_absent,
+    role_environments: [],
   }
 }
 
@@ -954,18 +1126,25 @@ fn classify_slot_allocation(reading: RunnerSlotUnitReading, expect: RunnerSlotEx
     SlotAllocationNotEffective { detail: join(["CPUQuotaPerSecUSec=", trim(s: reading.cpu_quota_per_sec), " want=", expect.cpu_quota_identity, "us"], "") }
   } else {
     let env = trim(s: reading.environment)
-    if expect.forbid_makeflags && slot_environment_names(environment: env, name: make_makeflags_env_name) {
-      SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
-    } else {
-      match expect.compile_jobs {
-        Absent => SlotTeardownEffective
-        Present { value: jobs } =>
-          if !slot_environment_assigns(environment: env, name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: to_string(hardware_thread_count_value(t: jobs))) {
-            SlotAllocationNotEffective { detail: join(["Environment does not assign CARGO_BUILD_JOBS=", to_string(hardware_thread_count_value(t: jobs))], "") }
-          } else {
-            SlotTeardownEffective
-          }
-      }
+    match slot_role_environment_problem(environment: env, unit: reading.unit, expect: expect) {
+      Present { value: why } => SlotAllocationNotEffective { detail: why }
+      Absent => classify_slot_environment(env: env, expect: expect)
+    }
+  }
+}
+
+fn classify_slot_environment(env: String, expect: RunnerSlotExpectation) -> RunnerSlotUnitStanding {
+  if expect.forbid_makeflags && slot_environment_names(environment: env, name: make_makeflags_env_name) {
+    SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
+  } else {
+    match expect.compile_jobs {
+      Absent => SlotTeardownEffective
+      Present { value: jobs } =>
+        if !slot_environment_assigns(environment: env, name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: to_string(hardware_thread_count_value(t: jobs))) {
+          SlotAllocationNotEffective { detail: join(["Environment does not assign CARGO_BUILD_JOBS=", to_string(hardware_thread_count_value(t: jobs))], "") }
+        } else {
+          SlotTeardownEffective
+        }
     }
   }
 }
@@ -1369,7 +1548,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
               RunnerHostDeployUnmodeled { host: _ } => []
             },
             if runner_host_has_deploy_slot(host: subject.host) {
-              [
+              list_flat_map(runner_host_superseded_dropin_paths(host: subject.host), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]) + [
                 LegJobUserPasswd { job_user: deploy_slot_job_user },
                 LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
               ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: runner_slot_dir_path(slot: d) as String) })
@@ -2211,14 +2390,7 @@ fn classify_retired_residue(load_state_exit: Int, load_state: String, readings: 
 fn observe_retired_residue(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, residue: RetiredHostResidue) -> RetiredResidueObservation
 {
   let names = concat(residue.files, residue.directories)
-  let readings = map(names, n => ResiduePathReading {
-    path: n,
-    standing: match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: n }) {
-      TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
-      TypedArgvExecConverged { result: m } =>
-        observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: n, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
-    },
-  })
+  let readings = map(names, n => ResiduePathReading { path: n, standing: retired_path_standing_over(subject: subject, context: context, path: n) })
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegResidueLoadState { unit: residue.unit }) {
     TypedArgvExecRefused { reason: why } => ResidueUnobservable { cause: why }
     TypedArgvExecConverged { result: r } => classify_retired_residue(load_state_exit: r.exit_code, load_state: r.stdout, readings: readings)
@@ -2251,7 +2423,7 @@ fn retire_legs_for(residue: RetiredHostResidue, observation: RetiredResidueObser
       concat(
         if k { [RetireLeg { step: "stop", argv: systemctl_stop_argv(unit: residue.unit) }, RetireLeg { step: "disable", argv: systemctl_disable_now_argv(unit: residue.unit) }] } else { [] },
         concat(
-          map(filter(ps, p => any(residue.files, f => f == p)), p => RetireLeg { step: concat("remove ", p), argv: ["rm", "-f", "--", p] }),
+          map(filter(ps, p => any(residue.files, f => f == p)), p => retired_file_removal_leg(path: p)),
           concat(
             map(filter(ps, p => any(residue.directories, d => d == p)), p => RetireLeg { step: concat("remove-tree ", p), argv: ["rm", "-r", "-f", "--one-file-system", "--", p] }),
             [RetireLeg { step: "daemon-reload", argv: systemctl_daemon_reload_argv() }],
@@ -2264,6 +2436,21 @@ fn retire_legs_for(residue: RetiredHostResidue, observation: RetiredResidueObser
 type RetireLeg {
   step: String
   argv: List<String>
+}
+
+// ONE RULE FOR A RETIRED PATH, shared by the unit residue above and a superseded managed drop-in
+// (retire_superseded_dropin_over): how it is observed -- the metadata probe settled by the
+// metadata-then-parent rule, so "could not look" never reads as absent -- and how a retired file is removed.
+fn retired_path_standing_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> FleetHostFilePathStanding {
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: path }) {
+    TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
+    TypedArgvExecConverged { result: m } =>
+      observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: path, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
+  }
+}
+
+fn retired_file_removal_leg(path: String) -> RetireLeg {
+  RetireLeg { step: concat("remove ", path), argv: ["rm", "-f", "--", path] }
 }
 
 fn run_retire_legs(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, legs: List<RetireLeg>) -> String?
@@ -2564,6 +2751,7 @@ type RunnerHostFileRun {
   cap_phase: RunnerHostCapPhase
   deploy_account: DeploySlotAccountStanding
   deploy_trees: List<DeploySlotTreeStanding>
+  superseded: List<SupersededDropinResult>
 }
 
 fn plan_fleet_host_file(
@@ -2822,10 +3010,22 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
   let refused = filter(map(planned, r => match r.planned.action { HostFileActionRefused { reason: why } => concat(r.planned.file.path as String, concat(": ", why)) HostFileLeaveInPlace => "" HostFileWrite => "" }), c => c != "")
   if length(refused) > 0 {
     CapFilesUnreadable { cause: join(refused, "; ") }
-  } else if any(planned, r => match r.planned.action { HostFileLeaveInPlace => false HostFileWrite => true HostFileActionRefused { reason: _ } => true }) {
-    CapFilesDiffer
   } else {
-    CapFilesSettled
+    // One partition: a file either differs or contributes nothing, and the nonempty carrier is built at
+    // that split, so a difference with no named file cannot be written.
+    let differing: FreeSemigroup<NonEmptyStr>? = fold(planned, init: none, f: (acc, r) =>
+      match r.planned.action {
+        HostFileWrite => {
+          let one = non_empty_singleton(item: r.planned.file.path as NonEmptyStr)
+          match acc { Absent => Present { value: one } Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) } }
+        }
+        HostFileLeaveInPlace => acc
+        HostFileActionRefused { reason: _ } => acc
+      })
+    match differing {
+      Absent => CapFilesSettled
+      Present { value: ps } => CapFilesDiffer { paths: ps }
+    }
   }
 }
 
@@ -2859,16 +3059,17 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_uni
   }
 }
 
-// An inert owed reload is admitted ONLY for a unit the bracket never touches: activation unmasks, enables
-// and starts every unit in the bracket's set, so there a masked unit stops being inert mid-bracket and its
-// pending change would load onto a live cgroup. Fabric members are outside that set by construction
-// (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
+// An inert owed reload contributes nothing for a unit the bracket never touches. Inside the bracket's set it
+// is kept, typed as inert: the bracket's activation unmasks, enables and starts every unit in that set, so
+// there a masked unit stops being inert mid-bracket and its pending change would load onto a live cgroup;
+// host_cap_plan withholds the bracket arm on it and nothing else. Fabric members are outside that set by
+// construction (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
 fn slot_reload_pending_kind(status: SlotReloadStatus, reach: SlotReloadReach, in_bracket: Bool) -> PendingReloadKind? {
   match status {
     SlotReloadNotPending => none
     SlotReloadOwed => match reach {
       ReachesLiveCgroup => Present { value: PendingReloadOwed }
-      ReloadInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
+      ReloadInert => if in_bracket { Present { value: PendingReloadOwedInertUntilActivated } } else { none }
     }
     SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
@@ -2958,6 +3159,7 @@ fn run_runner_host_cap_phase(
               slots: map(subject.desired_units, u => SlotCapsLeftInPlace { unit: u }),
               certified: [],
             }
+            HostCapsWriteInPlace { paths: ps } => write_runner_host_caps_in_place_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, units: affected, differing: ps)
             HostCapsDrainWriteRestart =>
               match actions_variable_read(name: runner_host_cap_step_budget_env_name) {
                 ActionsVariableAbsent { variable: v, detail: d } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: the enclosing step did not declare its budget (", v, " ", d, ")"], "") }
@@ -2974,6 +3176,127 @@ fn run_runner_host_cap_phase(
           }
         }
       }
+  }
+}
+
+// WHETHER A MANAGED DROP-IN'S KEYS ARE THE ONES THAT LOAD. systemd merges a unit's drop-ins -- the
+// template's and the instance's -- in one file-name order (extdeps.systemd.unit_file
+// systemd_drop_in_applies_after), so a loaded drop-in sorting at or after a managed one that sets one of
+// its keys wins over it, whatever directory either sits in. Each affected unit's loaded drop-ins are read,
+// and a managed drop-in refuses if such a file sets a key it sets, or if that cannot be read. One check for
+// every managed drop-in this converge writes or leaves (the deploy slot's role drop-in lost its job user to
+// depriv.conf exactly this way, L2 run 40950610061), the in-place cap write included. The one declared
+// exemption is a managed INSTANCE drop-in over a template one: that override is the instance's purpose, and
+// its order is a claim over the managed population, not a runtime finding.
+type DropinOverrideReading
+  = DropinsNoLaterSetter
+  | DropinsLaterSetter { files: FreeSemigroup<NonEmptyStr> }
+  | DropinsUnread { cause: String }
+
+// THE KEYS A DROP-IN SETS, as grep fixed strings `Key=`: every `Key=value` line, skipping section headers
+// and comments. Read from the content this converge renders, so the keys are the write's own.
+fn dropin_setting_keys(content: String) -> List<NonEmptyStr> {
+  list_flat_map(map(split(s: content, delimiter: "\n"), l => trim(s: l)), l =>
+    if l == "" || starts_with(s: l, prefix: "#") || starts_with(s: l, prefix: ";") || starts_with(s: l, prefix: "[") || !string_contains(s: l, pattern: "=") { [] }
+    else { [concat(trim(s: list_head_or(xs: split(s: l, delimiter: "="), fallback: "")), "=") as NonEmptyStr] })
+}
+
+fn list_head_or(xs: List<String>, fallback: String) -> String {
+  match list_head(xs: xs) { Present { value: x } => x Absent => fallback }
+}
+
+// THE LOADED DROP-INS THAT COULD WIN OVER A WRITTEN FILE: every distinct loaded path, other than a written
+// one or an exempt one, that the written file does not apply after -- a later name, or an equal name in
+// another directory, which replaces the written file outright.
+fn dropins_that_could_override(written: List<NonEmptyStr>, loaded: List<String>, exempt: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let candidates = filter(loaded, p => trim(s: p) != "" && !any(written, w => (w as String) == p) && !any(exempt, e => (e as String) == p) && any(written, w => !systemd_drop_in_applies_after(later_file_name: path_basename(path: w as String), earlier_file_name: path_basename(path: p))))
+  map(fold(candidates, init: [], f: (acc, p) => if any(acc, a => a == p) { acc } else { concat(acc, [p]) }), p => p as NonEmptyStr)
+}
+
+// `systemctl show --property=DropInPaths` over N units prints one `DropInPaths=` line per unit (empty
+// after the `=` when the unit has none). Fewer lines than units is an incomplete read, never "no drop-ins".
+fn parse_loaded_dropin_paths(show_stdout: String, unit_count: Int) -> List<String>? {
+  let lines = filter(map(split(s: show_stdout, delimiter: "\n"), l => trim(s: l)), l => starts_with(s: l, prefix: "DropInPaths="))
+  if length(lines) != unit_count { none } else {
+    Present { value: list_flat_map(lines, l => filter(split(s: substring(s: l, start: string_length(s: "DropInPaths="), end: string_length(s: l)), delimiter: " "), p => p != "")) }
+  }
+}
+
+// grep -l: exit 1 is no candidate setting a key; exit 0 names the files that do; anything else is unread.
+fn classify_dropin_override(candidates: List<NonEmptyStr>, exit_code: Int, stdout: String) -> DropinOverrideReading {
+  if length(candidates) == 0 { DropinsNoLaterSetter }
+  else if exit_code == 1 { DropinsNoLaterSetter }
+  else if exit_code == 0 {
+    let named: FreeSemigroup<NonEmptyStr>? = fold(filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != ""), init: none, f: (acc, l) => {
+      let one = non_empty_singleton(item: l as NonEmptyStr)
+      match acc { Absent => Present { value: one } Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) } }
+    })
+    match named {
+      Absent => DropinsUnread { cause: "grep -l exited 0 and named no file" }
+      Present { value: fs } => DropinsLaterSetter { files: fs }
+    }
+  } else { DropinsUnread { cause: join(["grep -l exited ", to_string(exit_code)], "") } }
+}
+
+fn read_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>, written: List<FleetHostFileDesired>, exempt: List<NonEmptyStr>) -> DropinOverrideReading {
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: [DropInPathsProperty])) {
+    TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("systemctl show DropInPaths: ", r) }
+    TypedArgvExecConverged { result: shown } =>
+      if shown.exit_code != 0 { DropinsUnread { cause: join(["systemctl show DropInPaths exited ", to_string(shown.exit_code)], "") } }
+      else {
+        match parse_loaded_dropin_paths(show_stdout: shown.stdout, unit_count: length(units)) {
+          Absent => DropinsUnread { cause: "systemctl show returned fewer DropInPaths lines than units" }
+          Present { value: loaded } => {
+            let candidates = dropins_that_could_override(written: map(written, f => f.path as NonEmptyStr), loaded: loaded, exempt: exempt)
+            let keys = list_flat_map(written, f => dropin_setting_keys(content: f.content))
+            if length(candidates) == 0 { DropinsNoLaterSetter } else {
+              match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: grep_files_with_fixed_strings_argv(patterns: keys, paths: candidates)) {
+                TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("grep over the later drop-ins: ", r) }
+                TypedArgvExecConverged { result: g } => classify_dropin_override(candidates: candidates, exit_code: g.exit_code, stdout: g.stdout)
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn cap_in_place_readback_outcome(x: SlotCapUnitStanding) -> SlotCapOutcome {
+  match x.standing {
+    SlotCapsAtDesired => SlotCapsLeftInPlace { unit: x.unit }
+    SlotCapsStopped => SlotCapsLeftInPlace { unit: x.unit }
+    SlotCapsNeedRestart { detail: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+    SlotCapsReadingsDisagree { detail: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+    SlotCapsUnread { cause: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+  }
+}
+
+fn write_runner_host_caps_in_place_over(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  desired: RunnerSlotDesired,
+  units: List<NonEmptyStr>,
+  differing: FreeSemigroup<NonEmptyStr>,
+) -> RunnerHostCapPhase
+{
+  let written = filter(runner_host_cap_files(), f => any(non_empty_to_list(xs: differing), d => (d as String) == (f.path as String)))
+  let named = join(map(non_empty_to_list(xs: differing), d => d as String), " ")
+  match read_dropin_override_over(subject: subject, context: context, units: units, written: written, exempt: []) {
+    DropinsUnread { cause: c } => CapPhaseWithheld { cause: join(["host untouched: the in-place cap write (", named, ") could not read whether a later-sorting drop-in sets a key it sets: ", c], "") }
+    DropinsLaterSetter { files: fs } => CapPhaseWithheld { cause: join(["host untouched: a later-sorting drop-in sets a key the in-place cap write (", named, ") sets, so the written value might not be the one a reload loads: ", join(map(non_empty_to_list(xs: fs), f => f as String), " ")], "") }
+    DropinsNoLaterSetter => {
+      let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
+      let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
+      let written_ok = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+      CapPhaseRan {
+        files: files,
+        reload: reload,
+        slots: if written_ok { map(read_host_cap_standings_over(target: subject.target, context: context, units: units, desired: desired), x => cap_in_place_readback_outcome(x: x)) } else { map(units, u => SlotCapsRefused { unit: u, step: "write", reason: "the in-place cap drop-ins did not converge or the manager reload did not settle; no slot was drained, so none is left masked" }) },
+        certified: [],
+      }
+    }
   }
 }
 
@@ -3073,7 +3396,7 @@ fn write_reload_and_restart_admitted_over(
   // that unit was joined on, so there is one authority for the admitted set.
   let admitted = map(certified, c => c.unit)
   let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
-  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
   let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
@@ -3166,7 +3489,18 @@ fn fleet_host_file_result(
   file: FleetHostFileDesired,
 ) -> FleetHostFileResult
 {
-  let p = plan_fleet_host_file(subject: subject, context: context, file: file)
+  fleet_host_file_result_of_planned(subject: subject, context: context, mode: mode, privilege: privilege, planned: plan_fleet_host_file(subject: subject, context: context, file: file))
+}
+
+fn fleet_host_file_result_of_planned(
+  subject: FleetHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  planned: FleetHostFilePlanned,
+) -> FleetHostFileResult
+{
+  let p = planned
   FleetHostFileResult {
     planned: p,
     outcome: match mode {
@@ -3189,9 +3523,10 @@ fn runner_host_pre_actuation_reload(
   mode: FleetHostFileConvergeMode,
   privilege: FleetHostPrivilegeStanding,
   results: List<FleetHostFileResult>,
+  also_changed: Bool,
 ) -> RunnerHostManagerReload
 {
-  let wrote = any(results, r => match r.outcome {
+  let wrote = also_changed || any(results, r => match r.outcome {
     HostFileConvergedByWrite { converged: _ } => true
     HostFileLeftInPlace => false
     HostFileWriteRefused { step: _, reason: _ } => false
@@ -3290,8 +3625,9 @@ fn run_runner_host_files_admitted(
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
-  let unit_results = map(unit_files, f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
-  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results) }
+  let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
+  let superseded = map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p))
+  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) }
   let admission = match mode {
     FleetHostFilesObserveOnly => ActuationAdmitted
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
@@ -3301,14 +3637,17 @@ fn run_runner_host_files_admitted(
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
-  let cpu_results = map(filter(gated.files, f => (f.path as String) == (gunbc_runner_per_slot_cpu_dropin_path as String)), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
+  let cpu_results = map(filter(gated.files, f => (f.path as String) == (gunbc_runner_per_slot_cpu_dropin_path as String)), f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
   let results = concat(unit_results, cpu_results)
   let fragment_delivered = runner_host_files_deliver_fragment(files: gated.files)
-  let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
+  // THE READ-BACK EXPECTATION CARRIES EACH ROLE SLOT'S ENVIRONMENT, so a slot whose loaded job user is not
+  // its role's is not effective (runner_host_role_environments). The early reading above, which the cap
+  // phase consumes, does not: whether a slot's role loaded is this run's finding, not a cap precondition.
+  let expect = runner_slot_expectation_with_roles(host: subject.host, expect: runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
     ResidueAbsent => true
     ResiduePresent { unit_known: _, present: _ } => false
     ResidueUnobservable { cause: _ } => false
-  })
+  }))
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
   let reload = if reload_barred && runner_slot_population_owes_reload(population: before) { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else if reload_barred { ManagerReloadNotOwed } else { runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before) }
   let slots = match reload {
@@ -3337,6 +3676,7 @@ fn run_runner_host_files_admitted(
     cap_phase: cap_phase,
     deploy_account: account,
     deploy_trees: trees,
+    superseded: superseded,
   }
 }
 
@@ -3381,6 +3721,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         // thing observe came for, so a run whose cap observation was withheld or any of it unread
         // REFUSES -- it must not print OBSERVED-UNREAD and still exit success.
         && runner_host_cap_phase_observed_verdict(phase: run.cap_phase)
+        && all(run.superseded, r => superseded_dropin_observed(r: r))
     FleetHostFilesApply =>
       all(run.results, r => fleet_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
@@ -3396,6 +3737,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         })
         && runner_slot_population_effective(population: run.slots)
         && runner_host_cap_phase_settled(phase: run.cap_phase)
+        && all(run.superseded, r => superseded_dropin_settled(r: r))
   }
 }
 
@@ -3437,6 +3779,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     deploy_slot_account_line(standing: run.deploy_account),
     join(map(run.deploy_trees, t => concat(deploy_slot_tree_line(standing: t), "\n")), ""),
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
+    join(map(run.superseded, r => concat(superseded_dropin_line(r: r), "\n")), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
     match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },

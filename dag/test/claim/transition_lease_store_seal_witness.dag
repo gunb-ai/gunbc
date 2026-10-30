@@ -1,0 +1,233 @@
+module test.claim.transition_lease_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE TRANSITION LEASE STORE IS MINTED FROM ITS DECLARATION, AND A HELD LEASE IS MINTED ONLY BY AN ACQUIRE.
+// gunbc.deploy_transition_lease_store TransitionLeaseStore and TransitionLeaseHeld are sole_constructor, and
+// gunbc.deploy_transition TransitionGuard carries a TransitionLeaseHeld, so a guard exists only where the hold
+// library committed an acquire. Each RED hands the compiler a module outside the defining files and asserts the
+// refusal on the real acceptance path:
+//   - a forged store literal, a forged store cast, a store over a LITERAL PATH, a forged held lease, a forged
+//     guard, and a guard pairing one instance's context with another's hold: each EXACTLY ONE
+//     SoleConstructorViolation on its subject;
+//   - the deleted guard mint over an authored create outcome (lease_acquisition_from_create with
+//     LeaseCreateSucceeded, which minted a guard with no lease anywhere) and the deleted root-taking acquire
+//     (acquire_transition_lease over TransitionSubject.instance_root), and the store-taking acquire (a lease store
+//     beside the context): each at least one blocking diagnostic
+//   - THE THREE LAUNDERING ROUTES: a call to the deleted transition_lease_acquire_of(store, outcome) over an
+//     AUTHORED FileHoldAcquired, the same call over an outcome belonging to another store, and a call to the
+//     deleted lease_acquisition_of(context, subject, holder, outcome) over an authored TransitionLeaseAcquired.
+//     Both admitting folds are deleted; their admitting arms live only inside transition_lease_acquire and
+//     acquire_transition_lease, beside the call whose return value each reads (see those two functions). The
+//     refusal folds that remain take no outcome-plus-store pair, so they mint no proof. Each is ATTRIBUTED to
+//     the callable that is gone -- a blocking MissingExport keyed on its name -- by laundering_route_is_gone.
+//     beyond a baseline importing the same closure (gunbc.compile_diagnostic_census).
+// A root read out of a store is ACCEPTED today and is recorded as an expecting-red probe, below. The GREEN is the
+// lawful route, transition_context into acquire_transition_lease, which adds no blocking diagnostic and draws
+// no seal violation. NOT closed here: Filesystem.* is ambient, so any module can write a hold slot's next
+// generation itself over a path it spells; that is not holding a TransitionLeaseStore.
+
+// Every probe imports one closure, so the baseline cancels it; `extra` names a deleted declaration a RED
+// imports from gunbc.deploy_transition inside the same import list, never in a second import of the module.
+fn probe_importing(name: String, extra: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { NonEmptyStr, String }\n",
+    "import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\n",
+    "import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, TransitionLeaseHeld, transition_lease_store }\n",
+    "import gunbc.deploy_transition_store { TransitionContext, TransitionContextReading, TransitionContextReady, TransitionContextUnready, transition_context }\n",
+    "import gunbc.deploy_transition { TransitionSubject, TransitionActor, TransitionGuard, LeaseAcquisition, LeaseUnobtainable, acquire_transition_lease", extra, " }\n",
+    body,
+  ], "")
+}
+
+fn probe(name: String, body: String) -> String {
+  probe_importing(name: name, extra: "", body: body)
+}
+
+// The laundering probes need the hold library's acquire outcome and the lease store's acquire RESULT type in
+// scope, because the old admitting folds took exactly those as arguments. Same single closure otherwise.
+fn probe_outcomes_over(name: String, lease_store_extra: String, transition_extra: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { NonEmptyStr, String }\n",
+    "import std.durable_exclusive_hold { DurableHoldSlotKey, DurableHoldOwnerRef }\n",
+    "import std.durable_compare_and_set { CasGeneration }\n",
+    "import gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, FileHoldAcquired }\n",
+    "import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\n",
+    "import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, TransitionLeaseHeld, TransitionLeaseAcquire, TransitionLeaseAcquired, TransitionLeaseRefused, transition_lease_store", lease_store_extra, " }\n",
+    "import gunbc.deploy_transition_store { TransitionContext, TransitionContextReading, TransitionContextReady, TransitionContextUnready, transition_context }\n",
+    "import gunbc.deploy_transition { TransitionSubject, TransitionActor, TransitionGuard, LeaseAcquisition, LeaseAcquired, LeaseUnobtainable, acquire_transition_lease", transition_extra, " }\n",
+    body,
+  ], "")
+}
+
+fn probe_outcomes(name: String, body: String) -> String {
+  probe_outcomes_over(name: name, lease_store_extra: "", transition_extra: "", body: body)
+}
+
+data closure_baseline_source: String = probe(name: "probe_transition_lease_closure_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+data closure_outcomes_baseline_source: String = probe_outcomes(name: "probe_transition_lease_closure_outcomes_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+
+// The delta for the laundering probes is taken against a baseline with the SAME outcome closure, so nothing the
+// extra imports contribute can be read as the refusal.
+fn blocking_delta_outcomes(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: closure_outcomes_baseline_source), holds: holds)
+}
+
+// THE ROUTE IS ATTRIBUTED TO THE CALLABLE THAT IS GONE, not merely counted. A bare "one more blocking
+// diagnostic than the baseline" delta is satisfied by closure noise: a sibling witness had to correct exactly
+// this, because its control was met by forty-five unrelated blocking rows and a reintroduced mint would have
+// stayed green. So each laundering route names the deleted fold IN ITS IMPORT LIST and the claim asserts the row
+// that says it is missing -- a blocking MissingExport whose subject is that callable's name, exactly one -- and
+// the delta on top of it. Restore transition_lease_acquire_of or lease_acquisition_of and that row goes to zero,
+// which reds the claim whatever else the closure carries. This keyed pair is the whole of what the scratch shell
+// the folds are deleted, so the absent name is the measured fact: restore either fold and the keyed row goes to
+// zero and the claim reds. The evidence is the claim, not a script run beside it.
+fn laundering_route_is_gone(source: String, deleted_callable: String) -> ProcessExit {
+  census_verdict_all([
+    census_verdict(
+      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable),
+      holds: fn(n) { n == 1 },
+    ),
+    blocking_delta_outcomes(hostile: source, holds: fn(n) { n >= 1 }),
+  ])
+}
+
+data forged_store_literal_source: String = probe(name: "probe_transition_lease_forged_store_literal", body: "fn f(s: TransitionLeaseStore) -> TransitionLeaseStore {\n  TransitionLeaseStore { instance: s.instance, root: s.root }\n}\n")
+
+data forged_store_cast_source: String = probe(name: "probe_transition_lease_forged_store_cast", body: "fn f(r: NonEmptyStr) -> TransitionLeaseStore {\n  r as TransitionLeaseStore\n}\n")
+
+data literal_path_store_source: String = probe(name: "probe_transition_lease_literal_path_store", body: "fn f() -> TransitionLeaseStore {\n  TransitionLeaseStore { instance: \"srv1-lab\" as NonEmptyStr, root: \"/tmp/forged-instance\" as NonEmptyStr }\n}\n")
+
+data forged_held_source: String = probe(name: "probe_transition_lease_forged_held", body: "fn f(s: TransitionLeaseStore, h: TransitionLeaseHeld) -> TransitionLeaseHeld {\n  TransitionLeaseHeld { store: s, owner: h.owner, generation: h.generation }\n}\n")
+
+data forged_guard_source: String = probe(name: "probe_transition_lease_forged_guard", body: "fn f(c: TransitionContext, s: TransitionSubject, a: TransitionActor, h: TransitionLeaseHeld) -> TransitionGuard {\n  TransitionGuard { context: c, subject: s, holder: a, lease: h }\n}\n")
+
+data crossed_hold_guard_source: String = probe(name: "probe_transition_lease_crossed_hold_guard", body: "fn f(ga: TransitionGuard, gb: TransitionGuard) -> TransitionGuard {\n  TransitionGuard { context: ga.context, subject: ga.subject, holder: ga.holder, lease: gb.lease }\n}\n")
+
+data store_beside_context_acquire_source: String = probe(name: "probe_transition_lease_store_beside_context_acquire", body: "fn f(l: TransitionLeaseStore, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  acquire_transition_lease(lease: l, subject: s, holder: a)\n}\n")
+
+data authored_create_outcome_source: String = probe_importing(name: "probe_transition_lease_authored_create_outcome", extra: ", LeaseCreateSucceeded, lease_acquisition_from_create", body: "fn f(s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  lease_acquisition_from_create(subject: s, holder: a, outcome: LeaseCreateSucceeded)\n}\n")
+
+data root_taking_acquire_source: String = probe(name: "probe_transition_lease_root_taking_acquire", body: "fn f(a: TransitionActor) -> LeaseAcquisition {\n  acquire_transition_lease(subject: TransitionSubject { instance_root: \"/tmp/forged-instance\", repo_root: \"/tmp/forged-instance/source\", base_ref: \"refs/remotes/origin/main\", candidate: \"c\" }, holder: a)\n}\n")
+
+data root_out_of_store_source: String = probe(name: "probe_transition_lease_root_out_of_store", body: "fn f(s: TransitionLeaseStore) -> NonEmptyStr {\n  s.root\n}\n")
+
+data lawful_mint_route_source: String = probe(name: "probe_transition_lease_lawful_mint_route", body: "fn f(i: HostDashboardInstance, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  match transition_context(instance: i) {\n    TransitionContextReady { context } => acquire_transition_lease(context: context, subject: s, holder: a)\n    TransitionContextUnready { detail } => LeaseUnobtainable { cause: detail }\n  }\n}\nfn g(i: HostDashboardInstance) -> String {\n  match transition_lease_store(instance: i) {\n    TransitionLeaseStoreReady { store: _ } => \"ready\"\n    TransitionLeaseStoreUnready { detail } => detail\n  }\n}\n")
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: closure_baseline_source), holds: holds)
+}
+
+test fn a_forged_lease_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_literal_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_lease_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_cast_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_lease_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_path_store_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_held_lease_without_an_acquire_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_held_source, subject: "TransitionLeaseHeld"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_guard_without_a_held_lease_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_guard_source, subject: "TransitionGuard"), holds: fn(n) { n == 1 }))
+}
+
+// THE TWO-ROOT RED FOR THE LEASE, STRUCTURAL HALF. A guard is one transition at one instance: it cannot carry
+// instance A's context with instance B's hold, so a guard at A has no route to release B's lease. And no acquire
+// takes a lease store beside its context (the store-taking acquire this change had before the context existed),
+// so the lease acquired is always the context's own. The behavioral half is
+// test.claim.deploy_transition_wet_witness two_roots_one_guard_reaches_only_its_own_instance.
+test fn a_guard_carrying_another_instances_hold_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: crossed_hold_guard_source, subject: "TransitionGuard"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_acquire_takes_a_lease_store_beside_its_context() -> ProcessExit {
+  census_exit(blocking_delta(hostile: store_beside_context_acquire_source, holds: fn(n) { n >= 1 }))
+}
+
+// THE GUARD MINT HAS NO PUBLIC FOLD, and it is ATTRIBUTED, not counted. This is the replacement for
+// #15081's RED no_authored_create_outcome_mints_a_guard, which is dropped here because it keys on the deleted
+// LeaseCreateOutcome. `lease_acquisition_from_create(subject, holder, outcome: LeaseCreateSucceeded)` used to
+// answer a sealed TransitionGuard to any module that could WRITE that success arm -- no exclusive create
+// anywhere. The fold now lives inside `acquire_transition_lease`, beside the `Filesystem.WriteOwnerOnly` whose
+// answer it destructures, and neither name is importable. So the probe names the deleted fold IN ITS IMPORT LIST
+// and the claim asserts the row that says it is missing -- exactly one blocking MissingExport keyed on
+// `lease_acquisition_from_create` -- with the same-closure delta on top. Restore the fold and the keyed row goes
+// to zero and this claim reds whatever else the closure carries; a count alone could be met by closure noise.
+test fn no_guard_is_minted_from_an_authored_create_outcome() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(source: authored_create_outcome_source, wanted_class: "MissingExport", wanted_subject: "lease_acquisition_from_create"),
+      holds: fn(n) { n == 1 },
+    ),
+    blocking_delta(hostile: authored_create_outcome_source, holds: fn(n) { n >= 1 }),
+  ])
+}
+
+// THE THREE LAUNDERING ROUTES THE REVIEW FOUND, each a call to a fold that used to take an outcome and mint a
+// proof. They are gone from the modules' surfaces, so each probe is at least one blocking diagnostic beyond the
+// baseline -- the route does not resolve, and there is no other callable that will take the same arguments.
+//
+// (1) An authored FileHoldAcquired cannot reach a held lease. The deleted transition_lease_acquire_of(store,
+//     outcome) accepted any value of the hold library's own outcome variant, including one written here, and
+//     paired it with whatever store was named beside it.
+data authored_acquired_outcome_route_source: String = probe_outcomes_over(name: "probe_transition_lease_authored_acquired_outcome", lease_store_extra: ", transition_lease_acquire_of", transition_extra: "", body: "fn f(s: TransitionLeaseStore, k: DurableHoldSlotKey, o: DurableHoldOwnerRef, g: CasGeneration) -> TransitionLeaseAcquire {\n  transition_lease_acquire_of(store: s, outcome: FileHoldAcquired { slot_key: k, owner: o, generation: g })\n}\n")
+
+// (2) A GENUINE outcome from another store or slot cannot be rebound. Same callable, with the outcome reached by
+//     another store's lawful acquire: what the deleted fold did with it is to drop its slot_key and answer for
+//     the store named beside it.
+data foreign_outcome_rebind_route_source: String = probe_outcomes_over(name: "probe_transition_lease_foreign_outcome_rebind", lease_store_extra: ", transition_lease_acquire_of", transition_extra: "", body: "fn f(a: TransitionLeaseStore, b: TransitionLeaseStore, o: FileHoldAcquireOutcome) -> TransitionLeaseAcquire {\n  transition_lease_acquire_of(store: b, outcome: o)\n}\n")
+
+// (3) An authored TransitionLeaseAcquired cannot reach a guard. The deleted lease_acquisition_of(context,
+//     subject, holder, outcome) wrapped whatever acquire result it was handed into a LeaseAcquired(TransitionGuard
+//     { ... }), so a written variant bought a guard.
+data authored_lease_acquired_guard_route_source: String = probe_outcomes_over(name: "probe_transition_lease_authored_lease_acquired_guard", lease_store_extra: "", transition_extra: ", lease_acquisition_of", body: "fn f(c: TransitionContext, s: TransitionSubject, a: TransitionActor, h: TransitionLeaseHeld) -> LeaseAcquisition {\n  lease_acquisition_of(context: c, subject: s, holder: a, outcome: TransitionLeaseAcquired { held: h })\n}\n")
+
+test fn no_outcome_can_be_folded_into_a_held_lease() -> ProcessExit {
+  laundering_route_is_gone(source: authored_acquired_outcome_route_source, deleted_callable: "transition_lease_acquire_of")
+}
+
+test fn no_outcome_from_another_store_can_be_rebound() -> ProcessExit {
+  laundering_route_is_gone(source: foreign_outcome_rebind_route_source, deleted_callable: "transition_lease_acquire_of")
+}
+
+test fn no_outcome_can_be_folded_into_a_guard() -> ProcessExit {
+  laundering_route_is_gone(source: authored_lease_acquired_guard_route_source, deleted_callable: "lease_acquisition_of")
+}
+
+test fn no_root_taking_acquire_resolves() -> ProcessExit {
+  census_exit(blocking_delta(hostile: root_taking_acquire_source, holds: fn(n) { n >= 1 }))
+}
+
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY: a foreign module reads the root out of a lease store and
+// is accepted, because sole_constructor seals construction and not field reads -- the same residual
+// test.claim.transition_inhibition_store_seal_witness a_root_is_readable_through_an_inhibition_store_today records.
+// It flips, and is then inverted into that wall's RED, in the change that makes a sealed record's fields readable
+// only in its declaring module.
+test fn a_root_is_readable_through_a_lease_store_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: root_out_of_store_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_lawful_lease_mint_route_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_mint_route_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionGuard"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionContext"), holds: fn(n) { n == 0 }),
+  ])
+}
