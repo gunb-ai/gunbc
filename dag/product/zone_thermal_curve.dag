@@ -1,0 +1,78 @@
+module product.zone_thermal_curve
+
+import std.types { Int, List }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.optional { Absent, Present }
+import std.measure { Celsius, Percent, celsius, celsius_count, percent, percent_count }
+
+// POLICY: A COOLING ZONE FOLLOWS THE HOTTEST OF A NAMED SENSOR SET THROUGH A CURVE, AND A MISSING
+// READING DRIVES FULL DUTY. It names no host, header, BMC family or sensor spelling (DESIGN 3: those
+// are a machine row's and a family realization's). Which sensors a zone reads and which header it
+// drives are row facts; this module owns only the mapping from readings to duty.
+//
+// THE FAIL-SAFE IS AN OBLIGATION OF THE CURVE, NOT A CALLER'S CHECK: zone_duty is total over
+// the readings and its empty-readings arm is ZoneFailSafe, whose duty is 100 by construction (the
+// constructor takes no duty). This is deliberately NOT the fleet guard's posture
+// (product.fleet_fan_policy returns to firmware automatic on an unreadable sensor): a passive
+// accelerator host's firmware curve keys on the SoC, not the card, and is not a safe place to fall
+// back to (butch, 2026-10-30, factory curve idled the A2s at 84-93 C), so here not knowing the
+// temperature is a reason for maximum cooling.
+//
+// A curve is flat at `floor` up to and including `flat_until`, then linear to 100 at `full_at`.
+// Integer arithmetic, truncating division: the live a16-fan.sh rounding is a READ OBLIGATION (its
+// source has not been read by this change), so witnesses pin the curve's endpoints, not its interior.
+type ZoneCurve {
+  floor: Percent
+  flat_until: Celsius
+  full_at: Celsius
+}
+
+type ZoneDuty
+  = ZoneFollowsCurve { hottest: Celsius, duty: Percent }
+  | ZoneFailSafe
+
+fn zone_full_duty() -> Percent {
+  percent(100)
+}
+
+fn zone_hottest(readings: List<Celsius>) -> Celsius? {
+  match first(readings) {
+    Absent => Absent
+    Present { value: head } => Present {
+      value: fold(readings, init: head, f: (acc, r) => if celsius_count(r) > celsius_count(acc) { r } else { acc }),
+    }
+  }
+}
+
+fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
+  let lo = celsius_count(curve.flat_until)
+  let hi = celsius_count(curve.full_at)
+  let at = celsius_count(t)
+  let floor = percent_count(curve.floor) as Int
+  if at <= lo {
+    curve.floor
+  } else {
+    if at >= hi || hi <= lo {
+      zone_full_duty()
+    } else {
+      match checked_int_to_nat(n: floor + (100 - floor) * (at - lo) / (hi - lo)) {
+        Absent => zone_full_duty()
+        Present { value: n } => percent(n)
+      }
+    }
+  }
+}
+
+fn zone_duty(curve: ZoneCurve, readings: List<Celsius>) -> ZoneDuty {
+  match zone_hottest(readings: readings) {
+    Absent => ZoneFailSafe
+    Present { value: t } => ZoneFollowsCurve { hottest: t, duty: zone_curve_duty(curve: curve, t: t) }
+  }
+}
+
+fn zone_duty_percent(d: ZoneDuty) -> Percent {
+  match d {
+    ZoneFailSafe => zone_full_duty()
+    ZoneFollowsCurve { hottest: _, duty: p } => p
+  }
+}

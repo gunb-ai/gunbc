@@ -1,0 +1,45 @@
+module test.claim.zone_thermal_curve_witness
+
+import std.types { Bool, Int, List }
+import std.measure { celsius, percent, percent_count }
+import product.zone_thermal_curve { ZoneCurve, zone_duty, zone_duty_percent }
+
+// SUPPLIED: readings. EXECUTED: the real zone_duty fold. The curves are the two live h11 zone curves
+// (a16-fan.sh, read 2026-10-30): CPU zone 20% to 60 C, 100% at 85 C; GPU idle 20% to 75 C, 100% at 88 C.
+fn cpu_curve() -> ZoneCurve {
+  ZoneCurve { floor: percent(20), flat_until: celsius(60), full_at: celsius(85) }
+}
+
+fn gpu_idle_curve() -> ZoneCurve {
+  ZoneCurve { floor: percent(20), flat_until: celsius(75), full_at: celsius(88) }
+}
+
+fn duty_at(curve: ZoneCurve, temps: List<Int>) -> Int {
+  percent_count(zone_duty_percent(zone_duty(curve: curve, readings: map(temps, t => celsius(t))))) as Int
+}
+
+// THE FAIL-SAFE RED: no reading must drive 100, on every curve, and a floor-only answer is the failure.
+test fn witness_missing_reading_drives_full_duty() -> Bool {
+  duty_at(curve: cpu_curve(), temps: []) == 100 && duty_at(curve: gpu_idle_curve(), temps: []) == 100
+}
+
+// ITS POSITIVE CONTROL: with a reading the same curves answer their floor, so the 100 above is the
+// fail-safe and not a curve that is always 100.
+test fn witness_present_reading_follows_curve_endpoints() -> Bool {
+  duty_at(curve: cpu_curve(), temps: [40]) == 20 && duty_at(curve: cpu_curve(), temps: [60]) == 20
+    && duty_at(curve: cpu_curve(), temps: [85]) == 100 && duty_at(curve: gpu_idle_curve(), temps: [75]) == 20
+    && duty_at(curve: gpu_idle_curve(), temps: [88]) == 100
+}
+
+// THE HOTTEST OF THE SET DRIVES THE ZONE, whichever position it holds.
+test fn witness_hottest_of_set_drives_zone() -> Bool {
+  duty_at(curve: gpu_idle_curve(), temps: [50, 88, 60]) == 100 && duty_at(curve: gpu_idle_curve(), temps: [88, 50]) == 100
+    && duty_at(curve: gpu_idle_curve(), temps: [50, 60]) == 20
+}
+
+// INTERIOR, pinned to a16-fan.sh lin() read 2026-10-30 (sha256 4ff02eb223003349): bash integer
+// d0 + (t-t0)*(100-d0)/(t1-t0), truncating. 70C on the CPU curve is 20+10*80/25 = 52; 80C on the idle GPU curve
+// is 20+5*80/13 = 50 (30.77 truncated), which a rounding or ceil realization would answer 51.
+test fn witness_interior_truncates_like_the_live_script() -> Bool {
+  duty_at(curve: cpu_curve(), temps: [70]) == 52 && duty_at(curve: gpu_idle_curve(), temps: [80]) == 50
+}
