@@ -65,10 +65,12 @@ type PrinterExecutionHoldStore sole_constructor {root:NonEmptyStr}
 
 type PrinterExecutionHoldStoreReading = PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore} | PrinterExecutionHoldStoreUnready {detail:String}
 
-// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds the flat layout, whose
-// fleet-print-controller.<n> slot would otherwise read as free here and admit a second controller.
+fn printer_execution_hold_legacy_entry(name:String) -> Bool { starts_with(s:name,prefix:concat(hold_key as String,".")) }
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds a fleet-print-controller.<n> slot
+// of the flat layout, which would otherwise read as free here and admit a second controller.
 fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
-  match printer_starts_legacy_scan(tree:tree) {
+  match printer_starts_legacy_scan(tree:tree,owns:n=>printer_execution_hold_legacy_entry(name:n)) {
     PrinterStartsUnreadable {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
     PrinterStartsLegacyEntries {names:n}=>PrinterExecutionHoldStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
     PrinterStartsClean=>match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {

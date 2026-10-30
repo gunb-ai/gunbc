@@ -10,7 +10,7 @@ import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_starts_directory, print_run_directory_target, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
 import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name }
 import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
-import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
 
 // THE PRINTER STATE TREE'S LAYOUT: what directories a printer pass demands (printer_state_directories) and the one
@@ -78,6 +78,9 @@ fn legacy_target(tree: HostStateTree, name: String) -> String? {
     let key = substring(s: name, start: 0, end: length(name) - length(legacy_completed_suffix))
     return Present { value: join([print_completion_path(tree: tree) as String, "/", completion_record_name(claim_key: key as NonEmptyStr)], "") }
   }
+  if name == "batch-state.json" {
+    return Present { value: join([printer_start_claim_path(tree: tree) as String, "/", name], "") }
+  }
   if string_contains(s: name, pattern: legacy_claim_evidence_marker) {
     return Present { value: join([printer_start_claim_path(tree: tree) as String, "/", name], "") }
   }
@@ -94,7 +97,6 @@ fn legacy_target(tree: HostStateTree, name: String) -> String? {
   none
 }
 
-fn is_legacy_hold_entry(name: String) -> Bool { starts_with(s: name, prefix: join([hold_key as String, "."], "")) }
 
 // THE OLD HOLD, PROVEN FREE THROUGH THE HOLD LIBRARY before anything moves: acquire it, release it at the
 // generation won. A holder (live or stale) makes the step refuse; recovering a stale holder stays the hold
@@ -119,23 +121,45 @@ fn old_hold_proven_free(tree: HostStateTree) -> Relocated {
   }
 }
 
+// THE HOLD'S ENTRIES, LISTED AFTER THE OLD HOLD WAS PROVEN FREE: acquiring and releasing it wrote new generations
+// into the parent, so the list taken before the proof is stale and moving only it would leave those behind.
+fn fresh_hold_names(tree: HostStateTree) -> List<String> {
+  match printer_starts_legacy_scan(tree: tree, owns: n => printer_execution_hold_legacy_entry(name: n)) {
+    PrinterStartsLegacyEntries { names: fresh } => fresh
+    PrinterStartsClean => []
+    PrinterStartsUnreadable { detail: _ } => []
+  }
+}
+
+// PER STORE: the entries of every store but the hold move first and unconditionally (their mints are Ready as
+// soon as their own entries are gone); the hold's entries move only once the OLD hold was proven free, and a
+// holder makes the step report a refusal naming the hold, with everything else already moved.
 fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
-  match printer_starts_legacy_scan(tree: tree) {
+  match printer_starts_legacy_scan(tree: tree, owns: n => true) {
     PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
     PrinterStartsClean => PrinterStateMoved
     PrinterStartsLegacyEntries { names: names } => {
       let parent = printer_starts_path(tree: tree) as String
       let unknown = names.filter(n => match legacy_target(tree: tree, name: n) { Present { value: _ } => false Absent => true })
       if count(unknown) != 0 { return PrinterStateMoveRefused { cause: join(["printer-starts holds entries no store claims: ", join(unknown, ", ")], "") } }
-      if count(names.filter(n => is_legacy_hold_entry(name: n))) != 0 {
-        match old_hold_proven_free(tree: tree) { RelocationRefused { cause: c } => return PrinterStateMoveRefused { cause: c } RelocationDone => {} }
-      }
-      let causes = names.flat_map(n => match legacy_target(tree: tree, name: n) {
+      let hold_names = names.filter(n => printer_execution_hold_legacy_entry(name: n))
+      let other_names = names.filter(n => !printer_execution_hold_legacy_entry(name: n))
+      let other_causes = other_names.flat_map(n => match legacy_target(tree: tree, name: n) {
         Present { value: to } => match relocate_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
         Absent => [join(["no store claims ", n], "")]
       })
+      let hold_causes = if count(hold_names) == 0 { [] } else {
+        match old_hold_proven_free(tree: tree) {
+          RelocationRefused { cause: c } => [join(["the execution hold was not moved: ", c], "")]
+          RelocationDone => fresh_hold_names(tree: tree).flat_map(n => match legacy_target(tree: tree, name: n) {
+            Present { value: to } => match relocate_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+            Absent => [join(["no store claims ", n], "")]
+          })
+        }
+      }
+      let causes = append(other_causes, items: hold_causes)
       if count(causes) != 0 { return PrinterStateMoveRefused { cause: join(causes, "; ") } }
-      match printer_starts_legacy_scan(tree: tree) {
+      match printer_starts_legacy_scan(tree: tree, owns: n => true) {
         PrinterStartsClean => PrinterStateMoved
         PrinterStartsLegacyEntries { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
         PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }

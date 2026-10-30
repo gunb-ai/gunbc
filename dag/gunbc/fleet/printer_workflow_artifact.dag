@@ -50,14 +50,17 @@ type PrinterStartsLegacyScan
   | PrinterStartsLegacyEntries { names: List<String> }
   | PrinterStartsUnreadable { detail: String }
 
-fn printer_starts_legacy_scan(tree: HostStateTree) -> PrinterStartsLegacyScan {
+// THE FLAT-LAYOUT ENTRIES OF ONE STORE: the entries of the parent with a dot in the name that `owns` (the store's own
+// legacy-name predicate) claims. A mint refuses on its own store's entries only, so stores whose entries have moved
+// are Ready while another store's remain.
+fn printer_starts_legacy_scan(tree: HostStateTree, owns: fn(String) -> Bool) -> PrinterStartsLegacyScan {
   let root = printer_starts_path(tree: tree)
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => PrinterStartsUnreadable { detail: join(["the printer-starts directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => PrinterStartsUnreadable { detail: join(["the printer-starts directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(listed) => {
-      let legacy = filesystem_listing_entry_names(listing: listed).filter(n => string_contains(s: trim(s: n), pattern: "."))
+      let legacy = filesystem_listing_entry_names(listing: listed).filter(n => string_contains(s: trim(s: n), pattern: ".") && owns(n))
       if count(legacy) == 0 { PrinterStartsClean } else { PrinterStartsLegacyEntries { names: legacy } }
     }
   }

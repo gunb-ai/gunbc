@@ -1,0 +1,199 @@
+module test.claim.printer_store_old_bytes_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import std.content_hash { sha256_hex_digest }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
+import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
+import gunbc.durable_cas_file_store { slot_observe }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, file_hold_release_assess, file_hold_release_commit, FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.print_request { PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.print_record_stores { print_request_store, PrintRequestStoreReady, PrintRequestStoreUnready, print_request_path, print_request_read, RecordPresent, RecordAbsent, RecordRefused, record_json, print_completion_store, PrintCompletionStoreReady, PrintCompletionStoreUnready, print_completion_path, print_completion_presence, CompletionListed, CompletionNotListed, CompletionPresenceUnreadable }
+import gunbc.fleet.printer_actuation { printer_start_claims, PrinterStartClaimsReady, PrinterStartClaimsUnready, printer_start_claim_path, printer_start_claim_listed, printer_start_claim_version, start_claim_evidence_prefix, printer_start_claim_commit, PrinterStartClaimed, PrinterStartClaimRefused }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready, printer_execution_hold_path, hold_key }
+import product.printed_chassis.assembly_inventory_store { cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready, cassette_inventory_path, inventory_slot }
+import gunbc.fleet.printer_state_layout { printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
+import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environment_publication, CadEnvironmentPublished, cad_environment_prefix, cad_environment_ready_marker }
+import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_text }
+
+// OLD BYTES READ THROUGH THE NEW STORES, over a throwaway host-state tree. Files are planted with raw writes in the
+// shapes the old code wrote them (legacy flat names for the stores that moved, in place for those that did not);
+// every store and the move are the production functions.
+
+fn fresh_tree() -> HostStateTree? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_printer_oldbytes.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let made = [printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
+  if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
+}
+
+fn plant(tree: HostStateTree, name: String, content: String) -> Bool {
+  Filesystem.WriteCreateNew(path: join([printer_starts_path(tree: tree) as String, "/", name], ""), content: content).success
+}
+
+fn moved(tree: HostStateTree) -> Bool { match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false } }
+
+// A claim the old code wrote, its sidecar beside it: the claim reads back as claimed with the credential version
+// its signed subject sealed.
+test fn o_an_old_claim_reads_through_the_claim_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant(tree: tree, name: "printer-attempt-k1.claimed", content: "{\"credential_version\":\"v7\"}") && plant(tree: tree, name: "printer-attempt-k1.claimed.before-start.json", content: "b")
+      let ok = moved(tree: tree)
+      match printer_start_claims(tree: tree) {
+        PrinterStartClaimsUnready { detail: _ } => false
+        PrinterStartClaimsReady { store: claims } => {
+          let listed = match printer_start_claim_listed(claims: claims, key: "printer-attempt-k1" as NonEmptyStr) { Present { value: v } => v Absent => false }
+          let version = match printer_start_claim_version(claims: claims, key: "printer-attempt-k1" as NonEmptyStr) { Present { value: v } => (v as String) == "v7" Absent => false }
+          let unclaimed = match printer_start_claim_listed(claims: claims, key: "printer-attempt-other" as NonEmptyStr) { Present { value: v } => !v Absent => false }
+          planted && ok && listed && version && unclaimed
+        }
+      }
+    }
+  }
+}
+
+// RESIDUAL (4): the evidence a start writes (before-start, after-start, receipt) lands beside the claim slot,
+// inside the claim member and never in the printer-starts parent, so no mint can read it as a flat-layout entry
+// after the first print. Every mint stays Ready and the claim still reads claimed.
+test fn o_start_evidence_beside_the_claim_never_makes_a_mint_unready() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      match printer_start_claims(tree: tree) {
+        PrinterStartClaimsUnready { detail: _ } => false
+        PrinterStartClaimsReady { store: claims } => {
+          let key = "printer-attempt-k2" as NonEmptyStr
+          let claimed = match printer_start_claim_commit(claims: claims, key: key, subject: "{\"credential_version\":\"v1\"}") { PrinterStartClaimed => true PrinterStartClaimRefused { cause: _ } => false }
+          let prefix = start_claim_evidence_prefix(claims: claims, key: key)
+          let wrote = Filesystem.Write(path: concat(prefix, ".before-start.json"), content: "b").success && Filesystem.Write(path: concat(prefix, ".after-start-1.json"), content: "a").success && Filesystem.Write(path: concat(prefix, ".receipt.json"), content: "r").success
+          let parent_clean = !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-attempt-k2.claimed.before-start.json"], "")).success
+          let mints = match printer_start_claims(tree: tree) { PrinterStartClaimsReady { store: _ } => true PrinterStartClaimsUnready { detail: _ } => false }
+            && match print_request_store(tree: tree) { PrintRequestStoreReady { store: _ } => true PrintRequestStoreUnready { detail: _ } => false }
+            && match print_completion_store(tree: tree) { PrintCompletionStoreReady { store: _ } => true PrintCompletionStoreUnready { detail: _ } => false }
+            && match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: _ } => true PrinterExecutionHoldStoreUnready { detail: _ } => false }
+            && match cassette_inventory_store(tree: tree) { CassetteInventoryStoreReady { store: _ } => true CassetteInventoryStoreUnready { detail: _ } => false }
+          let still = match printer_start_claim_listed(claims: claims, key: key) { Present { value: v } => v Absent => false }
+          claimed && wrote && parent_clean && mints && still
+        }
+      }
+    }
+  }
+}
+
+// A request record in the format the old code wrote (its serializer, record_json, is byte-identical to the old code's, a git diff of the function is empty), planted in the
+// request member where it always lived, reads back as RecordPresent through the new store; and the store's own
+// serialization of the same record is byte-equal to that text.
+test fn o_an_old_request_record_reads_through_the_request_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let digest_hex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      match sha256_hex_digest(hex: digest_hex) {
+        Absent => false
+        Present { value: digest } => {
+          let request = PrintRequest { request_id: "req-1" as NonEmptyStr, root: "root-1" as NonEmptyStr, recipe: "recipe-1" as NonEmptyStr, printer: "printer-01" as PhysicalAssetIdentity }
+          let attempt = print_attempt_id(request: request, artifact_sha256: digest)
+          let record = PrintRequestRecord { request: request, source_revision: "rev-1" as NonEmptyStr, artifact_sha256: digest, artifact_location: "loc-1" as NonEmptyStr, attempt_id: attempt }
+          let planted = Filesystem.WriteCreateNew(path: join([print_request_path(tree: tree) as String, "/", request_record_name(request_id: request.request_id)], ""), content: record_json(r: record)).success
+          match print_request_store(tree: tree) {
+            PrintRequestStoreUnready { detail: _ } => false
+            PrintRequestStoreReady { store: store } => {
+              let read = match print_request_read(store: store, request: request) { RecordPresent { record: r } => record_json(r: r) == record_json(r: record) RecordAbsent => false RecordRefused { cause: _ } => false }
+              planted && read
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// An old completion record (flat name) is listed through the completion store after the move, bytes unchanged.
+test fn o_an_old_completion_record_is_listed_through_the_completion_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant(tree: tree, name: "printer-attempt-k3.claimed.completed.json", content: "{\"schema\":\"gunbc.print-completion.v2\"}")
+      let ok = moved(tree: tree)
+      match print_completion_store(tree: tree) {
+        PrintCompletionStoreUnready { detail: _ } => false
+        PrintCompletionStoreReady { store: store } => {
+          let listed = match print_completion_presence(store: store, claim_key: "printer-attempt-k3" as NonEmptyStr) { CompletionListed => true CompletionNotListed => false CompletionPresenceUnreadable { cause: _ } => false }
+          let absent = match print_completion_presence(store: store, claim_key: "printer-attempt-other" as NonEmptyStr) { CompletionListed => false CompletionNotListed => true CompletionPresenceUnreadable { cause: _ } => false }
+          planted && ok && listed && absent
+        }
+      }
+    }
+  }
+}
+
+// A hold generation the old code left (acquired and released in the flat parent through the same hold library)
+// moves, and the new hold store acquires over it: the generation file decodes, a held one would be Occupied.
+test fn o_an_old_hold_generation_is_acquired_over_through_the_hold_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let who = "old-controller" as NonEmptyStr
+      let old_released = match file_hold_acquire(root: printer_starts_path(tree: tree), slot_key: hold_key, requested_owner: who as DurableHoldOwnerRef) {
+        FileHoldAcquired { slot_key: _, owner: o, generation: g } => match file_hold_release_assess(root: printer_starts_path(tree: tree), slot_key: hold_key, owner: o, acquired_generation: g, released_by: who as DurableHoldReleaseRef) {
+          FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) { FileHoldReleased { slot_key: _, generation: _ } => true _ => false }
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+        }
+        FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
+        FileHoldAcquireLost { slot_key: _ } => false
+        FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => false
+        FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
+        FileHoldKeyNotSlotAddressable { slot_key: _ } => false
+      }
+      let ok = moved(tree: tree)
+      let reacquired = match file_hold_acquire(root: printer_execution_hold_path(tree: tree), slot_key: hold_key, requested_owner: "new-controller" as NonEmptyStr as DurableHoldOwnerRef) {
+        FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
+        _ => false
+      }
+      old_released && ok && reacquired
+    }
+  }
+}
+
+// An old inventory generation (flat name) reads, bytes unchanged, through the inventory store's own slot.
+test fn o_an_old_inventory_generation_reads_through_the_inventory_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant(tree: tree, name: "cassette-prototype-inventory.1", content: "inv-bytes")
+      let ok = moved(tree: tree)
+      match cassette_inventory_store(tree: tree) {
+        CassetteInventoryStoreUnready { detail: _ } => false
+        CassetteInventoryStoreReady { store: store } => match slot_observe(store: store.slots, key: inventory_slot) {
+          CasObservedReadable { readable: CasReadablePresent { version: v } } => planted && ok && (v.value as String) == "inv-bytes"
+          CasObservedReadable { readable: CasReadableAbsent } => false
+          CasObservedUnreadable { cause: _ } => false
+        }
+      }
+    }
+  }
+}
+
+// A CAD environment the old code published (prefix + ready marker holding the exact spec text, no lock) is
+// Published through the new store.
+test fn o_an_old_cad_ready_marker_is_published_through_the_cad_store() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => match cad_runtime_store(tree: tree) {
+      CadRuntimeStoreUnready { detail: _ } => false
+      CadRuntimeStoreReady { store: store } => {
+        let prefix = cad_environment_prefix(store: store, spec: cad_runtime_spec)
+        let planted = shell.Mkdir.Parents(path: prefix as FilePath).success && Filesystem.WriteCreateNew(path: join([prefix, "/", cad_environment_ready_marker], ""), content: cad_runtime_spec_text(spec: cad_runtime_spec)).success
+        planted && match cad_environment_publication(store: store, spec: cad_runtime_spec) { CadEnvironmentPublished => true _ => false }
+      }
+    }
+  }
+}

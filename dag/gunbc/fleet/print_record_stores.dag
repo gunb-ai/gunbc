@@ -71,22 +71,22 @@ type PrintCompletionStoreReading
   = PrintCompletionStoreReady { store: PrintCompletionStore }
   | PrintCompletionStoreUnready { detail: String }
 
-// THE MINTS TAKE THE TREE AND NOTHING ELSE. Each refuses while the parent still holds entries of the flat
-// layout (never dual-read: a completion that still sits in the parent would read as absent here), then lists
+// THE MINTS TAKE THE TREE AND NOTHING ELSE. The completion mint refuses while the parent still holds a completion
+// record of the flat layout (never dual-read: it would read as absent here); the request records never moved
+// (the member is the directory they always lived in), so that mint has no legacy entries to refuse on. Each lists
 // its own member directory and refuses a directory it cannot list rather than reading it as empty.
 fn print_request_store(tree: HostStateTree) -> PrintRequestStoreReading {
-  match printer_starts_legacy_scan(tree: tree) {
-    PrinterStartsUnreadable { detail: d } => PrintRequestStoreUnready { detail: d }
-    PrinterStartsLegacyEntries { names: n } => PrintRequestStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
-    PrinterStartsClean => match listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)) {
-      SlotStoreRefused { detail: d } => PrintRequestStoreUnready { detail: d }
-      SlotStoreListed { root: r } => PrintRequestStoreReady { store: PrintRequestStore { root: r } }
-    }
+  match listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)) {
+    SlotStoreRefused { detail: d } => PrintRequestStoreUnready { detail: d }
+    SlotStoreListed { root: r } => PrintRequestStoreReady { store: PrintRequestStore { root: r } }
   }
 }
 
+// A completion record of the flat layout: <claim key>.claimed.completed.json in the parent.
+fn print_completion_legacy_entry(name: String) -> Bool { ends_with(s: name, suffix: ".claimed.completed.json") }
+
 fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
-  match printer_starts_legacy_scan(tree: tree) {
+  match printer_starts_legacy_scan(tree: tree, owns: n => print_completion_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => PrintCompletionStoreUnready { detail: d }
     PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
     PrinterStartsClean => match listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)) {

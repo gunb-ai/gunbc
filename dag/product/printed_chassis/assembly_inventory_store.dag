@@ -29,8 +29,9 @@ fn cassette_inventory_directory_target(tree:HostStateTree) -> OwnedDirectoryTarg
 }
 type CassetteInventoryStore sole_constructor { slots:SlotStore }
 type CassetteInventoryStoreReading = CassetteInventoryStoreReady {store:CassetteInventoryStore} | CassetteInventoryStoreUnready {detail:String}
+fn cassette_inventory_legacy_entry(name:String) -> Bool { starts_with(s:name,prefix:concat(inventory_slot as String,".")) }
 fn cassette_inventory_store(tree:HostStateTree) -> CassetteInventoryStoreReading {
- match printer_starts_legacy_scan(tree:tree) {
+ match printer_starts_legacy_scan(tree:tree,owns:n=>cassette_inventory_legacy_entry(name:n)) {
  PrinterStartsUnreadable {detail:d}=>CassetteInventoryStoreUnready {detail:d}
  PrinterStartsLegacyEntries {names:n}=>CassetteInventoryStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
  PrinterStartsClean=>match listed_slot_store(member:cassette_inventory_slots.member as String,root:cassette_inventory_path(tree:tree)) {

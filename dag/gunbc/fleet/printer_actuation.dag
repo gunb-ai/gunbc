@@ -6,7 +6,8 @@ import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,Json
 
 import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
 import extdeps.tools.hostname
-import std.algebra {trim}
+import std.algebra {trim,string_contains}
+import gunbc.fleet.print_record_stores {print_completion_legacy_entry}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import std.types { String, NonEmptyStr, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -166,10 +167,16 @@ type PrinterStartClaims sole_constructor { slots:SlotStore }
 
 type PrinterStartClaimsReading = PrinterStartClaimsReady {store:PrinterStartClaims} | PrinterStartClaimsUnready {detail:String}
 
-// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds the flat layout (a claim left
-// there would read as absent here and admit a second start of that attempt).
+// The flat-layout entries that belong to the claim store: a claim (<key>.claimed), the evidence beside it
+// (<key>.claimed.<kind>.json) and batch-state.json, an observation file of a start path deleted in #14945 that
+// nothing reads and is retained here as evidence. A completion record (<key>.claimed.completed.json) is the
+// completion store's.
+fn printer_start_claim_legacy_entry(name:String) -> Bool { (string_contains(s:name,pattern:".claimed") && !print_completion_legacy_entry(name:name)) || name=="batch-state.json" }
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds a claim-store entry of the flat
+// layout (a claim left there would read as absent here and admit a second start of that attempt).
 fn printer_start_claims(tree:HostStateTree) -> PrinterStartClaimsReading {
-  match printer_starts_legacy_scan(tree:tree) {
+  match printer_starts_legacy_scan(tree:tree,owns:n=>printer_start_claim_legacy_entry(name:n)) {
     PrinterStartsUnreadable {detail:d}=>PrinterStartClaimsUnready {detail:d}
     PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
     PrinterStartsClean=>match listed_slot_store(member:printer_start_claim_slots.member as String,root:printer_start_claim_path(tree:tree)) {
