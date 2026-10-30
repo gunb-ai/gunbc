@@ -17,8 +17,7 @@ import gunbc.workspace_allocation_plan { workspace_reservation_prepare, Workspac
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.workspace_allocation_store {
   workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted,
-  workspace_record_plan, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused,
-}
+  workspace_record_plan, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_store }
 
 type WorkspacePreparation
   = WorkspacePreparationRecorded { plan: WorkspaceReservationPlan }
@@ -38,7 +37,7 @@ fn workspace_prepare_recorded_intent(store: FabricStorageBinding, cells: FabricA
       && utc_instant_seconds_after(later: request.expires_at, earlier: instant as String) > 0
   }
   if !lease_live { WorkspacePreparationUnmet { reason: "request lease is expired or the current clock is unavailable; convergence must retire it" } }
-  else { match workspace_read_owner(store: store, owner: request.owner) {
+  else { match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: request.owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspacePreparationUnmet { reason: detail }
     WorkspaceStoreReadOk { snapshot: owner_state } => {
       let requests = filter(owner_state.allocations, item => item.request.idempotency_key == request.idempotency_key)
@@ -55,7 +54,7 @@ fn workspace_prepare_recorded_intent(store: FabricStorageBinding, cells: FabricA
             WorkspaceBudgetObserved { account: advanced_account } => match workspace_reservation_prepare(cells: cells, request: request, demand: demand,
               attempt: attempt, supply: supply, resource_policy: resource_policy, duration: duration, account: advanced_account) {
               WorkspaceReservationPreparationRefused { reason: detail } => WorkspacePreparationUnmet { reason: detail as String }
-              WorkspaceReservationPrepared { plan: selected_plan } => match workspace_record_plan(store: store, plan: selected_plan) {
+              WorkspaceReservationPrepared { plan: selected_plan } => match workspace_record_plan(store: workspace_allocation_store(binding: store), plan: selected_plan) {
                 WorkspaceStoreWritten { allocation: saved } => match saved.plan {
                   Present { value: saved_plan } => WorkspacePreparationRecorded { plan: saved_plan }
                   Absent => WorkspacePreparationUnmet { reason: "prepared plan publication returned no plan" }

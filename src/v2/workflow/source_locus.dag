@@ -1,0 +1,42 @@
+module v2.workflow.source_locus
+
+import std.types { String, Int, List }
+import std.algebra { fold_list, list_snoc_item }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.integer { int_to_decimal_string }
+
+// The census locus rendering, `<line>:<byte column>`, 1-based, over the byte-split line starts of a text. The sweep's occurrence
+// keys read it here. DECLARED FORK: gunbc.instruments.namespace_wave_occurrence_join still carries its own line_starts/locus_at
+// (a change to the join's source cannot be verified while its controls are ~5h cold), so the two can
+// drift until the join retargets here and deletes its copy; trigger: heavy runs resume, or the join's controls get a normal-size cost.
+type LineScan {
+  next: Int
+  starts: List<Int>
+}
+
+// The byte offsets at which each line starts (line 1 at 0), counting UTF-8 bytes and splitting on \n.
+fn line_starts(text: String) -> List<Int> {
+  fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: LineScan { next: 0, starts: [0] }, cons: fn(acc, o) {
+    if o == 10 {
+      LineScan { next: acc.next + 1, starts: list_snoc_item(xs: acc.starts, item: acc.next + 1) }
+    } else {
+      LineScan { next: acc.next + 1, starts: acc.starts }
+    }
+  }).starts
+}
+
+type LocusScan {
+  lines: Int
+  last_start: Int
+}
+
+// `<line>:<byte column>` of a byte offset: the line is how many line starts are <= the offset, the column its distance past
+// the last such start; "-" when no line start precedes the offset.
+fn locus_at(starts: List<Int>, offset: Int) -> String {
+  match fold_list(xs: starts, empty: LocusScan { lines: 0, last_start: 0 - 1 }, cons: fn(acc, st) {
+    if st <= offset { LocusScan { lines: acc.lines + 1, last_start: st } } else { acc }
+  }) {
+    LocusScan { lines: 0, last_start: _ } => "-"
+    LocusScan { lines: k, last_start: s } => int_to_decimal_string(value: k) + ":" + int_to_decimal_string(value: offset - s + 1)
+  }
+}
