@@ -1,0 +1,37 @@
+module test.claim.revision_request_placement_witness
+
+import std.types { String, Bool }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadbackTaken }
+import gunbc.runner.runner_revision_request_placement {
+  revision_request_listener_admit, RevisionRequestListenerAvailable,
+  RevisionRequestListenerCollision, RevisionRequestListenerReadbackUnavailable,
+  RevisionRequestListenerReadbackStale,
+}
+
+fn fresh(status: String) -> gunbc.runner.runner_revision_request_placement.RevisionRequestListenerAdmission {
+  revision_request_listener_admit(readback: TailnetServeReadbackTaken {
+    status_json: status, observed_at: "2026-10-30T12:00:00Z",
+  }, decided_at: "2026-10-30T12:00:01Z")
+}
+
+test fn dedicated_listener_refuses_tcp_or_nonroot_web_collision() -> Bool {
+  fresh(status: "{\"TCP\":{\"10001\":{\"HTTPS\":true}}}") == RevisionRequestListenerCollision
+    && fresh(status: "{\"Web\":{\"srv1.example:10001\":{\"Handlers\":{\"/another\":{\"Proxy\":\"http://127.0.0.1:9\"}}}}}") == RevisionRequestListenerCollision
+    && fresh(status: "{\"TCP\":{\"10000\":{\"HTTPS\":true}}}") == RevisionRequestListenerAvailable
+}
+
+test fn malformed_or_unprojected_status_cannot_prove_listener_free() -> Bool {
+  fresh(status: "not JSON") == RevisionRequestListenerReadbackUnavailable
+    && fresh(status: "{\"Web\":{},\"Web\":{}}") == RevisionRequestListenerReadbackUnavailable
+    && fresh(status: "{\"TCP\":[]}") == RevisionRequestListenerReadbackUnavailable
+    && fresh(status: "{\"Foreground\":{\"session\":{}}}") == RevisionRequestListenerReadbackUnavailable
+    && fresh(status: "{\"Services\":{\"svc:one\":{}}}") == RevisionRequestListenerReadbackUnavailable
+    && fresh(status: "{}") == RevisionRequestListenerAvailable
+}
+
+test fn an_old_empty_readback_cannot_authorize_listener_install() -> Bool {
+  revision_request_listener_admit(readback: TailnetServeReadbackTaken {
+    status_json: "{}", observed_at: "2026-10-30T12:00:00Z",
+  }, decided_at: "2026-10-30T12:00:16Z") == RevisionRequestListenerReadbackStale
+    && fresh(status: "{}") == RevisionRequestListenerAvailable
+}
