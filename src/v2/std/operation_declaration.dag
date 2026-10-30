@@ -3,7 +3,7 @@ module v2.std.operation_declaration
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { Bool, List, Map }
 import std.optional { Absent, Optional, Present, optional_absent }
-import std.algebra { fold_list, list_snoc_item }
+import std.algebra { empty_map, fold_list, list_snoc_item, map_insert, map_lookup }
 import std.effects { EffectShape, KeySource, ReadEffect, ExecuteEffect }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -449,11 +449,24 @@ fn operation_declaration_row_count_for(
 }
 
 fn operation_declaration_ambiguous_row_count() -> Int {
+  let counts: Map<QualifiedName, Int> = fold_list(
+    xs: operation_declaration_roster,
+    empty: empty_map(),
+    cons: fn(m, row) {
+      match map_lookup(m: m, key: operation_declaration_path(declaration: row.declaration)) {
+        Present { value: c } => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: c + 1)
+        Absent => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: 1)
+      }
+    }
+  )
   fold_list(
     xs: operation_declaration_roster,
     empty: 0,
     cons: fn(n, row) {
-      if operation_declaration_row_count_for(declaration: row.declaration) > 1 { n + 1 } else { n }
+      match map_lookup(m: counts, key: operation_declaration_path(declaration: row.declaration)) {
+        Present { value: c } => if c > 1 { n + 1 } else { n }
+        Absent => n
+      }
     }
   )
 }
