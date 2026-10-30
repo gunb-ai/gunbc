@@ -1,5 +1,6 @@
 module test.claim.live_deploy.capacity_recovery_approval_witness
 
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryPartialInhibitionRemoval }
 import gunbc.live_deploy.capacity_recovery_program { CapacityRecoveryProgram, capacity_recovery_program_bind, capacity_recovery_program_run, capacity_recovery_leg_admit }
 import gunbc.auth.privileged_effect_census { capacity_recovery_approval_root, capacity_recovery_root_helper_site, site_verdict }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
@@ -13,11 +14,11 @@ import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_encode }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, CapacityRecoveryRequireApproval, CapacityCutoverRecord, CapacityCleanupOnly }
 import gunbc.live_deploy.capacity_recovery_subject { CapacityRecoverySubject, capacity_recovery_observed }
-import gunbc.live_deploy.capacity_recovery_approval { capacity_recovery_request, capacity_recovery_claim, capacity_recovery_execute, capacity_recovery_consume_journal }
+import gunbc.live_deploy.capacity_recovery_approval { capacity_recovery_claim_checked, capacity_recovery_request, capacity_recovery_claim, capacity_recovery_execute, capacity_recovery_consume_journal }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 import gunbc.auth.approval_request_client { PollApproved }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record, recovery_two_masks_record, recovery_mask_read }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_helper_digest, approval_fixture_request, approval_fixture_intent, approval_fixture_grant }
 
 fn recovery_approval_slot(record: CapacityCutoverRecord, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr> {
@@ -338,5 +339,47 @@ test fn the_broker_adds_the_root_helper_scope_exactly_once() -> Bool {
     Err { value: _ } => false
     Ok { value: request } => count(filter(request.request.scopes, scope => scope == capacity_root_helper_scope)) == 1
       && count(filter(request.subject.scopes, scope => scope == capacity_root_helper_scope)) == 0
+  }
+}
+
+// The commit port returns a distinct error if invoked. The typed observation
+// refusal must win before consumption, preserving even the journal generation.
+test fn partial_removal_refuses_before_the_recovery_claim_cas() -> Bool {
+  let record = recovery_two_masks_record()
+  let request = match capacity_recovery_request(leg: CapacityRecoveryRequireApproval { attempt: record.attempt, choice: CapacityResume },
+    observed: recovery_approval_observation(record: record, generation: cas_generation_first(), choice: CapacityResume),
+    escalation_id: "partial-removal", execution_revision: record.target_revision as NonEmptyStr) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let present = filter(record.artifacts, artifact => artifact.identity.st_ino == 43)
+  match capacity_recovery_claim_checked(request: request, journal_root: "/fixture/journal", key: "record",
+    choice: CapacityResume, helper_digest: approval_fixture_helper_digest,
+    observed: recovery_approval_slot(record: record, generation: cas_generation_first()),
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    read_entry: path => recovery_mask_read(artifacts: present, path: path),
+    commit: verified => CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "unexpected journal mutation" } }) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && found == present
+        && missing == filter(record.artifacts, artifact => artifact.identity.st_ino == 42)
+    _ => false
+  }
+}
+
+test fn intact_inhibition_allows_the_checked_journal_consumption() -> Bool {
+  let record = recovery_fixture_record()
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "intact-masks") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let observed = recovery_approval_slot(record: record, generation: cas_generation_first())
+  match capacity_recovery_claim_checked(request: request, journal_root: "/fixture/journal", key: "record",
+    choice: CapacityResume, helper_digest: approval_fixture_helper_digest, observed: observed,
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    read_entry: path => recovery_mask_read(artifacts: record.artifacts, path: path),
+    commit: verified => cas_decide(attempt: verified.attempt, observed: observed)) {
+    Err { value: _ } => false
+    Ok { value: admitted } => match cas_generation_successor(g: request.subject.generation) {
+      CasSuccessorGeneration { generation: next } => admitted.journal_generation == next
+      CasSuccessorExhausted { head: _ } => false
+    }
   }
 }

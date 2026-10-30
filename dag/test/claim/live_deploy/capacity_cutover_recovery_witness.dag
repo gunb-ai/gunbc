@@ -1,16 +1,17 @@
 module test.claim.live_deploy.capacity_cutover_recovery_witness
 
+import gunbc.live_deploy.capacity_recovery_inhibition { capacity_recovery_inhibition_plan, CapacityRecoveryPartialInhibitionRemoval }
 import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
 import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, capacity_cutover_intent_text }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
-import std.types { Bool, NonEmptyStr, String }
-import std.error_primitives { Ok, Err }
+import std.types { List, Bool, NonEmptyStr, String }
+import std.error_primitives { Result, Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
-import extdeps.filesystem.posix { PosixFileIdentity }
-import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
+import extdeps.filesystem.posix { PosixFileIdentity, S_IFLNK }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact, CapacityMaskEntry }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation }
@@ -142,5 +143,54 @@ test fn a_later_roster_value_does_not_change_the_retained_recovery_drain() -> Bo
       CapacityRecoveryRecheckDrain { request: request, controller_slot: _ } => request == before.drain && request != after.drain
       _ => false
     })) == 1
+  }
+}
+
+fn recovery_two_masks_record() -> CapacityCutoverRecord {
+  let prior = recovery_fixture_record()
+  let second = CapacityInhibitionPath { subject: CapacityManagedUnit { manager: SystemManager, unit: "second.service" },
+    path: "/etc/systemd/system.control/second.service" }
+  CapacityCutoverRecord { plan: prior.plan, attempt: prior.attempt, target_revision: prior.target_revision,
+    prior: prior.prior, target: prior.target, planned_paths: prior.planned_paths + [second], created_paths: prior.created_paths + [second],
+    artifacts: prior.artifacts + [CapacityInhibitionArtifact { inhibition: second, staged_path: "/etc/gunbc/cutover/fixture/second-mask",
+      identity: PosixFileIdentity { st_dev: 10, st_ino: 43 } }], phase: prior.phase }
+}
+
+fn recovery_mask_read(artifacts: List<CapacityInhibitionArtifact>, path: CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String> {
+  match first(filter(artifacts, artifact => artifact.inhibition == path)) {
+    Absent => Ok { value: Absent }
+    Present { value: artifact } => Ok { value: Present { value: CapacityMaskEntry {
+      identity: artifact.identity, kind: S_IFLNK, target: "/dev/null" } } }
+  }
+}
+
+test fn recovery_partial_mask_removal_retains_exact_inode_sets() -> Bool {
+  let record = recovery_two_masks_record()
+  let present = filter(record.artifacts, artifact => artifact.identity.st_ino == 43)
+  let absent = filter(record.artifacts, artifact => artifact.identity.st_ino == 42)
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityResume,
+    read_entry: path => recovery_mask_read(artifacts: present, path: path)) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && found == present && missing == absent
+    _ => false
+  }
+}
+
+test fn recovery_all_masks_present_preserves_normal_legs() -> Bool {
+  let record = recovery_two_masks_record()
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityResume,
+    read_entry: path => recovery_mask_read(artifacts: record.artifacts, path: path)) {
+    Err { value: _ } => false
+    Ok { value: legs } => capacity_recovery_plan(record: record, choice: CapacityResume) == Ok { value: legs }
+  }
+}
+
+test fn recovery_all_masks_absent_is_not_cleanup_completion() -> Bool {
+  let record = recovery_two_masks_record()
+  match capacity_recovery_inhibition_plan(record: record, choice: CapacityRollback,
+    read_entry: path => recovery_mask_read(artifacts: [], path: path)) {
+    Err { value: CapacityRecoveryPartialInhibitionRemoval { recorded: recorded, observed_present: found, observed_absent: missing } } =>
+      recorded == record.artifacts && count(found) == 0 && missing == record.artifacts
+    _ => false
   }
 }

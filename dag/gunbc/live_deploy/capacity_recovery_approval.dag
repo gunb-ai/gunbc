@@ -1,5 +1,9 @@
 module gunbc.live_deploy.capacity_recovery_approval
 
+import gunbc.live_deploy.capacity_recovery_inhibition { CapacityRecoveryBoundaryFault, CapacityRecoveryBoundaryRefused, capacity_recovery_inhibition_plan }
+import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
+import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
+import gunbc.live_deploy.capacity_inhibition_ownership { CapacityMaskEntry }
 import std.types { String, NonEmptyStr, List, Timestamp }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest }
@@ -104,21 +108,48 @@ fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
   }
 }
 
+// Observe inhibition before the consumption CAS, under the same whole-helper
+// FleetHostLock. A partial-removal refusal cannot mutate the journal or captures.
+fn capacity_recovery_claim_checked(request: Srv1RecoveryRequest,
+  journal_root: NonEmptyStr, key: NonEmptyStr, choice: CapacityRecoveryChoice, helper_digest: Sha256Digest,
+  observed: CasSlotObservation<NonEmptyStr>,
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>,
+  commit: fn(VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>) -> Result<CapacityRecoveryAuthorization, CapacityRecoveryBoundaryFault> {
+  let subject = match capacity_recovery_observed(journal_root: journal_root, journal_key: key,
+    observed: observed, choice: choice, helper_digest: helper_digest) {
+    Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
+    Ok { value: value } => value
+  }
+  if subject != request.subject { return Err { value: CapacityRecoveryBoundaryRefused {
+    cause: "recovery journal, choice, helper or scopes changed after approval" } } }
+  let record = match observed {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => match capacity_cutover_record_decode(text: version.value as String) {
+      Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
+      Ok { value: value } => value
+    }
+    _ => { return Err { value: CapacityRecoveryBoundaryRefused { cause: "recovery requires a readable present journal" } } }
+  }
+  match capacity_recovery_inhibition_plan(record: record, choice: choice, read_entry: read_entry) {
+    Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
+  }
+  match capacity_recovery_claim(request: request, reread: fn() { Ok { value: subject } },
+    authorization: authorization, at: at,
+    claim: (current, attempt, instant) => capacity_recovery_consume_journal(subject: current,
+      observed: observed, attempt: attempt, at: instant, commit: commit)) {
+    Err { value: why } => Err { value: CapacityRecoveryBoundaryRefused { cause: why } }
+    Ok { value: value } => Ok { value: value }
+  }
+}
+
 fn capacity_recovery_claim_over_store(request: Srv1RecoveryRequest, journal: SlotStore, key: NonEmptyStr,
   choice: CapacityRecoveryChoice, helper_digest: Sha256Digest,
-  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp) -> Result<CapacityRecoveryAuthorization, String> {
-  capacity_recovery_claim(request: request,
-    reread: fn() { capacity_recovery_read(journal: journal, key: key, choice: choice, helper_digest: helper_digest) },
-    authorization: authorization, at: at,
-    claim: (subject, attempt, instant) => {
-      if subject != request.subject || journal.root != subject.journal_root || key != subject.journal_key {
-        ClaimUndecided { reason: "recovery claim store identity changed" }
-      } else {
-        capacity_recovery_consume_journal(subject: request.subject, observed: slot_observe(store: journal, key: key),
-          attempt: attempt, at: instant,
-          commit: verified => slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified))
-      }
-    })
+  authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
+  read_entry: fn(CapacityInhibitionPath) -> Result<CapacityMaskEntry?, String>) -> Result<CapacityRecoveryAuthorization, CapacityRecoveryBoundaryFault> {
+  capacity_recovery_claim_checked(request: request, journal_root: journal.root, key: key,
+    choice: choice, helper_digest: helper_digest, observed: slot_observe(store: journal, key: key),
+    authorization: authorization, at: at, read_entry: read_entry,
+    commit: verified => slot_commit(store: journal, publication: OwnerOnlyCreateOnly, verified: verified))
 }
 
 // The controller's supplied effect boundary. A refusal never invokes its body.
