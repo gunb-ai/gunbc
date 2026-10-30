@@ -10,7 +10,7 @@ import extdeps.uri_path {
 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, json_object, json_kv, json_string, serialize_json }
 import gunbc.durable_handoff_host {
-  HostAcceptedRequest, HostRequestAccepted, HostRequestRejected, HostRequestAcceptanceUnknown,
+  HostAcceptedRequest, HostRequestAccepted, HostRequestRejected, UserBusy, HostRequestAcceptanceUnknown,
   HostRequestPresent, HostRequestNotObserved, HostRequestObservationUnknown,
   HostRequestResultPending, HostRequestResultReady, HostRequestResultUnknown,
   host_request_submit, host_request_observe, host_request_result,
@@ -37,7 +37,7 @@ fn host_request_status_response(request: HostAcceptedRequest) -> ServeWireRespon
   let id = request.identity.key as String
   match host_request_result(request: request) {
     HostRequestResultPending => host_request_response(status: 200, request_id: id, standing: "accepted", detail: "no terminal result published", result: JsonNull)
-    HostRequestResultReady { result: r } => host_request_response(status: 200, request_id: id, standing: "completed", detail: "", result: r)
+    HostRequestResultReady { result: r } => host_request_response(status: 200, request_id: id, standing: "cleanup-pending", detail: "result recorded; stopped-and-cleaned settlement not yet confirmed", result: r)
     HostRequestResultUnknown { detail: d } => host_request_response(status: 503, request_id: id, standing: "unknown", detail: d, result: JsonNull)
   }
 }
@@ -60,6 +60,7 @@ fn host_request_rest_at(
       Err { value: reason } => host_request_response(status: 400, request_id: id, standing: "rejected", detail: reason, result: JsonNull)
       Ok { value: payload } => match host_request_submit(root: root, identity: identity, payload: payload) {
         HostRequestAccepted { request: _ } => host_request_response(status: 202, request_id: id, standing: "accepted", detail: "durable acceptance confirmed; not an execution verdict", result: JsonNull)
+        UserBusy { existing_request: existing } => host_request_response(status: 409, request_id: id, standing: "UserBusy", detail: existing as String, result: JsonNull)
         HostRequestRejected { reason: r } => host_request_response(status: 409, request_id: id, standing: "rejected", detail: r, result: JsonNull)
         HostRequestAcceptanceUnknown { detail: d } => host_request_response(status: 503, request_id: id, standing: "unknown", detail: d, result: JsonNull)
       }

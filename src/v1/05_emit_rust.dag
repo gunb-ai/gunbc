@@ -20770,12 +20770,12 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, ");\n")
   }
   // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
   // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
@@ -20897,6 +20897,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    path: String,", "\n",
       "    body: String,", "\n",
       "    tailscale_identity: String,", "\n",
+      "    authorization: String,", "\n",
       "    release_revision: String,", "\n",
       "\}", "\n",
       "\n",
@@ -20995,6 +20996,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            path: head.target.clone(),", "\n",
       "            body,", "\n",
       "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
+      "            authorization: head.authorization.clone(),", "\n",
       "            release_revision: contract.release_revision.clone(),", "\n",
       "        \}),", "\n",
       "    \}", "\n",

@@ -28,6 +28,6 @@ fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<Int>
   NativeServeStartupPassed { line: concat("overrun startup finished after a spin of ", to_string(value: spun)), value: spun }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, spun: Int) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, spun: Int) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: "unreachable\n", headers: [] }
 }

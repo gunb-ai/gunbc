@@ -1,0 +1,34 @@
+module gunbc.instruments.revision_request_fixture
+
+import std.types { String, NonEmptyStr, CommitSha }
+import std.optional { Present, Absent }
+import std.error_primitives { Ok, Err }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse }
+import extdeps.languages.json.emit { JsonNull }
+import gunbc.auth.request_api_key { request_api_key_read_at }
+import gunbc.durable_handoff_rest { host_request_response }
+import gunbc.runner.runner_revision_job_request { revision_job_request_respond }
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+// A separate fixture entry, never the production service. The harness supplies
+// private roots and keys to the process, not in a URL/header/body. Restarting
+// this executable over the same roots exercises the production durable state.
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String,
+  authorization: String, release_revision: CommitSha) -> ServeWireResponse {
+  let root = match shell.Env.Get(name: "GUNBC_HANDOFF_TEST_ROOT").value {
+    Present { value: value } => value Absent => ""
+  }
+  let keys = match shell.Env.Get(name: "GUNBC_HANDOFF_KEY_ROOT").value {
+    Present { value: value } => value Absent => ""
+  }
+  if root == "" || keys == "" { return host_request_response(status: 503, request_id: "", standing: "unknown", detail: "fixture roots missing", result: JsonNull) }
+  let verified = match request_api_key_read_at(root: keys as NonEmptyStr, authorization: authorization) {
+    Err { value: _ } => { return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key not admitted", result: JsonNull) }
+    Ok { value: value } => value
+  }
+  revision_job_request_respond(root: root as NonEmptyStr, permitted_users: ["alice", "bob"],
+    verified: verified, method: method, path: path, body: body)
+}

@@ -1,5 +1,6 @@
 module test.claim.durable_handoff_request_witness
 
+import gunbc.auth.request_api_key { RequestApiKeyUser, request_api_key_digest, request_api_key_read_at }
 import std.types { String, NonEmptyStr, Bool }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
@@ -127,4 +128,54 @@ fn request_fixture_read_after_restart() -> Bool {
       duplicate.status == 202 && conflict.status == 409 && result
     }
   }
+}
+
+test fn another_request_of_the_same_user_is_busy_but_another_user_is_not() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
+  let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+  let retry = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
+  let other = host_request_rest(root: root, principal: "bob", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  first.status == 202 && busy.status == 409 && retry.status == 202 && other.status == 202 && removed.success
+}
+
+test fn a_published_result_alone_does_not_release_the_user_slot() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  let held = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
+    HostRequestAccepted { request: request } => {
+      let result = host_request_publish_reply(request: request, result: json_string(s: "completed but cleanup pending"))
+      let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+      result == HostRequestReplyPublished && busy.status == 409
+    }
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  held && removed.success
+}
+
+fn request_api_key_fixture_read(root: NonEmptyStr, authorization: String) -> Result<RequestApiKeyUser, String> {
+  request_api_key_read_at(root: root, authorization: authorization)
+}
+
+test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-keys.XXXXXX").path as NonEmptyStr
+  let a = match request_api_key_digest(authorization: "Bearer fixture-key-a") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let b = match request_api_key_digest(authorization: "Bearer fixture-key-b") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let path_a = join([root as String, "/", a as String, ".json"], "")
+  let path_b = join([root as String, "/", b as String, ".json"], "")
+  let first = Filesystem.Write(path: path_a, content: "{\"user\":\"alice\",\"state\":\"active\"}")
+  let second = Filesystem.Write(path: path_b, content: "{\"user\":\"alice\",\"state\":\"active\"}")
+  let same = match request_api_key_fixture_read(root: root, authorization: "Bearer fixture-key-a") {
+    Err { value: _ } => false
+    Ok { value: one } => match request_api_key_fixture_read(root: root, authorization: "Bearer fixture-key-b") {
+      Err { value: _ } => false
+      Ok { value: two } => one.user == "alice" && one.user == two.user
+    }
+  }
+  let revoked = Filesystem.Write(path: path_a, content: "{\"user\":\"alice\",\"state\":\"revoked\"}")
+  let refused = match request_api_key_fixture_read(root: root, authorization: "Bearer fixture-key-a") { Err { value: _ } => true _ => false }
+  let kept = match request_api_key_fixture_read(root: root, authorization: "Bearer fixture-key-b") { Ok { value: user } => user.user == "alice" _ => false }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  first.success && second.success && same && revoked.success && refused && kept && removed.success
 }

@@ -1,5 +1,10 @@
 module gunbc.durable_handoff_host
 
+import std.error_primitives { Result, Ok, Err }
+import std.durable_compare_and_set { CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, file_compare_and_set, OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.content_hash { content_hash_atom }
 import std.state_durability { StateDurabilityIntent, DurableAcross, StateDurabilityBoundaryRequirements, ServiceRestartBoundary }
@@ -185,6 +190,7 @@ type HostRequestObservation
 
 type HostRequestSubmission
   = HostRequestAccepted { request: HostAcceptedRequest }
+  | UserBusy { existing_request: DemandKey }
   | HostRequestRejected { reason: String }
   | HostRequestAcceptanceUnknown { detail: String }
 
@@ -246,7 +252,7 @@ fn host_request_decode(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, 
   }
 }
 
-fn host_request_observe(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>) -> HostRequestObservation {
+fn host_request_history_observe(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>) -> HostRequestObservation {
   match host_request_exact_read(path: host_request_path(root: root, identity: identity)) {
     FilesystemExactPathRead { path: _, content: c } => host_request_decode(root: root, identity: identity, content: c)
     FilesystemExactPathAbsent { path: _ } => HostRequestNotObserved
@@ -265,17 +271,107 @@ fn host_request_reconcile(observed: HostRequestObservation, payload: NonEmptyStr
   }
 }
 
-fn host_request_submit(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, payload: NonEmptyStr) -> HostRequestSubmission {
-  // The exclusive publication is the transaction, not a preceding existence probe.
-  if (payload as String) == "" { return HostRequestRejected { reason: "request payload is empty" } }
-  match host_spool_enqueue(path: host_request_path(root: root, identity: identity), content: host_request_wire(identity: identity, payload: payload)) {
-    HostSpoolEntryCreated { name: _ } => HostRequestAccepted {
-      request: HostAcceptedRequest { root: root, identity: identity, payload: payload },
+// The bounded per-user CAS is acceptance itself, not a quota beside acceptance.
+// It retains ONE full request until confirmed settlement. Per-request immutable
+// history is derived from that durable acceptance; a crash before its publication
+// is repaired by the same-id retry. A different request stays busy in that gap.
+fn host_request_user_key(principal: NonEmptyStr) -> NonEmptyStr {
+  concat("user-", content_hash_atom(value: principal).digest as String) as NonEmptyStr
+}
+
+fn host_request_user_read(root: NonEmptyStr, principal: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>) -> HostRequestObservation {
+  match observed {
+    CasObservedReadable { readable: CasReadableAbsent } => HostRequestNotObserved
+    CasObservedUnreadable { cause: _ } => HostRequestObservationUnknown { detail: "outstanding request slot unreadable" }
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => {
+      let doc = match parse_json_document(s: version.value as String) {
+        JsonDocumentUnreadable { gap: _ } => { return HostRequestObservationUnknown { detail: "outstanding request is not JSON" } }
+        JsonDocumentParsed { value: value } => value
+      }
+      let raw = match json_field_string(obj: doc, key: "identity") {
+        FieldRead { value: value } => value
+        _ => { return HostRequestObservationUnknown { detail: "outstanding request identity missing" } }
+      }
+      let identity = match parse_json_document(s: raw) {
+        JsonDocumentUnreadable { gap: _ } => { return HostRequestObservationUnknown { detail: "outstanding request identity unreadable" } }
+        JsonDocumentParsed { value: value } => value
+      }
+      let user = match json_field_string(obj: identity, key: "principal") {
+        FieldRead { value: value } => value _ => { return HostRequestObservationUnknown { detail: "outstanding principal missing" } }
+      }
+      let id = match json_field_string(obj: identity, key: "request_id") {
+        FieldRead { value: value } => value _ => { return HostRequestObservationUnknown { detail: "outstanding request id missing" } }
+      }
+      if user != (principal as String) || id == "" { return HostRequestObservationUnknown { detail: "outstanding request belongs to another principal or has an empty id" } }
+      host_request_decode(root: root, identity: FabricIdentity { principal: principal, key: id as NonEmptyStr as DemandKey }, content: version.value as String)
     }
-    HostSpoolEntryAlreadyPresent { name: _ } => host_request_reconcile(observed: host_request_observe(root: root, identity: identity), payload: payload)
-    HostSpoolEnqueueRefused { name: _, detail: d } => HostRequestAcceptanceUnknown { detail: d }
   }
 }
+
+fn host_request_observe(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>) -> HostRequestObservation {
+  match host_request_history_observe(root: root, identity: identity) {
+    HostRequestNotObserved => match host_request_user_read(root: root, principal: identity.principal,
+      observed: observe_cas_slot_state(root: root, key: host_request_user_key(principal: identity.principal))) {
+      HostRequestPresent { request: request } => if (request.identity == identity) { HostRequestPresent { request: request } } else { HostRequestNotObserved }
+      other => other
+    }
+    other => other
+  }
+}
+
+fn host_request_materialize_history(request: HostAcceptedRequest) -> HostRequestSubmission {
+  match host_spool_enqueue(path: host_request_path(root: request.root, identity: request.identity),
+    content: host_request_wire(identity: request.identity, payload: request.payload)) {
+    HostSpoolEntryCreated { name: _ } => HostRequestAccepted { request: request }
+    HostSpoolEntryAlreadyPresent { name: _ } => host_request_reconcile(
+      observed: host_request_history_observe(root: request.root, identity: request.identity), payload: request.payload)
+    HostSpoolEnqueueRefused { name: _, detail: _ } => HostRequestAcceptanceUnknown { detail: "request accepted; immutable history publication unconfirmed; retry the same identity" }
+  }
+}
+
+fn host_request_existing_slot(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, payload: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>) -> HostRequestSubmission {
+  match host_request_user_read(root: root, principal: identity.principal, observed: observed) {
+    HostRequestPresent { request: request } => if (request.identity == identity) {
+      if (request.payload == payload) { host_request_materialize_history(request: request) }
+      else { HostRequestRejected { reason: "request identity already accepted with a different payload" } }
+    } else { UserBusy { existing_request: request.identity.key } }
+    HostRequestNotObserved => HostRequestAcceptanceUnknown { detail: "acceptance race not yet observable; retry the same identity" }
+    HostRequestObservationUnknown { detail: why } => HostRequestAcceptanceUnknown { detail: why }
+  }
+}
+
+fn host_request_submit(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, payload: NonEmptyStr) -> HostRequestSubmission {
+  if (payload as String) == "" { return HostRequestRejected { reason: "request payload is empty" } }
+  let key = host_request_user_key(principal: identity.principal)
+  // Observe generation BEFORE history: if settlement/new acceptance interleaves,
+  // the CAS refuses that stale observation. History reconciliation precedes busy.
+  let observed = observe_cas_slot_state(root: root, key: key)
+  match host_request_history_observe(root: root, identity: identity) {
+    HostRequestNotObserved => {}
+    history => { return host_request_reconcile(observed: history, payload: payload) }
+  }
+  match observed {
+    CasObservedReadable { readable: CasReadableAbsent } => {
+      match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent,
+        proposed: host_request_wire(identity: identity, payload: payload) as NonEmptyStr) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => HostRequestAcceptanceUnknown { detail: "outstanding slot key refused" }
+        DerivedPayloadAdmitted { verified: verified } => match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: verified) {
+          CasCommitted { committed: _ } => host_request_materialize_history(request: HostAcceptedRequest { root: root, identity: identity, payload: payload })
+          CasPreconditionFailed { expected: _, observed: current } => host_request_existing_slot(root: root, identity: identity, payload: payload, observed: CasObservedReadable { readable: current })
+          CasStoreRefused { cause: _ } => HostRequestAcceptanceUnknown { detail: "acceptance commit unconfirmed; reconcile the same identity" }
+        }
+      }
+    }
+    _ => host_request_existing_slot(root: root, identity: identity, payload: payload, observed: observed)
+  }
+}
+
+// Settlement frontier: publishing a result below does NOT release responsibility.
+// The executor must provide its stopped-and-cleaned receipt, preserve immutable
+// history/results, then CAS this same slot's generation to a settled state. No
+// absence of a process, timer, HTTP reply or client disconnect frees this slot.
 
 fn host_request_reply_path(request: HostAcceptedRequest) -> String {
   concat(host_request_path(root: request.root, identity: request.identity), ".reply")

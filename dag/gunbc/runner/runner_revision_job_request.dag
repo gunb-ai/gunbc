@@ -1,6 +1,8 @@
 module gunbc.runner.runner_revision_job_request
 
-import std.types { String, NonEmptyStr, CommitSha }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import gunbc.auth.request_api_key { RequestApiKeyUser, request_api_key_read }
+import std.types { String, NonEmptyStr, CommitSha, List }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.http.server { ServeWireResponse }
 import extdeps.languages.json.emit { JsonNull }
@@ -8,14 +10,16 @@ import gunbc.durable_handoff_rest { host_request_rest, host_request_response }
 import gunbc.runner.runner_revision_job_spec { decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
 import gunbc.runner.runner_revision_job_unit { revision_job_request_root }
 import gunbc.fabric.fabric_writer_roster {
-  fabric_door_principal_of, fabric_door_writer_admission_over, fabric_served_writer_roster, fabric_door_local_roster,
+  fabric_door_principal_from_api_key, fabric_door_writer_admission_over, fabric_served_writer_roster, fabric_door_local_roster,
   FabricDoorWriterAdmitted, FabricDoorWriterRefused,
 }
 
 // First consumer of the shared REST contract. Admission validates a revision-job
 // specification; request storage is not authority to execute it. The worker still
 // owes the image, source, root approval and fabric grant checks before any launch.
-// The existing attested fabric door supplies the principal, never a JSON field.
+// The operator-issued API key resolves to a stable rostered user, never a JSON
+// field or a fabricated proxy/kernel identity. Deployment owes HTTPS termination
+// and a private native listener; this handler confers no execution authority.
 fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
   match decode_revision_job_spec(text: text) {
     RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }
@@ -23,12 +27,26 @@ fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
   }
 }
 
-fn revision_job_request_handle(method: String, path: String, body: String, tailscale_identity: String, peer_user: String, release_revision: CommitSha) -> ServeWireResponse {
-  let principal = fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)
-  match fabric_door_writer_admission_over(logins: fabric_served_writer_roster(), locals: fabric_door_local_roster(), principal: principal) {
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
+  let verified = match request_api_key_read(authorization: authorization) {
+    Err { value: _ } => { return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key not admitted", result: JsonNull) }
+    Ok { value: value } => value
+  }
+  revision_job_request_respond(root: revision_job_request_root, permitted_users: fabric_served_writer_roster(),
+    verified: verified, method: method, path: path, body: body)
+}
+
+// Shared by production and the real-HTTP fixture. The verified user, not a body
+// field or key digest, is the only principal entering durable acceptance.
+fn revision_job_request_respond(root: NonEmptyStr, permitted_users: List<NonEmptyStr>,
+  verified: RequestApiKeyUser, method: String, path: String, body: String) -> ServeWireResponse {
+  let principal = fabric_door_principal_from_api_key(verified: verified)
+  match fabric_door_writer_admission_over(logins: permitted_users, locals: [], principal: principal) {
     FabricDoorWriterRefused { refusal: _ } => host_request_response(status: 403, request_id: "", standing: "rejected", detail: "request principal is not admitted", result: JsonNull)
     FabricDoorWriterAdmitted { principal: p } => host_request_rest(
-      root: revision_job_request_root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
+      root: root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
     )
   }
 }
