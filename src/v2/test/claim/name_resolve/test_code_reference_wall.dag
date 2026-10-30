@@ -13,7 +13,7 @@ import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel, tes
 import v2.std.diagnostic { Accepted, Outcome }
 import std.live_tree { SubstrateInputsOnly }
 import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme, fold_list_node }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -71,13 +71,14 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
       kind: TypeNode { connective: Arrow },
       children: [
         signature.domain,
-        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
-        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool), declaration: NotADeclaration },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool), declaration: NotADeclaration },
         signature.order,
-        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 
@@ -93,13 +94,14 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
       kind: TypeNode { connective: Arrow },
       children: [
         signature.domain,
-        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
-        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool), declaration: NotADeclaration },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool), declaration: NotADeclaration },
         signature.order,
-        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: wall_atom(identity: param) }
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: wall_atom(identity: param), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 
@@ -109,22 +111,24 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
 // gunbc#11694), then the members.
 fn wall_module_body(members: List<Edge>) -> Node {
   wall_conj(children: concat(
-    [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node(), declaration: NotADeclaration }],
     members
   ))
 }
 
 fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
   wall_conj(children: [
-    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module), declaration: NotADeclaration },
     Edge {
       label: Authored { name: ^grammar_production_captured_node_projection },
       target: wall_conj(children: [
         Edge {
           label: Authored { name: ^wall },
-          target: wall_conj(children: [Edge { label: Authored { name: leaf_segment }, target: wall_module_body(members: members) }])
+          target: wall_conj(children: [Edge { label: Authored { name: leaf_segment }, target: wall_module_body(members: members), declaration: NotADeclaration }]),
+          declaration: NotADeclaration
         }
-      ])
+      ]),
+      declaration: NotADeclaration
     }
   ])
 }

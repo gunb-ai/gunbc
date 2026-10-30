@@ -1,5 +1,6 @@
 module v2.test.claim.manual.python_add_emit_translate
 
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -31,7 +32,7 @@ import v2.extdeps.languages.python {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.claim.manual.infer_ground_add {
@@ -62,7 +63,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Conj,
   Edge,
@@ -86,6 +87,7 @@ data python_add_int_facts_node: Node = python_integer_facts_node(facts: python_f
 data python_add_target_model: TargetModel = python_target_model()
 
 data python_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: python_target_model_node(),
   lex: python_lex(),
@@ -102,6 +104,7 @@ data python_add_empty_translation_rules_bundle: Node = Node {
 }
 
 data python_add_missing_translation_rules_target: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: python_add_empty_translation_rules_bundle,
   lex: python_lex(),
@@ -148,49 +151,49 @@ fn python_add_canonical_grounding(
 }
 
 fn python_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == python_add_emitted_root {
+  if node_same_occurrence(a: node, b: python_add_emitted_root) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == python_add_int_inhabitant {
+  } else if node_same_occurrence(a: node, b: python_add_int_inhabitant) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_inhabitant_int) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_inhabitant_int)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_inhabitant
       )
     }
-  } else if node == python_add_int_facts_node {
+  } else if node_same_occurrence(a: node, b: python_add_int_facts_node) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_surface_spelling_int) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_surface_spelling_int)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^std_projection_additive_numeric)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,

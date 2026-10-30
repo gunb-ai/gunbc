@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.runner_host_cap_release_lost_to_cancellation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data runner_host_cap_release_lost_to_cancellation: RecurringFailureMode = RecurringFailureMode {
+  identity: "runner_host_cap_release_lost_to_cancellation" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a release that neither resolves at release time nor depends on a runner step: a native-emitted release entry that runs without resolving, or a durable store inhabiting the leasing models so the next converge can re-admit a host a dead run drained." } },
+
+  receipts: [
+    "INVALID STATE: a runner host whose slots the cap bracket masked (gunbc.runner.runner_host_cap_bracket) and whose always() release never ran or was force-cancelled before it re-admitted them. The units stay masked, so the host takes no jobs, and nothing re-admits them: the next converge reads the obligation of another run as untrusted (release_decision_of ObligationStale) and refuses, which is correct but does not unmask anything.",
+
+    "WHY IT CAN HAPPEN: GitHub gives a cancelled job's always() steps a 5-minute cancellation timeout and then force-cancels (a lost runner runs no step at all). The release is a gunbc run step whose startup is its closure's declared resolve budget (gunbc.runner.runner_host_cap_bracket runner_host_closure_resolve_budget; before 2026-10-29 the generic gunbc.fleet.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of the release entry's closure is minutes: pre-entry resolve_entry_graph_inclusive was 587.8s for the converge entry in run 39316229823 and 174.3s for the lightest comparable entry, the org roster read, in run 39363753224. The declared release (release_envelope_standing) therefore does not fit the envelope and is reported as the typed residual ReleaseMayOutliveCancellation, not hidden.",
+
+    "WHAT HOLDS: a step timeout (the converge step's own timeout) is not a cancellation, and the job timeout is derived to cover the converge step plus the release step (gunbc.fleet.fleet_converge_workflow fleet_converge_job_timeout_minutes, with a linkage control that reds when it does not), so the release runs on ordinary failure and step-timeout paths. It does not hold for a user cancel, a job-level timeout outside the floor, or a lost runner.",
+
+    "RECEIPT 2026-10-29, THE ORDINARY PATH TOO: the release step was killed by its own 19-minute timeout before its first effect in BOTH runner_host_file_converge runs on srv1 that day (40882448080 and 40922121143): its timeout was the generic resolve budget (15 min) plus the release allowance, and the closure it resolves, the converge's (about 2870 files), measured 1544252 ms and 1780404 ms of resolve_entry_graph_inclusive on srv4 in those runs, three times the 587.8s above. Both runs withheld the caps, so nothing was masked and nothing was lost. The same under-budget applied to the converge step: 15 min plus host_cap_bracket_budget, so a bracket using its full drain bound would have been killed after masking. A split of the release into its own entry module was measured and refuted (its closure was 2850 files against 2873). Mitigation: gunbc.runner.runner_host_cap_bracket runner_host_closure_resolve_budget, grounded in those two readings, now budgets the startup of the converge, withdraw and release steps and the policy's release_startup_allowance; the cancellation residual is unchanged.",
+
+    "HARM: a cancelled or lost job leaves the host masked until a human acts, with the host out of CI capacity. RUNG FOUND AT: mitigatable (typed residual, release on the ordinary paths, a readback that names what it left). CEILING: structurally guaranteed once the release neither resolves at release time nor depends on a runner step. NEXT-RUNG TRIGGER: either the native-emitted release entry (the self-host frontier covering this closure, a binary that runs without resolving) or a durable store inhabiting std.temporal_effect HeldLease / std.durable_exclusive_hold so the next converge can re-admit a host a dead run drained. Neither exists today; the durable store is why those leasing models are not inhabited here."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_host_cap_bracket", decl_name: "release_envelope_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_cap_bracket", decl_name: "release_decision_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_job_timeout_minutes", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_cap_bracket", decl_name: "runner_host_closure_resolve_budget", field: WholeDeclaration },
+  ],
+}

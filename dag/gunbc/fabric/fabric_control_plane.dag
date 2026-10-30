@@ -1,5 +1,6 @@
 module gunbc.fabric.fabric_control_plane
 
+import std.integer { int_to_decimal_string }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
   WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
@@ -41,8 +42,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleasePlan, FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
   FileHoldReleaseKeyNotSlotAddressable,
-  file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_acquire_hold, fabric_allocation_assess_release, fabric_allocation_commit_release }
 import gunbc.fabric.fabric_floor_dispatch { floor_supply_selection }
 import gunbc.floor.floor_demand { floor_execution_requirements }
 import product.fabric.budget {
@@ -93,16 +94,10 @@ import gunbc.fabric.fabric_executor_class {
 // would fabricate the very atomicity that record exists to guarantee. The Grant
 // cut consumes this outcome; it does not live in it.
 
-// The one deployment authority that supplies the store's root parameter.
-//
-// The mechanism takes a root and the deployment names it: compare_and_set is
-// parameterized so a second control plane is a different root and not a second
-// implementation, while this function is the single place this control plane's
-// root is stated. Hard-coding the root inside the store would fuse a policy
-// fact into a mechanism, which is the layer inversion the interface warns about.
-fn fabric_control_plane_store_root() -> NonEmptyStr {
-  "/var/lib/gunbc/fabric/allocation"
-}
+// THE STORE THE BROKER RESERVES IN is a sealed value (gunbc.fabric.fabric_allocation_store
+// FabricAllocationStore), minted from its declaration with no argument and handed to every function below
+// that touches a slot. Nothing here names a root: a second control plane would be a second declaration
+// and mint, not a second path threaded through these functions.
 
 // THE ALLOCATION KEY IS PROJECTED FROM THE CELL'S OWN IDENTITY, NEVER AUTHORED.
 //
@@ -231,7 +226,7 @@ fn fabric_hold_release_ref(reason: NonEmptyStr) -> DurableHoldReleaseRef {
 // classified it: it is not a race and not a store fault, and nothing but an
 // operator can move it.
 fn reserve_selected_cell(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
@@ -241,7 +236,7 @@ fn reserve_selected_cell(
   match workspace_slot_mutation_acquire(slot_key: slot_key, owner: owner) {
     WorkspaceSlotMutationRefused { reason } => AttemptRefused { slot_key: slot_key, detail: reason }
     WorkspaceSlotMutationAdmitted { lease } => {
-      let result = reserve_selected_cell_under_exclusion(root: root, slot_key: slot_key,
+      let result = reserve_selected_cell_under_exclusion(store: store, slot_key: slot_key,
         demand_id: demand_id, offer_id: offer_id, account: account)
       if workspace_slot_mutation_release(lease: lease) { result }
       else { AttemptRefused { slot_key: slot_key,
@@ -251,7 +246,7 @@ fn reserve_selected_cell(
 }
 
 fn reserve_selected_cell_under_exclusion(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
@@ -259,13 +254,9 @@ fn reserve_selected_cell_under_exclusion(
 ) -> CellReservation
   admit_callers: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "reserve_selected_cell")]
 {
-  match file_hold_acquire(
-    root: root,
-    slot_key: slot_key,
-    requested_owner: fabric_hold_owner(
+  match fabric_allocation_acquire_hold(store: store, key: slot_key, owner: fabric_hold_owner(
       reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
-    ),
-  ) {
+    )) {
     FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
       CellReserved {
         offer: offer_id,
@@ -476,7 +467,7 @@ fn fabric_money_reservation_ref(
 // executed and turned the witness below red -- so the wall is load-bearing
 // rather than merely present.
 fn broker_reserve_for_demand(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   demand: Demand<NonEmptyStr>,
   roster: List<FabricCellCandidate>,
   sanctions: List<ExecutorSanction>,
@@ -485,7 +476,7 @@ fn broker_reserve_for_demand(
   delay_valuation: MoneyPerSecond,
 ) -> CellReservation {
   broker_reserve_for_requirements(
-    root: root, demand: demand, requirements: floor_execution_requirements(),
+    store: store, demand: demand, requirements: floor_execution_requirements(),
     duration: floor_grant_duration(), currency: Usd,
     roster: roster, sanctions: sanctions, account: account,
     maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation,
@@ -494,7 +485,7 @@ fn broker_reserve_for_demand(
 
 // The shared broker consumes the submitted Work rather than the compile floor.
 fn broker_reserve_for_requirements(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   demand: Demand<NonEmptyStr>,
   requirements: ExecutionRequirements,
   duration: GrantDuration,
@@ -507,7 +498,7 @@ fn broker_reserve_for_requirements(
 ) -> CellReservation {
   match broker_select_for_requirements(demand: demand, requirements: requirements, duration: duration,
     currency: currency, roster: roster, sanctions: sanctions, maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
-    CellSelectedForDemand { offer, selected: _, cost } => reserve_priced_cell(root: root, demand_id: demand.id, offer: offer, cost: cost, account: account)
+    CellSelectedForDemand { offer, selected: _, cost } => reserve_priced_cell(store: store, demand_id: demand.id, offer: offer, cost: cost, account: account)
     CellSelectionRefused { refusal } => refusal
   }
 }
@@ -581,7 +572,7 @@ fn broker_select_for_requirements(
 // touched, so no CAS generation exists yet, and borrowing one would make the
 // budget's fence depend on a fact from the other resource's clock.
 fn reserve_priced_cell(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: SupplierOffer<NonEmptyStr>,
   cost: SelectionCost,
@@ -601,7 +592,7 @@ fn reserve_priced_cell(
     MoneyRefused { refusal: r } => BudgetRefused { slot_key: slot_key, refusal: r }
     AccountAdvanced { account: advanced } =>
       reserve_selected_cell(
-        root: root,
+        store: store,
         slot_key: slot_key,
         demand_id: demand_id,
         offer_id: offer.id,
@@ -688,7 +679,7 @@ type CellHoldEnd
 // the fabric's release walls are now evidenced on a real store (the wet fabric
 // witness) and the protocol's walls on supplied values one layer down.
 fn end_cell_hold(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   reservation: ReservationRef,
   acquired_generation: Int,
@@ -699,13 +690,7 @@ fn end_cell_hold(
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "release_reserved_cell_money_generation"),
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
   ]
-  = match file_hold_release_assess(
-    root: root,
-    slot_key: slot_key,
-    owner: fabric_hold_owner(reservation: reservation),
-    acquired_generation: acquired_generation,
-    released_by: fabric_hold_release_ref(reason: reason),
-  ) {
+  = match fabric_allocation_assess_release(store: store, key: slot_key, owner: fabric_hold_owner(reservation: reservation), generation: acquired_generation, released_by: fabric_hold_release_ref(reason: reason)) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
       match r {
         HoldReleaseObservationUnavailable { cause: c } =>
@@ -739,7 +724,7 @@ fn end_cell_hold(
         HoldReleaseSlotUndecodable { generation: _, detail: d } =>
           HoldEndSlotNotHeld { slot_key: slot_key, detail: d }
       }
-    FileHoldReleasePlanned { plan: plan } => commit_hold_end(plan: plan, money: money)
+    FileHoldReleasePlanned { plan: plan } => commit_hold_end(store: store, plan: plan, money: money)
   }
 
 // The half that runs once the store has confirmed THIS reservation holds the
@@ -773,24 +758,24 @@ fn end_cell_hold(
 // end_cell_hold; free_cell_slot to commit_hold_end. A call from anywhere else
 // refuses as ConstructorCallAdmissionRefused, enrolled in
 // test.probe.file_hold_plan_forged_probe.
-fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd
+fn commit_hold_end(store: FabricAllocationStore, plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd
   admit_callers: [
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "end_cell_hold"),
   ]
   = match money {
     MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: plan.slot_key, refusal: f }
-    AccountAdvanced { account: advanced } => free_cell_slot(plan: plan, account: advanced)
+    AccountAdvanced { account: advanced } => free_cell_slot(store: store, plan: plan, account: advanced)
   }
 
 // The commit still tells a lost race from an unavailable store: a plan assessed
 // at generation N and committed after the slot moved is HoldEndLost, which
 // tells the caller its settlement and the slot have come apart, and a store
 // fault would not tell it that.
-fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd
+fn free_cell_slot(store: FabricAllocationStore, plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd
   admit_callers: [
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "commit_hold_end"),
   ]
-  = match file_hold_release_commit(plan: plan) {
+  = match fabric_allocation_commit_release(store: store, plan: plan) {
     FileHoldReleased { slot_key: k, generation: g } =>
       CellHoldEnded { slot_key: k, generation: cas_generation_count(g: g), account: account }
     FileHoldReleaseLost { slot_key: k } => HoldEndLost { slot_key: k }
@@ -818,7 +803,7 @@ fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldE
 // nothing then relates that fact to the slot being ended. There is no longer a
 // form that accepts one at any layer.
 fn release_reserved_cell_at(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   acquired_generation: Int,
   lease: LeaseIdentity,
@@ -827,13 +812,13 @@ fn release_reserved_cell_at(
   released_at: Timestamp,
   account: MoneyAccount,
 ) -> CellHoldEnd {
-  release_reserved_cell_money_generation(root: root, slot_key: slot_key, acquired_generation: acquired_generation,
+  release_reserved_cell_money_generation(store: store, slot_key: slot_key, acquired_generation: acquired_generation,
     money_generation: lease.generation, reservation: reservation, reason: reason, released_at: released_at, account: account)
 }
 
 // Money fencing uses its own generation; a workspace need not fabricate a lease fingerprint.
 fn release_reserved_cell_money_generation(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   acquired_generation: Int,
   money_generation: Int,
@@ -843,7 +828,7 @@ fn release_reserved_cell_money_generation(
   account: MoneyAccount,
 ) -> CellHoldEnd {
   end_cell_hold(
-    root: root,
+    store: store,
     slot_key: slot_key,
     reservation: reservation,
     acquired_generation: acquired_generation,
@@ -978,7 +963,7 @@ type CellSettlement
   | SettlementNotAdmitted { slot_key: NonEmptyStr, admission: CellSettlementAdmission }
 
 fn settle_reserved_cell_at<P>(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   acquired_generation: Int,
   receipt: Receipt<P>,
@@ -1000,7 +985,7 @@ fn settle_reserved_cell_at<P>(
     SettlementAdmitted { reservation: r, actual_spend: spend, settled_at: t } =>
       SettlementEnded {
         ending: end_cell_hold(
-          root: root,
+          store: store,
           slot_key: slot_key,
           reservation: r,
           acquired_generation: acquired_generation,
@@ -1067,7 +1052,7 @@ fn cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
       join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
     CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
     CasUnreadableObservationBoundExceeded { bound: b } =>
-      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
+      join(["cas-observation-bound-exceeded|bound=", int_to_decimal_string(value: b)], "") as NonEmptyStr
   }
 }
 

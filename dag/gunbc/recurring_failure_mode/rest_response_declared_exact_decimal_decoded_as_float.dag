@@ -2,10 +2,11 @@ module gunbc.recurring_failure_mode.rest_response_declared_exact_decimal_decoded
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data rest_response_declared_exact_decimal_decoded_as_float: RecurringFailureMode = RecurringFailureMode {
   identity: "rest_response_declared_exact_decimal_decoded_as_float" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A REST response field declared `std.decimal` `ExactDecimal` arrives as a Float** (INVALID STATE: an interpreted program reads `units` or `fraction_digits` off a wire number the model declares exact -- `extdeps.cloud.vast_ai` `VastAiOffer.min_bid`, `storage_cost`, `cuda_max_good` -- and the value is a host Float carrying neither).",

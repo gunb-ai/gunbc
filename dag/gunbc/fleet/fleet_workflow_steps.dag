@@ -19,6 +19,8 @@ module gunbc.fleet.fleet_workflow_steps
 // does not have.
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
+import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
@@ -72,6 +74,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
 import std.types { List, String, Int, NonEmptyStr }
+
+// THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
 
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability,
@@ -322,7 +327,7 @@ fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: repo_self_seed_build_step_run(command: ci_release_build_script()),
     shell: none,
     env: none,
     working_directory: none,
@@ -385,7 +390,7 @@ fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
   RunStep {
     name: Present { value: "Build release bins (the dispatched mode's product)" },
     id: Present { value: "release_build" },
-    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    run: repo_self_seed_build_step_run(command: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script())),
     shell: none,
     env: Present { value: [release_bins_mode_env_kv()] },
     working_directory: none,
@@ -806,7 +811,7 @@ DISSOLVE-ON: the first successful guest_image_converge on a cold host produces t
 // first typecheck 18:17:29, killed by the aux 5m at 18:19:04), so the aux budget makes a slow
 // resolve read as a step failure. Its consumers are the runner host file observe/converge steps
 // (whose remote legs are a dozen short ssh execs), the credential-free D0 admission (a pure fold),
-// and the approval device enrolment-code issue. That step pays TWO resolves: the job's own `gunbc run`
+// and the (since retired) approval device enrolment-code issue. That step paid TWO resolves: the job's own `gunbc run`
 // of the step entry, then the remote verb's `gunbc run` of the broker routes closure on srv1, whose
 // boot resolve and typecheck read 3m03s (gunbc.live_deploy.service_ready approval_broker_expected_startup).
 // Together those do not fit the aux 5m. Its first run (36415852659) refused on the workspace root before
@@ -817,6 +822,16 @@ DISSOLVE-ON: the first successful guest_image_converge on a cold host produces t
 // consumer for the same reason: its first srv1 run (39197581454) was still typechecking its closure when
 // the aux 5m killed it (workspace discovered 04:11:19, killed 04:16:31), before any Vast call.
 data gunbc_ci_gunbc_run_resolve_step_timeout_minutes: Duration = 15
+
+// THE SITE PXE EDGE CONVERGE STEP PLACES MEDIA, which the runner-host-file budget above was never sized for: in apply
+// mode gunbc.fleet.site_pxe_edge_converge fetches each pinned Ubuntu ISO onto srv4, checks it against Canonical's
+// SHA256SUMS and extracts the chain members. Its first apply (run 40750438900, 2026-10-28) spent the step's 15 minutes
+// resolving and observing (step start to pre-entry about 14 minutes) and was killed 11 seconds into the first ISO
+// fetch. It stays below the Spark serving step, the mode gunbc_ci_fleet_job_backstop_timeout_minutes already
+// budgets as the job's worst case, so the backstop holds unchanged.
+// STATED AS AN ENVELOPE, NOT A MEASUREMENT. DISSOLVE-ON: the first site_pxe_edge_converge run that places both
+// media chains produces the measurement this stands in for -- replace it with that receipt, dated and cited.
+data gunbc_ci_site_pxe_edge_converge_step_timeout_minutes: Duration = 45
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
@@ -894,12 +909,15 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // fast build of a newer one and install backwards -- and it is not COMPLETE INGRESS, because
 // `gunbc.apply` DashboardSrv1 reaches live_deploy_apply_prod_role_wet directly and never traverses a
 // GitHub concurrency group at all. The first is open. The second's closing construction NOW EXISTS:
-// `gunbc.deploy_transition` `acquire_transition_lease` is the host-local lease, an O_EXCL create
-// under the deployment's own instance root, so both ingresses contend for one file and the loser
-// takes a typed refusal naming the holder. GitHub owns only one transport into the critical
+// `gunbc.deploy_transition` `acquire_transition_lease` is the host-local lease, a hold on
+// gunbc.durable_exclusive_hold_file_store in the deployment's own instance root, so both ingresses
+// contend for one slot and the loser takes a typed refusal naming the holder. GitHub owns only one transport into the critical
 // section, which is why the wall could never live in a concurrency group. WHAT IS NOT CLAIMED: the
 // lease exists and is witnessed, and this workflow does not yet acquire it -- binding it into the
-// mutating ingresses is a separate change, so the bypass is closable rather than closed. Recorded here rather than left implicit because a concurrency group is exactly the kind
+// mutating ingresses is a separate change, so the bypass is closable rather than closed. That binding is
+// also a LINE-STOP until the lease has a non-holder release: a converge that dies leaves the lease held
+// and nothing in the model frees it (gunbc.recurring_failure_mode
+// a_generic_release_assess_accepts_evidence_its_caller_authored). Recorded here rather than left implicit because a concurrency group is exactly the kind
 // of artifact a later reader cites as the serialization authority.
 // ONE MUTATION DOMAIN PER HOST, SHARED BY EVERY JOB THAT CONVERGES OR READS BACK THAT HOST (RLM-2
 // ruling section 9). The group used to be the literal "srv1-dashboard-deploy" and applied to the
@@ -932,16 +950,6 @@ data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-g
 // keyed here so it queues behind every srv1 mutation whichever executor it names. (It was Group A's arm
 // key while Group A and D0 existed; both were deleted on 2026-10-07.)
 data fleet_srv1_control_plane_mutation_group: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
-
-// A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
-// 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption
-// approval_device_store_root on srv1 -- is written by the enrolment-code issue and by nothing else a
-// fleet-converge mode runs, so keying it to srv1's host domain serialised it behind Group A work it
-// shares no file with, and GitHub's one-pending-per-group rule CANCELLED queued enrolments when a
-// Spark dispatch arrived (run 37101585671). Two issues still queue behind each other here. Belt, not
-// the wall: each enrolment record is an O_EXCL commit (gunbc.auth.approval_device_redemption
-// commit_enrolment), so a host-wide srv1 converge that does not traverse this group cannot corrupt it.
-data fleet_subject_mutation_group_approval_device_store: String = join(["gunbc-subject-mutation-approval-device-store-", operator_host_srv1 as String], "")
 
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
@@ -1019,8 +1027,6 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // transfer-tier upload, which is below the spark_grants branch that sets the worst case. The
 // site_pxe_edge_observe and site_pxe_edge_converge modes (gunbc.fleet.site_pxe_edge_converge) have the same
 // shape -- one gated run step each at that timeout plus one shared upload -- and do not move it either.
-// The approval_device_enrolment_code_issue mode runs one gated step at that same timeout and no
-// upload, so it does not move it either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
@@ -1050,12 +1056,83 @@ fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
 // release-bins download (transfer tier), the unpack-and-verify (aux tier), and the deploy itself
 // (live-deploy tier). Every step in that job runs on every dispatch of it -- there is no mode gating
 // WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the converge
-// job's bound this really is a straight sum rather than a worst-case-branch selection.
+// job's bound this really is a straight sum rather than a worst-case-branch selection. The srv1
+// root-mutation approval (gunbc.fleet.srv1_root_mutation_approval_run) adds its WIF auth (aux tier),
+// its file-and-wait step (its own bound, which covers the operator's whole decision window) and its
+// receipt upload (transfer tier).
 fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_live_deploy_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+// The dark-install step's measured RENDER FOLD, reserved as its own budget term. On run 40630763823
+// the entry rendered the install script/legs through the generic emit path for a silent 696.6 s
+// (job log 04:39:56 -> 04:51:33, zero output between the two shell.Exec.RunArgv calls) -- the step's
+// single largest spend, ahead of the ~200 s broker startup. A step budget that omits it is falsified by
+// the very run it cites: the old inherited 30-minute tier was consumed by boot + this render + the
+// install legs, so the step died at 04:58:17 before the broker finished starting. This term reserves the
+// measured cost so the step can finish; it is NOT the fix for the cost itself -- reducing the generic
+// bash emit path is owned by gunbc.rung_drop live_deploy_dark_install_render_new_witness_eval_step_cost,
+// its own task. The figure is the ceiling of the measured 696.6 s, rounded to whole minutes.
+data gunbc_ci_approval_broker_dark_install_render_allowance: Minute = minute(count: 12)
+
+// THE BROKER DARK-INSTALL STEP'S OWN BUDGET. It is ONE `gunbc run` of the dark-install wet
+// (gunbc.live_deploy.apply approval_broker_dark_install_wet): it boots (resolve + typecheck) the wet's
+// entry closure, runs the access preflight, renders the install script/legs, executes the additive
+// install legs, restarts the broker's OWN unit, and waits on the broker's startup by polling /livez to
+// the readback bound. It must NOT borrow gunbc_ci_live_deploy_step_timeout_minutes -- that 30-minute
+// tier is the roadmap observe-then-cutover deploy's budget, a different shape of work; the measured sum
+// of what THIS step spends already exceeds it (boot 654 s + render 696.6 s + install legs ~283 s +
+// broker startup 200 s > 30 min), which is exactly how run 40630763823 timed out. Each term is a
+// declared authority or a measured, cited figure -- composed, never a bare bump:
+//   - the `gunbc run` boot tier (closure resolve dominates),
+//     gunbc_ci_gunbc_run_resolve_step_timeout_minutes;
+//   - the access preflight (git head + sudo NOPASSWD probes), one run-step allowance;
+//   - the measured render fold above, gunbc_ci_approval_broker_dark_install_render_allowance;
+//   - one aux tier for the additive install legs, gunbc_ci_aux_step_timeout_minutes;
+//   - the BROKER'S OWN STARTUP, given its own declared budget rather than inheriting the step's: the
+//     same figure the readback poll uses, approval_broker_readback_poll_bound, converted to minutes.
+//     Reserving it as its own term is the fix: the broker restarted at 04:56:17 and the step died at
+//     the borrowed 30-minute cap at 04:58:17, ~160 s into its ~200 s boot (journalctl showed it still
+//     typechecking), so it never bound 8085 -- the broker never failed to start, the borrowed budget ran
+//     out before its startup finished.
+// budget (review 57760 finding 1 precedent): the internal sum is the per-step Int allowances, and the
+// public fn carries the std.measure Minute duration rather than a bare scalar.
+fn gunbc_ci_approval_broker_dark_install_step_timeout_minute_count() -> Nat {
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + minute_count(gunbc_ci_approval_broker_dark_install_render_allowance)
+    + gunbc_ci_aux_step_timeout_minutes
+    + ((second_count(s: approval_broker_readback_poll_bound) + 59) / 60)
+}
+
+fn gunbc_ci_approval_broker_dark_install_step_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_step_timeout_minute_count())
+}
+
+// The dark-install JOB's own backstop, derived the same way as the dashboard deploy's and kept
+// SEPARATE from both the converge job's (which would wait on the fleet-converge wait-for-reconciliation
+// and reconciliation jobs' budget) and the dashboard deploy's (which would wait on the roadmap
+// live-deploy step, a step this job never runs). It composes the job's REAL steps: the consumer prelude,
+// the release-bins download and unpack-verify, the srv1 root-mutation secret auth + file-and-wait +
+// receipt upload, and the dark-install step's own tier (replacing the dashboard's live-deploy step).
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count() -> Nat {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_approval_broker_dark_install_step_timeout_minute_count()
+    + gunbc_ci_aux_step_timeout_minutes
+    + minute_count(srv1_root_mutation_approval_step_timeout_minutes())
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout() -> Minute {
+  minute(count: gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count())
 }
 
 // The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host

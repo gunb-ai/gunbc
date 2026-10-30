@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data unapplied_function_value_admitted_at_a_value_position: RecurringFailureMode = RecurringFailureMode {
   identity: "unapplied_function_value_admitted_at_a_value_position" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: a nullary function's NAME, written where a VALUE of that function's return type is declared, is accepted with no diagnostic. empty_map stands where empty_map() was meant, so the position holds a fn() -> Map<String, Bool> where a Map<String, Bool> is required.",
 

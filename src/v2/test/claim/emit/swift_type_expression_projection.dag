@@ -15,10 +15,10 @@ import v2.std.compilers.target_model {
   type_expression_projection_from_target
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Authored, Conj, Connective, Disj, Edge, Instantiation, Node, Occupancy, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Authored, Conj, Connective, Disj, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.node_query { binder_node }
 import std.optional { Absent }
-import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import v2.std.qualified_name { declaration_reference_node, optional_declaration_identity, qualified_name_from_dotted_string }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -33,6 +33,14 @@ fn swift_te_atom(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
+fn swift_te_optional(base: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: swift_te_positional_edges(items: [declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), base]),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn swift_te_applied(connective: Connective, items: List<Node>) -> Node {
   Node {
     kind: TypeNode { connective: connective },
@@ -42,15 +50,15 @@ fn swift_te_applied(connective: Connective, items: List<Node>) -> Node {
 }
 
 fn swift_te_positional_edges(items: List<Node>) -> List<Edge> {
-  list_map(xs: items, f: fn(item) { Edge { label: Positional, target: item } })
+  list_map(xs: items, f: fn(item) { Edge { label: Positional, target: item, declaration: NotADeclaration } })
 }
 
 fn swift_te_named_conj(connective: Connective, first: Symbol, second: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: connective },
     children: [
-      Edge { label: Authored { name: first }, target: binder_node(type_node: swift_te_atom(id: first), default: Absent) },
-      Edge { label: Authored { name: second }, target: binder_node(type_node: swift_te_atom(id: second), default: Absent) }
+      Edge { label: Authored { name: first }, target: binder_node(type_node: swift_te_atom(id: first), default: Absent), declaration: NotADeclaration },
+      Edge { label: Authored { name: second }, target: binder_node(type_node: swift_te_atom(id: second), default: Absent), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -106,20 +114,14 @@ test fn swift_instantiation_emits_a_generic_argument_clause_holds() -> Bool {
   )
 }
 
-// occupancy: `Optional<T>`, and a second layer is a second `Optional<...>` -- depth is not collapsed.
+// optional instance: `Optional<T>`, and a second layer is a second `Optional<...>` -- depth is not collapsed.
 test fn swift_occupancy_emits_optional_with_every_layer_spelled_holds() -> Bool {
   swift_te_is(
-    node: swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)]),
+    node: swift_te_optional(base: swift_te_atom(id: ^X)),
     expected: "Optional<X>"
   ) &&
   swift_te_is(
-    node: swift_te_applied(
-      connective: Occupancy,
-      items: [
-        swift_te_atom(id: ^Optional),
-        swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)])
-      ]
-    ),
+    node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
     expected: "Optional<Optional<X>>"
   )
 }
@@ -165,6 +167,7 @@ fn swift_te_edge_is_projection(e: Edge) -> Bool {
 // refuses typed -- no projection decodes, so no type-position emission is guessed.
 fn swift_te_target_without_edge() -> TargetModel {
   TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
     produced_decl_support: swift_target_model().produced_decl_support,
     bundle: Node {
       kind: swift_target_model().bundle.kind,
@@ -214,14 +217,11 @@ test fn swift_declaration_reference_spelling_is_injective_holds() -> Bool {
 // DEPTH CONTROL: one layer and two layers of Optional spell differently (`T??` is not `T?`).
 test fn swift_nested_optional_keeps_its_depth_holds() -> Bool {
   swift_te_is(
-    node: swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)]),
-    expected: "Optional<Optional<X>>"
-  ) == false &&
-  swift_te_is(
-    node: swift_te_applied(
-      connective: Occupancy,
-      items: [swift_te_atom(id: ^Optional), swift_te_applied(connective: Occupancy, items: [swift_te_atom(id: ^Optional), swift_te_atom(id: ^X)])]
-    ),
+    node: swift_te_optional(base: swift_te_atom(id: ^X)),
     expected: "Optional<X>"
-  ) == false
+  ) &&
+  !swift_te_is(
+    node: swift_te_optional(base: swift_te_optional(base: swift_te_atom(id: ^X))),
+    expected: "Optional<X>"
+  )
 }

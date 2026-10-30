@@ -1,6 +1,10 @@
 module extdeps.bmc.ipmitool_observed_output
 
-import std.types { Int, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.content_hash { Sha256Digest }
+import extdeps.crypto.sha2 { sha256_computed_digest }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
@@ -66,10 +70,55 @@ data ipmitool_mc_info_standing: CitedFigureStanding = TranscribedUncited {
 
 data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIPMI Version              : 2.0\n"
 
+// `ipmitool fru print 0` against the Mt. Collins BMC: the board inventory the boot's pre-power
+// retention keeps (gunbc.machine_intake.megarac_boot_diagnostic_bundle mtcollins1_boot_fru_print_retain)
+// and the identity rows are read from (gunbc.machine_intake.mtcollins1_access_observation
+// mtcollins1_current_build_identity). Output SHAPE: vendor (AMI MegaRAC) `fru print` key/value rendering,
+// keyed here to the firmware this answer was READ ON -- MegaRAC 0.32, per run 40264233543's own receipt
+// (artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt: the attempt reports
+// `firmware 0.32` throughout). The next machine on 0.32 gets this shape for free; a machine on another
+// release must bring its own capture before its print is answered. Source:
+// artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt
+// (sha256 e3db166444d26c8a1a6ec44a398adc229f3b88b50e21c016aa8f5daf80dc3031), verbatim -- byte-for-byte
+// stdout of boot run 40264233543, 894 bytes, 22 newlines, NO trailing newline: the capture's last byte
+// is the last `X` of the final `Product Extra` line. The literal is that file's bytes with each newline
+// written as \n; the witness (test.claim.operation_realization_witness the_fru_fixture_*) re-reads
+// the artifact and demands equality, so a transcription drift reds there rather than silently
+// diverging from the capture.
+data ipmitool_fru_print_0_mt_collins: String = " Chassis Type          : Rack Mount Chassis\n Chassis Part Number   : 1A624RA00-600-G\n Chassis Serial        : NULL\n Chassis Extra         : XXXXXXXXXXXX\n Chassis Extra         : YYYYYYYYYYYY\n Chassis Extra         : ZZZZZZZZZZZZ\n Board Mfg Date        : Mon 18 Oct 2021 06:36:00 PM UTC UTC\n Board Mfg             : FOXCONN\n Board Product         : Mt. Collins\n Board Serial          : 02030A800TEXFT02L\n Board Part Number     : 02030A800-600-G\n Board Extra           : 28C13C8AD64C\n Board Extra           : PCBAVer:EX\n Board Extra           : XXXXXXXXXXXX\n Product Manufacturer  : FOXCONN\n Product Name          : Mt. Collins\n Product Part Number   : 1A62AT100-600-G\n Product Version       : Ver 0.01\n Product Serial        : MXX2080619\n Product Asset Tag     : XXXXXXXXXXXXXXXXXX\n Product Extra         : XXQQQQQQQQQQ\n Product Extra         : XXXXXXXXXXXX\n Product Extra         : XXXXXXXXXXXX"
+
 // `ipmitool hpm check` on BMC 0.32, BEFORE the 2026-10-02 reflash: the component-properties table's
 // layout, not the controller's current state. Source: artifacts/bmc/mtcollins1-ipmitool-hpm-check-bmc0.32-2026-10-02.txt
 // (sha256 689624b261a32784a3a7d0373b1f05cfd7a46c1cff63e1ff761736cd9184a590), verbatim.
 data ipmitool_hpm_check_bmc0_32: String = "\nPICMG HPM.1 Upgrade Agent 1.0.9: \n\n-------Target Information-------\nDevice Id          : 0x20\nDevice Revision    : 0x81\nProduct Id         : 0x0202\nManufacturer Id    : 0x0000 (Unknown)\n\n\n--------------------------------------------------------------------------\n|ID  | Name        |                     Versions                        |\n|    |             |     Active      |     Backup      |      Deferred   |\n--------------------------------------------------------------------------\n|*  0|BOOT         |   0.32 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  1|APP          |   0.32 01112100 | ---.-- -------- |   0.00 00000000 |\n|*  2|BIOS         |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  5|CPLD         |   0.32 9D380300 | ---.-- -------- |   0.00 00000000 |\n|*  6|BOOTFW       |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n--------------------------------------------------------------------------\n(*) Component requires Payload Cold Reset\n\n\n"
+
+// `ipmitool hpm check` on BMC 0.45, read by the machine. Source:
+// artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt
+// (sha256 31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d) -- retained stdout of
+// boot run 40082618814, the first machine read of this controller's build. The committed bytes are
+// the component-properties table only: the PICMG preamble the 0.32 row above carries is absent from
+// this capture, and the decoder does not need it (it keys rows on the `|N|NAME |` shape). APP Active
+// reads `0.45 03000000`; a version is DERIVED from these bytes by
+// gunbc.host.bmc_release_capability_catalog, never typed here.
+data ipmitool_hpm_check_bmc0_45: String = "--------------------------------------------------------------------------\n|ID  | Name        |                     Versions                        |\n|    |             |     Active      |     Backup      |      Deferred   |\n--------------------------------------------------------------------------\n|*  0|BOOT         |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  1|APP          |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  2|BIOS         |   0.14 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  3|MMC          |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  5|CPLD         |   6.00 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  6|BOOTFW       |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n--------------------------------------------------------------------------"
+
+// THE COMMITTED BOOT-RUN READING, IN ONE HOME (review 86103 finding 2). The boot run 40082618814 hpm
+// check is ONE artifact with three facts about it -- where it lives, what it says, and its digest -- and
+// all three are spelled exactly here, beside each other, because the digest is not an independent secret:
+// it is sha256 OVER THESE BYTES, so spelling it as a literal would add a second home whose drift nothing
+// could catch. The path is what the catalogue's 0.45.x row keys, what the operation ledger's committed
+// evidence names, and what this module's own source comments cite; retyping it at any of those sites was
+// review 86103's second finding. The digest below is COMPUTED from ipmitool_hpm_check_bmc0_45 (the same
+// bytes the file carries -- byte-equality was verified against artifacts/bmc/
+// mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt at commit time, and its hex is
+// 31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d); if the literal and the file ever
+// part, the computed value moves with the bytes and the witnesses that pin the parse go red, which is the
+// only way this digest can change.
+data mtcollins1_boot_run_40082618814_hpm_check_artifact_path: NonEmptyStr =
+  "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt"
+
+data mtcollins1_boot_run_40082618814_hpm_check_digest: Sha256Digest =
+  sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: ipmitool_hpm_check_bmc0_45)))
 
 // The CPLD's component row as BMC 0.45.3 printed it during the 2026-10-02 CPLD upgrade, verbatim.
 // Source: artifacts/bmc/mtcollins1-cpld-hpm-upgrade-2026-10-02.log line 26
@@ -82,3 +131,86 @@ data ipmitool_hpm_upgrade_cpld_row_bmc0_45_3: String = "|*  5|CPLD         |   4
 // artifacts/bmc/mtcollins1-bmc-hpm-upgrade-2026-10-02.log line 28 (sha256 82db1295e7f188107649be8c33dcbb907f81e59745571c1db3677ce2c3c7f056). The File column is the
 // image being written: `0.45 03000000` for the delivery's BMC 0.45.3.
 data ipmitool_hpm_upgrade_app_row_bmc0_45_3: String = "|*  1|APP          |   0.32 01112100 | ---.-- -------- |   0.45 03000000 |  0%|  1%|  2%|  3%|  4%|  5%|  6%|  7%|  8%|  9%| 10%| 11%| 12%| 13%| 14%| 15%| 16%| 17%| 18%| 19%| 20%| 21%| 22%| 23%| 24%| 25%| 26%| 27%| 28%| 29%| 30%| 31%| 32%| 33%| 34%| 35%| 36%| 37%| 38%| 39%| 40%| 41%| 42%| 43%| 44%| 45%| 46%| 47%| 48%| 49%| 50%| 51%| 52%| 53%| 54%| 55%| 56%| 57%| 58%| 59%| 60%| 61%| 62%| 63%| 64%| 65%| 66%| 67%| 68%| 69%| 70%| 71%| 72%| 73%| 74%| 75%| 76%| 77%| 78%| 79%| 80%| 81%| 82%| 83%| 84%| 85%| 86%| 87%| 88%| 89%| 90%| 91%| 92%| 93%| 94%| 95%| 96%| 97%| 98%| 99%|100%|"
+
+// ── THE CLEAR'S ECHO, AND WHAT KIND OF EVIDENCE IT IS ─────────────────────────────────────────────
+// `ipmitool chassis bootdev none` is how the one-shot override is cleared: `none` is ipmitool's word for
+// the same chassis-boot-parameter-5 device selector this corpus already grounds as 0 = 'no override'
+// (extdeps.bmc.ipmi_boot_selection ipmi_boot_selector_reading), and the STATE it leaves IS a capture,
+// byte for byte -- ipmitool_bootparam5_no_override above: 'Boot parameter data: 0000000000',
+// 'Boot Flag Invalid', 'Boot Device Selector : No override'. What it prints on STDOUT is not: no capture
+// of that word's echo is retained anywhere in the corpus. What IS retained is the vendor's echo SHAPE,
+// twice, on one firmware release -- 'Set Boot Device to cdrom' (artifacts/bmc/mtcollins1-32dimm/
+// 30-bootdev.txt, sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba, line 2) and
+// 'Set Boot Device to pxe' (artifacts/bmc/mtcollins1-intake-write-exercise.json, the pxe write exercise's
+// "result"). In that shape the device word is the command's own echo, so the third row is these two
+// captures with one word replaced: DERIVED, typed as derived, never written as though it were a capture
+// (merry-fox-82 ruling msg_c21159d5). Two consequences bind every consumer: NOTHING may judge a clear
+// from this stdout -- the clear's verdict is the parameter-5 readback above, which is a capture -- and the
+// row is keyed to the firmware these two captures were read on, MegaRAC 0.32, so a machine on another
+// release must bring its own capture instead of inheriting a vendor-wide claim (§4d). Dissolution: the
+// next boot that runs the real clear on mtcollins1 retains its stdout, replaces this row with it, and
+// names that run here.
+
+// THE CDROM ECHO, AS CAPTURED -- cited once. The same citation serves twice over: it is the first of the two
+// shape captures below, and it is the standing the dry BMC carries when it answers `chassis bootdev cdrom`
+// (gunbc.bmc_dry_realization bmc_bootdev_set_reply), so a capture and a guess about that same command cannot
+// disagree about where the capture is.
+data bootdev_cdrom_echo_capture: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm/30-bootdev.txt (sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba) line 2: 'Set Boot Device to cdrom'" as NonEmptyStr
+
+data ipmitool_bootdev_cdrom_reply_standing: BootdevEchoStanding = BootdevEchoTranscribed { capture: bootdev_cdrom_echo_capture }
+
+data bootdev_echo_shape_captures: List<NonEmptyStr> = [
+  bootdev_cdrom_echo_capture,
+  "artifacts/bmc/mtcollins1-intake-write-exercise.json, 'result': 'Set Boot Device to pxe'" as NonEmptyStr
+]
+
+// HOW A BOOTDEV ECHO'S BYTES ARE HELD. The two arms are NOT the same kind of evidence and must not be
+// interchangeable in a type: a transcribed row can be quoted as what ipmitool printed, a derived row only
+// as what the vendor's shape says it prints -- which is why the derived arm names the captures its shape
+// came from and the read that would retire it.
+// read_on_release names the firmware the shape captures were READ ON. It travels with the row rather than
+// sitting beside it as a separate key, so the row states the only condition under which it may be used and a
+// consumer compares against a typed value instead of re-typing the number (review 87774: a second source of
+// one fact, guarded by a .contains() grep, is a second representation of it).
+type BootdevEchoStanding
+  = BootdevEchoTranscribed { capture: NonEmptyStr }
+  | BootdevEchoDerivedFromShape { shape_captures: List<NonEmptyStr>, read_obligation: NonEmptyStr, read_on_release: NonEmptyStr }
+
+data ipmitool_bootdev_none_reply_standing: BootdevEchoStanding = BootdevEchoDerivedFromShape {
+  shape_captures: bootdev_echo_shape_captures,
+  read_obligation: "a retained stdout of `ipmitool chassis bootdev none` against the Mt. Collins BMC on MegaRAC 0.32, cited by digest and by the run that took it" as NonEmptyStr,
+  // Both shape captures are MegaRAC 0.32 output: the 32-DIMM capture is that build's own bootdev block, and
+  // the pxe exercise predates the 2026-10-02 reflash to 0.45.x (ipmitool_hpm_upgrade_app_row_bmc0_45_3 below
+  // shows 0.32 as the image being replaced).
+  read_on_release: "0.32" as NonEmptyStr
+}
+
+// A LINE OF ipmitool OUTPUT WITH ITS STANDING IN THE SAME VALUE. Bytes and standing may not travel apart:
+// separated, a consumer can quote a guess as a capture, and DESIGN §4d puts the defect on that reader --
+// 'an inference is a bet: typed as a bet, neither deleted nor promoted'. So the row IS { bytes, standing },
+// and every consumer that wants the bytes takes the standing with them.
+type ObservedBootdevReply {
+  bytes: String
+  standing: BootdevEchoStanding
+}
+
+// THE DERIVED ROW ITSELF -- same layout, same trailing newline, the device word the command was given, and
+// the standing naming the two captures its shape came from. It is not a capture and its type says so.
+data ipmitool_bootdev_none_reply: ObservedBootdevReply = ObservedBootdevReply {
+  bytes: "Set Boot Device to none\n",
+  standing: ipmitool_bootdev_none_reply_standing,
+}
+
+// THE ANSWER TO `chassis bootdev none`, OFFERED ONLY TO THE FIRMWARE THE ROW WAS READ ON. The key is read
+// OUT OF THE STANDING -- one copy of the number, in the value that carries the guess -- and compared against
+// the release the caller's BMC reports, so a model on any other release gets Absent and must bring its own
+// capture (gunbc.bmc_dry_realization bmc_bootdev_clear_reply answers BmcReplyFault there rather than
+// guessing a print for a controller this corpus never read). A transcribed row, if one ever replaces this
+// one, answers on any release: that is what being a capture buys.
+fn ipmitool_bootdev_none_reply_for(firmware_release: NonEmptyStr) -> ObservedBootdevReply? {
+  match ipmitool_bootdev_none_reply.standing {
+    BootdevEchoTranscribed { capture: _ } => Present { value: ipmitool_bootdev_none_reply }
+    BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _, read_on_release: keyed } =>
+      if firmware_release == keyed { Present { value: ipmitool_bootdev_none_reply } } else { Absent }
+  }
+}

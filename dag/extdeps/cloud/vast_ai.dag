@@ -567,6 +567,10 @@ service vast_ai.Asks {
   // env is a STRING in Docker flag format ("-e NAME=value -p 8000:8000"), merged by key into the
   // template's env with the request winning (docs.vast.ai create-instance, PUT /asks/{id}/). It is a
   // Secret because the caller puts a per-rental password in it.
+  // runtype/args/onstart are the launch applied to THIS rent. Vast takes them per rent, and the args form
+  // has only ever been observed to execute per rent: an args command stored IN the template produced 50
+  // minutes of empty logs (template 782339), while this per-rent shape served in about 25 minutes
+  // (instance 57968351). The model is product.fabric.flex_vast_template flex_vast_rent_launch.
   operation Create {
     requires Network
     input {
@@ -577,6 +581,9 @@ service vast_ai.Asks {
       template_hash_id: NonEmptyStr
       label: NonEmptyStr
       env: Secret
+      runtype: String
+      args: List<String>
+      onstart: String
     }
     output {
       success: Bool from "success"
@@ -585,7 +592,7 @@ service vast_ai.Asks {
     transport rest {
       method: PUT,
       path: "/asks/\{offer_id\}/",
-      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label, env: env }
+      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label, env: env, runtype: runtype, args: args, onstart: onstart }
     }
     response {
       200 => VastAiCreateAskResult

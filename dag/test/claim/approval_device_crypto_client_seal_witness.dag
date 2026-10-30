@@ -4,7 +4,8 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
   CensusNotRunnable,
-  census_count_at_key
+  census_count_at_key,
+  census_blocking_rows
 }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -75,12 +76,30 @@ test fn an_unlisted_module_calling_device_crypto_proof_of_is_refused() -> Bool {
   keyed_refusals(source: direct_proof_source, callee: "device_crypto_proof_of") >= 1
 }
 
-data real_route_source: String = "module probe_real_route\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification }\nimport gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission }\nimport gunbc.auth.approval_device_crypto_client { SidecarResult, sidecar_signature_verification }\nfn real(a: DeviceCryptoAdmission, k: VerifyingKey, s: SignatureBytes, m: NonEmptyStr) -> SidecarResult<SignatureVerification> = sidecar_signature_verification(admission: a, key: k, signature: s, message: m)\n"
+data real_route_source: String = "module probe_real_route\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification }\nimport gunbc.auth.approval_device_crypto_realization { DeviceCryptoGate }\nimport gunbc.auth.approval_device_crypto_client { SidecarResult, sidecar_signature_verification }\nfn real(g: DeviceCryptoGate, k: VerifyingKey, s: SignatureBytes, m: NonEmptyStr) -> SidecarResult<SignatureVerification> = sidecar_signature_verification(gate: g, key: k, signature: s, message: m)\n"
+
+data closure_baseline_source: String = "module probe_closure_baseline\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification }\nimport gunbc.auth.approval_device_crypto_realization { DeviceCryptoGate }\nimport gunbc.auth.approval_device_crypto_client { SidecarResult, sidecar_signature_verification }\n"
+
+// The census carries the imported closure's own blocking rows (gunbc.compile_diagnostic_census), so a total of zero is never
+// observable; the exact form is the differential against a source importing the same names and calling nothing, where the
+// shared closure cancels. The same call against the interface as it was before the gate/admission split: `admission:` is no argument of the route
+// now. It is the control's own RED: a source that has drifted from the real signature must show MORE blocking diagnostics than the baseline, or the
+// green control below could pass on a broken closure with every keyed seal count at zero.
+data stale_route_source: String = "module probe_stale_route\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification }\nimport gunbc.auth.approval_device_crypto_realization { DeviceCryptoGate }\nimport gunbc.auth.approval_device_crypto_client { SidecarResult, sidecar_signature_verification }\nfn real(g: DeviceCryptoGate, k: VerifyingKey, s: SignatureBytes, m: NonEmptyStr) -> SidecarResult<SignatureVerification> = sidecar_signature_verification(admission: g, key: k, signature: s, message: m)\n"
+
+fn blocking_diagnostics(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
 
 // THE GREEN CONTROL: a module calling the real route compiles with no admission refusal on any link of the chain, so the REDs above
 // are the seals and not a broken closure (the route's own calls to the links sit inside the imported closure this census covers).
 test fn the_real_route_resolves_under_the_seals() -> Bool {
-  keyed_refusals(source: real_route_source, callee: "signature_from_answer") == 0
+  blocking_diagnostics(source: real_route_source) == blocking_diagnostics(source: closure_baseline_source)
+    && blocking_diagnostics(source: closure_baseline_source) >= 0
+    && keyed_refusals(source: real_route_source, callee: "signature_from_answer") == 0
     && keyed_refusals(source: real_route_source, callee: "attestation_from_answer") == 0
     && keyed_refusals(source: real_route_source, callee: "assertion_from_answer") == 0
     && keyed_refusals(source: real_route_source, callee: "signed_from") == 0
@@ -88,4 +107,12 @@ test fn the_real_route_resolves_under_the_seals() -> Bool {
     && keyed_refusals(source: real_route_source, callee: "asserted_from") == 0
     && keyed_refusals(source: real_route_source, callee: "proof_for") == 0
     && keyed_refusals(source: real_route_source, callee: "device_crypto_proof_of") == 0
+}
+
+// RED FOR THE GREEN CONTROL: a route call written against the stale interface shows blocking diagnostics, so zero keyed seal
+// refusals alone (which a type diagnostic leaves untouched) cannot be what makes the green control pass.
+test fn a_route_call_against_the_stale_interface_has_blocking_diagnostics() -> Bool {
+  blocking_diagnostics(source: stale_route_source) > blocking_diagnostics(source: closure_baseline_source)
+    && blocking_diagnostics(source: closure_baseline_source) >= 0
+    && keyed_refusals(source: stale_route_source, callee: "signature_from_answer") == 0
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.sealing_property_erases_structure
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data sealing_property_erases_structure: RecurringFailureMode = RecurringFailureMode {
   identity: "sealing_property_erases_structure" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a construction-restricting property read as a structure-erasing one** (a declaration is annotated to RESTRICT how its inhabitants may be built, and a consumer that asks about the declaration's SHAPE treats the annotation as a reason to stop looking -- so the deliberate climb on the construction axis silently drops a rung on every axis decided by shape, with no declaration, because the two axes are read by different consumers.",

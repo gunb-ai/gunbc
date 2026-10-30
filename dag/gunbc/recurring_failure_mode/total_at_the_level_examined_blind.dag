@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.total_at_the_level_examined_blind
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data total_at_the_level_examined_blind: RecurringFailureMode = RecurringFailureMode {
   identity: "total_at_the_level_examined_blind" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**total at the level examined, blind one level down** (a judgment is exhaustive over the type it matches and says nothing about the distinction that actually decides the outcome, which lives inside one of its arms.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data stale_claim_survives_its_own_correct_edit: RecurringFailureMode = RecurringFailureMode {
   identity: "stale_claim_survives_its_own_correct_edit" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**stale claim survives its own correct edit** (INVALID STATE: a prose claim that was TRUE when written and became false through a CORRECT edit made elsewhere -- the deletion of a CI job, the removal of a symbol, a rename, a withdrawn change, or the closing of a referenced node -- while nothing in the citing artifact changed at the moment it became false.",

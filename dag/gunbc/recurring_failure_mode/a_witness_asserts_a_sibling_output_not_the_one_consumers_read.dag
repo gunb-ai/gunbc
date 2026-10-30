@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_witness_asserts_a_sibling_output_not_the_one_consumers_read
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_witness_asserts_a_sibling_output_not_the_one_consumers_read: RecurringFailureMode = RecurringFailureMode {
   identity: "a_witness_asserts_a_sibling_output_not_the_one_consumers_read" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A feature has several outputs from one demand, and its witness asserts one that is not the output consumers read. The feature goes red-proof in the witness while a consumed output is wrong, and a negative control over the unasserted output passes vacuously because the wrong value (empty) satisfies its premise. DESIGN section 5, done means executed: a witness is a consumer of what it asserts and of nothing else.",

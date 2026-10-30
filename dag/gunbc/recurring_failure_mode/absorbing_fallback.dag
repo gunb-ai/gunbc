@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.absorbing_fallback
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data absorbing_fallback: RecurringFailureMode = RecurringFailureMode {
   identity: "absorbing_fallback" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "LATENT COMPATIBILITY INSTANCE: gunbc.host.host_memory_qualification implication_severity mapped EvidenceUnobserved to PartNotImplicated, and product.build_fulfillment compatibility_of promoted that negative screen to CompatibilityEstablished. The composition could establish compatibility without evidence, but compatibility_of had no production callers and no purchasing actuator reached it. This is a declared-but-uncalled seam, repaired before the prospective evaluator consumes it. PartEvidenceUnresolved now carries the missing step, while compatibility_of consumes both unresolved evidence and a non-implication as CompatibilityEvidenceUnread, leaving policy to resolve_supplied_line. HostMemoryStanding keeps class support, part qualification, training and boot independent. Executing discriminator: test.claim.host.host_memory_qualification_witness unobserved_evidence_never_establishes_purchasing_compatibility; direct fulfillment-policy witness: test.claim.build_fulfillment_witness w_unread_compatibility_is_pending_evidence_not_a_purchase. The widening arm admitted silent wrongness under direct invocation; the executed claims establish mechanical prevention only for source-to-interpretation of these functions, not for a production purchasing decision or an emitted target. Positive compatibility for an actual part and population remains an external evidence obligation, not something a negative failure screen can prove.",

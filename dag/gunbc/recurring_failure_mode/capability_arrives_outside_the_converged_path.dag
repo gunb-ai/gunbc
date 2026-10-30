@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data capability_arrives_outside_the_converged_path: RecurringFailureMode = RecurringFailureMode {
   identity: "capability_arrives_outside_the_converged_path" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a host holds a capability that no modeled path put there, so every later green on that host is uninterpretable.** INVALID STATE: a host answers ready for some capability while the convergence that is supposed to be the only way that capability arrives has not delivered it. The harm is not the capability -- it usually works -- it is that a receipt naming the host can no longer distinguish the modeled path working from a hand-run answering, and the ambiguity is permanent and travels with every future citation of that host.",

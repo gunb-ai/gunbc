@@ -315,10 +315,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
     env: Rc<ResolvedFuncEnv>,
     name: String,
 ) -> Rc<FuncSigLookup> {
-    decide_callable_candidates(parent_closure_callable_candidates(
-        env.clone(),
-        name.clone(),
-    ))
+    decide_callable_candidates(parent_closure_callable_candidates(env, name))
 }
 
 pub fn parent_closure_callable_candidates(
@@ -698,25 +695,6 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     })
 }
 
-pub fn merge_remaining_declared(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v1_rt::map_values(&declared_sigs))
-        .iter()
-        .cloned()
-        .fold(
-            resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != std::option::Option::None) {
-                    v1_rt::rc_map_insert(acc, dsig.name.clone(), declared_to_resolved(dsig.clone()))
-                } else {
-                    acc
-                }
-            },
-        )
-}
-
 pub fn topo_resolve_loop(
     mut __tco_loop_remaining: Rc<Vec<String>>,
     mut __tco_loop_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
@@ -728,258 +706,261 @@ pub fn topo_resolve_loop(
     mut __tco_loop_parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut resolved = __tco_loop_resolved;
-        #[allow(unused_mut)]
-        let mut declared_sigs = __tco_loop_declared_sigs;
-        #[allow(unused_mut)]
-        let mut call_edges = __tco_loop_call_edges;
-        #[allow(unused_mut)]
-        let mut local_func_set = __tco_loop_local_func_set;
-        #[allow(unused_mut)]
-        let mut module_name = __tco_loop_module_name;
-        #[allow(unused_mut)]
-        let mut diagnostics = __tco_loop_diagnostics;
-        #[allow(unused_mut)]
-        let mut parent_envs = __tco_loop_parent_envs;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if ((remaining.clone().len() as i64) == 0) {
-            {
-                let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != std::option::Option::None) {
-                                v1_rt::rc_map_insert(
-                                    acc,
-                                    dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
-                                )
-                            } else {
-                                acc
-                            }
-                        },
-                    );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: module_name.clone(),
-                        local: all_resolved.clone(),
-                        parents: parent_envs.clone(),
-                    }),
-                    diagnostics: diagnostics.clone(),
-                });
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut resolved = __tco_loop_resolved;
+            #[allow(unused_mut)]
+            let mut declared_sigs = __tco_loop_declared_sigs;
+            #[allow(unused_mut)]
+            let mut call_edges = __tco_loop_call_edges;
+            #[allow(unused_mut)]
+            let mut local_func_set = __tco_loop_local_func_set;
+            #[allow(unused_mut)]
+            let mut module_name = __tco_loop_module_name;
+            #[allow(unused_mut)]
+            let mut diagnostics = __tco_loop_diagnostics;
+            #[allow(unused_mut)]
+            let mut parent_envs = __tco_loop_parent_envs;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if ((remaining.clone().len() as i64) == 0) {
+                {
+                    let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
+                        .iter()
+                        .cloned()
+                        .fold(
+                            resolved.clone(),
+                            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                             dsig: Rc<DeclaredFuncSig>| {
+                                if (dsig.inferred.clone() != std::option::Option::None) {
+                                    v1_rt::rc_map_insert(
+                                        acc,
+                                        dsig.name.clone(),
+                                        declared_to_resolved(dsig.clone()),
+                                    )
+                                } else {
+                                    acc
+                                }
+                            },
+                        );
+                    return Rc::new(ResolveFuncSigsResult {
+                        func_env: Rc::new(ResolvedFuncEnv {
+                            name: module_name.clone(),
+                            local: all_resolved.clone(),
+                            parents: parent_envs.clone(),
+                        }),
+                        diagnostics: diagnostics.clone(),
+                    });
+                }
             }
-        }
-        let ready = Rc::new({
-            let mut __result = Vec::new();
-            for fn_name in remaining.iter().cloned() {
-                if {
-                    let local_callees = Rc::new({
-                        let mut __result = Vec::new();
-                        for c in Rc::new({
+            let ready = Rc::new({
+                let mut __result = Vec::new();
+                for fn_name in remaining.iter().cloned() {
+                    if {
+                        let local_callees = Rc::new({
                             let mut __result = Vec::new();
-                            for e in Rc::new({
+                            for c in Rc::new({
                                 let mut __result = Vec::new();
-                                for e in call_edges.iter().cloned() {
-                                    if (e.caller.clone() == fn_name.clone()) {
-                                        __result.push(e);
+                                for e in Rc::new({
+                                    let mut __result = Vec::new();
+                                    for e in call_edges.iter().cloned() {
+                                        if (e.caller.clone() == fn_name.clone()) {
+                                            __result.push(e);
+                                        }
                                     }
+                                    __result
+                                })
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(e.callee.clone());
                                 }
                                 __result
                             })
                             .iter()
                             .cloned()
                             {
-                                __result.push(e.callee.clone());
+                                if crate::v1_compiler_infer_types::emit_map_has(
+                                    local_func_set.clone(),
+                                    c.clone(),
+                                ) {
+                                    __result.push(c);
+                                }
                             }
                             __result
-                        })
-                        .iter()
-                        .cloned()
+                        });
                         {
-                            if crate::v1_compiler_infer_types::emit_map_has(
-                                local_func_set.clone(),
-                                c.clone(),
-                            ) {
-                                __result.push(c);
+                            let mut __all = true;
+                            for c in local_callees.iter().cloned() {
+                                if !(v1_rt::map_get(&resolved, c.clone())
+                                    != std::option::Option::None)
+                                {
+                                    __all = false;
+                                    break;
+                                }
                             }
+                            __all
                         }
-                        __result
-                    });
-                    {
-                        let mut __all = true;
-                        for c in local_callees.iter().cloned() {
-                            if !(v1_rt::map_get(&resolved, c.clone()) != std::option::Option::None)
-                            {
-                                __all = false;
-                                break;
-                            }
-                        }
-                        __all
+                    } {
+                        __result.push(fn_name);
                     }
-                } {
-                    __result.push(fn_name);
                 }
-            }
-            __result
-        });
-        if ((ready.clone().len() as i64) == 0) {
-            {
-                let cycle_accum = remaining.iter().cloned().fold(
-                    Rc::new(SigsAccum {
-                        signatures: resolved.clone(),
-                        diagnostics: Rc::new(vec![]),
-                    }),
-                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                        &declared_sigs,
-                        fn_name.clone(),
-                    ) {
-                        Some(dsig) => {
-                            if (dsig.inferred.clone() != std::option::Option::None) {
-                                Rc::new(SigsAccum {
-                                    signatures: v1_rt::rc_map_insert(
-                                        acc.signatures.clone(),
-                                        fn_name.clone(),
-                                        declared_to_resolved(dsig.clone()),
-                                    ),
-                                    diagnostics: acc.diagnostics.clone(),
-                                })
-                            } else {
-                                Rc::new(SigsAccum {
-                                    signatures: acc.signatures.clone(),
-                                    diagnostics: v1_rt::rc_list_push(
-                                        acc.diagnostics.clone(),
-                                        crate::v1_std_core::make_error_node(
-                                            Rc::new(CompilerDiagnostic::MissingAnnotation {
-                                                fn_name: fn_name.clone(),
-                                                what: "return type (recursive)".to_string(),
-                                                span: crate::v1_std_core::no_span(),
-                                            }),
-                                            module_name.clone(),
+                __result
+            });
+            if ((ready.clone().len() as i64) == 0) {
+                {
+                    let cycle_accum = remaining.iter().cloned().fold(
+                        Rc::new(SigsAccum {
+                            signatures: resolved.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        }),
+                        |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                            &declared_sigs,
+                            fn_name.clone(),
+                        ) {
+                            Some(dsig) => {
+                                if (dsig.inferred.clone() != std::option::Option::None) {
+                                    Rc::new(SigsAccum {
+                                        signatures: v1_rt::rc_map_insert(
+                                            acc.signatures.clone(),
+                                            fn_name.clone(),
+                                            declared_to_resolved(dsig.clone()),
                                         ),
-                                    ),
-                                })
+                                        diagnostics: acc.diagnostics.clone(),
+                                    })
+                                } else {
+                                    Rc::new(SigsAccum {
+                                        signatures: acc.signatures.clone(),
+                                        diagnostics: v1_rt::rc_list_push(
+                                            acc.diagnostics.clone(),
+                                            crate::v1_std_core::make_error_node(
+                                                Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                                    fn_name: fn_name.clone(),
+                                                    what: "return type (recursive)".to_string(),
+                                                    span: crate::v1_std_core::no_span(),
+                                                }),
+                                                module_name.clone(),
+                                            ),
+                                        ),
+                                    })
+                                }
                             }
-                        }
-                        std::option::Option::None => acc.clone(),
-                    },
-                );
-                let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != std::option::Option::None) {
-                                v1_rt::rc_map_insert(
-                                    acc,
-                                    dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
-                                )
-                            } else {
-                                acc
-                            }
+                            std::option::Option::None => acc.clone(),
                         },
                     );
-                return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
-                        name: module_name.clone(),
-                        local: all_resolved.clone(),
-                        parents: parent_envs.clone(),
-                    }),
-                    diagnostics: v1_rt::concat(
-                        diagnostics.clone(),
-                        cycle_accum.diagnostics.clone(),
-                    ),
-                });
+                    let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
+                        .iter()
+                        .cloned()
+                        .fold(
+                            cycle_accum.signatures.clone(),
+                            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                             dsig: Rc<DeclaredFuncSig>| {
+                                if (dsig.inferred.clone() != std::option::Option::None) {
+                                    v1_rt::rc_map_insert(
+                                        acc,
+                                        dsig.name.clone(),
+                                        declared_to_resolved(dsig.clone()),
+                                    )
+                                } else {
+                                    acc
+                                }
+                            },
+                        );
+                    return Rc::new(ResolveFuncSigsResult {
+                        func_env: Rc::new(ResolvedFuncEnv {
+                            name: module_name.clone(),
+                            local: all_resolved.clone(),
+                            parents: parent_envs.clone(),
+                        }),
+                        diagnostics: v1_rt::concat(
+                            diagnostics.clone(),
+                            cycle_accum.diagnostics.clone(),
+                        ),
+                    });
+                }
             }
-        }
-        let ready_accum = ready.iter().cloned().fold(
-            Rc::new(SigsAccum {
-                signatures: resolved.clone(),
-                diagnostics: diagnostics.clone(),
-            }),
-            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                &declared_sigs,
-                fn_name.clone(),
-            ) {
-                Some(dsig) => {
-                    if (dsig.inferred.clone() != std::option::Option::None) {
-                        Rc::new(SigsAccum {
-                            signatures: v1_rt::rc_map_insert(
-                                acc.signatures.clone(),
-                                fn_name.clone(),
-                                declared_to_resolved(dsig.clone()),
-                            ),
-                            diagnostics: acc.diagnostics.clone(),
-                        })
-                    } else {
-                        Rc::new(SigsAccum {
-                            signatures: acc.signatures.clone(),
-                            diagnostics: v1_rt::rc_list_push(
-                                acc.diagnostics.clone(),
-                                crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::MissingAnnotation {
-                                        fn_name: fn_name.clone(),
-                                        what: "return type".to_string(),
-                                        span: crate::v1_std_core::no_span(),
-                                    }),
-                                    module_name.clone(),
+            let ready_accum = ready.iter().cloned().fold(
+                Rc::new(SigsAccum {
+                    signatures: resolved.clone(),
+                    diagnostics: diagnostics.clone(),
+                }),
+                |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                    &declared_sigs,
+                    fn_name.clone(),
+                ) {
+                    Some(dsig) => {
+                        if (dsig.inferred.clone() != std::option::Option::None) {
+                            Rc::new(SigsAccum {
+                                signatures: v1_rt::rc_map_insert(
+                                    acc.signatures.clone(),
+                                    fn_name.clone(),
+                                    declared_to_resolved(dsig.clone()),
                                 ),
-                            ),
-                        })
+                                diagnostics: acc.diagnostics.clone(),
+                            })
+                        } else {
+                            Rc::new(SigsAccum {
+                                signatures: acc.signatures.clone(),
+                                diagnostics: v1_rt::rc_list_push(
+                                    acc.diagnostics.clone(),
+                                    crate::v1_std_core::make_error_node(
+                                        Rc::new(CompilerDiagnostic::MissingAnnotation {
+                                            fn_name: fn_name.clone(),
+                                            what: "return type".to_string(),
+                                            span: crate::v1_std_core::no_span(),
+                                        }),
+                                        module_name.clone(),
+                                    ),
+                                ),
+                            })
+                        }
+                    }
+                    std::option::Option::None => acc.clone(),
+                },
+            );
+            let ready_set = ready.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, fn_name: String| {
+                    v1_rt::rc_map_insert(acc, fn_name.clone(), true)
+                },
+            );
+            let next_remaining = Rc::new({
+                let mut __result = Vec::new();
+                for fn_name in remaining.iter().cloned() {
+                    if (crate::v1_compiler_infer_types::emit_map_has(
+                        ready_set.clone(),
+                        fn_name.clone(),
+                    ) == false)
+                    {
+                        __result.push(fn_name);
                     }
                 }
-                std::option::Option::None => acc.clone(),
-            },
-        );
-        let ready_set = ready.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
-                v1_rt::rc_map_insert(acc, fn_name.clone(), true)
-            },
-        );
-        let next_remaining = Rc::new({
-            let mut __result = Vec::new();
-            for fn_name in remaining.iter().cloned() {
-                if (crate::v1_compiler_infer_types::emit_map_has(
-                    ready_set.clone(),
-                    fn_name.clone(),
-                ) == false)
-                {
-                    __result.push(fn_name);
-                }
+                __result
+            });
+            {
+                let __tco_0 = next_remaining;
+                let __tco_1 = ready_accum.signatures.clone();
+                let __tco_2 = declared_sigs;
+                let __tco_3 = call_edges;
+                let __tco_4 = local_func_set;
+                let __tco_5 = module_name;
+                let __tco_6 = ready_accum.diagnostics.clone();
+                let __tco_7 = parent_envs;
+                let __tco_8 = v1_rt::int_sub(fuel, 1);
+                __tco_loop_remaining = __tco_0;
+                __tco_loop_resolved = __tco_1;
+                __tco_loop_declared_sigs = __tco_2;
+                __tco_loop_call_edges = __tco_3;
+                __tco_loop_local_func_set = __tco_4;
+                __tco_loop_module_name = __tco_5;
+                __tco_loop_diagnostics = __tco_6;
+                __tco_loop_parent_envs = __tco_7;
+                __tco_loop_fuel = __tco_8;
+                continue;
             }
-            __result
-        });
-        {
-            let __tco_0 = next_remaining.clone();
-            let __tco_1 = ready_accum.signatures.clone();
-            let __tco_2 = declared_sigs;
-            let __tco_3 = call_edges;
-            let __tco_4 = local_func_set;
-            let __tco_5 = module_name;
-            let __tco_6 = ready_accum.diagnostics.clone();
-            let __tco_7 = parent_envs;
-            let __tco_8 = v1_rt::int_sub(fuel, 1);
-            __tco_loop_remaining = __tco_0;
-            __tco_loop_resolved = __tco_1;
-            __tco_loop_declared_sigs = __tco_2;
-            __tco_loop_call_edges = __tco_3;
-            __tco_loop_local_func_set = __tco_4;
-            __tco_loop_module_name = __tco_5;
-            __tco_loop_diagnostics = __tco_6;
-            __tco_loop_parent_envs = __tco_7;
-            __tco_loop_fuel = __tco_8;
-            continue;
         }
     }
 }
@@ -1024,12 +1005,12 @@ pub fn resolve_func_sigs(
         topo_resolve_loop(
             local_func_names.clone(),
             v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            declared_sigs.clone(),
-            call_edges.clone(),
+            declared_sigs,
+            call_edges,
             local_func_set.clone(),
-            module_name.clone(),
+            module_name,
             Rc::new(vec![]),
-            flatten_parent_envs(parent_envs.clone()),
+            flatten_parent_envs(parent_envs),
             (local_func_names.clone().len() as i64),
         )
     }

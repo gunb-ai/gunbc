@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.carrier_alias_refuses_its_own_carriers_const
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data carrier_alias_refuses_its_own_carriers_constructor: RecurringFailureMode = RecurringFailureMode {
   identity: "carrier_alias_refuses_its_own_carriers_constructor" as NonEmptyStr,
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed; decidable from the two declarations." as NonEmptyStr } },
+
   receipts: [
     "INVALID STATE: a value built with a carrier's own constructor is refused at a formal whose type IS that carrier. `Empty {}` / `Cons {..}` are the constructors of std.algebra FreeMonoid, std.types declares `List<element> = FreeMonoid<element>`, and operator ruling 2026-09-29 made them one type -- yet `fn take(xs: List<Int>)` refused `take(xs: Empty {})`, and a local `type ZzLT<T> = FreeMonoid<T>` refused its target's own `Empty {}`. An alias that rejects its target's constructor is below the floor whatever the realization.",
     "HARM, OBSERVED BY EXECUTION (clever-heron-784, main 6f96d86, entry compiles on srv1): 'type mismatch: expected Container(List,Primitive(element)), got Coproduct(FreeMonoid)' for A (List from std.types) and B (List from v2.std.collection), and 'expected Node(ZzLT<Primitive(T)>), got Coproduct(FreeMonoid)' for C. On main the same class refuses 35 rows under a scoped floor (quarantine_probe_disposition_witness_test, claim_cost_observation) and 7 more once gunbc#12526 widens the pool (cost_coverage acc: Empty, test_code_reference_wall).",

@@ -11,20 +11,20 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List, Bool }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
   standing_rung_drops_of(ds: rung_drop_roster)
 }
 
-// Parameterized on the roster so a witness can hand it a Dissolved row that must NOT be erased.
+// Parameterized on the roster so a witness can hand it fixture rows.
 fn standing_rung_drops_of(ds: List<RungDrop>) -> List<RungDrop> {
   filter(ds, d => match d.standing {
-    Standing => true
-    Retired { trigger_fired: _ } => false
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d) == false
+    Standing { declaration: _ } => true
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
   })
 }
 
@@ -39,25 +39,19 @@ fn standing_rung_drops_of(ds: List<RungDrop>) -> List<RungDrop> {
 // recursive through RungDrop, which this carrier does not take on here.
 fn superseded_loss_holders_stand(drops: List<RungDrop>, roster: List<RungDrop>) -> Bool {
   all(drops, d => match d.standing {
-    Standing => true
-    Retired { trigger_fired: _ } => true
-    Superseded { ruling: _, decision_record: _, loss_holder: h } => loss_holder_stands(holder: h as String, roster: roster)
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
+    Standing { declaration: _ } => true
+    Retired { trigger_fired: _, declaration: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: h, declaration: _ } => loss_holder_stands(holder: h as String, roster: roster)
+    Dissolved { removal: _, declaration: _ } => true
   })
 }
 
 fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
   let holders = filter(roster, r => (r.identity as String) == holder)
   length(xs: holders) == 1 && length(xs: filter(holders, r => match r.standing {
-    Standing => true
-    Retired { trigger_fired: _ } => false
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
+    Standing { declaration: _ } => true
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
   })) == 1
-}
-
-// EVERY ROW IS ADMISSIBLE: the roster-wide form of gunbc.rung_drop dissolved_is_admissible, which the
-// erasing consumers call per row.
-fn dissolved_populations_empty(drops: List<RungDrop>) -> Bool {
-  all(drops, d => dissolved_is_admissible(drop: d))
 }

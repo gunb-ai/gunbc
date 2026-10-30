@@ -1,0 +1,512 @@
+module product.printed_chassis.chassis_clearances
+
+import std.types {Bool, Int, List, NonEmptyStr, String}
+import std.measure {Micrometer, micrometer, micrometer_count}
+import std.optional {Present, Absent}
+
+// ═══ CHASSIS FACTS, KEPT APART FROM THE CARD ROWS ═══
+//
+// A card row is a vendor figure about a card. The space the cards live in is a chassis fact, measured
+// in one chassis by whoever owns it. They are not interchangeable, and neither may stand in for the
+// other: the operator's 70 mm behind the plug end says nothing about the A16, and NVIDIA's drawing of
+// the A16 says nothing about the chassis (operator, 2026-10-26: "the chassis clearance is a chassis
+// fact, separate from the card rows").
+//
+// A gap enters this corpus ONE OF TWO WAYS: it was measured, with the two points named, or it needs
+// measuring and carries the obligation to do so. There is no third way -- a remembered number with no
+// instrument, no date and no named points is a guess wearing a unit, and the duct model refuses it.
+//
+// What sits INSIDE the measured way is not one thing either, and the two standings are two different
+// speech acts. `EstimatedByOperator` is a guess at what the gap IS ("probably at least 40").
+// `DeclaredConservativeByOperator` is not a guess at anything: it is a number the operator AUTHORS as a
+// working limit, quoting the rough reading it comes from and saying which way it errs. "its like 73mm
+// but i want to be conservative" does not report a 70 mm gap; it rules that the design may spend 70.
+// The bound is not a measurement of the world and does not pretend to be one, so the caliper standing
+// is not its standing either. What it IS is the operator's own word about what the design may spend --
+// and the owner of the chassis is also the person who decides whether to go ahead with a print. So a
+// declared bound admits a route AND carries a fit print (gap_may_be_printed_on), while gap_is_measured
+// stays false: spending a decision is not the same as having taken a reading, and the reading is still
+// listed as owed. An estimate keeps refusing the print, because an estimate is a guess about a fact that
+// nobody has ruled on.
+
+type ChassisGapStanding
+  = CaliperByOperator { instrument: NonEmptyStr, date: NonEmptyStr, positions: NonEmptyStr }
+  | EstimatedByOperator { bound: Micrometer, date: NonEmptyStr, positions: NonEmptyStr, bound_is: NonEmptyStr }
+  // The operator's own conservative limit, authored rather than read. `reading` is what they say it is
+  // "like", offered as rough, and is Absent when they gave no reading at all -- only the word that
+  // there is more than enough. Neither this nor its reading is a caliper reading or a receipt.
+  | DeclaredConservativeByOperator {
+      bound: Micrometer,
+      reading: Micrometer?,
+      date: NonEmptyStr,
+      positions: NonEmptyStr,
+      basis: NonEmptyStr,
+      does_not_settle: NonEmptyStr,
+    }
+
+type ChassisGap
+  = Measured { name: NonEmptyStr, from_point: NonEmptyStr, to_point: NonEmptyStr, distance: Micrometer, standing: ChassisGapStanding }
+  | NeedsMeasurement { name: NonEmptyStr, from_point: NonEmptyStr, to_point: NonEmptyStr, read_obligation: NonEmptyStr }
+
+fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
+fn gap_name(g: ChassisGap) -> NonEmptyStr {
+  match g { Measured {name: n, from_point: _, to_point: _, distance: _, standing: _} => n NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => n }
+}
+
+// Whether somebody with an instrument read this gap. Note what this does NOT ask: it is not "does the row
+// carry a distance", because a Measured row can carry a distance the OPERATOR AUTHORED -- the conservative
+// 70 mm is a decision with an owner, not an observation, and the design_ruling row
+// a16_rear_clearance_and_sides_are_operator_declared_bounds says gap_is_measured stays false for it. The
+// first version of this fn matched the CONSTRUCTOR, so every declared bound reported itself as measured:
+// the branch below that says "the bound is not a measurement and this reading is still owed" was dead code,
+// and the print checklist silently dropped exactly the gaps whose readings are still owed. Executing the
+// witnesses found it; a resolver could not, because every arm of the old match was well-typed.
+fn gap_is_measured(g: ChassisGap) -> Bool {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+fn measured_distance(g: ChassisGap) -> Micrometer? {
+  match g { Measured {name: _, from_point: _, to_point: _, distance: d, standing: _} => Present { value: d } NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => Absent }
+}
+
+fn gap_obligation(g: ChassisGap) -> NonEmptyStr? {
+  match g { Measured {name: _, from_point: _, to_point: _, distance: _, standing: _} => Absent NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: o} => Present { value: o } }
+}
+
+fn gap_is_estimate(g: ChassisGap) -> Bool {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => false
+    // Not an estimate of what the gap is: a limit the operator authored. It is not re-read as an
+    // estimate would be, because there is no claim about the world to confirm -- only a spend the
+    // operator allowed, and the allowance is used by asking whether the route needs less than it.
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+// The gap a route is measured against, and which way it errs: Present for the two operator standings
+// that carry a limit the design may be measured against directly (a spoken estimate's bound, or an
+// authored conservative bound), Absent for a caliper reading, which is a fact about the chassis rather
+// than a limit the operator set. The route model uses this to tell "the chassis is smaller than you
+// thought" apart from "the operator let you spend this much".
+fn gap_declared_bound(g: ChassisGap) -> Micrometer? {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: b, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => Present { value: b }
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: b, date: _, positions: _, bound_is: _}} => Present { value: b }
+    _ => Absent
+  }
+}
+
+// A declared bound is the operator's own words, not a reading; a route admitted on one must say so with
+// them, so the reader can see the ruling the shape was admitted on.
+fn gap_declared_basis(g: ChassisGap) -> NonEmptyStr? {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: b, does_not_settle: _}} => Present { value: b }
+    _ => Absent
+  }
+}
+
+// WHAT A GAP'S STANDING ALLOWS, PRINTED. The three standings differ in KIND, and the print answer is not
+// monotone in how good the number is:
+//
+//   caliper reading    the chassis was measured               -> print
+//   declared bound     the operator AUTHORED the allowance    -> print, as a fit print
+//   spoken estimate    a guess at what the gap IS             -> refuse
+//   unread             nobody has looked                      -> refuse
+//
+// The declared bound prints because the operator ruled on it, and that ruling is theirs to make: the
+// question was whether to go ahead, and they answered it ("i would put 70mm for now - its like 73mm but i
+// want to be conservative", "yes, you can assume more than enough space on the sides, 70mm is fine"). The
+// exposure they accepted is one PLA print -- the part is cheap and the FIT PRINT is itself the instrument
+// that catches a wrong allowance, which is why spending their bound on the print does not need a caliper
+// first. A spoken estimate still refuses, and that is not an inconsistency: an estimate is a guess about a
+// fact, and nobody has ruled on it; a declared bound is a decision, and someone has. The standing stays
+// exactly as honest as it was -- printing on it does not make it a measurement, gap_is_measured is still
+// false and says so, and remeasure_before_print still lists it as a reading the chassis is owed.
+fn gap_may_be_printed_on(g: ChassisGap) -> Bool {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => true
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+fn gap_display(g: ChassisGap) -> String {
+  match g {
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: CaliperByOperator {instrument: i, date: dt, positions: p}} => join([n as String, ": ", to_string(value: um(m: d) / 1000), " mm by ", i as String, " on ", dt as String, " (", p as String, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: EstimatedByOperator {bound: bnd, date: dt, positions: p, bound_is: bw}} => join([n as String, ": about ", to_string(value: um(m: d) / 1000), " mm, estimated by the operator on ", dt as String, " (", p as String, "); +/-", to_string(value: um(m: bnd) / 1000), " mm (", bw as String, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: DeclaredConservativeByOperator {bound: bnd, reading: r, date: dt, positions: p, basis: bs, does_not_settle: uns}} => join([
+      n as String, ": ", to_string(value: um(m: d) / 1000), " mm DECLARED BY THE OPERATOR as a conservative bound, on ", dt as String, " (", p as String, ")",
+      match r { Present { value: rd } => join(["; the operator reads it as about ", to_string(value: um(m: rd) / 1000), " mm and wrote the bound BELOW it"], "") Absent => "; the operator gave no reading, only leave" },
+      "; operator's words: ", bs as String,
+      "; not a caliper reading, and the bound itself is the design allowance -- ", to_string(value: um(m: bnd) / 1000), " mm may be spent",
+      "; what it does NOT settle: ", uns as String,
+    ], "")
+    NeedsMeasurement {name: n, from_point: a, to_point: b, read_obligation: o} => join([n as String, ": UNMEASURED (from ", a as String, " to ", b as String, ") -- ", o as String], "")
+  }
+}
+
+// ═══ THIS CHASSIS ═══
+//
+// The one rear-fan distance the operator has given, 2026-10-26, after the A16 plug fit ring printed and
+// fitted, which confirmed the measured end face and the plug/flange geometry. It is NOT a caliper
+// reading and is not carried as one. What the operator gave is a ruling with a rough reading behind it:
+//
+//   "i would put 70mm for now - its like 73mm but i want to be conservative"
+//
+// That sentence does two things, and the standing below keeps them in their own order. The reading is
+// about 73 mm -- "like", their own word for rough -- and the number they AUTHOR for the design to spend
+// is 70 mm, deliberately under the reading. The 70 is not a failed measurement of the gap; it is the
+// allowance the operator set, which is exactly why a route may be admitted against the 70 and not against
+// the 73. The reading is recorded because it is what they said, and it is not promoted to a measurement:
+// no instrument, no date of reading, no named points behind it.
+data card_end_rear_fan_clearance: ChassisGap = Measured {
+  name: "plug end to rear chassis fan",
+  from_point: "the card's plug end: the outer face of the end cap the duct's plug and screw flange seat against (product.printed_chassis.gpu_duct a16_end_face)",
+  to_point: "the nearest surface of the rear chassis fan assembly in the card's lane -- blade or shroud NOT distinguished by the operator's word",
+  distance: micrometer(count: 70000),
+  standing: DeclaredConservativeByOperator {
+    bound: micrometer(count: 70000),
+    reading: Present { value: micrometer(count: 73000) },
+    date: "2026-10-26",
+    positions: "one A16, one slot, said at the deck; the operator offered no instrument, no repeated slot, and no blade/shroud distinction",
+    basis: "operator, 2026-10-26: 'i would put 70mm for now - its like 73mm but i want to be conservative'",
+    does_not_settle: "what the gap actually measures, and whether the near surface the 73 mm was judged against is the fan's blades or its shroud -- a shroud 6 mm ahead of the blades turns a 70 mm allowance into a 64 mm one",
+  },
+}
+
+// The rear fan's nearest surface sits where the operator read it, but which surface it is has not been
+// said. A duct that ends within this width of the fan is a duct whose clearance depends on the answer.
+data rear_fan_face_ambiguity: ChassisGap = NeedsMeasurement {
+  name: "rear fan blade-to-shroud offset",
+  from_point: "the rear chassis fan's leading blade tip plane",
+  to_point: "the nearest shroud, guard or frame surface of that fan",
+  read_obligation: "operator: measure how far the blade tips sit behind the fan's nearest face, at the card lane. The 70 mm was read to the nearest surface without distinguishing them; the difference subtracts directly from the route's run.",
+}
+
+// The route that fits the 70 mm runs UP and OVER the card row, so the height above the deck is now
+// load-bearing and has never been read. Until it is, the over-the-card route refuses.
+data deck_to_lid_clearance: ChassisGap = Measured {
+  name: "deck to chassis lid, behind the plug end",
+  from_point: "the chassis deck the cards' back faces rest on (product.printed_chassis.gpu_duct: the back face of a16_end_face)",
+  to_point: "the chassis lid or whatever crosses above the card row behind the plug ends",
+  distance: micrometer(count: 120000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 10000),
+    date: "2026-10-27",
+    positions: "operator's eye, one figure for the whole interior: 'from floor to t he lid is 120mm'. It is floor-to-lid, not deck-to-lid behind the plug ends -- the cards' own height and whatever the riser adds are inside it, and the region behind the ends was not read separately",
+    bound_is: "this repository's width on a single by-eye figure taken at an unnamed place; no instrument, and the one place it was NOT taken is where the over-the-row home needs it",
+  },
+}
+
+// The lateral lane beside a card, along the card's width: the alternative home for a blower that will
+// not stand behind the plug end. Read along the card's width axis, not the row's slot pitch.
+// THE OUTER SIDES, 2026-10-27. The operator gave six rough numbers, verbatim:
+//
+//   "the plug latch is 3mm"
+//   "between the two cards is 46mm"
+//   "the outer side of one card there are only a few mm til one edge of the chassis"
+//   "The outer edge of the other card has 60mm until it touches the heatsink"
+//   "There is 70mm between each card to the front of the chassis fans."
+//   "from floor to t he lid is 120mm"
+//
+// These are OPERATOR-REPORTED, rough, and they carry that standing -- `EstimatedByOperator`, which is the
+// corpus's honest name for "someone looked and said a number" without an instrument, a named pair of points,
+// or a repeat. They are NOT `DeclaredConservativeByOperator`: the operator was reporting what they saw, not
+// authorizing a spend, and a reported "60 mm" from a glance is not a ruling that a design may spend 60. That
+// distinction is the whole content of the next paragraph, and it is why these figures admit nothing.
+//
+// Two readings, one gap. The lane beside the row differs on the two sides of this chassis by an order of
+// magnitude ("a few mm" against 60), and a blower beside the row is placed against the TIGHT side, not the
+// generous one: it can only be mounted where there is room, and the row has one free side. So the gap that
+// the beside-the-row home is measured against is carried at the binding value, 60 mm on the side that has a
+// number worth having, with the other side recorded here too because "a few mm" is itself a finding -- it
+// rules out mounting on that side at all.
+data side_lane_width: ChassisGap = Measured {
+  name: "free lane beside the card row",
+  from_point: "the outer face of the outermost card's side (along the card's width axis, the 97.84 mm face)",
+  to_point: "the first thing that is not free air along that axis: on the generous side the heatsink the operator's word reaches; on the other, the chassis edge",
+  distance: micrometer(count: 60000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 10000),
+    date: "2026-10-27",
+    positions: "operator's eye, both outer sides of a TWO-card row: 'the outer edge of the other card has 60mm until it touches the heatsink', and 'the outer side of one card there are only a few mm til one edge of the chassis'. The binding side is the tight one; 'a few mm' is recorded as 0 rather than guessed upward, and the +/- is this repository's width on the word '60', not the operator's",
+    bound_is: "the width this repository puts on a number given by eye; nothing was measured with an instrument, and the tight side was given as 'a few mm' with no number at all",
+  },
+}
+
+// The lane a blower gets behind the plug end: measured across the slot direction, in the region BEHIND
+// the card ends, from this card's own plane to whatever the next card's duct becomes. The card's own
+// thickness is NOT this number -- behind the end there is no card, and the thing a standing blower
+// competes with is its neighbour's duct, which nobody has built yet.
+//
+// This row used to be NeedsMeasurement and it was the ONLY thing refusing the flat-on-the-plug-end home.
+// The operator has now ruled on it, 2026-10-26, in answer to exactly that question:
+//
+//   "yes, you can assume more than enough space on the sides, 70mm is fine"
+//
+// Carried as an authored ample bound, not as a reading: `distance`/`bound` is the per-side allowance they
+// gave the design (their own 70 mm figure, the same number they set behind the end), and `reading` is
+// Absent because they gave none -- there is no "it's like X" behind this one, only the word that there is
+// more than enough. A route is admitted when its per-side need is under the bound; the caliper obligation
+// is recorded in `does_not_settle` rather than dropped, because the print is still refused until the side
+// is actually read.
+data neighbour_lane_width: ChassisGap = Measured {
+  name: "lane between adjacent cards, behind the plug ends",
+  from_point: "this card's own centre plane across the slot (the plane of the card's broad face)",
+  to_point: "the nearest surface of the adjacent card's own duct or blower in the region behind the plug ends",
+  distance: micrometer(count: 70000),
+  standing: DeclaredConservativeByOperator {
+    bound: micrometer(count: 70000),
+    reading: Absent,
+    date: "2026-10-26",
+    positions: "the sides of the card row, said at the deck; the operator named no instrument and no side, and did not say what sits between two cards behind their ends",
+    basis: "operator, 2026-10-26: 'yes, you can assume more than enough space on the sides, 70mm is fine'",
+    does_not_settle: "the slot pitch itself and what physically sits between two cards behind their ends (nothing, a blanking plate, a cable). The bound says the design may spend 70 mm per side; it does not say a neighbouring duct is absent, and two adjacent cards each carrying a blower spend this lane twice.",
+  },
+}
+
+// BETWEEN THE TWO CARDS, 2026-10-27: "between the two cards is 46mm". This chassis holds TWO cards, which
+// the row model has been assuming all along and which the operator's other sentence confirms -- and 46 mm
+// between them is the figure that decides whether two ducts can face each other behind their ends. It is
+// the inter-card GAP (a clear span), not a pitch; a pitch is derived from it by adding the card's thickness,
+// and this repository does not invent the difference.
+data inter_card_gap: ChassisGap = Measured {
+  name: "clear gap between the two cards",
+  from_point: "the broad face of one card",
+  to_point: "the broad face of the other card, in the same slot row",
+  distance: micrometer(count: 46000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 5000),
+    date: "2026-10-27",
+    positions: "operator's eye, one span: 'between the two cards is 46mm'. No instrument; not repeated at the plug end or the rear; the +/- is this repository's width on a by-eye number",
+    bound_is: "this repository's width on the word '46mm' given by eye",
+  },
+}
+
+// FROM EACH CARD TO THE REAR FANS: "There is 70mm between each card to the front of the chassis fans."
+// Carried separately from card_end_rear_fan_clearance because it is a DIFFERENT reading of a similar span
+// by the same person, and collapsing them would make one figure inherit the other's date and wording. It
+// agrees with the operator's earlier declared 70 mm, which is worth knowing and is not the same thing as a
+// measurement confirming it.
+data card_to_rear_fans: ChassisGap = Measured {
+  name: "each card to the front face of the chassis fans",
+  from_point: "a card's rear end",
+  to_point: "the front face of the chassis fans",
+  distance: micrometer(count: 70000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 5000),
+    date: "2026-10-27",
+    positions: "operator's eye: 'There is 70mm between each card to the front of the chassis fans.' To the FRONT FACE of the fans, which is the nearer surface; the fan's blades sit behind it",
+    bound_is: "this repository's width on a by-eye figure; agrees with the operator's declared 70 mm bound of 2026-10-26 and is not an instrument confirmation of it",
+  },
+}
+
+// THE 8-PIN LATCH, 2026-10-27: "the plug latch is 3mm", given with "could we try both? keep in mind that
+// power cable has a latch that holds it usually - its probably not necessary, but it extends into the port,
+// so it may conflict with a plugged in a16 / I can just cut it probably for now". Three millimetres of
+// latch, offered as a fact about the connector, alongside a decision the operator has already made about it
+// (they will cut it). Both are recorded: the number because it is a reading, the decision because a design
+// that assumes the latch is gone needs to name who said so.
+data power_connector_latch: ChassisGap = Measured {
+  name: "8-pin power connector latch projection into the port",
+  from_point: "the connector's port face",
+  to_point: "the latch's innermost projection",
+  distance: micrometer(count: 3000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-27",
+    positions: "operator's eye, one figure: 'the plug latch is 3mm'. The operator has said they will probably cut it: 'I can just cut it probably for now'",
+    bound_is: "this repository's width on a by-eye figure of a small feature, where 1 mm is a large fraction of the thing being measured",
+  },
+}
+
+// THE TIGHT OUTER SIDE, 2026-10-27: "the outer side of one card there are only a few mm til one edge of the
+// chassis". Carried at ZERO, not at three or five: a side given as "a few mm" cannot be spent, and the only
+// reading that does not invent room is the one that spends none. The bound says what is actually known --
+// that the clearance is small, of the order of millimetres -- which is why a design needing tens of
+// millimetres there is refused by the chassis rather than merely unmeasured: nobody will be sent to measure
+// a gap whose order of magnitude is already known and already too small.
+data outer_side_at_the_wall: ChassisGap = Measured {
+  name: "outer face of the outermost card to the chassis edge",
+  from_point: "the outer broad face of the card nearest the chassis wall",
+  to_point: "that chassis wall",
+  distance: micrometer(count: 0),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 3000),
+    date: "2026-10-27",
+    positions: "operator's eye, no instrument, no number: 'the outer side of one card there are only a few mm til one edge of the chassis'",
+    bound_is: "this repository's width on the phrase 'a few mm', and the reason the distance below it is carried at zero -- what is known is an order of magnitude, not a clearance",
+  },
+}
+
+// THE SAME SPAN, RE-READ, 2026-10-29: "The gap from the card's back end to the 120 mm chassis fan is
+// 60 mm, not the 70 mm your headroom used." Carried as its own row instead of written over
+// card_end_rear_fan_clearance, because the two are different speech acts. That one is a limit the operator
+// AUTHORED to spend against ("i would put 70mm for now - its like 73mm but i want to be conservative");
+// this one is a figure they READ at the machine three days later. Overwriting the declaration would retire,
+// silently, the very allowance the design was admitted on; keeping both and letting the tighter govern is
+// the only form that cannot lose a constraint.
+//
+// Its width is the 1 mm by-eye allowance the operator's readings of small features have carried all along
+// (the 3 mm latch, and the 6 mm head below). Deliberately NOT widened to the 10 mm this figure sits below
+// the 2026-10-26 one: the disagreement between two by-eye readings of one span is evidence about WHICH
+// reading to trust, not a licence to inflate either, and widening this row to 10 mm would have thrown away
+// the room the design actually has (60 - 10 = 50, against a 37.5 mm stack) to express a doubt that the
+// tightest-of-several rule already expresses. The disagreement is recorded where it belongs -- in
+// a16_rear_clearance_was_corrected_to_sixty_mm, and in rear_of_end_room taking the minimum -- not smuggled
+// into a width.
+data card_end_to_chassis_fan_2026_10_29: ChassisGap = Measured {
+  name: "plug end to the 120 mm chassis fan (re-read)",
+  from_point: "the card's back (plug) end face",
+  to_point: "the 120 mm chassis fan -- the face the operator judged from, blade or shroud again not distinguished",
+  distance: micrometer(count: 60000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-29",
+    positions: "operator at the machine, one figure, correcting the allowance the design was admitted on: 'The gap from the card's back end to the 120 mm chassis fan is 60 mm, not the 70 mm your headroom used'",
+    bound_is: "the by-eye allowance carried by this operator's other uninstrumented readings of features at this scale; the 10 mm this sits under the 2026-10-26 figure is recorded as a disagreement between readings, not added to this width",
+  },
+}
+
+// THE PLUGGED 8-PIN HEAD, 2026-10-29: "The plugged 8-pin head protrudes 6 mm, and the cable bends almost as
+// soon as it leaves the head." This is the reading the design was still owed: plane_on_end_connector_relief
+// clears a window for whatever the plugged connector sticks out as, and until this number existed the
+// admissible protrusion could only be stated as a boundary (36.5 mm at a 70 mm bound) rather than checked.
+// The 1 mm is this repository's width on a by-eye figure, per the latch row's own reasoning -- on a 6 mm
+// feature, 1 mm is not pedantry, it is a sixth of the thing.
+data power_connector_head_protrusion: ChassisGap = Measured {
+  name: "plugged 8-pin head projection behind the card end face",
+  from_point: "the card's plug end face, around the connector opening",
+  to_point: "the outermost point of the plugged 8-pin head, cable excluded -- the cable leaves the head and turns almost immediately, so what reaches behind the end is the head, not the run",
+  distance: micrometer(count: 6000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-29",
+    positions: "operator at the machine, plugged in: 'The plugged 8-pin head protrudes 6 mm, and the cable bends almost as soon as it leaves the head'",
+    bound_is: "this repository's width on a by-eye figure of a 6 mm feature; the head is what is measured -- the bend is carried separately, below",
+  },
+}
+
+// THE CABLE BEND, 2026-10-29: the same sentence's second clause, 'the cable bends almost as soon as it
+// leaves the head'. That clause is not a clearance to spend, it is a KEEP-OUT to respect: a cable that turns
+// immediately needs room to turn, and a duct that occupies the space where it turns does not fail at
+// assembly -- it fails when the cable is dressed, or it quietly strains the connector. Carried as a
+// NeedsMeasurement so it cannot be silently spent, with the reading named. The order of magnitude the
+// operator gave ("almost as soon as") is enough to say WHERE the keep-out is -- behind the end, around the
+// cable's exit -- and not enough to say how deep it is.
+// THE DIRECTION WAS READ, 2026-10-29, AND IT MOVED THE QUESTION. The depth behind the end -- what this row
+// originally asked for -- is the wrong reading: "the cable bends SIDEWAYS as it leaves the head, in the plane
+// of the card end, not back toward the fan." A volume that runs inboard, parallel to the end face, is bounded
+// by the duct's SIDE, not by the fan. So the direction is recorded as read (operator-reported, not calipered)
+// and the obligation is restated against what the geometry still cannot answer on its own.
+//
+// It stays NeedsMeasurement rather than becoming a Measured with a guessed depth, for the reason DESIGN.md §5
+// gives: an absence answered with a plausible number is worse than the absence. What discharged part of it is
+// a derivation, not a reading -- see card_cooling_route cable_bend_governing_wall -- and the derivation says
+// which wall to dress the cable against, which is what makes the remaining reading one number instead of a
+// survey.
+data cable_bend_keepout: ChassisGap = NeedsMeasurement {
+  name: "cable bend room beside the plug end",
+  from_point: "the plugged 8-pin head's cable exit, at the head's outer end",
+  to_point: "inboard, parallel to the card's end face: the shoulder floor's top surface and the inboard edge of the relief window cut under it",
+  read_obligation: "NOTHING HERE GATES THE PRINT ANY MORE -- the printed-material half was discharged by the geometry itself, not by a reading: across the connector's own band the relief cut opens the shoulder floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at 7 mm worst case, so no printed wall is in the turn's path (card_cooling_route cable_bend_path, a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead). What is still owed, and what the print is actually for: (a) dress the cable plugged in and confirm it really does stay in the plane of the card end -- a run that dips to 4 mm or shallower on its way inboard meets the relief window's inboard edge instead, which is the one printed surface in the neighbourhood, and cable_bend_path names it; and (b) report whether the plugged head meets the blower's housing, which is the finding this reading produced instead of the one it was asked for",
+}
+
+data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]
+
+// THE HEAD'S WORST-CASE REACH, AT THE ROW ITSELF. A clearance is always checked against the worst credible
+// value, which for an operator-reported figure means the face value plus the width this repository puts on it
+// -- here 6 mm read + 1 mm = 7 mm. It lives here rather than in the module that consumes it so the rule "a
+// by-eye figure is never checked at its face value" has one home: the duct geometry and the route's checks
+// both ask this one question and cannot drift apart. An unread row answers 0 -- nothing may be assumed to
+// protrude when nobody has looked, and nothing may be assumed CLEAR either; consumers that need a reading
+// (plugged_head_admits) read the row's standing and refuse, they do not trust the zero.
+fn plugged_head_worst_case_reach() -> Micrometer {
+  match power_connector_head_protrusion {
+    Measured {name: _, from_point: _, to_point: _, distance: d, standing: EstimatedByOperator {bound: b, date: _, positions: _, bound_is: _}} => micrometer(count: um(m: d) + um(m: b))
+    Measured {name: _, from_point: _, to_point: _, distance: d, standing: _} => d
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => micrometer(count: 0)
+  }
+}
+
+fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
+  fold(chassis_gaps, init: Absent, f: (found, g) => match found { Present { value: v } => Present { value: v } Absent => if gap_name(g: g) == name { Present { value: g } } else { Absent } })
+}
+
+// What the operator must read before a curved route is printed, as a list a human can carry to the
+// machine. Nothing that cannot carry a print appears as a blank: an estimate appears as a re-read demand,
+// and so does a DECLARED BOUND -- the bound admitted a route's geometry, and the print still owes the
+// instrument. A caliper reading is the only standing that earns its way off this list.
+fn remeasure_before_print(gaps: List<ChassisGap>) -> List<String> {
+  fold(gaps, init: [], f: (acc, g) => match gap_obligation(g: g) {
+    Present { value: o } => concat(acc, [gap_display(g: g)])
+    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else if gap_is_measured(g: g) { acc } else { concat(acc, [join(["printing on the operator's declared bound, on their ruling -- the bound is not a measurement and this reading is still owed: ", gap_display(g: g)], "")]) }
+  })
+}
+
+fn chassis_gaps_display() -> String {
+  join(map(chassis_gaps, g => gap_display(g: g)), "\n")
+}
+
+// The room a gap actually LEAVES a design, as a type rather than a number. This is the single place where
+// the standings become something a need can be compared with, so no caller can quietly spend an estimate's
+// face value -- and it is a sum type because "there is no reading" is a fact of a different kind from "the
+// reading is small".
+//
+//   declared bound   the number the operator authored as an allowance. It is what may be spent, and the
+//                    reading behind it (73 mm, in the rear gap's case) may not be.
+//   spoken estimate  what the operator believes is there, MINUS how wrong they said they might be. A "60 mm"
+//                    given by eye with a 10 mm width on it leaves 50 mm of room, and spending 60 would
+//                    launder a guess into a guarantee.
+//   a caliper reading  the distance itself; the instrument's grain is far below every need in this corpus.
+//   unread           NO READING -- its own case, carrying the row's reading obligation. Not zero, not -1,
+//                    not a small number: absence means exactly one thing here
+//                    (gunbc.design_ruling dag_absence_is_one_meaning), and a minus-one that flows into
+//                    arithmetic comes back three subtractions later as a plausible-looking negative extent,
+//                    which is a fabricated output wearing a measured face.
+//
+// OverSubscribed is the case the old sign-based encoding merged into "unread": a gap that WAS read and
+// leaves less than nothing. It carries the shortfall as a positive Micrometer, because a Micrometer's count
+// is a Nat and the shortfall is what a reader needs -- and the fact that it was MEASURED stays visible.
+type GapRoom
+  = Room { room: Micrometer, from: NonEmptyStr }
+  | OverSubscribed { shortfall: Micrometer, from: NonEmptyStr }
+  | NoReading { obligation: NonEmptyStr }
+
+// Who said the gap is what it is, in the row's own words, with an estimate's width named where it is
+// subtracted. This is what an extent's `capped_by` carries, so any number a report shows can be traced back
+// to the sentence that produced it.
+fn standing_origin(g: ChassisGap) -> NonEmptyStr {
+  match g {
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: i, date: d, positions: _}} => join([n, ": caliper reading (", i, ", ", d, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, date: d, positions: p, basis: _, does_not_settle: _}} => join([n, ", declared by the operator on ", d, ": ", p], "")
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: b, date: d, positions: p, bound_is: _}} => join([n, ", reported by the operator on ", d, " ('", p, "'), less the ", to_string(value: micrometer_count(m: b) / 1000), " mm width this repository puts on a figure given by eye"], "")
+    NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => join([n, ": unread"], "")
+  }
+}
+
+fn gap_room(g: ChassisGap) -> GapRoom {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} =>
+      // The comparison value, by standing: an estimate's face value less its own width, a declared bound as
+      // the allowance the operator authored, a caliper reading as itself.
+      // `limit` is an Int here, not a Nat: an estimate's face value less its own width can go under zero
+      // when the width this repository puts on a by-eye figure exceeds the figure, and that underflow is
+      // exactly the OverSubscribed case below. Int is deliberate; both branches below produce it.
+      let face = micrometer_count(m: dist) as Int
+      let width = match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: b) as Int Absent => 0 }
+      let limit = if gap_is_estimate(g: g) { face - width } else { if width > 0 { width } else { face } }
+      let origin = standing_origin(g: g)
+      if limit < 0 { OverSubscribed { shortfall: micrometer(count: 0 - limit), from: origin } } else { Room { room: micrometer(count: limit), from: origin } }
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: o} => NoReading { obligation: o }
+  }
+}

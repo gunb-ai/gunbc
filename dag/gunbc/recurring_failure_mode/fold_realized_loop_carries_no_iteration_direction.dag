@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.fold_realized_loop_carries_no_iteration_dire
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data fold_realized_loop_carries_no_iteration_direction: RecurringFailureMode = RecurringFailureMode {
   identity: "fold_realized_loop_carries_no_iteration_direction" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "INVALID STATE: a fold-realized Loop's encoding does not show its iteration direction. v2.compiler.fold_lowering fold_recurrence_encoding builds the identical Loop for the collection fold, fold_list (left), fold_list_right (right) and, since N7-1b, map, whose synthesized step conses onto the carrier and is order-preserving ONLY under right-to-left iteration (all joins with &&, which is order-insensitive). An executor that ran a map encoding left to right would return its results reversed: silent wrongness. CLIMBED IN gunbc#13069 (review 74982 asked that the PR introducing map not ship the reversible encoding with only this row): the direction is now a DECLARED FACT OF THE REALIZATION, v2.compiler.fold_lowering FoldIterationDirection, owned by the step synthesis that needs it (callback_realization_iteration_direction: map right to left) and by the authored forms (an authored fold and fold_list left, fold_list_right right), and derived for any Loop from the realized declaration it already carries (^loop_realized_declaration_edge) by fold_realized_iteration_direction. fold_list and fold_list_right are therefore no longer indistinguishable, and a path that names no collection fold derives no direction rather than a default.",
     "WHAT REMAINS: no executor of a fold-realized Loop exists to consume the fact. Both installed Loop handlers REFUSE: v2.extdeps.runtimes.v2_evaluator v2_eval_step_loop and v2.program program_step_loop each return a rejected outcome, so v2.compiler.eval's eval_loop_node reaches a typed refusal, never a value, and the native route executes the seed's emission of the .dag source, not this encoding. So the residual is fail-closed, not latent silent wrongness. The obligation it leaves is on the executor that replaces those refusals: it must read fold_realized_iteration_direction, not assume an order.",

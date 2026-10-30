@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.hedged_benefit_leaves_the_harm_axis_unexamined
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data hedged_benefit_leaves_the_harm_axis_unexamined: RecurringFailureMode = RecurringFailureMode {
   identity: "hedged_benefit_leaves_the_harm_axis_unexamined" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a carefully hedged BENEFIT claim leaves the HARM axis wholly unexamined** (INVALID STATE: an actor takes an irreversible or side-effecting action, states a calibrated caution about whether it HELPS, and never asks whether it HARMS.",

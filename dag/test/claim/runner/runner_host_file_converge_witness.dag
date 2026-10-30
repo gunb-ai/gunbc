@@ -1,7 +1,10 @@
 module test.claim.runner.runner_host_file_converge_witness
 
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
+import std.list { distinct_by_key }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -42,6 +45,8 @@ import gunbc.runner.runner_unit {
 }
 import std.measure { hardware_thread_count }
 import gunbc.runner.runner_unit_file {
+  runner_unit_depriv_dropin_file_name,
+  runner_unit_slot_role_superseded_dropin_file_name,
   runner_unit_teardown_dropin,
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -59,15 +64,22 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent, path_basename }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.tools.ls { ls_long_entry_of_line, LsLongEntry, LsLongEntryRead, LsLongEntryRefused }
+import gunbc.ci.deploy_slot_tenancy { DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread }
 import gunbc.runner.runner_host_file_converge {
+  deploy_slot_listing_readings, deploy_slot_entry_readings, slot_environment_value, slot_load_state_can_run,
+  HostHasNoDeploySlot,
+  CapPhaseObserved,
   runner_host_cap_phase_not_owed,
-  RunnerHostFileDesired,
+  FleetHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
   RunnerHostFileDesiredPopulation,
@@ -110,46 +122,49 @@ import gunbc.runner.runner_host_file_converge {
   HostFileDiffers,
   HostFileAbsent,
   HostFileUnobservable,
-  RunnerHostFileMetadataReading,
+  FleetHostFileMetadataReading,
   HostFileMetadataReported,
   HostFileMetadataUnread,
   classify_host_file_metadata,
-  RunnerHostFilePathStanding,
+  FleetHostFilePathStanding,
   HostFilePathPresent,
   HostFilePathAbsent,
   HostFilePathUnreadable,
   classify_host_file_path,
-  runner_host_file_settled_standing,
+  fleet_host_file_settled_standing,
   runner_host_file_metadata_probe_argv,
-  RunnerHostFileStanding,
-  RunnerHostPathMetadata,
+  FleetHostFileStanding,
+  FleetHostPathMetadata,
   PathsRootOnly,
   PathsNotRootOnly,
   PathsUnobservable,
   PathsNotApplicable,
-  runner_host_path_ancestors,
+  fleet_host_path_ancestors,
   runner_host_root_only_find_argv,
   ctrl_jobserver_retired_residue,
   RunnerHostActuationAdmission, ActuationAdmitted, ActuationSkipped,
   runner_host_actuation_admission,
   runner_host_run_legs,
-  runner_host_leg_argv,
+  fleet_host_leg_argv,
   runner_host_leg_kind,
   runner_host_leg_kinds,
   runner_host_file_mode_find_argv,
-  runner_host_file_readback_refusal,
+  fleet_host_file_readback_refusal,
   LegRetireeCgroupEvents,
+  FleetHostRemoteLeg,
   classify_runner_slot_population_with_fabric,
   runner_host_fabric_member_units,
   SlotFabricMemberNotARunner,
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
-  RunnerHostFileObservation,
+  FleetHostFileObservation,
+  AncestorPresence, AncestorTail, AncestorTailNone, AncestorTailAbsent, AncestorTailUndetermined,
+  classify_fleet_host_ancestor_presence, fleet_host_ancestor_directory_argv,
   HostFileLeaveInPlace,
   HostFileWrite,
   HostFileActionRefused,
-  RunnerHostFileAction,
-  runner_host_file_action,
+  FleetHostFileAction,
+  fleet_host_file_action,
   runner_host_file_action_wire,
   RunnerSlotUnitReading,
   RunnerSlotUnitStanding,
@@ -180,18 +195,18 @@ import gunbc.runner.runner_host_file_converge {
   runner_slot_population_owes_reload,
   runner_slot_population_effective,
   runner_slot_population_read_completely,
-  RunnerHostFilePlanned,
-  RunnerHostFileResult,
+  FleetHostFilePlanned,
+  FleetHostFileResult,
   HostFileLeftInPlace,
-  RunnerHostFileOutcome,
+  FleetHostFileOutcome,
   HostFileConvergedByWrite,
   HostFileWriteRefused,
   HostFileNotAttempted,
   HostFileNotAppliedObserveOnly,
   RunnerHostFileRun,
-  RunnerHostFileConvergeMode,
-  RunnerHostFilesObserveOnly,
-  RunnerHostFilesApply,
+  FleetHostFileConvergeMode,
+  FleetHostFilesObserveOnly,
+  FleetHostFilesApply,
   AdministratorPrivilegeAvailable,
   AdministratorPrivilegeRefused,
   RunnerHostManagerReload,
@@ -200,8 +215,23 @@ import gunbc.runner.runner_host_file_converge {
   ManagerReloadRefused,
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
-  runner_host_file_write_admission,
+  fleet_host_file_write_admission,
+  runner_slot_expectation_with_roles,
+  runner_host_role_environments,
+  dropins_that_could_override,
+  SupersededDropinResult,
+  SupersededDropinAbsent,
+  SupersededDropinRemoved,
+  SupersededDropinPresentObserved,
+  SupersededDropinRefused,
+  superseded_dropin_settled,
+  superseded_dropin_observed,
+  superseded_dropin_removed,
+  runner_host_superseded_dropin_paths,
 }
+import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
+import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path, gpu_docker_labels_dropin_path }
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
 
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
 // answered by the hermetic ssh mock; nothing reads the live tree.
@@ -213,6 +243,112 @@ fn fixture_cited_job_user_uid() -> RunnerJobUserUidReading {
 
 fn fixture_unread_job_user_uid() -> RunnerJobUserUidReading {
   JobUserUidUnobserved { cause: "fixture: getent passwd was not answered" as NonEmptyStr }
+}
+
+// THE PER-SLOT ROLE DROP-INS ARE A FOURTH POPULATION THE HOST-WIDE COUNTS DO NOT OWN. Their number is the
+// deploy-slot population of the host, so the host-wide literals above count the files with the role
+// subject removed, and the role population is joined by role_population_joins against the declared deploy-slot set.
+fn not_role_files(fs: List<FleetHostFileDesired>) -> List<FleetHostFileDesired> {
+  filter(fs, f => (f.subject as String) != "runner-slot-role-dropin")
+}
+
+fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWithheld> {
+  filter(w, x => (x.subject as String) != "runner-slot-role-dropin")
+}
+
+// THE ROLE POPULATION IS JOINED AT IDENTITY GRAIN AGAINST AN ORACLE THE PRODUCER DOES NOT BUILD. The contract is
+// one outcome per deploy slot of the host: a rendered file at that slot's instance drop-in path, or a role
+// entry in withheld, and nothing beyond. The expected set is the host's slots read from their declared source
+// (gunbc.runner.runner_slot_job_role deploy_slot_identities, not runner_host_file_converge's own role lists), each
+// at the path systemd.unit(5) gives an instance drop-in, spelled here from the instance name and the declared
+// file name rather than taken from runner_unit_slot_role_dropin_path. A missing slot, an extra well-shaped row,
+// a doubled row and a lost withheld entry each fail the join.
+//
+// RESIDUAL, TYPED (role_join_residual): RunnerHostFileWithheld carries a subject and a cause and no slot identity,
+// so a withheld entry is COUNTED against the slot population and never attributed to a particular slot.
+fn expected_role_dropin_paths(host: HostIdentity) -> List<String> {
+  map(
+    filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+    s => concat(concat("/etc/systemd/system/actions-runner@", runner_slot_instance_name(slot: s)), ".service.d/slot-role.conf"),
+  )
+}
+
+fn role_population_joins(expected: List<String>, files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> Bool {
+  let roles = filter(files, f => (f.subject as String) == "runner-slot-role-dropin")
+  let role_withheld = filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin")
+  all(roles, f => any(expected, e => e == (f.path as String)) && starts_with(s: f.content, prefix: "[Service]\n"))
+    && length(distinct_by_key(roles, f => f.path as String)) == length(roles)
+    && length(roles) + length(role_withheld) == length(expected)
+}
+
+// THE RESIDUAL OF THE COUNT-ONLY WITHHELD JOIN, AS DATA. When every slot has its own rendered file the join is
+// fully attributed. Otherwise the slots without a file are satisfied by anonymous withheld entries, which are
+// counted and not attributed: files=[a] plus one withheld entry satisfies a [a, b] oracle without proving that
+// entry is b's.
+type RoleJoinResidual
+  = RoleJoinFullyAttributed
+  | RoleJoinWithheldCountedNotAttributed { anonymous_withheld: Int, slots_without_a_file: List<String> }
+
+// The capability that retires the residual, at capability grain (not an artifact): a withheld entry names the
+// slot it stands for, so the join can match it to a slot without counting.
+type RoleJoinResidualRetirement {
+  requires_withheld_entries_to_carry_slot_identity: Bool
+}
+
+data role_join_residual_retirement: RoleJoinResidualRetirement = RoleJoinResidualRetirement { requires_withheld_entries_to_carry_slot_identity: true }
+
+fn role_join_residual(expected: List<String>, files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
+  let rendered = map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => f.path as String)
+  let without = filter(expected, e => !any(rendered, r => r == e))
+  let anonymous = length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin"))
+  if length(without) == 0 && anonymous == 0 { RoleJoinFullyAttributed } else { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: anonymous, slots_without_a_file: without } }
+}
+
+fn role_file_at(path: String) -> FleetHostFileDesired {
+  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+}
+
+fn role_withheld_entry() -> RunnerHostFileWithheld {
+  RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: "supplied refusal" as NonEmptyStr }
+}
+
+// the oracle itself: srv1 deploys exactly one slot, srv1-02 (runner_slot_job_role srv1_deploy_slot_index), written as a literal
+test fn the_role_oracle_for_srv1_is_its_one_declared_deploy_slot() -> Bool {
+  expected_role_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/slot-role.conf"]
+}
+
+// the RED controls, over a two-slot supplied oracle so that dropping one row is distinguishable from an empty host:
+// both rendered, one rendered plus one withheld, and each of a dropped row, a dropped withheld entry, an extra
+// well-shaped row, a doubled row and a misplaced row refuse
+test fn the_role_join_refuses_a_dropped_row_an_extra_row_a_doubled_row_and_a_lost_withheld_entry() -> Bool {
+  let pa = "/etc/systemd/system/actions-runner@a.service.d/20-slot-role.conf"
+  let pb = "/etc/systemd/system/actions-runner@b.service.d/20-slot-role.conf"
+  let expected = [pa, pb]
+  let a = role_file_at(path: pa)
+  let b = role_file_at(path: pb)
+  role_population_joins(expected: expected, files: [a, b], withheld: [])
+    && role_population_joins(expected: expected, files: [a], withheld: [role_withheld_entry()])
+    && !role_population_joins(expected: expected, files: [a], withheld: [])
+    && !role_population_joins(expected: expected, files: [], withheld: [role_withheld_entry()])
+    && !role_population_joins(expected: expected, files: [a, b, role_file_at(path: "/etc/systemd/system/actions-runner@c.service.d/20-slot-role.conf")], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, a], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, role_file_at(path: "/etc/elsewhere/20-slot-role.conf")], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, b], withheld: [role_withheld_entry()])
+}
+
+// the residual is recorded for exactly the count-only shape: one file plus one anonymous withheld entry over a
+// two-slot oracle joins, and the residual names one anonymous entry and the slot with no file; two files are
+// fully attributed; and the trigger is the declared capability
+test fn the_count_only_withheld_shape_records_its_residual_and_a_full_render_does_not() -> Bool {
+  let pa = "/etc/systemd/system/actions-runner@a.service.d/20-slot-role.conf"
+  let pb = "/etc/systemd/system/actions-runner@b.service.d/20-slot-role.conf"
+  let expected = [pa, pb]
+  let counted = role_join_residual(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+  let full = role_join_residual(expected: expected, files: [role_file_at(path: pa), role_file_at(path: pb)], withheld: [])
+  role_population_joins(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+    && (match counted { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: n, slots_without_a_file: ss } => n == 1 && ss == [pb] RoleJoinFullyAttributed => false })
+    && (match full { RoleJoinFullyAttributed => true RoleJoinWithheldCountedNotAttributed { anonymous_withheld: _, slots_without_a_file: _ } => false })
+    && role_join_residual_retirement.requires_withheld_entries_to_carry_slot_identity
 }
 
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
@@ -282,8 +418,9 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
   match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 4
-        && length(w) == 2
+      length(not_role_files(fs)) == 4
+        && length(not_role_withheld(w)) == 2
+        && role_population_joins(expected: expected_role_dropin_paths(host: operator_host_srv1), files: fs, withheld: w)
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
@@ -300,9 +437,10 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 6
+      length(not_role_files(fs)) == 6
         && any(fs, f => (f.subject as String) == "runner-host-sudoers")
-        && length(w) == 0
+        && length(not_role_withheld(w)) == 0
+        && role_population_joins(expected: expected_role_dropin_paths(host: operator_host_srv1), files: fs, withheld: w)
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
         && starts_with(s: desired_content(subject: "runner-cpu-dropin"), prefix: "[Service]\nCPUQuota=")
@@ -351,7 +489,7 @@ test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
+      fold(fs, init: true, f: (ok, f) => ok && match fleet_host_file_write_admission(file: f) {
         TypedRemoteFileWriteAdmitted { write: _ } => true
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       })
@@ -413,7 +551,7 @@ test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
 
 // ── File content and metadata judgments ──────────────────────────────────────────────────────────
 
-fn standing_is_absent(standing: RunnerHostFileStanding) -> Bool {
+fn standing_is_absent(standing: FleetHostFileStanding) -> Bool {
   match standing {
     HostFileAbsent => true
     HostFileIdentical => false
@@ -422,7 +560,7 @@ fn standing_is_absent(standing: RunnerHostFileStanding) -> Bool {
   }
 }
 
-fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
+fn standing_is_unobservable(standing: FleetHostFileStanding) -> Bool {
   match standing {
     HostFileUnobservable { reason: _ } => true
     HostFileAbsent => false
@@ -431,15 +569,15 @@ fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
   }
 }
 
-fn path_is_present(st: RunnerHostFilePathStanding) -> Bool {
+fn path_is_present(st: FleetHostFilePathStanding) -> Bool {
   match st { HostFilePathPresent => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
-fn path_is_absent(st: RunnerHostFilePathStanding) -> Bool {
+fn path_is_absent(st: FleetHostFilePathStanding) -> Bool {
   match st { HostFilePathAbsent => true HostFilePathPresent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
-fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
+fn path_is_unreadable(st: FleetHostFilePathStanding) -> Bool {
   match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent => false HostFilePathAbsent => false }
 }
 
@@ -460,22 +598,22 @@ test fn a_metadata_read_that_failed_is_absent_only_when_the_parent_lacks_the_ent
        ))
 }
 
-fn settled_is_unobservable(st: RunnerHostFilePathStanding) -> Bool {
-  match runner_host_file_settled_standing(st: st) {
+fn settled_is_unobservable(st: FleetHostFilePathStanding) -> Bool {
+  match fleet_host_file_settled_standing(st: st) {
     Absent => false
     Present { value: s } => standing_is_unobservable(standing: s) && !standing_is_absent(standing: s)
   }
 }
 
-fn settled_is_absent(st: RunnerHostFilePathStanding) -> Bool {
-  match runner_host_file_settled_standing(st: st) {
+fn settled_is_absent(st: FleetHostFilePathStanding) -> Bool {
+  match fleet_host_file_settled_standing(st: st) {
     Absent => false
     Present { value: s } => standing_is_absent(standing: s)
   }
 }
 
-fn settles_nothing(st: RunnerHostFilePathStanding) -> Bool {
-  match runner_host_file_settled_standing(st: st) {
+fn settles_nothing(st: FleetHostFilePathStanding) -> Bool {
+  match fleet_host_file_settled_standing(st: st) {
     Absent => true
     Present { value: _ } => false
   }
@@ -511,7 +649,7 @@ test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> B
 // Exit success is a fact about the CALL. A `stat` that exited zero and printed nothing answered no
 // question, so it is unread -- and unread beside a parent that holds the entry is unreadable, never
 // a nameless kind and never an absence.
-fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
+fn reading_is_unread(r: FleetHostFileMetadataReading) -> Bool {
   match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataReported => false }
 }
 
@@ -521,7 +659,7 @@ test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
     && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  File: /etc/default/ctrl-jobserver\n  Size: 12\n", stderr: ""))
 }
 
-// INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
+// INHABITANCE (DESIGN section 3): the words observe_fleet_host_file_content actually sends are the
 // ones extdeps.tools.stat derives from its cited GNU authority, over the production path of a
 // production desired file -- not a boolean test, and not a literal spelled here. The remote leg
 // itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
@@ -542,9 +680,9 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
 test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool {
-  runner_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
+  fleet_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
     == ["/etc", "/etc/needrestart", "/etc/needrestart/conf.d"]
-    && runner_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
+    && fleet_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
     == ["/etc", "/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@.service.d"]
 }
 
@@ -576,15 +714,92 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
   all_safe && one_unsafe && missing
 }
 
-fn action_of(content: RunnerHostFileStanding, file_metadata: RunnerHostPathMetadata, ancestors: RunnerHostPathMetadata) -> RunnerHostFileAction {
-  runner_host_file_action(observation: RunnerHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
+fn action_of(content: FleetHostFileStanding, file_metadata: FleetHostPathMetadata, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
+  fleet_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors, absent_ancestors: [] })
 }
 
-fn is_leave(a: RunnerHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
-fn is_write(a: RunnerHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
-fn is_refused(a: RunnerHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
+fn is_leave(a: FleetHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
+fn is_write(a: FleetHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
+fn is_refused(a: FleetHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
 
-data unsafe_file_metadata: RunnerHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
+// A DROP-IN DIRECTORY THAT WAS NEVER CREATED IS AN OBSERVED ABSENCE WITH A DECLARED REPAIR (L2 run
+// 40859129849: srv1-02's role drop-in refused "ancestors=UNOBSERVABLE" because its .service.d did not
+// exist and find exited 1). Presence is read per ancestor by listing its parent; only an absent TAIL
+// is admitted, and an undetermined answer or an absent ancestor above a present one refuses.
+fn presence_at(path: String, p: EntryPresence) -> AncestorPresence { AncestorPresence { path: path, presence: p } }
+
+fn tail_absent_of(t: AncestorTail) -> List<String> {
+  match t {
+    AncestorTailAbsent { present: _, absent: ab } => ab
+    AncestorTailNone => []
+    AncestorTailUndetermined { cause: _ } => []
+  }
+}
+
+fn tail_undetermined(t: AncestorTail) -> Bool {
+  match t {
+    AncestorTailUndetermined { cause: _ } => true
+    AncestorTailAbsent { present: _, absent: _ } => false
+    AncestorTailNone => false
+  }
+}
+
+test fn only_an_absent_tail_of_the_ancestor_chain_is_an_observed_absence() -> Bool {
+  let chain = ["/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@srv1-02.service.d"]
+  let tail = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  let all_present = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let hole = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryAbsent),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryPresent),
+  ])
+  let unknown = classify_fleet_host_ancestor_presence(chain: chain, presence: [
+    presence_at(path: "/etc/systemd", p: EntryPresent),
+    presence_at(path: "/etc/systemd/system", p: EntryPresenceIndeterminate { cause: "ls exit=2" }),
+    presence_at(path: "/etc/systemd/system/actions-runner@srv1-02.service.d", p: EntryAbsent),
+  ])
+  tail_absent_of(t: tail) == ["/etc/systemd/system/actions-runner@srv1-02.service.d"]
+    && (match all_present { AncestorTailNone => true AncestorTailAbsent { present: _, absent: _ } => false AncestorTailUndetermined { cause: _ } => false })
+    && tail_undetermined(t: hole)
+    && tail_undetermined(t: unknown)
+}
+
+// AN ABSENT TAIL PLANS A WRITE ONLY FOR AN ABSENT FILE BELOW ROOT-ONLY PARENTS. A file reading present
+// below an absent directory contradicts the walk, and a writable parent refuses as it always did.
+fn action_under_absent(content: FleetHostFileStanding, ancestors: FleetHostPathMetadata) -> FleetHostFileAction {
+  fleet_host_file_action(observation: FleetHostFileObservation {
+    content: content, file_metadata: PathsNotApplicable, ancestors: ancestors,
+    absent_ancestors: ["/etc/systemd/system/actions-runner@srv1-02.service.d"],
+  })
+}
+
+test fn an_absent_dropin_directory_plans_its_creation_and_the_write_only_beneath_root_only_parents() -> Bool {
+  is_write(a: action_under_absent(content: HostFileAbsent, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileIdentical, ancestors: PathsRootOnly))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsNotRootOnly { paths: ["/etc/systemd/system"], detail: "writable" }))
+    && is_refused(a: action_under_absent(content: HostFileAbsent, ancestors: PathsUnobservable { reason: "find exit=1" }))
+}
+
+// THE CREATED DIRECTORY IS ROOT'S, AT A MODE WITH NO GROUP OR OTHER WRITE, so the root-only readback that
+// follows admits it; and the leg crosses the fleet SSH edge's portability admission.
+test fn an_absent_ancestor_is_created_root_owned_and_its_leg_crosses_the_edge() -> Bool {
+  let argv = fleet_host_ancestor_directory_argv(path: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+  let line = join(argv, " ")
+  string_contains(s: line, pattern: "-o root -g root")
+    && string_contains(s: line, pattern: "-m 00755")
+    && string_contains(s: line, pattern: "/etc/systemd/system/actions-runner@srv1-02.service.d")
+    && (match portable_remote_words(raws: argv) { Present { value: _ } => true Absent => false })
+}
+
+data unsafe_file_metadata: FleetHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
 
 // THE METADATA RED. Byte-identical content that the CI user can rewrite is NOT left in place: root
 // evaluates it, so it is rewritten, which replaces its owner and mode with root's.
@@ -736,7 +951,7 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
 
-fn teardown_desired() -> RunnerHostFileDesired? {
+fn teardown_desired() -> FleetHostFileDesired? {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -751,7 +966,7 @@ fn witness_subject() -> RunnerHostFileSubject? {
   }
 }
 
-fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload, slots: RunnerSlotPopulation) -> Bool {
+fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload, slots: RunnerSlotPopulation) -> Bool {
   match witness_subject() {
     Absent => false
     Present { value: s } =>
@@ -762,13 +977,13 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             subject: s,
             mode: mode,
             privilege: AdministratorPrivilegeAvailable,
-            results: [RunnerHostFileResult {
-              planned: RunnerHostFilePlanned {
+            results: [FleetHostFileResult {
+              planned: FleetHostFilePlanned {
                 file: f,
-                observation: RunnerHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },
                 action: HostFileLeaveInPlace,
               },
-              outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
+              outcome: match mode { FleetHostFilesObserveOnly => HostFileNotAppliedObserveOnly FleetHostFilesApply => HostFileLeftInPlace },
             }],
             withheld: [],
             pre_actuation_reload: ManagerReloadNotOwed,
@@ -777,7 +992,19 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
-            cap_phase: runner_host_cap_phase_not_owed,
+            // The observe arm now has to CONSUME the cap phase (manager ruling, review 5588645431):
+            // production's observe mode can only ever answer CapPhaseObserved since P4, so this
+            // fixture carries the fully-read observed arm for observe (a hand-fabricated NotOwed --
+            // the base's two-valued answer -- would now refuse, and this claim would be lying about
+            // what production produces). Apply still accepts a settled NotOwed phase (unchanged path).
+            cap_phase: match mode {
+              FleetHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
+              FleetHostFilesApply => runner_host_cap_phase_not_owed
+            },
+            deploy_account: HostHasNoDeploySlot,
+            deploy_trees: [],
+            superseded: [],
+            deploy_readings: [],
           })
       }
   }
@@ -791,12 +1018,12 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
 test fn observe_reports_what_apply_refuses() -> Bool {
   let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
   let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
-  settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadNotOwed, slots: old)
-    && settled_run(mode: RunnerHostFilesApply, reload: ManagerReloaded, slots: good)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
-    && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+  settled_run(mode: FleetHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadNotOwed, slots: old)
+    && settled_run(mode: FleetHostFilesApply, reload: ManagerReloaded, slots: good)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
+    && !settled_run(mode: FleetHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
 }
 
 // ── The population joined against the retirement authority ──────────────────────────────────────
@@ -1344,7 +1571,7 @@ fn is_retirement_withheld(r: RetiredResidueResult?) -> Bool {
 test fn a_withheld_fragment_with_residue_present_refuses_and_leaves_the_residue() -> Bool {
   let gate = residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: true)
   let present = ResiduePresent { unit_known: true, present: ["/usr/local/sbin/ctrl-jobserver"] }
-  let result = retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: gate)
+  let result = retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: gate)
   is_retirement_withheld(r: result)
     && (match result { Present { value: r } => !retired_residue_settled(result: r) Absent => false })
 }
@@ -1354,9 +1581,9 @@ test fn a_withheld_fragment_with_residue_present_refuses_and_leaves_the_residue(
 test fn retirement_proceeds_only_once_the_fragment_holds_and_absent_is_a_noop() -> Bool {
   let present = ResiduePresent { unit_known: true, present: [] }
   let admitted = residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: true)
-  (match retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: admitted) { Absent => true Present { value: _ } => false })
-    && is_retirement_withheld(r: retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: false)))
-    && (match retired_residue_precheck(observed: ResidueAbsent, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: false)) {
+  (match retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: admitted) { Absent => true Present { value: _ } => false })
+    && is_retirement_withheld(r: retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: false)))
+    && (match retired_residue_precheck(observed: ResidueAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: false)) {
       Present { value: v } => result_is_already_absent(r: v)
       Absent => false
     })
@@ -1369,7 +1596,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
     Present { value: s } =>
       !runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: fixture_withheld_fragment(),
@@ -1380,6 +1607,10 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
   }
 }
@@ -1404,9 +1635,31 @@ fn crosses_the_edge(argv: List<String>) -> Bool {
 // legs that host's run issues -- privilege probe, list-units, slot show, the job-user getent, every
 // file's metadata / root-only / ancestor reads, the residue reads and every elevated retire and reload
 // leg -- plus the retiree events read built by the real builder over a supplied show answer. Every
-// leg must cross the edge, and the legs must cover every arm of RunnerHostRemoteLeg, so a new remote
-// call cannot skip this check. The typed_remote_file_write legs and the parent listing, which run
+// leg must cross the edge, and the legs of the three hosts together must cover every arm of
+// FleetHostRemoteLeg, so a new remote call cannot skip this check. Coverage is judged over the union
+// because some legs are issued only on a host that declares the slot they read (the job-user identity
+// read runs only where a deploy slot is declared, srv1 today). The typed_remote_file_write legs and the parent listing, which run
 // through their own modules' builders, are checked over the same files.
+fn host_run_legs(subj: RunnerHostFileSubject, fs: List<FleetHostFileDesired>) -> List<FleetHostRemoteLeg> {
+  concat(
+    runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
+    [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
+  )
+}
+
+// The leg kinds one host's run issues; a host whose subject or desired population refuses issues none,
+// which host_legs_cross already reds.
+fn host_leg_kinds(host: String) -> List<String> {
+  match runner_host_file_subject(host: host as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => []
+    RunnerHostFileSubjectAdmitted { subject: subj } =>
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+        RunnerHostFilesDesiredRefused { cause: _ } => []
+        RunnerHostFilesDesired { files: fs, withheld: _ } => map(host_run_legs(subj: subj, fs: fs), l => runner_host_leg_kind(leg: l))
+      }
+  }
+}
+
 fn host_legs_cross(host: String) -> Bool {
   match runner_host_file_subject(host: host as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => false
@@ -1414,15 +1667,10 @@ fn host_legs_cross(host: String) -> Bool {
       match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
         RunnerHostFilesDesiredRefused { cause: _ } => false
         RunnerHostFilesDesired { files: fs, withheld: _ } => {
-          let legs = concat(
-            runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
-            [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
-          )
-          let kinds = map(legs, l => runner_host_leg_kind(leg: l))
-          all(runner_host_leg_kinds, k => any(kinds, x => x == k))
-            && all(legs, l => crosses_the_edge(argv: runner_host_leg_argv(leg: l)))
+          let legs = host_run_legs(subj: subj, fs: fs)
+          all(legs, l => crosses_the_edge(argv: fleet_host_leg_argv(leg: l)))
             && all(fs, f => crosses_the_edge(argv: parent_listing_argv(parent: path_parent(path: f.path as String)))
-              && (match runner_host_file_write_admission(file: f) {
+              && (match fleet_host_file_write_admission(file: f) {
                 TypedRemoteFileWriteAdmitted { write: w } =>
                   crosses_the_edge(argv: typed_remote_file_compare_argv(write: w))
                     && crosses_the_edge(argv: typed_remote_file_stage_argv(write: w))
@@ -1437,7 +1685,10 @@ fn host_legs_cross(host: String) -> Bool {
 }
 
 test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
+  let kinds = concat(host_leg_kinds(host: "srv1"), concat(host_leg_kinds(host: "srv3"), host_leg_kinds(host: "srv4")))
   host_legs_cross(host: "srv1") && host_legs_cross(host: "srv3") && host_legs_cross(host: "srv4")
+    && all(runner_host_leg_kinds, k => any(kinds, x => x == k))
+    && any(host_leg_kinds(host: "srv1"), x => x == "job-user-identity")
 }
 
 // RED: the probe this replaced is refused by the same transport check.
@@ -1498,11 +1749,11 @@ fn admission_is_skipped(a: RunnerHostActuationAdmission) -> Bool {
   match a { ActuationSkipped { cause: _ } => true ActuationAdmitted => false }
 }
 
-fn fixture_result(outcome: RunnerHostFileOutcome) -> List<RunnerHostFileResult> {
+fn fixture_result(outcome: FleetHostFileOutcome) -> List<FleetHostFileResult> {
   match teardown_desired() {
     Absent => []
-    Present { value: f } => [RunnerHostFileResult {
-      planned: RunnerHostFilePlanned { file: f, observation: RunnerHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
+    Present { value: f } => [FleetHostFileResult {
+      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] }, action: HostFileWrite },
       outcome: outcome,
     }]
   }
@@ -1527,7 +1778,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
     Present { value: s } =>
       !runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: [],
@@ -1538,10 +1789,14 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: [],
@@ -1552,13 +1807,17 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
       })
   }
 }
 
 // ── The sudoers install row (msg_b6241e41) ────────────────────────────────────────────────────────
 
-fn sudoers_desired() -> RunnerHostFileDesired? {
+fn sudoers_desired() -> FleetHostFileDesired? {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -1577,7 +1836,7 @@ test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0
           f.content == c
             && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
             && remote_file_mode_octal(mode: f.mode) == "440"
-            && (match f.validation { VisudoCheck => true NoValidation => false })
+            && (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false })
         RunnerHostSudoersBodyRefused { reason: _ } => false
       }
   }
@@ -1589,7 +1848,7 @@ test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false DestinationUnchangedUntilRename { expected: _ } => false }))
   }
 }
 
@@ -1658,8 +1917,8 @@ test fn a_wrong_or_unreadable_mode_after_the_write_refuses_at_the_metadata_readb
     && !readback_refused(m: PathsRootOnly)
 }
 
-fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
-  match runner_host_file_readback_refusal(metadata: m) {
+fn readback_refused(m: FleetHostPathMetadata) -> Bool {
+  match fleet_host_file_readback_refusal(metadata: m) {
     Present { value: _ } => true
     Absent => false
   }
@@ -1669,7 +1928,7 @@ fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
 // Controls run the PROCESS RESULT through the result classifier and then the action fold, never a
 // supplied PathsUnobservable.
 
-fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> RunnerHostFileAction {
+fn result_action(content: FleetHostFileStanding, exit_code: Int, stdout: String) -> FleetHostFileAction {
   action_of(
     content: content,
     file_metadata: classify_root_only_paths(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
@@ -1699,4 +1958,127 @@ test fn a_failed_post_write_metadata_read_refuses_at_the_metadata_readback() -> 
   readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
     && readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
     && !readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
+}
+
+// ── The role drop-in loads its own keys (L2 run 40950610061) ─────────────────────────────────────
+
+// THE ORDER, OVER THE MANAGED POPULATION ITSELF: srv1's role drop-in, as the converge's own population renders
+// it, sorts after every template drop-in this repository manages -- the converge's template files, the slot
+// cap drop-ins and the capability-label drop-ins -- under systemd's one name order across the template and
+// instance directories (extdeps.systemd.unit_file systemd_drop_in_applies_after). Nothing here is a roster:
+// a new managed template drop-in that sorts after the role joins these sources and turns this red.
+test fn the_role_dropin_sorts_after_every_managed_template_dropin() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: _ } => {
+      let roles = filter(fs, f => (f.subject as String) == "runner-slot-role-dropin")
+      let templates = concat(
+        map(filter(fs, f => string_contains(s: f.path as String, pattern: "@.service.d/")), f => f.path as String),
+        concat(map(derived_runner_slot_cap_members(), m => m.dropin_path as String), [browser_ready_labels_dropin_path as String, gpu_docker_labels_dropin_path as String]),
+      )
+      length(roles) == 1
+        && any(templates, t => path_basename(path: t) == (runner_unit_depriv_dropin_file_name as String))
+        && all(roles, r => all(templates, t => systemd_drop_in_applies_after(later_file_name: path_basename(path: r.path as String), earlier_file_name: path_basename(path: t))))
+    }
+  }
+}
+
+// RED, THE DEFECT ITSELF: the superseded name sorted before depriv.conf, which sets the job user and
+// DOCKER_HOST the role replaces, so depriv's values loaded.
+test fn the_superseded_role_name_sorts_before_depriv_and_loses() -> Bool {
+  !systemd_drop_in_applies_after(later_file_name: runner_unit_slot_role_superseded_dropin_file_name as String, earlier_file_name: runner_unit_depriv_dropin_file_name as String)
+    && systemd_drop_in_applies_after(later_file_name: "depriv.conf", earlier_file_name: "20-slot-role.conf")
+}
+
+// THE GUARD'S CANDIDATES: a template drop-in exempts the converge's own instance drop-in (its declared
+// override), and only that one; an unexempted later file, or an equal name in another directory, is a candidate.
+test fn a_template_dropin_exempts_only_the_managed_instance_override() -> Bool {
+  let depriv = "/etc/systemd/system/actions-runner@.service.d/depriv.conf" as NonEmptyStr
+  let role = "/etc/systemd/system/actions-runner@srv1-02.service.d/slot-role.conf"
+  let hand = "/etc/systemd/system/actions-runner@srv1-01.service.d/zz-hand.conf"
+  let loaded = ["/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf", role, hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+  map(dropins_that_could_override(written: [depriv], loaded: loaded, exempt: [role as NonEmptyStr]), c => c as String) == [hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+    && map(dropins_that_could_override(written: [depriv], loaded: loaded, exempt: []), c => c as String) == [role, hand, "/etc/systemd/system/actions-runner@srv1-01.service.d/depriv.conf"]
+}
+
+// THE READ-BACK JUDGES THE LOADED ENVIRONMENT AGAINST THE ROLE. srv1-02 as L2 run 40950610061 left it (depriv's
+// job user and socket loaded) is not effective, by name; the role's own values are; a ghdeploy slot still
+// carrying a socket is not; and a CI slot, which carries no role row, is judged as before.
+fn role_reading(unit: String, env: String) -> RunnerSlotUnitReading {
+  RunnerSlotUnitReading { unit: unit as NonEmptyStr, load_state: "loaded", need_daemon_reload: "no", kill_mode: "control-group", exit_type: "main", cpu_quota_per_sec: "7s", environment: env }
+}
+fn role_wire(unit: String, env: String) -> String {
+  standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: role_reading(unit: unit, env: env), expect: runner_slot_expectation_with_roles(expect: fixture_expect(), host: operator_host_srv1)))
+}
+test fn a_role_slot_is_effective_only_with_its_roles_loaded_environment() -> Bool {
+  let deploy = "actions-runner@srv1-02.service"
+  length(runner_host_role_environments(host: operator_host_srv1)) == 1
+    && string_contains(s: role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghrunner DOCKER_HOST=unix:///run/user/999/docker.sock"), pattern: "CTRL_RUNNER_JOB_USER=ghdeploy")
+    && role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=") == "effective"
+    && role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy") == "effective"
+    && string_contains(s: role_wire(unit: deploy, env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=unix:///run/user/999/docker.sock"), pattern: "DOCKER_HOST")
+    && role_wire(unit: "actions-runner@srv1-01.service", env: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghrunner DOCKER_HOST=unix:///run/user/999/docker.sock") == "effective"
+}
+
+// THE SUPERSEDED FILE: srv1's deploy slot has exactly the old name to retire; only absent or removed settles,
+// a present one seen in observe mode is observed but not settled, and only a removal owes the reload.
+test fn the_superseded_role_dropin_retires_and_only_absence_settles() -> Bool {
+  runner_host_superseded_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/20-slot-role.conf"]
+    && superseded_dropin_settled(r: SupersededDropinAbsent { path: "p" }) && superseded_dropin_settled(r: SupersededDropinRemoved { path: "p" })
+    && !superseded_dropin_settled(r: SupersededDropinPresentObserved { path: "p" }) && superseded_dropin_observed(r: SupersededDropinPresentObserved { path: "p" })
+    && !superseded_dropin_settled(r: SupersededDropinRefused { path: "p", reason: "x" }) && !superseded_dropin_observed(r: SupersededDropinRefused { path: "p", reason: "x" })
+    && superseded_dropin_removed(r: SupersededDropinRemoved { path: "p" }) && !superseded_dropin_removed(r: SupersededDropinAbsent { path: "p" })
+}
+
+// ── The deploy slot's host reading ───────────────────────────────────────────────────────────────
+// THE LONG LISTING, AS POSIX LAYS IT OUT: srv1-02's tree as read on 2026-10-30 parses to its numeric owner
+// and group and its mode bits; special bits ride the execute position; an entry carrying an alternate
+// access method (an ACL's `+`) refuses, because the ACL can grant what the bits do not show.
+fn entry_wire(line: String) -> String {
+  match ls_long_entry_of_line(line: line) {
+    LsLongEntryRead { name: n, directory: d, ownership: o, mode: m } =>
+      join([n, if d { " dir " } else { " file " }, to_string(o.uid), ":", to_string(o.gid), " ", file_mode_octal(mode: m)], "")
+    LsLongEntryRefused { name: n, reason: _ } => concat("refused ", n)
+  }
+}
+test fn the_long_listing_reads_owner_group_and_mode_and_refuses_an_acl() -> Bool {
+  entry_wire(line: "drwxr-xr-x 6 990 982 4096 Oct 30 13:20 /opt/actions-runner/srv1-02") == "/opt/actions-runner/srv1-02 dir 990:982 0755"
+    && entry_wire(line: "-rw-r--r--  1 990  982  1631 Oct 30 13:52 .credentials_rsaparams") == ".credentials_rsaparams file 990:982 0644"
+    && entry_wire(line: "drwx------ 2 990 982 4096 Oct 30 13:20 _work") == "_work dir 990:982 0700"
+    && entry_wire(line: "drwxrwsr-T 2 0 50 4096 Oct 30 13:20 shared") == "shared dir 0:50 3774"
+    && entry_wire(line: "-rw-r--r--. 1 990 982 1 Oct 30 13:52 .runner") == ".runner file 990:982 0644"
+    && entry_wire(line: "-rw-r--r--+ 1 990 982 1 Oct 30 13:52 .credentials") == "refused .credentials"
+    && entry_wire(line: "total 84") == "refused 84"
+}
+
+fn reading_wire(r: DeploySlotPathReading) -> String {
+  match r {
+    DeploySlotPathRead { path: p, directory: _, ownership: _, mode: m } => join([p as String, " read ", file_mode_octal(mode: m)], "")
+    DeploySlotPathAbsent { path: p } => concat(p as String, " absent")
+    DeploySlotPathUnread { path: p, reason: _ } => concat(p as String, " unread")
+  }
+}
+
+// A STATE PATH IS ABSENT ONLY FROM A LISTING THAT SUCCEEDED: a name the listing does not carry is absent,
+// one it carries is read, one whose line refused (an ACL) is unread -- never absent, which would read
+// private -- and a failed listing reads nothing. The chain read names each path by its own line.
+test fn the_tree_listing_separates_absent_read_and_unread_state_paths() -> Bool {
+  let dir = "/opt/actions-runner/srv1-02"
+  let states = [concat(dir, "/.runner"), concat(dir, "/.credentials"), concat(dir, "/.credentials_rsaparams")]
+  let listing = "total 84\ndrwx------ 6 990 982 4096 Oct 30 13:20 .\ndrwxr-xr-x 12 1000 1000 4096 Oct 29 10:59 ..\n-rw------- 1 990 982 399 Oct 30 13:52 .runner\n-rw-------+ 1 990 982 1631 Oct 30 13:52 .credentials_rsaparams\n"
+  map(deploy_slot_listing_readings(directory: dir, paths: states, exit_code: 0, stdout: listing), r => reading_wire(r: r))
+      == [concat(dir, "/.runner read 0600"), concat(dir, "/.credentials absent"), concat(dir, "/.credentials_rsaparams unread")]
+    && all(deploy_slot_listing_readings(directory: dir, paths: states, exit_code: 2, stdout: listing), r => string_contains(s: reading_wire(r: r), pattern: " unread"))
+    && map(deploy_slot_entry_readings(paths: ["/opt", "/opt/actions-runner", dir], exit_code: 0, stdout: "drwxr-xr-x 9 0 0 4096 Oct 1 00:00 /opt\ndrwx------ 6 990 982 4096 Oct 30 13:20 /opt/actions-runner/srv1-02\n"), r => reading_wire(r: r))
+      == ["/opt read 0755", "/opt/actions-runner unread", concat(dir, " read 0700")]
+}
+
+// THE JOB USER A SLOT RUNS AS IS ITS LOADED ENVIRONMENT'S WORD, and a slot is a tenant unless masked or
+// not found.
+test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_not_tenants() -> Bool {
+  slot_environment_value(environment: "RUNNER_DIR=/opt/x CTRL_RUNNER_JOB_USER=ghdeploy DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == Present { value: "ghdeploy" }
+    && slot_environment_value(environment: "CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == Present { value: "ghrunner" }
+    && slot_environment_value(environment: "X_CTRL_RUNNER_JOB_USER=ghrunner", name: "CTRL_RUNNER_JOB_USER") == none
+    && slot_environment_value(environment: "DOCKER_HOST=", name: "CTRL_RUNNER_JOB_USER") == none
+    && slot_load_state_can_run(load_state: "loaded") && !slot_load_state_can_run(load_state: "masked\n") && !slot_load_state_can_run(load_state: "not-found")
 }

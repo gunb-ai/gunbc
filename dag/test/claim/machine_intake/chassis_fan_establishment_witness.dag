@@ -1,0 +1,179 @@
+module test.claim.machine_intake.chassis_fan_establishment_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority, TranscribedUncited }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine, TemperaturePublished }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, ChassisPowerObservation }
+import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
+import gunbc.machine_intake.chassis_fan_establishment {
+  FittedFanSet, FittedFanSetEstablished, FittedFanSetNotEstablished, FittedFanSetOperatorAssumed, PostPowerFanVerdict, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused,
+  PostPowerFanRefusal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded,
+  FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised,
+  post_power_fan_verdict,
+}
+
+// SUPPLIED VALUES AT ONE BOUNDARY: the fitted set, the chassis reading and the fan observation are inputs, the
+// verdict is the subject. The fitted headers are a FIXTURE (FAN1..FAN3), not a statement about any unit. Every
+// refusal arm of the closed PostPowerFanRefusal has its own RED, plus the positive controls.
+fn row_with(name: NonEmptyStr, status: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
+  SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: status, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
+}
+
+fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine { row_with(name: name, status: "ok" as NonEmptyStr, reading: reading) }
+
+fn authority() -> ExternalAuthority { ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/fixture" } } }
+
+fn assumed_set() -> FittedFanSet {
+  FittedFanSetOperatorAssumed { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr], assumption: "fixture assumption" as NonEmptyStr }
+}
+
+fn cited_set() -> FittedFanSet {
+  FittedFanSetEstablished { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr], standing: CitedToAuthority { authority: authority() } }
+}
+
+fn bet_set() -> FittedFanSet {
+  FittedFanSetEstablished { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr], standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }
+}
+
+fn spinning_rows() -> List<SdrTypeLine> {
+  [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]
+}
+
+fn read(rows: List<SdrTypeLine>) -> FanSensorObservation { FanSensorsRead { lines: rows, undecoded_lines: [], failure_rows: [] } }
+
+fn on() -> ChassisPowerObservation { ChassisPowerRead { power_on: true } }
+
+fn verdict(set: FittedFanSet, chassis: ChassisPowerObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
+  post_power_fan_verdict(fitted: set, chassis: chassis, thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] }, fans: fans)
+}
+
+fn is_established(v: PostPowerFanVerdict) -> Bool {
+  match v { PostPowerFanVerdictEstablished => true  PostPowerFanVerdictRefused { cause: _ } => false }
+}
+
+fn rows_verdict(rows: List<SdrTypeLine>) -> PostPowerFanVerdict { verdict(set: assumed_set(), chassis: on(), fans: read(rows: rows)) }
+
+test fn every_fitted_fan_spinning_is_established_on_an_operator_assumed_set() -> Bool {
+  is_established(v: rows_verdict(rows: spinning_rows()))
+}
+
+test fn every_fitted_fan_spinning_is_established_on_a_cited_set() -> Bool {
+  is_established(v: verdict(set: cited_set(), chassis: on(), fans: read(rows: spinning_rows())))
+}
+
+test fn an_unfitted_header_with_no_reading_does_not_refuse() -> Bool {
+  is_established(v: rows_verdict(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "No Reading" as NonEmptyStr))))
+}
+
+test fn an_unestablished_set_refuses_as_fitted_set_unestablished() -> Bool {
+  match verdict(set: FittedFanSetNotEstablished { read_obligation: "operator statement" as NonEmptyStr }, chassis: on(), fans: read(rows: spinning_rows())) {
+    PostPowerFanVerdictRefused { cause: FittedSetUnestablished { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_uncited_established_set_is_a_bet_and_refuses_as_fitted_set_unestablished() -> Bool {
+  match verdict(set: bet_set(), chassis: on(), fans: read(rows: spinning_rows())) {
+    PostPowerFanVerdictRefused { cause: FittedSetUnestablished { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_chassis_not_on_refuses_as_chassis_not_on() -> Bool {
+  match verdict(set: assumed_set(), chassis: ChassisPowerRead { power_on: false }, fans: read(rows: spinning_rows())) {
+    PostPowerFanVerdictRefused { cause: PostPowerChassisNotOn } => true
+    _ => false
+  }
+}
+
+test fn an_unreadable_chassis_refuses_as_chassis_unreadable() -> Bool {
+  match verdict(set: assumed_set(), chassis: ChassisUnreadable, fans: read(rows: spinning_rows())) {
+    PostPowerFanVerdictRefused { cause: PostPowerChassisUnreadable } => true
+    _ => false
+  }
+}
+
+test fn an_undecodable_chassis_refuses_as_chassis_undecodable() -> Bool {
+  match verdict(set: assumed_set(), chassis: ChassisStatusUndecodable { cause: "fixture" as NonEmptyStr }, fans: read(rows: spinning_rows())) {
+    PostPowerFanVerdictRefused { cause: PostPowerChassisUndecodable { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_unreadable_fan_read_refuses_as_fan_read_unreadable_not_missing_rows() -> Bool {
+  match verdict(set: assumed_set(), chassis: on(), fans: FanSensorsUnreadable) {
+    PostPowerFanVerdictRefused { cause: FanReadUnreadable } => true
+    _ => false
+  }
+}
+
+test fn undecoded_fan_rows_refuse_even_when_every_fitted_fan_spins() -> Bool {
+  match verdict(set: assumed_set(), chassis: on(), fans: FanSensorsRead { lines: spinning_rows(), undecoded_lines: ["a | 1h | ns | 29.0 | x", "b | 2h | ns | 29.0 | y"], failure_rows: [] }) {
+    PostPowerFanVerdictRefused { cause: FanRowsUndecoded { texts: t } } => t == ["a | 1h | ns | 29.0 | x", "b | 2h | ns | 29.0 | y"]
+    _ => false
+  }
+}
+
+test fn a_fitted_fan_with_no_sensor_row_refuses_as_missing() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderMissing { header: h } } => (h as String) == "FAN3"
+    _ => false
+  }
+}
+
+test fn no_rows_at_all_refuses_as_missing() -> Bool {
+  match rows_verdict(rows: []) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderMissing { header: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_duplicated_fitted_header_refuses_even_when_the_first_row_spins() -> Bool {
+  match rows_verdict(rows: spinning_rows().append(row(name: "FAN1" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr))) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderDuplicated { header: h } } => (h as String) == "FAN1"
+    _ => false
+  }
+}
+
+test fn a_duplicated_fitted_header_refuses_even_when_the_last_row_spins() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr), row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderDuplicated { header: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_non_ok_row_status_with_a_speed_refuses_as_status_refused() -> Bool {
+  match rows_verdict(rows: [row_with(name: "FAN1" as NonEmptyStr, status: "ns" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderStatusRefused { header: _, status: s } } => (s as String) == "ns"
+    _ => false
+  }
+}
+
+test fn a_fitted_fan_reading_zero_refuses_as_zero_rpm() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderZeroRpm { header: h } } => (h as String) == "FAN2"
+    _ => false
+  }
+}
+
+test fn a_fitted_fan_with_no_reading_refuses_as_no_reading() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "No Reading" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderNoReading { header: h } } => (h as String) == "FAN2"
+    _ => false
+  }
+}
+
+test fn a_fitted_fan_reading_a_duty_refuses_as_duty_only() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "50 percent" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderDutyOnly { header: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_fitted_fan_with_an_unrecognised_reading_refuses_as_unrecognised() -> Bool {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "banana" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+    PostPowerFanVerdictRefused { cause: FittedHeaderReadingUnrecognised { header: _, text: t } } => (t as String) == "banana"
+    _ => false
+  }
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_gate_sized_for_the_largest_subject_refuses_every_smaller_one
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_gate_sized_for_the_largest_subject_refuses_every_smaller_one: RecurringFailureMode = RecurringFailureMode {
   identity: "a_gate_sized_for_the_largest_subject_refuses_every_smaller_one" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: an admission gate is sized for the largest subject its producer can take and is applied to every subject regardless of size, so a small subject the host could serve trivially is refused wherever the host cannot serve the largest one. The refusal is correct for the subject it was measured on and an over-prohibition for every other (DESIGN section 4d, second arm: forbidding more of the world than the cited variables support).",
     "HARM: the producer's positive controls cannot execute on the required route, so its capability is either inflated (a constant read as Clear with only refusal arms exercised) or honestly demoted with no required evidence route at all - and the over-prohibition is invisible because the refusal wears the shape of a resource limit rather than a modeling gap.",

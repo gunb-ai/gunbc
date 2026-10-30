@@ -33,8 +33,10 @@ import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.owned_directory { owned_directory_stat_format }
-import std.algebra { fold_list }
+import gunbc.owned_directory { owned_directory_stat_format, owned_directory_install_plan_of, owned_directory_path, OwnedDirectoryTarget }
+import gunbc.ensure { EnsurePlan, EnsurePlanAvailable, EnsurePlanUnavailable }
+import std.algebra { fold_list, length }
+
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag }
 import gunbc.fleet.fleet_posix_accounts {
@@ -79,6 +81,7 @@ type ExecutorPrivilegedOperation
   | SystemdMaskNowUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
+  | EnsureJobAccount { login: NonEmptyStr, shell: NonEmptyStr, home: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
   | InstallFile {
       source: NonEmptyStr
@@ -175,6 +178,20 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       sh,
       l
     ]
+    // A RUNNER JOB'S ACCOUNT HAS A HOME, which is the one way it differs from EnsureSystemAccount: the
+    // slot's listener sets HOME to the account's passwd home before the job starts (ctrl
+    // jit-runner.sh), and a job's tools write there, so the directory is created with the account
+    // and owned by it. Still --system and still a nologin shell: nothing logs in as it.
+    EnsureJobAccount { login: l, shell: sh, home: h } => [
+      ci_runner_sudo_binary_path(b: SudoUseradd),
+      "--system" as NonEmptyStr,
+      "--create-home" as NonEmptyStr,
+      "--home-dir" as NonEmptyStr,
+      h,
+      "--shell" as NonEmptyStr,
+      sh,
+      l
+    ]
     EnsureSupplementaryGroupMembership { login: l, group: g } => [
       ci_runner_sudo_binary_path(b: SudoUsermod),
       "-aG" as NonEmptyStr,
@@ -253,6 +270,7 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdMaskNowUnit { unit: _ } => RunsAsRoot
     SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
     EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
+    EnsureJobAccount { login: _, shell: _, home: _ } => RunsAsRoot
     EnsureSupplementaryGroupMembership { login: _, group: _ } => RunsAsRoot
     InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => RunsAsRoot
     SystemdReloadUnit { unit: _ } => RunsAsRoot
@@ -391,15 +409,18 @@ fn executor_privileged_operations_sudoers_body(
 // longer generated file and removes the traversal entirely.
 data executor_managed_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
+// The slot directory's mode is the slot's, not the executor's: a deploy slot's tree is its account's
+// alone (gunbc.runner.runner_slot_job_role runner_slot_job_role_tree_mode).
 fn runner_slot_install_operations(
   slot_dirs: List<NonEmptyStr>,
   slot_owner: NonEmptyStr,
+  slot_mode: FileMode,
 ) -> List<ExecutorPrivilegedOperation> {
   map(slot_dirs, d => EnsureOwnedDirectory {
     path: d,
     owner: slot_owner,
     group: slot_owner,
-    mode: executor_managed_directory_mode,
+    mode: slot_mode,
   })
 }
 
@@ -423,6 +444,140 @@ fn runner_slot_privileged_operations(
   )
 }
 
+// A PROVISIONING PLAN OVER OWNED-DIRECTORY TARGETS, refusal carried rather than dropped.
+// DESIGN section 5: "A failure arm refuses, never widens, and every degradation is typed, located
+// and countable", and "A refusal that fires -> the line stops." The arm this record replaces mapped
+// a refused target to [] at all three host-plan sites in gunbc.runner.runner_host_grants: the host
+// converged WITHOUT the directory, the rendered plan recorded nothing, and the store's mint later
+// reported the directory unready with a "not converged yet" that was wrong -- the plan had never
+// asked for it.
+//
+// A REFUSAL IS NOT AN OPERATION. It is not an authorization: it has no principal, no argv and no
+// sudoers line, so it is not a variant of ExecutorPrivilegedOperation -- review 86921: putting it in
+// one forced a placeholder principal, an empty argv, a census exclusion and a Bool predicate over the
+// coproduct, the workarounds that are themselves the DESIGN section 5 tell. The record keeps the two
+// populations TYPED AND SEPARATE; each gets its own gate below, so no renderer, census row or argv
+// can ever touch a refusal, and no refusal can be counted as a grant. The refusals then stop the
+// line through the channels the repo already owns: gunbc.runner.runner_host_grants withholds the
+// whole sudoers artifact (RunnerHostSudoersBodyRefused, the arm a missing deploy row already uses),
+// and gunbc.fleet.fleet_host_grant_coverage gives each refused target a standing GrantBlocking row,
+// so the apply refuses as ApplyAwaitingCapability naming the directory BEFORE any host mutation --
+// the same standing a missing sudoers rule already earns.
+//
+// THE ONE DECISION is gunbc.owned_directory owned_directory_install_plan_of, whose EnsurePlan already
+// routes an unresolvable mode to EnsurePlanUnavailable; every plan site consumes this projection, so
+// no site can drop the refusal by re-deriving the rows.
+type ExecutorPrivilegedProvisioningPlan sole_constructor {
+  rows: List<ExecutorPrivilegedOperation>
+  refusals: List<OwnedDirectoryPlanRefusal>
+}
+
+// CONSTRUCTION SEALED to this module: a refusal exists only because the one plan-of decision said so, so
+// no module can fabricate one (or drop one) -- the census and the sudoers gate receive them, never build them.
+type OwnedDirectoryPlanRefusal sole_constructor {
+  path: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+// ONE TARGET, THE ONE DECISION: the directory row, or the located refusal. Never nothing.
+fn executor_privileged_owned_directory_plan(t: OwnedDirectoryTarget) -> ExecutorPrivilegedProvisioningPlan {
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } =>
+      ExecutorPrivilegedProvisioningPlan {
+        rows: [],
+        refusals: [OwnedDirectoryPlanRefusal {
+          path: owned_directory_path(t: t) as String as NonEmptyStr,
+          reason: reason as NonEmptyStr,
+        }],
+      }
+    EnsurePlanAvailable { plan } =>
+      ExecutorPrivilegedProvisioningPlan {
+        rows: [EnsureOwnedDirectory {
+          path: plan.path as String as NonEmptyStr,
+          owner: plan.owner.user,
+          group: plan.owner.group,
+          mode: plan.mode,
+        }],
+        refusals: [],
+      }
+  }
+}
+
+// TARGETS INTO ONE PLAN. EVERY refusal is kept, in target order: a plan that stops does not stop
+// early. Stopping at the first refusal (what this fold used to do) made the second and later refused
+// directories invisible -- the apply blocked anyway, but the operator learned about missing directories
+// one per run and the census undercounted, which is the countability half of DESIGN section 5 ("every
+// degradation is typed, located and countable") left unmet. Rows are accumulated too: renderers gate on
+// refusals being non-empty, so keeping them cannot weaken the stop, and a plan that carries rows AND
+// refusals is the honest description of what the host was asked for.
+fn executor_privileged_owned_directory_plans(
+  targets: List<OwnedDirectoryTarget>,
+) -> ExecutorPrivilegedProvisioningPlan {
+  fold_list(
+    xs: targets,
+    empty: executor_privileged_empty_provisioning_plan(),
+    cons: (acc, t) =>
+      let p = executor_privileged_owned_directory_plan(t: t)
+      ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: concat(acc.refusals, p.refusals) }
+  )
+}
+
+// THE RENDERERS' GATE: rows only, which is why a refusal cannot be rendered as a sudoers rule or an
+// apply command -- there is no operation to render.
+fn executor_privileged_plan_rows(plan: ExecutorPrivilegedProvisioningPlan) -> List<ExecutorPrivilegedOperation> {
+  plan.rows
+}
+
+// THE EMPTY PLAN: a site whose conditions admit no directory contributes a plan with neither rows
+// nor refusals, which is distinguishable from a refusal at every gate.
+fn executor_privileged_empty_provisioning_plan() -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [] }
+}
+
+// ROWS THE CALLER DERIVES DIRECTLY, ADDED TO A PLAN IT ALREADY HAS. This replaces
+// executor_privileged_plan_of_rows, which is DELETED: the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found that a public
+// builder manufacturing `refusals: []` let any module rebuild a plan with its refusals dropped, so the
+// seal on ExecutorPrivilegedProvisioningPlan proved nothing about PRESERVING them. The required-parameter
+// variant was rejected for the same reason it is deleted here -- a caller could still pass `[]` and drop
+// a population it had been handed, which is the exact capability the RED below must show is impossible.
+//
+// THE SHAPE THAT CLOSES IT: the refusals are not a parameter at all. This function takes a PLAN and can
+// only ADD rows to it, so the refusal population always comes from the plan the caller was GIVEN, and a
+// module outside this one has no route to a plan except the ones that derive refusals from the one
+// decision (executor_privileged_owned_directory_plan / _plans), merge them (executor_privileged_plan_merge,
+// which concatenates both sides and can only grow them), or take the empty plan (no rows, no refusals).
+// Record literals are available to no one else: ExecutorPrivilegedProvisioningPlan and
+// OwnedDirectoryPlanRefusal are both sole_constructor to this module, so dropping a refusal would require
+// constructing the record, which is what the seal forbids. Rows the caller supplies are the host-wide
+// literal rows -- a converge state directory, the runner base and cache directories, /dev/kvm membership
+// and a daemon-reload -- none of which is a managed-directory decision that can refuse, so carrying them
+// outside the one decision cannot hide a refusal.
+//
+// `rows` is placed BEFORE the plan's own rows: the host-wide population's order is what the sudoers
+// renderers and the census read today, and this keeps it exactly.
+fn executor_privileged_plan_with_rows(
+  plan: ExecutorPrivilegedProvisioningPlan,
+  rows: List<ExecutorPrivilegedOperation>,
+) -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan {
+    rows: concat(rows, plan.rows),
+    refusals: plan.refusals,
+  }
+}
+
+// THE ONE COMPOSITION OF SITE PLANS. EVERY refusal from BOTH sides survives every merge -- never
+// overwritten by a later site's rows, never truncated to the first: a host with two refused directories
+// must report two, so the census counts what is actually missing (DESIGN section 5, countable).
+fn executor_privileged_plan_merge(
+  a: ExecutorPrivilegedProvisioningPlan,
+  b: ExecutorPrivilegedProvisioningPlan,
+) -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan {
+    rows: concat(a.rows, b.rows),
+    refusals: concat(a.refusals, b.refusals),
+  }
+}
+
 // THE STRING RENDERING IS A TRANSPORT SCAFFOLD, MARKED AS ONE. Review 55676 is right that a modeled
 // argv must not launder an unmarked string realization: shell is one transport among N, and a
 // function that concatenates a program is a realization detail that the canonical emitter should
@@ -441,7 +596,7 @@ fn runner_slot_privileged_operations(
 data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -466,7 +621,8 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 // the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
 // re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
 //
-// EXACTLY ONE OPERATION NEEDS A PRECONDITION, and that was established by measurement rather than
+// THE ACCOUNT-CREATING OPERATIONS NEED A PRECONDITION (EnsureJobAccount is the same useradd with a
+// home, so it exits 9 on an existing account exactly as EnsureSystemAccount does), and that was established by measurement rather than
 // assumed. An earlier revision also guarded EnsureSupplementaryGroupMembership with an
 // `id -nG | tr | grep -qx` pipeline -- a hand-authored program smuggled into a string, solving a
 // problem that does not exist: `usermod -aG` appending a group the user already has exits 0
@@ -482,6 +638,7 @@ type OperationPrecondition
 fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
   match op {
     EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
+    EnsureJobAccount { login: l, shell: _, home: _ } => AccountExistsCheck { login: l }
     EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
     EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
     RemoveDirectoryTree { path: _ } => NoPrecondition

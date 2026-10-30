@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.coproduct_alias_arm_membership_untouched_by_the_typechecker
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE SHAPE: a consumer module declares `type <Alias> = <CoreCoproduct>` and then matches values of the
+// core's type on arms written beside the alias, whose arm names are never checked as MEMBERS of the
+// expansion. The types agree (the alias IS the coproduct); what is unverified is that the spelled arm is
+// one of the alternatives. Neighbors this is NOT, checked row by row before opening it:
+// bare_variant_elected_by_spelling_not_by_expected_coproduct is VALUE position elected to the wrong
+// coproduct by spelling -- there the scrutinee's type is the bug; here the scrutinee's type is correct and
+// the PATTERN's arm is the unverified member. unresolved_variant_pattern_renders_as_a_catch_all_binding is
+// the Rust EMITTER rendering a bare arm when a parent enum failed to resolve; here the .dag typechecker
+// itself accepted the non-member. alias_declaration_binding_row_not_carried is the namespace graft
+// dropping the alias's binding row so the NAME is missing; here the name resolves fine and the arms ride a
+// second name for one concept. type_alias_identity_decided_by_spelling_at_each_check is alias-vs-expansion
+// TYPE IDENTITY at comparison sites; here identity is not in question, membership is.
+// a_local_variant_resolves_to_another_module_s_homonym_type needs two modules declaring the same arm name;
+// here one module declares the alias and the match.
+data coproduct_alias_arm_membership_untouched_by_the_typechecker: RecurringFailureMode = RecurringFailureMode {
+  identity: "coproduct_alias_arm_membership_untouched_by_the_typechecker" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability to refuse, at pattern arm election, a spelled arm that is not a member of the scrutinee's settled coproduct type -- so the alias spelling is caught where the arm is chosen, not where the match executes -- together with a claim family in which a fixture matching a coproduct value on an alias-declared arm refuses at typecheck and the control matching the core's own arms passes." } },
+
+  receipts: [
+    "**coproduct alias arm membership untouched by the typechecker** (a consumer declares `type <Alias> = <CoreCoproduct>` and matches values of the core's type on arms spelled beside the alias; the arm names are never verified as members of the expansion. The program TYPECHECKS CLEAN and dies at run time, PatternMatchFailure).",
+
+    "INVALID STATE: a pattern whose scrutinee type and arm name are one concept apart, accepted by the mechanical gate this repository PRs against. A typecheck-clean fixture is what a PR here is gated on (dag/test/claim witnesses are typechecked in CI; claims execute off-PR on the fleet floor), so an author taking this route sees NOTHING until an interpreter run, and the failure then lands as a runtime PatternMatchFailure naming the match, not the alias.",
+
+    "SPECIMEN, found 2026-10-29 by session sleek-deer-601, lane of PR #15329 (fleet keypair mint generalization). The generalization of the fleet keypair mint first delegated its judgement by alias: the consumer module declared `type FleetKeypairGeneration = FleetGenerationVerdict` (and same-shape aliases for the add and dir verdicts), with match arms spelled through those aliases -- an arm like `MintDirOnTmpfsLike => ...` beside `type ... = MintDirOnTmpfs | Refused`. The typechecker accepted the whole file. The interpreter run died PatternMatchFailure on the match. The repair taken was authoring-side, not a compiler change: the generalization was written as one policy over verdict DATA returned by core functions over shared types, with each consumer matching the core's own arms or its own arms reached by named projection functions, and never an alias-declared arm (gunbc.host.fleet_keypair_mint, its two consumers, and the fold tests of test.claim.host.fleet_keypair_mint_witness over both subject rows).",
+
+    "HOW IT WAS CAUGHT, AND THE LIMIT OF THE EVIDENCE: caught by executing the witness rather than by any gate the PR depends on -- the run that killed it was the capped local oracle run this lane uses because the PR CI floor typechecks only. The refusal was observed ONCE, in one lane, on one interpreter build. Whether EVERY alias-plus-foreign-arms spelling refuses at run time, or some coincide through the interpreter's spelling-based arm match, was not enumerated; no wrong value ever shipped (nothing with an alias reached a merge). The class is recorded because the state was WRITABLE and typecheck-clean, not because a wrong verdict ever ran -- and a compiler lane should be chartered on the refusal-at-election capability above, not on this single fixture.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.host.fleet_keypair_mint", decl_name: "fleet_keypair_mint_verdict"),
+    decl_ref(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_pinned_line"),
+    decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet"),
+    decl_ref(module_path: "test.claim.host.fleet_keypair_mint_witness", decl_name: "an_unknown_add_outcome_never_holds_and_a_pinned_key_always_does"),
+  ],
+}

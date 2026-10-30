@@ -21,6 +21,11 @@ type FileTransportConfig {
   base_path: String
 }
 
+// A MOCK IS KEYED BY ITS TRANSPORT'S OWN RESPONSE DISCRIMINATOR (shell: exit status; rest: HTTP status).
+// The file transport observes no status, so its `mock_response` entry is the bare reading `=> payload
+// "doc"`, once; a status-keyed entry on a file operation refuses at the realization wall
+// (v2.compiler.service_realization realization_patternless_arm_step).
+//
 // WHAT THE FILE TRANSPORT OBSERVES, as a value: an operation that succeeded with its byte count and
 // any content it read or listed, or one that failed with the host's CLOSED failure kind and its
 // message. This is the observation a modeled operation realization (v2.std.operation_realization)

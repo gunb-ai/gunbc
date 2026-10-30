@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protection_established
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data reachability_answered_is_consumed_as_protection_established: RecurringFailureMode = RecurringFailureMode {
   identity: "reachability_answered_is_consumed_as_protection_established" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**A type answers whether a mechanism COULD observe a subject, and an enforcement decision consumes that answer as though the mechanism DID observe it.** The type is not wrong; it answers a question the blocking decision is not asking, and the gap between the two is invisible at the call site because the same value satisfies both readings.",

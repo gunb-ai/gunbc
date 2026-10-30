@@ -45,7 +45,7 @@ import gunbc.crate_partition {
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty, fold_list, length, empty_map, map_insert }
+import std.algebra { Empty, fold_list, length, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
@@ -277,6 +277,7 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_dissolution",
     "std_disposition",
     "std_error_primitives",
+    "std_float",
     "std_emit_model",
     "std_measure",
     "std_decimal",
@@ -314,6 +315,9 @@ fn stage0_std_core_modules() -> List<String> {
       "extdeps_units_iso8601",
       "extdeps_units_iso_80000_3",
       "std_occurrence_identity",
+      // std.generated_provider (generated-provider demands, acquisition step) is read by v1.compiler.infer and
+      // v1.compiler.compile; it imports std.types, std.optional, std.algebra, std.decl_ref and std.occurrence_identity.
+      "std_generated_provider",
       "std_source_annotation",
       "std_kernel_type_name",
       "std_target_representation",
@@ -514,6 +518,7 @@ fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
 fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   [
     stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_error_primitives", to: "std_float"),
     stage0_module_dag_edge(from: "std_nat", to: "std_algebra"),
     stage0_module_dag_edge(from: "std_node", to: "std_induction"),
     stage0_module_dag_edge(from: "std_syntax", to: "std_node"),

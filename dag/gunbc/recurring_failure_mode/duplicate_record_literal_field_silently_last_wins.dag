@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.duplicate_record_literal_field_silently_last_wins
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data duplicate_record_literal_field_silently_last_wins: RecurringFailureMode = RecurringFailureMode {
   identity: "duplicate_record_literal_field_silently_last_wins" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**one field of a record literal is assigned TWICE, the literal is accepted, and the LAST assignment silently wins** (INVALID STATE: a record literal names the same field key more than once with different values, and no phase objects.",

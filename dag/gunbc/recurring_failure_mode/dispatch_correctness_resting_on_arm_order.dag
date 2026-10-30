@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.dispatch_correctness_resting_on_arm_order
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data dispatch_correctness_resting_on_arm_order: RecurringFailureMode = RecurringFailureMode {
   identity: "dispatch_correctness_resting_on_arm_order" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "Two predicates in one ordered dispatch chain both answer TRUE for the same item, and the wrong answer is suppressed only because the right arm is tested FIRST. Nothing in either predicate excludes the other's subject, so the chain is correct by ACCIDENT OF ORDER rather than by construction. The invalid state -- an item satisfying two mutually exclusive classifications -- remains fully writable, and the guard against it is a line number.",

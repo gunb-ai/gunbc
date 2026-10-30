@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.rung_drop_population_is_unresolved_free_text
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data rung_drop_population_is_unresolved_free_text: RecurringFailureMode = RecurringFailureMode {
   identity: "rung_drop_population_is_unresolved_free_text" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a gunbc.rung_drop TypedDeclaration population entry names a module or claim that does not exist, and the row is admitted. HARM: the drop's bounded population is its only handle on what lost the rung; a misnamed entry makes the drop unfindable and its restoration trigger unretireable against a real claim. DISTINGUISHING FACTS: found 2026-10-20 on gunbc#14523 review, where the row for the stale oar alias claim named test.claim.compiler.infer_optional_at_required_witness while the module is v2.test.claim.compiler.infer_optional_at_required_witness (v2 modules live under src/v2 and carry the v2. prefix). dag/test/claim/rung_drop_declaration_witness.dag passed 6/6 with the misnamed entry: its own controls use population: [control.population.one], which resolves to nothing, so population is an unresolved String list and no check reads it against the namespace tree.",

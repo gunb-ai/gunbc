@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.absence_proof_whose_premise_the_success_destroys
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data absence_proof_whose_premise_the_success_destroys: RecurringFailureMode = RecurringFailureMode {
   identity: "absence_proof_whose_premise_the_success_destroys" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an absence is established through a container, and the outcome being proven removes the container -- so the CLEAN case is the one case the proof cannot observe** (INVALID STATE: a fact of the form 'X is gone' is established soundly, by a successful enumeration of X's container that does not name it, because a failed read of X itself cannot separate gone from unreadable. Then the very success being verified deletes the container too. The enumeration now fails, the fold answers unobservable exactly as it should, and the verdict is withheld on every run that WORKED. The failing cases still report correctly, so the mechanism looks alive.)",

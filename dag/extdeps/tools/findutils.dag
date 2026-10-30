@@ -3,6 +3,16 @@ module extdeps.tools.findutils
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
+import std.nat { Nat }
+// THE GRANTS ARE THE OTHER TOOLS' WORDS, NOT FIND'S. find owns the WALK -- the target, the bound, the
+// prune group, the no-symlink predicate, and the -exec plumbing that batches an action over what it
+// found. It does not own what `chmod g+w` means or what guard `chgrp` needs, and spelling those words
+// here put another tool's grammar in this module: an edit to extdeps.tools.chmod's mode rows would
+// change the standalone assert and leave the migration granting something else, and the two would
+// disagree silently because both look correct in isolation (a readback that re-spells its key is the bug this closes). The words come from
+// the modules that own the programs; find composes them into actions.
+import extdeps.tools.chmod { chmod_mode_words, chmod_group_writable_mode, chmod_directory_setgid_mode, chmod_directory_sticky_mode }
+import extdeps.tools.chown { chgrp_words }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -77,6 +87,13 @@ fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<
   concat(concat([find_program().invocation as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
 }
 
+fn find_owned_regular_files_exec_command(dir: String, owner: String, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(concat([dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"]),
+  )
+}
+
 // THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
 // size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
 // status is the one the caller reads.
@@ -92,6 +109,36 @@ fn find_regular_file_sizes_argv(root: String) -> List<String> {
 // escape \n is find's own, so the argv word carries a backslash and an n, not a newline.
 fn find_regular_files_sha256_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
+}
+
+// A TREE'S ENTRY METADATA, ONE `<relative path>|<type>|<mode>|<owner>|<group>|<size>` LINE EACH,
+// confined to the starting point's filesystem by -xdev (find(1) EXPRESSIONS, Global options), with
+// the escapes find's own as above. Beside find_tree_regular_files_sha256_command it describes a tree
+// closely enough that a canonical store left unchanged reads equal and any entry, mode, owner or
+// byte moved reads different.
+fn find_tree_metadata_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%s\\n"])
+}
+
+// Every regular file's sha256 on the starting point's filesystem only (-xdev), batched through
+// sha256sum, printed `<hex>  <path>`. find_regular_files_sha256_command is the same read without the
+// filesystem confinement.
+fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
+}
+
+// THE DIRECT CHILDREN OF A DIRECTORY WHOSE NAME MATCHES A GLOB, one bare name per line (-maxdepth 1,
+// %f is the entry's final component). The matching entry's own subtree is never walked.
+fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-name", name_glob, "-printf", "%f\\n"])
+}
+
+// THE ENTRY AT ONE EXACT PATH, FOUND BELOW A ROOT THAT EXISTS, printed when present and nothing when absent
+// (-path is a whole-path match; -maxdepth bounds the walk). A missing ENTRY exits 0 with empty stdout; only a
+// walk that could not complete (unreadable directory, bad root) exits nonzero. That split is the point: it
+// lets a caller tell "not there" from "could not look" by exit status, without reading any tool's stderr.
+fn find_entry_at_path_command(root: String, path: String, max_depth: Int) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", to_string(max_depth), "-path", path, "-print"])
 }
 
 // ENTRIES UNDER ROOTS THAT ARE NOT TRUSTED AS A ROOT-OWNED LOCUS: not owned by `owner`, writable by
@@ -172,4 +219,317 @@ fn find_command_runs_another_program(command: ArgvCommand) -> Bool {
 // classify_find_answer). -maxdepth 0 keeps it to the entry itself.
 fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> ArgvCommand {
   argv_command(program: find_program(), arguments: concat([path, "-maxdepth", "0", "-type", kind], clause))
+}
+
+// THE BOUNDED SUBTREE WALK, AS THREE SEALED BUILDERS (WORKER-ROOT-EQUIVALENT-3). These exist because
+// the mint of extdeps.exec.command ArgvCommand admits only named builders homed in the tool's own
+// module: a roadmap may not spell find's flags for find. They are also where the SHAPE of a subtree
+// grant is decided once, for every consumer, so no roadmap can compose an unbounded or unsafe walk by
+// hand. THE FIVE PROPERTIES, each a word in the argv below:
+//   ONE, BOUNDED. `-maxdepth`: an object store nests two levels (fan-out dir + object) and a git ref
+//     nest is `refs/heads/<branch>` plus its reflog mirror, so a few dozen levels bounds the walk
+//     against a symlink loop or a pathological tree while staying nowhere near a real depth. The bound
+//     is a word the builder owns, not a knob a caller may drop.
+//   TWO, THE CALLER'S PRUNED SUBTREES ARE PRUNED BEFORE THE PREDICATE. `pruned` names entries
+//     RELATIVE TO THE TARGET, and each is spliced as `<target>/<name>`; the prune precedes the
+//     predicate rather than filtering after it, so a confined directory is never descended into at
+//     all -- not merely excluded from the action.
+//     ANCHORED, NEVER A BARE PATTERN: a bare `*/pack` (or a nameless `-name pack`) matches at ANY
+//     depth, and then a perfectly legal ref whose last segment is pack, info, hooks or branches
+//     (refs/heads/pack, refs/heads/branches) is pruned out of the walk and its owner can never update
+//     it. The caller says which children of THIS target are confined; the builder refuses to guess.
+//   THREE, NO SYMLINKS. `-not -type l` keeps the walk off links entirely: chgrp --no-dereference
+//     alone would not do it, because chmod -R follows, and a link under objects/ would then carry a
+//     mode change to a file outside the repository.
+//   FOUR, ONE PATH PER ARGUMENT, `{} +`: batched, and never through a shell, so no path can be split
+//     or reinterpreted.
+//   FIVE, GROUP AND MODE ONLY, never an owner. The chgrp form carries --no-dereference and NO user
+//     field, so the owner of every path in the repository stays exactly who it was.
+// THE EXPRESSION'S SHAPE, which is why the parenthesisation below is load-bearing: the prunes are one
+// OR-group followed by `-prune -o`, and the predicate and the actions form the right operand of that
+// `-o`. `-exec`/`-type` are ANDed (juxtaposition is an implicit `-a`, which binds tighter than `-o`),
+// so an unbalanced `(` is not a cosmetic defect -- find aborts with "Expected a )" and the migration's
+// chmod simply never runs, while the argv still LOOKS like a grant (caught at 2dc2b8de; the executed
+// claim in test.claim.roadmap.worker_dedicated_account_witness is what pins it).
+
+// THE PRUNE GROUP, `<target>/<name>` for each RELATIVE name the caller declares. Empty pruned list
+// means no prune group at all -- an empty OR-group would be a syntax error, so the words are simply
+// absent. The names come from the consumer because WHICH child is confined is the consumer's fact
+// (#13942's confinement list, in gunbc.roadmap.roadmap_dashboard_instance), not find's.
+//
+// THE SEPARATOR IS PLACED BY CONSTRUCTION, so it cannot be miscounted. Each term is emitted WITH its
+// own leading "-o" (separator-before-each), and the one leading separator is then dropped. Nothing
+// inspects a term or an accumulator to decide whether a separator is needed, so there is no predicate
+// to get wrong. That matters because this exact fold was wrong twice in this PR, both times silently:
+// first it counted "-o" WORDS in the accumulator, so after the first term it found none and emitted
+// the second term without its separator -- `( -path <t>/pack -path <t>/info )`, an AND of two -path
+// tests on one path, which never holds, so find pruned NOTHING and the migration chgrp'd and made
+// group-writable objects/pack and objects/info: a confined attempt with a writable
+// objects/info/alternates, which is how an object store is redirected at a foreign repository (found
+// on the lab, where the readback showed "2775 pack / 664
+// pack/pack.pack / 2775 info"). The fix that followed inferred "first term" from length(acc) == 1,
+// which works but rests on an UNSTATED fact -- that a term contributes words enough to change the
+// length -- and a check whose correctness depends on a fact nobody wrote down is the next bug waiting
+// (the alternative is two rules that agree by accident). The join now depends on nothing but its own rule.
+fn find_subtree_prune_words(target: String, pruned: List<String>) -> List<String> {
+  if is_empty(xs: pruned) {
+    []
+  } else {
+    concat(
+      concat(["("], find_subtree_prune_terms_joined(target: target, pruned: pruned)),
+      [")", "-prune", "-o"],
+    )
+  }
+}
+
+// SEPARATOR-BEFORE-EACH, THEN DROP THE LEADING ONE: the join, with no condition on the terms.
+fn find_subtree_prune_terms_joined(target: String, pruned: List<String>) -> List<String> {
+  skip_first_word(
+    words: fold(
+      pruned,
+      init: [] as List<String>,
+      f: (acc, name) => concat(acc, concat(["-o"], find_subtree_prune_term_words(target: target, name: name))),
+    )
+  )
+}
+
+fn skip_first_word(words: List<String>) -> List<String> {
+  words.skip(n: 1)
+}
+
+// THE TERM, on its own: `-path <target>/<name>`, an exact anchored path (anchored to the target by
+// construction -- a bare `*/<name>` prune would also match a legitimate ref whose path contains a
+// segment of that name, and refs/heads/.../branches/... is not exotic). Its own function so a claim
+// can pin the term's SHAPE, and so the join is the only place the separator is ever written.
+fn find_subtree_prune_term_words(target: String, name: String) -> List<String> {
+  ["-path", concat(target, concat("/", name))]
+}
+
+// THE WALK, up to and including the predicate: target, depth bound, prunes, no symlinks. Every one of
+// the three builders below hangs its action(s) off this, so all three walk the same set of paths.
+// THE DEPTH IS A PARAMETER, NOT A CONSTANT HERE. `-maxdepth` is find's own option, so the SHAPE belongs
+// to this module; how deep to walk a repository's object store is a fact about git's fan-out and about
+// what this deployment is willing to re-group in one bounded step, which is the consumer's -- it is a
+// policy figure with a cost shape (the walk is the migration's whole runtime) and it has to be legible
+// and changeable where the rest of the repository posture lives. An upstream tool module that hard-codes
+// a downstream number inverts the dependency: the consumer would have to know what findutils decided.
+fn find_subtree_walk_words(target: String, pruned: List<String>, depth: Nat) -> List<String> {
+  concat(
+    concat([target, "-maxdepth", to_string(depth)], find_subtree_prune_words(target: target, pruned: pruned)),
+    ["-not", "-type", "l"],
+  )
+}
+
+// THE PROOF THAT A GRANT REACHED EVERYTHING: the walk FAILS if any entry it reaches is not group-writable or not in
+// `group`, naming the first such entry on stderr -- which is where a failed exec step's detail is read. The decision
+// is find's own exit status (`-exec false {} +` makes "found one" non-zero), so no output is parsed to decide it,
+// and a walk that cannot run (a missing target, an unreadable directory) is non-zero too. A full mode listing
+// folded afterwards would say the same thing at the cost of one receipt line per entry, which on a checkout of
+// thousands of files is the whole cost of the check.
+fn find_subtree_ungranted_entry_refusal_command(target: String, pruned: List<String>, group: String, depth: Nat) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(
+        ["(", "-not", "-perm", "-g+w", "-o", "-not", "-group", group, ")", "-fprint", "/dev/stderr"],
+        find_subtree_exec_action(words: ["false"]),
+      ),
+    ),
+  )
+}
+
+// Re-group a subtree to one group. No user field: this cannot re-own anything.
+fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      find_subtree_exec_action(words: chgrp_words(group: group)),
+    ),
+  )
+}
+
+// ONE BATCHED ACTION OVER WHAT THE WALK FOUND: `-exec <program words> {} +`. The `{}` placeholder and
+// the `+` terminator are find's OWN grammar and are written exactly here -- a tool module does not get
+// to decide how find terminates an action, and when chgrp briefly carried its own `{}`/`+` the two
+// layers both appended them and the argv ended in `{} + {} +`, which find rejects. `<words>` are the
+// other tool's (its program word and its flags) and arrive whole. Batched with `+` rather than `\;` on
+// purpose: one process for the whole walk instead of one fork per entry, which on a repository's object
+// store is the difference between a migration that runs and one that never finishes inside its window.
+fn find_subtree_exec_action(words: List<String>) -> List<String> {
+  concat(concat(["-exec"], words), ["{}", "+"])
+}
+
+// ACTIONS ARE LISTS; AN ARGV IS NOT. Each action helper returns its own List<String> -- that is what
+// lets a claim pin one action without parsing the whole walk -- and an argv is a flat list of words,
+// so the two layers need exactly one join, here. Written as a fold rather than a literal of literals
+// so there is no version of this builder where a nested list can reach argv_command: adding a fourth
+// action means adding a line to `actions:`, and the flatten is not something each call site has to
+// remember (the failure this guards against: passing List<List<String>> where find wanted
+// words, and both a lenient checker and a hand-read diff could miss it).
+fn flatten_actions(actions: List<List<String>>) -> List<String> {
+  fold(actions, init: [] as List<String>, f: (acc, action) => concat(acc, action))
+}
+
+// ONE BATCHED ACTION ON DIRECTORIES ONLY: `( -type d -exec <words> {} + )`. The guard is find's; the
+// words are the other tool's. The parenthesised group is a SEPARATE action from the unguarded one,
+// which is the point: g+s and a+t are properties of directories and are no-ops or wrong on files, so
+// they must not ride along with the grant that applies to everything the walk reaches.
+fn find_subtree_type_directory_action(words: List<String>) -> List<String> {
+  concat(
+    concat(["(", "-type", "d"], find_subtree_exec_action(words: words)),
+    [")"],
+  )
+}
+
+// THE SUBTREE GRANT: the attempt group writes the DIRECTORIES the walk reaches (so git can create the
+// next entry), setgid on those directories (so an entry created later inherits the group), and the
+// sticky bit where the caller says so. WHETHER FILES THEMSELVES GET `g+w` is the caller's decision,
+// carried by `files_group_writable`, and it is a real decision rather than a knob:
+//
+//   DERIVED, NOT ASSUMED (measured on git 2.47.3, 2026-10-19, four real linked-worktree commits). Git
+//   WRITES EVERYTHING EXCEPT A REFLOG BY CREATE-THEN-RENAME: a loose object is written to a temp and
+//   renamed in, a ref is written to `<name>.lock` and renamed over, the worktree entry's index and HEAD
+//   likewise. A rename is a write to the PARENT DIRECTORY, not to the file -- so a pre-existing object
+//   or ref at git's own 0444 does not stop any of it, and those commits succeeded with every object and
+//   ref file at 0444. A REFLOG is the one path git OPENS IN APPEND MODE: with the existing
+//   `logs/refs/heads/<branch>` at 0444 the commit dies with "unable to append ... Permission denied".
+//   So `g+w` belongs on files EXACTLY where the subtree holds a reflog (the caller names it) and nowhere
+//   else. Granting it everywhere is not merely wider than needed: it makes a base object OWNED BY THE
+//   SERVE ACCOUNT group-writable, and any attempt could then rewrite a shared object IN PLACE -- an
+//   object is content-addressed, so a scribbled-on one is corruption for every later attempt, not just
+//   the attacker's. `false` puts `g+w` behind the same `-type d` guard as the other two actions.
+//
+// The `-type d` guard on the setgid action is the other whole point: setgid on a file is a privilege
+// shape (and RestrictSUIDSGID would refuse it anyway), while setgid on a directory is what makes a
+// fan-out directory git creates later inherit the group rather than the creating process's primary
+// group. The actions and their guards are inside the walk's right operand, and every `(` that opens a
+// `-type d` is CLOSED: an action list that opens a group and never closes it makes find refuse the whole
+// expression.
+fn find_subtree_group_writable_command(
+  target: String,
+  pruned: List<String>,
+  sticky: Bool,
+  files_group_writable: Bool,
+  depth: Nat,
+) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(
+        // ONE ACTION PER LINE, THEN FLATTENED: each action is its own List<String> (that is what the
+        // two helpers above return, and what makes them testable one action at a time), so the list
+        // holding them is a List<List<String>> and reaches the argv only through flatten_actions --
+        // the one place the layers meet. Review 82028 caught this builder concat'ing the nested list
+        // straight into the walk: on a checker that enforces element types it does not typecheck, and
+        // on one that does not, the argv would carry whole actions where find expects single words --
+        // plausible, and never run. §5's fabricated output, wearing an argv.
+        flatten_actions(
+          actions: [
+            // THE g+w ITSELF, guarded exactly as far as the caller's DERIVED decision reaches: over
+            // everything (directories and reflogs alike) when files may be written in place, and behind
+            // `-type d` when they may not -- so a subtree that holds no reflog gets directories-only,
+            // which is what the write-set actually needs.
+            if files_group_writable {
+              find_subtree_exec_action(
+                words: chmod_mode_words(mode: chmod_group_writable_mode)
+              )
+            } else {
+              find_subtree_type_directory_action(
+                words: chmod_mode_words(mode: chmod_group_writable_mode)
+              )
+            },
+            find_subtree_type_directory_action(
+              words: chmod_mode_words(mode: chmod_directory_setgid_mode)
+            ),
+          ]
+        ),
+        // THE STICKY BIT, on directories only, and only where the caller says this subtree holds
+        // entries the walker must not be able to remove. WHY IT EXISTS (bright-moth-475, 2026-10-18,
+        // the finding this closes): rename(2) checks the PARENT for write, not the entry -- a write
+        // check on the moved item applies only when it changes parent. So a group-writable objects/
+        // let a confined worker do `mv objects/pack objects/pack.x` even with objects/pack at 0555,
+        // and plant `ln -s <any dir> objects/pack` in its place. The named ROOT maintenance job then
+        // writes new pack-*.pack files into, and `repack -d` deletes "redundant" ones from, a
+        // directory the WORKER chose: root writing and deleting through a worker-planted symlink,
+        // which voids the confinement against the very job this PR names. With +t the parent stays
+        // group-writable for CREATING entries and only an entry's OWNER (or root) may rename or unlink
+        // it -- measured on the host: mv of a foreign-owned entry under a 3775 parent returns
+        // non-zero, while the owner renaming its OWN entry under the same parent still exits 0, so
+        // the worker keeps replacing its own refs, objects and lock files.
+        // NOT `-R`: the same reason as the g+s action. `chmod +t` recursively would follow the walk's
+        // reach into files; the -type d guard keeps it where it means something.
+        if sticky {
+          find_subtree_type_directory_action(
+            words: chmod_mode_words(mode: chmod_directory_sticky_mode)
+          )
+        } else {
+          []
+        },
+      ),
+    ),
+  )
+}
+
+// FIND'S -printf VOCABULARY, AS ROWS. These five rows are the readback's line format and the two
+// letters its reader accepts, so the code that DECIDES on a line imports THESE rather than re-typing the
+// letters beside each other. find(1) defines `%y` as the entry's type letter (`d` directory, `f` regular
+// file, `l` symbolic link, and others for sockets, FIFOs and devices), `%m` as the permission bits in the
+// special-digit-omitted octal form, and `%P` as the path with the starting point stripped. A letter
+// outside the two the model names is NOT quietly read as a third thing: the reader refuses it, because a
+// symlink, a socket or a device inside a git object store is not a granted entry, and counting it as one
+// would be a verdict over a tree the walk never classified.
+// THE GROUP, PRINTED AS ITS OWN FACT BECAUSE THE MODE CANNOT CARRY IT AND A SILENTLY-FAILED chgrp CANNOT
+// BE INFERRED FROM ANYTHING ELSE IN THE LINE: %m says the group may write, %g says WHICH GROUP. A receipt
+// without it can prove the mode half of a grant and go green over a tree whose chgrp never took effect --
+// and the grant whose whole purpose is the re-group is exactly the grant a gate is about to trust. find
+// prints the numeric gid when no name maps to it, which is what a test that groups to its own gid needs.
+data find_printf_type_field: NonEmptyStr = "%y"
+data find_printf_mode_field: NonEmptyStr = "%m"
+data find_printf_group_field: NonEmptyStr = "%g"
+data find_printf_relative_path_field: NonEmptyStr = "%P"
+data find_printf_type_directory_letter: NonEmptyStr = "d"
+data find_printf_type_regular_file_letter: NonEmptyStr = "f"
+
+// THE RECEIPT for one subtree: one line per entry, `<type-letter> <mode-in-octal> <group> <path>`, with
+// nothing read but metadata -- find stat's every entry anyway, so all three facts come from the inode it
+// already has. THE GROUP IS PRINTED ALONGSIDE THE MODE because a grant has two halves and a receipt that
+// shows one cannot certify the other: a chgrp that failed while its chmod succeeded -- or a tree somebody
+// chmod-ed by hand -- reads back GRANTED to a fold that never saw a group. find prints the numeric gid
+// when no name maps to it, so a caller that grouped by number can compare what it grouped by.
+// THE TYPE IS PRINTED BECAUSE THE MODE CANNOT BE ASKED TO CARRY IT: a regular file may be setgid, and
+// setgid sets the owner-execute leg of the special digit, so a decision that infers "directory" from an
+// executable owner bit waves a setgid FILE through as a directory -- while this PR's own migration
+// comment says setgid belongs on directories alone, because setgid on a file is a privilege shape
+// (the execute bit is not a type: a setgid file sets it). find prints the type as its own fact, so the
+// decision reads the fact instead of guessing at it: DESIGN 4's "the richer source always exists". The
+// path stays LAST, so a path holding a space survives, and the mode is a whole field rather than a head.
+// The migration's readback is this command's OUTPUT, and the model's predicates decide whether it is a
+// grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather
+// than a thing a person asserts.
+fn find_subtree_mode_readback_command(target: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      [
+        "-printf",
+        join(
+          [
+            find_printf_type_field as String,
+            " ",
+            find_printf_mode_field as String,
+            " ",
+            find_printf_group_field as String,
+            " ",
+            find_printf_relative_path_field as String,
+            "\\n",
+          ],
+          "",
+        ),
+      ],
+    ),
+  )
 }

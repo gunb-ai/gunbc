@@ -1,0 +1,92 @@
+module v2.test.claim.cast_nominal_to_string_probe
+
+import std.types { Bool }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.coercion { NoTargetCandidate }
+import v2.compiler.infer { infer }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.test.claim.body_cast_node { bcn_has_reason }
+
+// MEASUREMENT of the v2 cast route for a nominal source cast to String
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text).
+// Four sources: a record parameter, a coproduct parameter, a record built by a literal, and an
+// operand with no derived grounding (a generic parameter).
+fn cns_record_param() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype P { value: Int }\n\nfn f(x: P) -> String {\n  x as String\n}\n")
+}
+
+fn cns_coproduct_param() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype C = Red | Green { n: Int }\n\nfn f(x: C) -> String {\n  x as String\n}\n")
+}
+
+fn cns_record_literal() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype P { value: Int }\n\nfn f() -> String {\n  P { value: 1 } as String\n}\n")
+}
+
+fn cns_generic_param() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> String {\n  x as String\n}\n")
+}
+
+fn cns_int_to_string() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> String {\n  x as String\n}\n")
+}
+
+// POSITIVE CONTROLS: the routes v2.std.coercion coercion_cast_crossing admits, structural equality
+// (Identity or Exact) and refinement to its declared carrier. A probe source has no imports, so the
+// controls are identity over a kernel type, and identity over a nominal product.
+fn cns_record_identity() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype P {\n  value: Int\n}\n\nfn f(p: P) -> P {\n  p as P\n}\n")
+}
+
+fn cns_int_identity() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
+}
+
+// ATTEMPT at an underived operand (GroundingNotDerived): a lambda parameter with no annotation.
+fn cns_lambda_param() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f() -> String {\n  let g = fn(y) { y as String }\n  g(1)\n}\n")
+}
+
+fn cns_infer_rejects_no_target(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+      }
+  }
+}
+
+fn cns_infer_accepts(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn cns_record_param_resolves() -> Bool { tpb_accepts(o: cns_record_param()) }
+test fn cns_record_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_record_param()) }
+test fn cns_record_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_record_param()) }
+test fn cns_coproduct_param_resolves() -> Bool { tpb_accepts(o: cns_coproduct_param()) }
+test fn cns_coproduct_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_coproduct_param()) }
+test fn cns_coproduct_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_coproduct_param()) }
+test fn cns_record_literal_resolves() -> Bool { tpb_accepts(o: cns_record_literal()) }
+test fn cns_record_literal_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_record_literal()) }
+test fn cns_record_literal_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_record_literal()) }
+test fn cns_generic_param_resolves() -> Bool { tpb_accepts(o: cns_generic_param()) }
+test fn cns_generic_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_generic_param()) }
+test fn cns_generic_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_generic_param()) }
+test fn cns_int_to_string_resolves() -> Bool { tpb_accepts(o: cns_int_to_string()) }
+test fn cns_int_to_string_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_int_to_string()) }
+test fn cns_int_to_string_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_to_string()) }
+test fn cns_int_identity_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_identity()) }
+test fn cns_lambda_param_resolves() -> Bool { tpb_accepts(o: cns_lambda_param()) }
+test fn cns_lambda_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_lambda_param()) }
+test fn cns_lambda_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_lambda_param()) }
+test fn cns_record_identity_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_record_identity()) }

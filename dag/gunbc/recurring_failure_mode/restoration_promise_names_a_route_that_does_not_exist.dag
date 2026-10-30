@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.restoration_promise_names_a_route_that_does_not_exist
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data restoration_promise_names_a_route_that_does_not_exist: RecurringFailureMode = RecurringFailureMode {
   identity: "restoration_promise_names_a_route_that_does_not_exist" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a restoration promise names a route that does not exist** (a mechanism withholds, defers or dormant-marks a population and tells the reader it becomes observable again under some named condition — and that condition names a RUN, LANE, CADENCE OR SWEEP the tree does not contain.",

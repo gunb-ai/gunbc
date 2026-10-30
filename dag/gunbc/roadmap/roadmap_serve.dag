@@ -29,8 +29,9 @@ import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, Form
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
 import gunbc.roadmap.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
+import gunbc.auth.profile_store_root { profile_store }
 import gunbc.auth.profile_projection {
-  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
+  profile_store_roster, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
@@ -71,6 +72,10 @@ import gunbc.auth.request_authentication {
   ServeActionAssignIssue,
   ServeActionCreateIssue,
   ServeActionCommentIssue,
+  ServeActionDispatchNode,
+  ServeActionStopNode,
+  ServeActionPublishNode,
+  ServeRouteAction,
   RequestAccessPath,
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
@@ -87,14 +92,14 @@ import gunbc.roadmap.roadmap_task_form { roadmap_task_draft_from_form, roadmap_t
 import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
 import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
-import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus }
+import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
+  ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -185,14 +190,14 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
-  belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
   StopRefusedResult, StopObserveRefused, StopTeardownFailed,
-  belt_stop_node, belt_stop_node_for_instance,
+  belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishWriteFailed,
@@ -211,7 +216,6 @@ import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_readiness
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
-  DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   macbook_local_dashboard_instance,
@@ -232,7 +236,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 // artifact table and this serve table are two projections of one authority set, never two copies of
 // content, and every body is computed at request time so the served page is the LIVE roadmap, not a
 // deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove).
-// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS
+// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap.roadmap_belt_actuate.belt_dispatch_node_for_instance_over IN-PROCESS
 // — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel.
 // The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page
 // (lane agreement 2026-07-20): the page never knows which backend answers.
@@ -507,7 +511,10 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 // (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
 // unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
 // 502 (actuation behind the server failed; the receipt carries step, detail and the admitted launch
-// identity).
+// identity); SpawnLaunchPending = 202 (the start request is on the attempt-unit spool and its answer
+// was not there at the single read made right after the enqueue; the body names the entry, and the
+// client follows the attempt through /attempts.json, which serves the placement slot's
+// attempt_record_json for the node).
 
 fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
@@ -536,6 +543,7 @@ fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => 202
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
 }
@@ -595,6 +603,8 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnNotAdmitted { node_id: _, refusal: _ } => response
   }
 }
@@ -650,46 +660,62 @@ fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltP
 // that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
 // An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
 // run the attempt somewhere the operator did not ask.
-fn serve_dispatch_handler_response_over(
-  instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
-  params: List<PathParamBinding>,
-  executor_word: String,
+fn serve_after_human_write(
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  proceed: fn() -> ServeHttpResponse,
+  observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  if node_id == "" {
-    serve_text_response(
-      status: 400,
-      content_type: text_plain_utf8,
-      body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
-    )
-  } else {
-    match decode_dispatch_executor_request(word: executor_word) {
-      DispatchExecutorRequestUnknown { word, known } =>
-        serve_text_response(
-          status: 400,
-          content_type: text_plain_utf8,
-          body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
-        )
-      DispatchExecutorRequestDecoded { request: executor } =>
-        serve_dispatch_with_follow_ups(
-          instance: instance,
-          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
-        )
-    }
+  match human_write_admission(
+    route_path: route_path,
+    action: action,
+    security: request.security,
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: observed_at,
+  ) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => proceed()
   }
 }
 
-fn serve_dispatch_handler_response_for_instance(
+// THE PLAN IS A THUNK, NOT A VALUE. roadmap_plan_projection reads fabric storage. Passing plan()
+// as an argument forced that Get before human_write_admission, so an AuthAbsent POST was
+// HostEffectRefused (NoMockResponse) instead of 403 — the unauthenticated RED unobserved.
+fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
+  plan: fn() -> RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
+  executor_word: String,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
-  serve_dispatch_handler_response_over(
-    instance: instance,
-    plan: roadmap_plan_projection(),
-    params: params,
-    executor_word: "",
-  )
+  serve_after_human_write(request: request, route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
+    let node_id = path_param_value(params: params, name: "node_id")
+    if node_id == "" {
+      serve_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+      )
+    } else {
+      match decode_dispatch_executor_request(word: executor_word) {
+        DispatchExecutorRequestUnknown { word, known } =>
+          serve_text_response(
+            status: 400,
+            content_type: text_plain_utf8,
+            body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+          )
+        DispatchExecutorRequestDecoded { request: executor } =>
+          serve_dispatch_with_follow_ups(
+            instance: instance,
+            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+          )
+      }
+    }
+  })
 }
 
 // POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick
@@ -706,7 +732,9 @@ fn serve_dispatch_handler_response_for_instance(
 fn serve_publish_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
+  serve_after_human_write(request: request, route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
@@ -720,6 +748,7 @@ fn serve_publish_handler_response_for_instance(
       outcome: belt_publish_node_for_instance(instance: instance, node_id: node_id),
     )
   }
+  })
 }
 
 // ── THE APPROVAL ROUTES ARE MID-CUTOVER, AND THIS IS THE STAGE THEY ARE AT ───────────────────
@@ -783,8 +812,6 @@ fn serve_publish_handler_response_for_instance(
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
     ApprovalSiteFaviconHandler => false
-    ApprovalConfirmPageHandler => true
-    ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
     ApprovalStoreReceiptHandler => false
@@ -794,6 +821,8 @@ fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
     DeviceRequestHandler => false
     DeviceEnrollmentReadbackHandler => false
     DevicePushUpdateHandler => false
+    DeviceListHandler => false
+    DeviceRevokeHandler => false
   }
 }
 
@@ -888,7 +917,7 @@ fn serve_issue_detail_response_over(
 // (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
 // exactly as before, never a failed page on a profile read.
 fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
-  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+  match profile_store_roster(reading: profile_store(instance: instance)) {
     ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
@@ -965,11 +994,8 @@ fn assignee_lookup_refusal(raw: String) -> String {
   }
 }
 
-// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. The write law
-// (gunbc.auth.request_authentication human_authentication_decision) reads observed_at only on the
-// GoogleOidcSession arm -- session expiry -- and only that arm can reach the append that records
-// it; absent, invalid and service evidence refuse at the authentication axis without it. So the
-// early refusals (404 unknown issue, 403 without a session) answer before any host read.
+// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. human_write_admission takes
+// this as a thunk and human_authentication_decision forces it only on GoogleOidcSession expiry.
 fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> String {
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
@@ -1003,19 +1029,22 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, R
 // application/x-www-form-urlencoded encoding, decoded once by the shared strict codec.
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
     action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: observed_at)
-  } }
+    Permit => {
+      let proj = plan()
+      if !issue_detail_node_exists(proj: proj, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      else { serve_issue_assign_permitted(instance: instance, plan: proj, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+    }
+  }
 }
 
 fn serve_issue_assign_permitted(
@@ -1064,10 +1093,10 @@ fn serve_issue_create_response_over(
   instance: HostDashboardInstance,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let observed_at = human_write_observed_at(security: request.security)
   match human_write_admission(route_path: "/issues" as NonEmptyStr,
     action: ServeActionCreateIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => if !roadmap_operation_identity_valid(operation: issue_form_field(body: request.body, name: "key")) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "create refused: a valid operation key is required") }
       else { match authenticated_write_author_principal(security: request.security) {
@@ -1194,7 +1223,7 @@ fn serve_assignment_launch_follow_through_over(
       event_id: event_id,
       outcome: belt_dispatch_node_for_instance_over(
         instance: instance,
-        plan: plan,
+        plan: fn() { plan },
         node_id: node_id,
         request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
         executor: ExecutorDefault,
@@ -1248,6 +1277,8 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>
+      serve_text_response(status: 202, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: launch pending at spool entry ", entry, "\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
       serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }
@@ -1263,14 +1294,15 @@ fn serve_issue_comment_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
     action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: observed_at)
-  } }
+    Permit =>
+      if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      else { serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+  }
 }
 
 fn serve_issue_comment_permitted(
@@ -1340,13 +1372,6 @@ fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>
 // The body is a decoded value; its newlines and field-looking text are never reparsed.
 fn issue_comment_body_of(wire: String) -> String {
   issue_form_field(body: wire, name: "body")
-}
-
-fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  serve_dispatch_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    params: params,
-  )
 }
 
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
@@ -1488,11 +1513,11 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
+      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request, observed_at: fn() { human_write_observed_at(security: request.security) })
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
-    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
@@ -1509,8 +1534,8 @@ fn roadmap_serve_invoke_over(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
-    BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
-    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params, request: request)
+    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params, request: request)
     ApprovalBrokerCutoverHandler { route: r } =>
       approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
   }
@@ -1534,55 +1559,32 @@ fn roadmap_serve_invoke_for_instance(
   )
 }
 
-fn roadmap_serve_invoke(
-  handler: RoadmapServeHandler,
-  params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_invoke_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    handler: handler,
-    params: params,
-    request: request,
-    release_revision: release_revision,
-  )
-}
-
 fn serve_stop_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  if node_id == "" {
-    serve_text_response(
-      status: 400,
-      content_type: text_plain_utf8,
-      body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
-    )
-  } else {
-    serve_stop_with_follow_ups(
-      instance: instance,
-      r: belt_stop_node_for_instance(instance: instance, node_id: node_id),
-    )
-  }
-}
-
-fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  serve_stop_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    params: params,
-  )
+  serve_after_human_write(request: request, route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
+    let node_id = path_param_value(params: params, name: "node_id")
+    if node_id == "" {
+      serve_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+      )
+    } else {
+      serve_stop_with_follow_ups(
+        instance: instance,
+        r: belt_stop_node_for_instance(instance: instance, node_id: node_id),
+      )
+    }
+  })
 }
 
 fn serve_attempts_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
   served_observation_surface_response_for_instance(instance: instance, kind: AttemptsJson)
-}
-
-fn serve_attempts_response() -> ServeHttpResponse {
-  serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 // GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current
@@ -1651,10 +1653,6 @@ fn serve_workflow_response_for_instance(
   served_observation_surface_response_for_instance(instance: instance, kind: WorkflowJson)
 }
 
-fn serve_workflow_response() -> ServeHttpResponse {
-  serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
-}
-
 // GET /sessions.json performs one session-container observation and one independently adjudicated
 // pane/process observation. Session-list refusal serves 503 because container presence is
 // unknowable. Pane refusal stays in each known session as process unobserved and cleanup
@@ -1665,10 +1663,6 @@ fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
   served_observation_surface_response_for_instance(instance: instance, kind: SessionsJson)
-}
-
-fn serve_sessions_response() -> ServeHttpResponse {
-  serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn roadmap_serve_selection_response_over(
@@ -1715,19 +1709,6 @@ fn roadmap_serve_selection_response_for_instance(
     instance: instance,
     plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
-    sel: sel,
-    request: request,
-    release_revision: release_revision,
-  )
-}
-
-fn roadmap_serve_selection_response(
-  sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_selection_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
     release_revision: release_revision,
@@ -1924,25 +1905,6 @@ fn roadmap_serve_respond_for_instance(
     body: body,
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
-    cookie_header: cookie_header,
-    release_revision: release_revision,
-  )
-}
-
-fn roadmap_serve_respond(
-  method_label: String,
-  path: String,
-  body: String,
-  tailscale_identity: String,
-  cookie_header: String = "",
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: method_label,
-    path: path,
-    body: body,
-    tailscale_identity: tailscale_identity,
     cookie_header: cookie_header,
     release_revision: release_revision,
   )
@@ -2210,7 +2172,7 @@ fn auth_session_response(request: ServeHttpRequest<RequestAccessPath, RequestAut
 // the session's. The roster's degradation standing (unreadable store, skipped records) is
 // reported as data -- a missing-looking avatar must not read as 'nobody published'.
 fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  let roster = profile_store_roster(reading: profile_store(instance: instance))
   serve_text_response(
     status: 200,
     content_type: application_json_utf8,
@@ -2266,6 +2228,7 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
         json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
         json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
         json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+        json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
       ], concat(auth_session_picture_members(picture: picture), concat(auth_session_name_members(name: name), concat(auth_session_email_members(email: email), auth_session_roster_standing_members(roster: roster)))))
     }
     SessionStandingInvalid { standing } => [
@@ -2321,6 +2284,7 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
       json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+      json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
     ], concat(auth_session_picture_members(picture: session.profile.picture), concat(auth_session_name_members(name: session.profile.name), auth_session_email_members(email: session.profile.email))))
     SessionStandingInvalid { standing } => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
@@ -2370,7 +2334,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
   match request.security.authentication {
     GoogleOidcSession { session } => {
       if saving {
-        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: human_write_observed_at(security: request.security)) {
+        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: fn() { human_write_observed_at(security: request.security) }) {
           Deny { refusal: _ } => issue_view_response(status: 403, body: "Preference save requires a valid session and CSRF proof.")
           Permit => match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
             Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")

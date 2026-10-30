@@ -141,6 +141,16 @@ fn od_hex_span_command(path: String, offset: Int, length: Int) -> ArgvCommand {
   argv_command(program: od_program(), arguments: ["-An", "-v", "-tx1", "-j", to_string(offset), "-N", to_string(length), "--", path])
 }
 
+// od(1) OVER A WHOLE FILE, AS HEX: the exact-bytes read over a transport that trims captured stdout
+// (bounded_shell_host_drain retained_utf8_lossy_trimmed is trim_end, so `cat` loses a file's final
+// newline: gunbc.recurring_failure_mode a_termination_contract_is_met_by_a_trimming_transport). Hex digits
+// and spaces are not whitespace the trim can take from the END of a file's content -- the last byte is
+// always a two-digit group -- so every byte of the file survives, trailing newline included. Unlike
+// od_hex_span_command there is no -N, so a file larger than any chosen span is read whole rather than cut.
+fn od_hex_file_command(path: String) -> ArgvCommand {
+  argv_command(program: od_program(), arguments: ["-An", "-v", "-tx1", "--", path])
+}
+
 fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program(), arguments: [source, destination])
 }
@@ -325,6 +335,17 @@ fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }
 
+// readlink OVER MANY PATHS, IN ONE INVOCATION, WITH -v. MEASURED on coreutils 9.7 (the version this
+// repository's toolchain pins): readlink accepts one operand per path and prints one line per operand it
+// COULD read, in operand order, with no label naming which path a line belongs to. Without -v an operand it
+// could not read produces NO output at all and the exit status becomes 1, so a missing line cannot be
+// attributed. -v / --verbose makes it report each failed operand on stderr as `readlink: <path>: <strerror>`
+// (exit status still 1), which is what lets a caller tell a vanished operand (No such file or directory) from
+// any other failure. `--` guards a leading dash.
+fn readlink_links_command(paths: List<String>) -> ArgvCommand {
+  argv_command(program: readlink_program(), arguments: concat(["-v", "--"], paths))
+}
+
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
 // here are the ones that manual defines: -d creates each named directory, -m sets the mode,
 // -o and -g set owner and group at creation. Owner-at-creation is why this repository installs
@@ -419,6 +440,22 @@ fn coreutils_install_directory_owned_argv(
   concat(
     [coreutils_install_binary_name as String],
     coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
+// THE ARGV COMMAND OVER THE ONE SPELLING OF install -d -m -o -g (coreutils_install_directory_owned_arguments).
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual, "install
+// invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
+// root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
+// either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook, which renders it as the ExecStopPost record creation, and the per-attempt grant that creates
+// .git/worktrees/<key> at spawn time: that directory has no topology to assert at plan time and an ADDITIVE sweep
+// cannot reach a declared mode from a ~0755 top, so it needs the same three-field restatement. -o is permitted
+// without privilege when it names the invoking principal itself, and -g when it names a group the invoker belongs to.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
   )
 }
 
@@ -542,6 +579,12 @@ fn df_available_bytes_argv(path: String) -> List<String> {
   [df_program as String, "-B1", "--output=avail", path]
 }
 
+
+// Copy a file setting its mode at creation, ownership following the invoking principal: the unprivileged
+// sibling of install_file_owned_command, for a principal copying a file it can read into a directory it owns.
+fn install_file_mode_command(source: String, destination: String, mode: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [coreutils_install_mode_flag as String, mode as String, source, destination])
+}
 
 // Copy a file with ownership established before an unprivileged consumer can open it.
 fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {

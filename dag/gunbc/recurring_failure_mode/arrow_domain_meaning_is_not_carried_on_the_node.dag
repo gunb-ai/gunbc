@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.arrow_domain_meaning_is_not_carried_on_the_n
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data arrow_domain_meaning_is_not_carried_on_the_node: RecurringFailureMode = RecurringFailureMode {
   identity: "arrow_domain_meaning_is_not_carried_on_the_node" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an Arrow's first positional child means different things in different producers -- a parameter list of Named binders, one positional argument TYPE, or one record-typed payload -- and the Node does not say which, so every reader guesses from SHAPE, and a producer or fixture that builds the other meaning gets a reader's answer for the wrong one** (THE INVALID STATE is a well-formed Node whose domain a reader interprets under a meaning its producer did not intend. Readers read `first(children)` or the first positional child and treat a Named Conj there as a parameter list: `v2.std.node` `arrow_domain_binder_labels`, the resolve and symbol-index Arrow arms, infer's formal readers, and `v2.compiler.target_serialize` `type_expr_arrow_split_from_types`, which reads 'every positional but the last' as inputs.)",

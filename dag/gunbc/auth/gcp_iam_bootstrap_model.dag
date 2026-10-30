@@ -3,7 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap_model
 import std.types { String, NonEmptyStr, List, Bool }
 import std.list { distinct_by_key }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in, IamCondition, GcpTagCondition, ResourceMatchTag, GcpTagBindingWire, gcp_tag_condition_expression, gcp_service_account_full_resource_name, gcp_service_account_tag_detach_requirement }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member }
 import gunbc.auth.gcp_iam_converge {
@@ -240,6 +240,15 @@ fn iam_bootstrap_delta_bindings() -> List<IamBootstrapBinding> {
   iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
 }
 
+// ONE CELL, SPOKEN THE SAME WAY ON BOTH SIDES OF THE CEREMONY/DELTA SPLIT (DESIGN section 2: one
+// concept has one name, so one fact has one wording). The ceremony's post-run proof and the delta's
+// ROOT CEREMONY CELLS MISSING refusal both name a cell with this phrase, so an operator who meets the
+// refusal and an engineer who reads the ceremony's refusal are looking at the same string and cannot
+// reconcile two dialects by hand.
+fn ceremony_cell_phrase(b: IamBootstrapBinding) -> String {
+  join([iam_bootstrap_resource_key(resource: b.resource), " ", b.cell.role, " to ", b.cell.member], "")
+}
+
 // THE ROOT CELLS THE BOOTSTRAP CEREMONY OWES ON SECRETS (iam-observe's read of the submission MAC key),
 // beside the other ceremonies' (gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_cells): together the
 // cell-grain relation the binder join reads.
@@ -332,6 +341,7 @@ fn iam_bootstrap_deny_policies() -> List<IamBootstrapDenyPolicy> {
   [
     IamBootstrapDenyPolicy { policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules() },
     IamBootstrapDenyPolicy { policy_id: iam_bootstrap_delta_deny_policy_id, rules: iam_bootstrap_delta_deny_rules() },
+    IamBootstrapDenyPolicy { policy_id: iam_bootstrap_trust_root_wall_policy_id, rules: [iam_bootstrap_trust_root_wall_rule()] },
   ]
 }
 
@@ -340,7 +350,25 @@ fn deny_rule_matches(observed: GcpDenyRule, declared: GcpDenyRule) -> Bool {
     && same_key_set(a: observed.denied_permissions, b: declared.denied_permissions)
     && match observed.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
     && match observed.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
-    && match observed.denial_condition { Absent => true  Present { value: _ } => false }
+    && deny_condition_matches(observed: observed.denial_condition, declared: declared.denial_condition)
+}
+
+// A DENY CONDITION READS BACK ONLY AS ITSELF (side chat at db00846da5, blocker 1): absent with absent, or
+// present with present on the exact expression, title and description. A mixed pair is a mismatch both
+// ways: an unconditioned wall would also refuse the target accounts' writes, and a conditioned boundary
+// would no longer cover every account.
+fn deny_condition_matches(observed: IamCondition?, declared: IamCondition?) -> Bool {
+  match declared {
+    Absent => match observed { Absent => true  Present { value: _ } => false }
+    Present { value: want } => match observed {
+      Absent => false
+      Present { value: got } => got.expression == want.expression && got.title == want.title
+        && match want.description {
+          Absent => match got.description { Absent => true  Present { value: _ } => false }
+          Present { value: w } => match got.description { Absent => false  Present { value: g } => g == w }
+        }
+    }
+  }
 }
 
 // EXACTLY THE DECLARED RULES, no more: an existing policy that differs is refused, never adopted.
@@ -351,6 +379,27 @@ fn iam_bootstrap_deny_rules_match(observed: List<GcpDenyPolicyRule>?, declared: 
       Absent => false
       Present { value: want } => any(rows, row => match row.deny_rule { Absent => false  Present { value: got } => deny_rule_matches(observed: got, declared: want) })
     })
+  }
+}
+
+// A refused deny comparison names what was read, so a mismatch is located rather than asserted
+// (2026-10-28: the wall read back "differs" twice while a hand-built copy of the answered policy
+// matched; the decoded value is the missing fact).
+fn deny_rules_text(rules: List<GcpDenyPolicyRule>?) -> String {
+  match rules {
+    Absent => "no rules field"
+    Present { value: rows } => join(map(rows, r => match r.deny_rule {
+      Absent => "rule without denyRule"
+      Present { value: d } => join([
+        "principals=[", join(d.denied_principals, ","), "] permissions=[", join(d.denied_permissions, ","),
+        "] exceptions=", match d.exception_principals { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        "/", match d.exception_permissions { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        " condition=", match d.denial_condition {
+          Absent => "absent"
+          Present { value: c } => join(["(title=", c.title, " expression=", c.expression, " description=", match c.description { Absent => "absent"  Present { value: t } => t }, ")"], "")
+        }
+      ], "")
+    }), " | ")
   }
 }
 
@@ -411,7 +460,7 @@ data iam_bootstrap_denied_permissions: List<String> = [
 // iam_bootstrap_delta_role_withholds_its_boundary is what executes it.
 data iam_bootstrap_withheld_undeniable_permissions: List<String> = [
   "iam.denypolicies.create", "iam.denypolicies.update", "iam.denypolicies.delete",
-  "resourcemanager.tagValueBindings.create", "resourcemanager.tagValueBindings.delete",
+  "resourcemanager.tagValueBindings.create", gcp_service_account_tag_detach_requirement.tag_value_permission,
 ]
 
 // The deny API spells a permission service/resource.verb; the IAM permission spelling drops the
@@ -437,6 +486,140 @@ data iam_bootstrap_delta_deny_policy_id: NonEmptyStr = "gunbc-iam-bootstrap-boun
 
 fn iam_bootstrap_delta_principal() -> String {
   concat("principal://iam.googleapis.com/projects/-/serviceAccounts/", iam_bootstrap_service_account as String)
+}
+
+// ── THE TRUST-ROOT WALL IN THE CREDENTIAL LAYER (the replacement gunbc.rung_drop
+// gcp_iam_bootstrap_trust_root_wall_in_code stages; the drop retires on its readback trigger) ────────
+// The three own-trust accounts carry a project-parented tag, gunbai-secrets/gunbc-trust-root = root, and
+// this rule refuses iam-bootstrap every write to such an account's policy or lifecycle when the resource
+// carries that tag. BECOMING one needs no tag: the boundary deny (iam_bootstrap_delta_deny_rules) refuses
+// iam-bootstrap actAs, token and identity-token minting, implicit delegation, signing and key creation on
+// every account, unconditioned, which no conditioned rule could strengthen. The wall holds only what
+// the boundary cannot deny everywhere, because iam-bootstrap writes the target accounts' policies. Denial conditions recognize only resource tag functions (deny-overview);
+// resource.matchTag takes the namespaced key `<project id>/<short name>` (conditions attribute
+// reference); every permission below is on the deny-supported list (deny-permissions-support, read
+// 2026-10-19). The pools stay walled in code alone (gunbc.rung_drop gcp_iam_bootstrap_trust_pool_untaggable).
+// ITS OWN DENY POLICY, so the boundary policies already live keep matching their declarations (the deny
+// stage creates a policy only when it is absent and refuses one that differs).
+data iam_bootstrap_trust_root_wall_policy_id: NonEmptyStr = "gunbc-iam-bootstrap-trust-root-wall"
+
+data iam_bootstrap_trust_root_tag_key_short: NonEmptyStr = "gunbc-trust-root"
+data iam_bootstrap_trust_root_tag_value_short: NonEmptyStr = "root"
+
+fn iam_bootstrap_trust_root_tag_key_parent() -> NonEmptyStr {
+  concat("projects/", fleet_secrets_project_id as String) as NonEmptyStr
+}
+
+fn iam_bootstrap_trust_root_tag_key_namespaced() -> NonEmptyStr {
+  join([fleet_secrets_project_id as String, "/", iam_bootstrap_trust_root_tag_key_short as String], "") as NonEmptyStr
+}
+
+fn iam_bootstrap_trust_root_tag_value_namespaced() -> NonEmptyStr {
+  join([iam_bootstrap_trust_root_tag_key_namespaced() as String, "/", iam_bootstrap_trust_root_tag_value_short as String], "") as NonEmptyStr
+}
+
+// ── THE TRUST-ROOT TAG KEY AND VALUE ARE ADMITTED BY ONE IDENTITY FOLD EACH (side chat at 8cd119d93f) ─
+// The tag stage and the detach probe read the same namespaced endpoints and admit through these folds,
+// never their own derivations: a lookup answering another valid key or value establishes nothing, and
+// only an admitted tagKeys/<id> or tagValues/<id> name reaches a binding, a deny or a permission probe.
+type TrustRootTagAdmission = TrustRootTagAdmitted { name: NonEmptyStr } | TrustRootTagRefused { reason: String }
+
+fn tag_resource_name_admitted(name: String, collection: String) -> Bool {
+  let parts = split(s: name, delimiter: "/")
+  count(parts) == 2 && match parts.first() { Present { value: c } => c == collection  Absent => false }
+    && match parts.skip(n: 1).first() { Present { value: id } => id != ""  Absent => false }
+}
+
+fn trust_root_tag_admission(what: String, collection: String, name: String, parent: String, want_parent: String, short_name: String, want_short: String, namespaced_name: String?, want_namespaced: String) -> TrustRootTagAdmission {
+  let namespaced = match namespaced_name { Present { value: n } => n == want_namespaced  Absent => false }
+  if !tag_resource_name_admitted(name: name, collection: collection) { TrustRootTagRefused { reason: concat(what, " reads without an admitted resource name") } }
+  else if short_name != want_short || parent != want_parent || !namespaced { TrustRootTagRefused { reason: concat(what, " reads under another parent, short name or namespaced name") } }
+  else { TrustRootTagAdmitted { name: name as NonEmptyStr } }
+}
+
+// The create request names the parent by project id; Resource Manager v3 answers TagKey.parent as
+// projects/<project number> (2026-10-28, receipt iam-ceremony-20261028T125901Z refused the id form).
+fn iam_bootstrap_trust_root_tag_key_parent_read() -> String {
+  concat("projects/", fleet_secrets_project_number)
+}
+
+fn trust_root_tag_key_admission(name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent_read(),
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_key_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_key_namespaced() as String)
+}
+
+fn trust_root_tag_value_admission(key_name: String, name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
+  trust_root_tag_admission(what: "the trust-root tag value", collection: "tagValues", name: name, parent: parent, want_parent: key_name,
+    short_name: short_name, want_short: iam_bootstrap_trust_root_tag_value_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_value_namespaced() as String)
+}
+
+fn iam_bootstrap_trust_root_tag_condition() -> GcpTagCondition {
+  ResourceMatchTag { key_namespaced_name: iam_bootstrap_trust_root_tag_key_namespaced(), value_short_name: iam_bootstrap_trust_root_tag_value_short }
+}
+
+// THE TAGGED POPULATION IS THE OWNER RELATION'S OWN-TRUST ACCOUNTS, never a list: widening the targets
+// cannot add or drop one.
+fn iam_bootstrap_trust_root_tagged_accounts() -> List<ServiceAccountEmail> {
+  map(own_trust_federations(), f => f.service_account)
+}
+
+
+data iam_bootstrap_trust_root_walled_permissions: List<String> = [
+  "iam.googleapis.com/serviceAccounts.setIamPolicy",
+  "iam.googleapis.com/serviceAccounts.update",
+  "iam.googleapis.com/serviceAccounts.delete",
+  "iam.googleapis.com/serviceAccounts.disable",
+  "iam.googleapis.com/serviceAccounts.enable",
+  "iam.googleapis.com/serviceAccounts.undelete",
+]
+
+// ── A TAG BINDING IS ESTABLISHED BY AN EXACT ROW (side chat at db00846da5, blocker 2) ──────────────
+// A listing establishes the binding only through a row whose parent IS the requested resource and whose
+// value IS the requested value; the right value on another parent establishes nothing. A listing with
+// another page and no exact row is incomplete, never absence. An empty next-page token is no page.
+type TagBindingReading = TagBindingEstablished | TagBindingAbsent | TagBindingIncomplete
+
+// `parents` is every spelling the upstream may answer for the one resource asked about: the listing
+// is requested by the project-id form and answers rows under the project-number form (2026-10-28,
+// receipt iam-ceremony-20261028T140050Z: the binding existed, the row did not match, and the create
+// answered 409 ALREADY_EXISTS).
+fn trust_root_tag_binding_reading(parents: List<String>, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
+  let rows = match bindings { Absent => []  Present { value: bs } => bs }
+  if any(rows, b => any(parents, p => b.parent == p) && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
+  else { match next_page_token { Present { value: t } => if t != "" { TagBindingIncomplete } else { TagBindingAbsent }  Absent => TagBindingAbsent } }
+}
+
+// ── TAG-DETACH AUTHORITY IS OBSERVED ABSENT (side chat at db00846da5, blocker 3) ────────────────────
+// Detaching a tag from a service account needs resourcemanager.tagValueBindings.delete on the value AND
+// iam.serviceAccounts.deleteTagBinding on the account (docs.cloud.google.com/iam/docs/service-accounts-tags,
+// read 2026-10-19). The privilege readback mints iam-bootstrap's own token and probes BOTH axes as it:
+// the account axis on each trust root, and the tag-value axis on the trust-root value. Each axis's
+// answer must hold none of its permission, with the operator's answer holding it as the control that
+// the probe discriminates.
+// THE TWO HALVES OF THE UPSTREAM FACT, never a second literal: the account axis probes the service-account
+// half, the tag-value axis the tag-value half (extdeps.cloud.gcp.iam gcp_service_account_tag_detach_requirement).
+data iam_bootstrap_tag_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.service_account_permission]
+data iam_bootstrap_tag_value_detach_permissions: List<String> = [gcp_service_account_tag_detach_requirement.tag_value_permission]
+
+// ONE VERDICT FOR BOTH AXES: a control lacking any requested permission is a probe that cannot see
+// it, so it establishes nothing; a subject holding any of it refuses.
+type TagDetachProbeVerdict = TagDetachAbsent | TagDetachUndiscriminating | TagDetachHeld
+
+fn tag_detach_probe_verdict(requested: List<String>, control: List<String>, subject: List<String>) -> TagDetachProbeVerdict {
+  if !all(requested, p => any(control, c => c == p)) { TagDetachUndiscriminating }
+  else if any(requested, p => any(subject, s => s == p)) { TagDetachHeld }
+  else { TagDetachAbsent }
+}
+
+// The accounts the temporary probe authority may mint a token for: the two the readback already reads
+// as, and iam-bootstrap, whose own effective authority is what the detach probe observes.
+data iam_bootstrap_probe_accounts: List<ServiceAccountEmail> = [iam_converge_service_account, iam_observe_service_account, iam_bootstrap_service_account]
+
+fn iam_bootstrap_trust_root_wall_rule() -> GcpDenyPolicyRule {
+  GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule { denied_principals: [iam_bootstrap_delta_principal()],
+    denied_permissions: iam_bootstrap_trust_root_walled_permissions, exception_principals: none, exception_permissions: none,
+    denial_condition: Present { value: IamCondition { title: "gunbc trust-root wall", expression: gcp_tag_condition_expression(c: iam_bootstrap_trust_root_tag_condition()),
+      description: Present { value: "iam-bootstrap may not rewrite, alter or remove a gunbc trust-root account" } } } } } }
 }
 
 fn iam_bootstrap_delta_deny_rules() -> List<GcpDenyPolicyRule> {

@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_serializer_drops_admitted_children_from_a_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data a_serializer_drops_admitted_children_from_a_malformed_body: RecurringFailureMode = RecurringFailureMode {
   identity: "a_serializer_drops_admitted_children_from_a_malformed_body" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a construction that accepts a body of unestablished shape reaches a serializer that walks only some of that body's positional children, so admitted siblings vanish from the emitted program with no refusal. HARM: silent wrongness (DESIGN section 5) -- the emit is plausible partial output, not a located diagnostic, and a later consumer runs a different program than the one authored.",
@@ -15,6 +17,8 @@ data a_serializer_drops_admitted_children_from_a_malformed_body: RecurringFailur
     "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F37 (bash subshell drops the right operand), ledger v3 numbering, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb (a source review that did not rerun srv1). bash_build_subshell accepts any Node body. The shared bash_fold_flatten_stmt_list (v2.workflow.bash_command_fold_serialize) reads positional children 0 and 1 only, so an or_else node passed as the body keeps left and drops right, with no refusal arm (v2.extdeps.languages.bash_build). Two insufficient boundaries: the body carrier does not establish grammar membership, and the serializer turns an unestablished shape into plausible partial output. The incident's caller fix (bash_build_subshell_from_stmts) leaves the shared reader able to drop behavior through other consumers. Durable repair: establish shape at construction, preserve every admitted child, refuse malformed input. No new Bash representation. Roadmap leaf cc-structural-carriers.",
 
     "DISTINGUISHING FACTS: this is not a missing flatten of a well-formed cons list -- a two-child cons is the shape the walker implements. It is not a target-language defect: the same Node is admitted at construction. The class is the pair: an untyped body formal plus a walker that silently truncates. RUNG FOUND AT: outside the ladder -- silent drop. CEILING: structurally guaranteed -- malformed bodies are authorable and the admitted-child set is decidable from the Node tree. NEXT TRIGGER: flatten (or serialize) refuses a body whose children are not the modeled statement-list encoding, and a discriminating red keeps an or_else (or other extra child) from disappearing into a green emit.",
+
+    "OCCURRENCE, 2026-10-20, srv1 lab deploy: the object-source Decide step (gunbc.live_deploy.emit apply_object_source_pwd_config_classify) passed a bare if node as the else body where the grammar's else body is a statement list. Main's flatten read children 0 and 1 of that node (the condition and the then body) and dropped the else branch, so the emitted Decide step was plausible shell that no longer contained the unreadable-config refusal; the lab strict fold refused it and the constant marker hid the reason. Repair at the serializer: bash_fold_flatten_stmt_list refuses an over-arity list with bash_fold_serialize_stmt_list_shape_refused and the marker names the reasons (gunbc.shell_command_text shell_command_text_refused_with_cause); the intent wraps its else body in bash_build_stmt_list_from_nodes. Claims: test.claim.live_deploy.apply_no_refused_marker_witness. The bash apply emitter that built this step, apply_object_source_pwd_config_classify included, was later deleted with the typed apply cutover (gunbc#14660), and the witness's three emission claims with it; its two serializer claims remain the regression controls.",
   ],
 
   evidence: [

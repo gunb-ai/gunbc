@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // A LIVE RETRIEVAL CANNOT PRODUCE ADMISSIBLE EVIDENCE, AND THE REASON IS THE TRANSPORT.
 // http.Client.GetBounded reports body and success only: the HTTP status is never observed, and no

@@ -16,7 +16,6 @@ import v2.extdeps.languages.dag_surface_item_standing {
 import v2.std.node {
   production_edge_label,
   Disj,
-  Occupancy,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
@@ -67,6 +66,7 @@ import v2.std.node {
   StructuralLabel,
   edge_is_core,
   is_positional,
+  NotADeclaration
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -102,7 +102,7 @@ fn edge_is_type_body(e: Edge) -> Bool {
 
 // THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj }
+  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj, declaration: NotADeclaration }
 }
 
 // A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
@@ -116,8 +116,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member, declaration: NotADeclaration }
     ]
   )
 }
@@ -155,8 +155,8 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased, declaration: NotADeclaration }
     ]
   )
 }
@@ -169,7 +169,7 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders }]
+    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration }]
   )
 }
 
@@ -183,7 +183,6 @@ fn type_decl_wrapper_params_once(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -330,9 +329,36 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
     }
 }
 
+// A WHERE-PREDICATE SET: the captured-node projection a where-refinement declaration carries for its
+// clause (v2.compiler.body_lowering_fold body_lower_where_refined_type_edges). v2.compiler.infer declines
+// its subtree and reports each predicate call as unjudged (infer_where_predicate_set_edge asks THIS predicate),
+// and node_inferred_subtree_nodes excludes it through the same predicate, so no stage demands facts infer was
+// never asked to produce (v2.compiler.program_partition partition_facts_miss). PARKED with the clause itself:
+// where-refinements are being replaced by checked constructors returning Optional.
+fn where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
+  match edge.label {
+    Positional => false
+    StructuralLabel { label: _ } => false
+    Authored { name: label } =>
+      if label == ^grammar_production_captured_node_projection {
+        match find_named_child(root: parent, name: ^grammar_production_identity_node_projection) {
+          Accepted { value: identity, diagnostics: _ } =>
+            match identity.kind {
+              TypeNode { connective: Atom { identity: emitted } } => emitted == ^dag_surface_where_refinement_clause
+              TypeNode { connective: _ } => false
+              ComputationNode { behavior: _ } => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
+      } else {
+        false
+      }
+  }
+}
+
 // THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
 // order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
-// (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
+// (declaration_binder_edge, binder NAMES) under a where-predicate set (where_predicate_set_edge), under a match arm's pattern edge
 // (v2.std.node match_arm_pattern_edge, a binding form) and a Bind's key (v2.std.node bind_key_edge, a binder name).
 // v2.compiler.infer declines these subtrees and carries each as
 // its parent's own evidence. Every stage that asks infer for a node's facts --
@@ -348,7 +374,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || bind_key_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
+    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || bind_key_edge(parent: root, edge: e) || where_predicate_set_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
@@ -632,7 +658,7 @@ fn type_binder_target_of(binders: Node, name: Symbol) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn cast_target_edge(target_type: Node) -> Edge {
-  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type }
+  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type, declaration: NotADeclaration }
 }
 
 fn edge_is_cast_target(e: Edge) -> Bool {
@@ -665,7 +691,7 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn type_annotation_edge(annotation: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation }
+  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation, declaration: NotADeclaration }
 }
 
 // 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
@@ -772,7 +798,6 @@ fn type_binder_node_conforms(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Conj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Disj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
-    TypeNode { connective: Occupancy } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Instantiation } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Value } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Branch } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)

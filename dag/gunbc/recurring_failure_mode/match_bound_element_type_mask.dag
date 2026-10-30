@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.match_bound_element_type_mask
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data match_bound_element_type_mask: RecurringFailureMode = RecurringFailureMode {
   identity: "match_bound_element_type_mask" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "**A FreeMonoid<DeclarationRef> or FreeMonoid<ApplicationRow> bound by a match-arm pattern mask does not carry its element type into a lambda passed to a container method** — the element type arrives as the Empty variant of FreeMonoid, so `origin.decl_name` on `observed` (type FreeMonoid<DeclarationRef>) or `row.label` on `rows` (type FreeMonoid<ApplicationRow>) fails with `no field X on type Empty`. The same usage on a `let` binding from a field access type-checks correctly.",
     "SPECIMEN 1 (gunbc#10600) — `EmissionOriginsIncomplete { observed, missing } => observed |> map(origin => origin.decl_name)` reports `no field 'decl_name' on type 'Empty'` at `test.manual.emission_provenance_specimen_red` `emission_combined_read_preserves_content_order_and_origin_multiplicity`. The `observed` variable is `FreeMonoid<DeclarationRef>` by the variant declaration. The declaration is an ordinary `fn`, not `test`-marked, so floor_discovery_fold_source does not enroll it or refuse TestMarkedDecl. It is retained as the discriminating measurement for when #10625's compiler repair lands; once it compiles, it can be moved into dag/test/claim as an executing required-floor witness.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head: RecurringFailureMode = RecurringFailureMode {
   identity: "an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "E0107 on gunbc#14084: the seed-emitter renders an untyped `empty_map()` in a fold `init` position with the type alias expanded to its bare head: `fold(names, init: empty_map(), f: fn(acc, name) { map_insert(acc, name, qualified_name_snoc(qn: p, segment: name)) })` returning Map<Symbol, QualifiedName> emitted `v1_rt::rc_empty_map::<Symbol, Rc<FreeMonoid>>()`, dropping FreeMonoid's argument (QualifiedName = FreeMonoid<Symbol>); rustc refuses `E0107 missing generics for type alias std_algebra::FreeMonoid` at stage0/src/v2_compiler_resolve.rs:3337 (CI receipts: head d948d9a and e64a435). A typed `let seed: Map<Symbol, QualifiedName> = empty_map()` emitted `rc_empty_map::<_, _>()` and compiled."

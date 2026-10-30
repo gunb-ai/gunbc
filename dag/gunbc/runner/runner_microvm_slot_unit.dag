@@ -17,7 +17,7 @@ import extdeps.systemd.unit_file {
   slice_memory_max, slice_memory_high, slice_memory_swap_max,
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
-  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax,
+  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax, ServiceUMask,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_allocation { microvm_controller_slice_memory_max }
@@ -72,7 +72,7 @@ data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthori
 // path-unrestricted /usr/bin/install on this host (gunbc.rung_drop
 // the_job_user_holds_a_path_unrestricted_root_grant), so the sentence "root must not exec a binary
 // the job user can write" is the OBLIGATION this ownership serves, not a property srv1 establishes
-// (review 70080). gunbc.live_deploy.emit release_locus_tree_copy_steps carries the full statement.
+// (review 70080).
 data microvm_slot_unit_template_name: NonEmptyStr = "gunbc-microvm-slot@.service" as NonEmptyStr
 
 fn microvm_slot_unit_path() -> NonEmptyStr {
@@ -335,6 +335,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceTasksMax { count: _ } => false
         ServiceResourceControl { directive: _ } => false
         TimeoutStopSec { duration: _ } => false
+        ServiceUMask { mask: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false

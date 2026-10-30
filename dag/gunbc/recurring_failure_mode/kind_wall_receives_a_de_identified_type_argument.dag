@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.kind_wall_receives_a_de_identified_type_argument
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE CHECK CANNOT BE FIXED WHERE IT SITS. v1's declared-kind wall is handed the argument of a kinded
@@ -13,6 +13,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // identity the judgment needs.
 data kind_wall_receives_a_de_identified_type_argument: RecurringFailureMode = RecurringFailureMode {
   identity: "kind_wall_receives_a_de_identified_type_argument" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "RUNG FOUND AT: refused at compile time, but not by a judgment -- by the absence of one. v1 answers every forwarded parameter with type_arg_kind_inhabitance's refusal because the node it is handed carries no identity, so the rung is 'compile-time refusal with an ungrounded reason', which is mitigation and must not be reported as the guarantee. CEILING: attainable and it is not a predicate change -- an identified argument (the binder mark the parser already mints for exactly this case, or a carrier that keeps it) makes a declaration-identity judgment implementable at the wall, which is where v2 now sits. Not structurally impossible, so the v1 half of this guarantee stays unexecuted. NEXT-RUNG TRIGGER, at capability grain: the wall receives a forwarded type argument whose declaring binder is identifiable from the node it is given, and the three decisions (matching kind admitted, unkinded refused, different-kind refused) are then authored as claim rows on the real assembly route and run -- each at its own named step. Until that trigger fires, no v1 PR or census may claim forwarded-parameter kind inhabitance is judged.",

@@ -1,7 +1,8 @@
 module gunbc.rung_drop.gcp_iam_bootstrap_trust_pool_untaggable
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement, Enumerated }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
 // THE TWO TRUST POOLS ARE A STANDING RESIDUAL (DESIGN 4b(3)). Their principal sets reach the trust-root
@@ -16,12 +17,11 @@ data gcp_iam_bootstrap_trust_pool_untaggable: RungDrop = RungDrop {
   identity: "gcp_iam_bootstrap_trust_pool_untaggable" as NonEmptyStr,
   subject: "iam-bootstrap writing the policy of a trust pool (the converge job's or its own)",
   declared: "2026-10-18",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: DeletedWithoutReplacement,
-    population: ["pool github-gcp-iam-converge", "pool github-gcp-iam-bootstrap"],
+    population: Enumerated { members: FreeSemigroup { head: "pool github-gcp-iam-converge", tail: ["pool github-gcp-iam-bootstrap"] } },
     restoration_trigger: "workload identity pools accept resource tags (a cited GCP tag-support row) so the trust-root deny can name them, or iam-bootstrap's role no longer holds workloadIdentityPools.setIamPolicy; observed by a denied probe on each pool"
-  }
+  } }
 }

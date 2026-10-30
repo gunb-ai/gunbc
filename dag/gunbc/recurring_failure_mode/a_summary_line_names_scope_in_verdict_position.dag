@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_summary_line_names_scope_in_verdict_position
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_summary_line_names_scope_in_verdict_position: RecurringFailureMode = RecurringFailureMode {
   identity: "a_summary_line_names_scope_in_verdict_position" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a report's SUMMARY line enumerates the subjects a phase COVERED while standing in the position a reader takes as the subjects that FAILED (INVALID STATE: a terminal line of the form 'FAIL populations=A,B' emitted from the phase's scope list rather than from its outcome set, so a population that adjudicated clean appears inside a failure enumeration; the per-subject lines above carry the real verdicts and the summary cannot be read correctly without them, which means the line carries no information of its own while looking like the line that carries all of it)",

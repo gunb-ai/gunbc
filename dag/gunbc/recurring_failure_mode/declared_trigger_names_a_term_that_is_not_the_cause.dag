@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.declared_trigger_names_a_term_that_is_not_the_cause
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data declared_trigger_names_a_term_that_is_not_the_cause: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_trigger_names_a_term_that_is_not_the_cause" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a declared drop's trigger names a quantity that is not what the subject actually costs, so satisfying it is unreachable by honest work and reachable by the wrong move** (INVALID STATE: a row obliged by section 4b(2) to name its restoration trigger names one, and the trigger is well formed -- it states a capability, it says what that capability must be SUFFICIENT FOR, its citations resolve, and it has never been satisfied.",

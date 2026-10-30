@@ -64,7 +64,7 @@ import std.types { Bool, Int, List, String }
 import std.algebra { fold_list, list_append, list_map, list_find_first }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -90,7 +90,7 @@ import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
   SupersedeRunningForEvent, witness_floor_toolchain_step, witness_floor_build_step,
-  witness_toolchain_homes_isolated_guard_step, malloc_arena_max_env_key, malloc_arena_max_value,
+  witness_toolchain_homes_isolated_guard_step, witness_toolchain_homes_isolated_guard_step_under, malloc_arena_max_env_key, malloc_arena_max_value,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
@@ -250,7 +250,7 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // repository, so a merge-blocking fact there is one the model cannot see or regenerate.
 
 // FORK CODE DOES NOT RUN ON THE FLEET. The clause is heal's authorship (gunbc.heal_workflow
-// heal_same_repository_clause), and the checkout below is an attacker-authored head sha on a runner
+// heal_same_repository_clause), and the checkout below is an attacker-authored tree (the merge ref carries the head's content) on a runner
 // that persists between jobs. The guard is scoped to pull_request events: merge_group and
 // workflow_dispatch carry no pull_request context, so an unscoped clause would read null and SKIP the
 // lane -- and a skipped required lane never reports, which stalls the merge queue for good. The
@@ -260,9 +260,16 @@ fn compiler_gate_fleet_job_condition() -> String {
   join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
 }
 
-// A pull-request run judges the pull request HEAD, not GitHub's merge result; the composed revision
-// is the merge_group run's subject. On push, merge_group and dispatch the expression is empty and
-// checkout falls back to the triggering sha.
+// A pull-request run judges GitHub's MERGE REF (github.sha is refs/pull/N/merge on pull_request): the
+// composed tree of the pull request and the base as of the event. It used to judge the PR head, on the
+// premise that the composed revision was the merge_group run's subject; main has no merge queue, so
+// nothing ever built the composed tree and two individually green pull requests broke main (#14539,
+// #14675). The merge ref is also the revision that supplies this workflow file, so the instruction and
+// the tree it runs are paired by construction (recurring_failure_mode
+// instruction_and_subject_resolved_from_different_revisions). THE RESIDUE: the merge ref is computed
+// when the event fires, so a commit landing on the base afterwards is not in it and does not retrigger
+// the run. This narrows the window from never-composed to composed-at-event-time; it does not close it
+// (rung: mitigatable). On push, merge_group and dispatch github.sha is already the triggering commit.
 fn compiler_gate_fleet_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout the commit this lane judges" },
@@ -512,6 +519,31 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   )
 }
 
+// THE FLOOR A QUALIFICATION RUNS IS THIS JOB'S OWN WORK, NOT A SECOND SPELLING OF IT: the prelude and the subject
+// steps, which build the seed and run one `gunbc test` per emitted subject under the memory envelope. The checkout
+// is left out because a qualification job checks out its pinned revision with its own guard
+// (gunbc.runner.runner_qualification_floor_job), and the tail is left out because every tail step is conditioned
+// (parse-verdict restore and publish on main, the notice) and a qualification floor admits no step that can run past
+// a failure (gunbc.runner.runner_qualification_dispatch qualification_floor_admission).
+// THE CONTRACT-STAMP GUARD AND ITS EVIDENCE ARE LEFT OUT TOO, and not by carrying the stamp into another workflow:
+// gunbc.witness.compiler_gate_contract_stamp admits exactly three readers of the stamp, and the split it refuses (an
+// instruction and a subject from different revisions) cannot occur in a qualification job, whose workflow is read
+// from qualification/<attempt> at the pinned revision and whose guard checks out exactly that revision or refuses.
+// THE ISOLATED-HOMES WALL IS KEPT, UNCONDITIONED: the floor admits no step that can run past a failure, and in a job
+// where any failed step already fails the job the wall's !cancelled() buys nothing (gunbc.witness.witness_floor_workflow
+// witness_toolchain_homes_isolated_guard_step_under).
+fn compiler_gate_floor_steps_after_checkout() -> List<Step> {
+  list_map(
+    xs: filter(
+      list_map(xs: concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
+      s => s != compiler_gate_fleet_checkout_step()
+        && s != compiler_gate_contract_stamp_guard_step()
+        && s != compiler_gate_contract_stamp_evidence_step(),
+    ),
+    f: fn(s) { if s == witness_toolchain_homes_isolated_guard_step() { witness_toolchain_homes_isolated_guard_step_under(condition: none) } else { s } },
+  )
+}
+
 // Every declared ordinal carries a gated identity and receipts restore pair: the first ordinal whose
 // identity hit disables the later ones, and its receipts restore alone runs. The record step then
 // leaves the winning sha for the verb.
@@ -598,6 +630,13 @@ fn compiler_gate_emit_build_scripts_are_renderable() -> Bool {
       wrap_command_is_renderable(command: shell_command_render(command: emitted_subject_build_command(row: row))))
 }
 
+// THE REQUIRED JOB'S ENVIRONMENT, ONE DECLARATION: the allocator arena cap changes the memory a subject step uses,
+// so a qualification floor that measures this job's work must run under it too
+// (gunbc.runner.runner_qualification_floor_job).
+fn compiler_gate_required_job_env() -> List<YamlKeyValue> {
+  [kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))]
+}
+
 fn compiler_gate_required_job() -> Job {
   Job {
     id: compiler_gate_required_job_id,
@@ -606,11 +645,7 @@ fn compiler_gate_required_job() -> Job {
     environment: none,
     steps: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }),
     needs: [],
-    env: Present {
-      value: [
-        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
-      ]
-    },
+    env: Present { value: compiler_gate_required_job_env() },
     outputs: none,
     if_condition: Present { value: compiler_gate_fleet_job_condition() },
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
@@ -798,4 +833,4 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   }
 }
 
-data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
+data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["sha"] }

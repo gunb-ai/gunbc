@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.parse_ingest_grammar_relation_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
   subject: "parse and ingest disagree over the same grammar round trip",

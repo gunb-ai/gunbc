@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data base_readability_gate_refuses_a_grammar_change: RecurringFailureMode = RecurringFailureMode {
   identity: "base_readability_gate_refuses_a_grammar_change" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a gate that reads the base revision with the HEAD compiler refuses every change to the GRAMMAR ITSELF.** INVALID STATE: an adjudicator compares base-side and head-side declarations, parses both with one compiler, and has no representable arm for `the base is well-formed under its OWN grammar and unreadable only under the head's`. Removing a keyword makes every file in the diff unreadable at base at once, so the gate refuses in proportion to how thoroughly the change succeeded.",

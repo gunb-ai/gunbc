@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.match_arms_after_the_second_are_dropped_at_v
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data match_arms_after_the_second_are_dropped_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "match_arms_after_the_second_are_dropped_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a match with three or more arms lowers to its first two arms, and normalize ACCEPTS the module** (INVALID STATE: the lowered match node carries fewer arms than the source wrote, with no diagnostic and nothing counted). The arms after the second never reach resolve, infer or exhaustiveness, so a name that exists nowhere in them is accepted, and the program the later stages reason about answers differently from the one the author wrote for every scrutinee the dropped arms would have matched.",

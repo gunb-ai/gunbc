@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFailureMode {
   identity: "executed_conjunct_discriminates_nothing" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a conjunct that executes, is reached, is gated on, and still discriminates nothing** (a predicate wired into a live check runs on every call, sits inside a gate that really blocks, and yet deletes cleanly: remove it and every witness stays green, because no fixture ever constructs the population that would make it false.",

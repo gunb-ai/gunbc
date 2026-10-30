@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.primitive_operation_carries_two_cost_authori
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data primitive_operation_carries_two_cost_authorities: RecurringFailureMode = RecurringFailureMode {
   identity: "primitive_operation_carries_two_cost_authorities" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**One primitive operation carries two cost claims that disagree.** std.primitives concat_contract declares concat's work as n + m on an ephemeral carrier and log(n + m) on the persistent carrier (CarrierSensitive). The std.algebra collection_concat_shape template row, the same operation's signature, declares cost_shape ShapeLinearScan. A reader who asks the row gets linear; a reader who asks the contract gets logarithmic on the carrier the corpus actually runs. Found by stern-swift-290 while binding v2's bare concat to that row (XL-2 step 1). Neither home names the other. That is a DESIGN section 3 fork of a cost fact, and section 6's bare-minimum-cost rule is unenforceable while the answer depends on which home is read.",

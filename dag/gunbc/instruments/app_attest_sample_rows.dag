@@ -1,6 +1,7 @@
 module gunbc.instruments.app_attest_sample_rows
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.primitives { tag_of, same_arm }
 import extdeps.apple.app_attest {
   AttestKeyId, AppIdPrefix, AppAttestDevelopment, app_attest_app_id,
   AttestationExpectation, AttestationDecoded, AssertionExpectation, base64_of,
@@ -13,8 +14,10 @@ import extdeps.apple.app_attest {
   AssertionValidationCategoryRefused, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
   AssertionVerification, AssertionAuthentic, AssertionRefused,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
+  operator_device_attestation_octets, operator_device_key_id_b64, operator_device_client_data,
+  operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
+}
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
@@ -31,16 +34,13 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // 2021 sample, a success for a capture carrying the extension steps. Every case identity is
 // prefixed with the row's name, so the roster join names which object a failure is about.
 //
-// PLANNED ROW, NOT YET AUTHORABLE: "operator_device_ios_26_6_2" -- an attestation and assertions
-// produced by apps/approve-ios on the operator's iPhone (iOS 26.6.2) once gunbc#12000 lands,
-// recorded as an OBSERVED ARTIFACT in its own extdeps.apple module with its provenance (device,
-// OS version, app bundle, capture date), never transcribed from a message. Its expected verdicts are
-// AttestationVerified and AssertionAuthentic; it is the whole-fold positive control the 14.4 row
-// cannot be.
+// THE OPERATOR'S PHONE IS ROW TWO: a real iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2)
+// carries no extensions map, and so does Apple's 2021 sample, so BOTH rows owe the success arm. A row with
+// no assertion capture owes none: `assertion` is Absent and its assertion cases are not rostered.
 type AppAttestSample {
   name: String
   attestation: List<Int>
-  assertion: List<Int>
+  assertion: List<Int>?
   expectation: AttestationExpectation
   owed_attestation: OwedAttestationVerdict
   owed_assertion: OwedAssertionVerdict
@@ -63,11 +63,41 @@ fn ios_14_4_sample() -> AppAttestSample {
   AppAttestSample {
     name: "ios_14_4",
     attestation: sample_attestation_octets,
-    assertion: sample_assertion_octets,
+    assertion: assertion_present(octets: sample_assertion_octets),
     expectation: sample_expectation(),
-    owed_attestation: OwesAttestationRefusedWith { refusal: AttestationValidationCategoryAbsent },
-    owed_assertion: OwesAssertionRefusedWith { refusal: AssertionValidationCategoryAbsent },
+    owed_attestation: OwesAttestationVerified,
+    owed_assertion: OwesAssertionAuthentic,
     published_assertion_counter: sample_assertion_counter,
+  }
+}
+
+fn assertion_present(octets: List<Int>) -> List<Int>? {
+  Present { value: octets }
+}
+
+fn no_assertion() -> List<Int>? {
+  Absent
+}
+
+// The operator's iPhone (iOS 26.6.2): one attestation, no assertion capture. Its expectation is what the
+// broker sent the verifier for it, so the positive control is the request that was refused in production.
+fn operator_device_ios_26_6_2_sample() -> AppAttestSample {
+  AppAttestSample {
+    name: "operator_device_ios_26_6_2",
+    attestation: operator_device_attestation_octets,
+    assertion: no_assertion(),
+    expectation: AttestationExpectation {
+      key_id: operator_device_key_id_b64 as AttestKeyId,
+      client_data: operator_device_client_data,
+      app_id: app_attest_app_id(prefix: operator_device_team_identifier as AppIdPrefix, bundle_id: operator_device_bundle_identifier),
+      environment: AppAttestDevelopment,
+      observed_at: operator_device_observed_at as String,
+      admitted_validation_categories: [2, 3, 4],
+      expected_bundle_version: "1" as NonEmptyStr,
+    },
+    owed_attestation: OwesAttestationVerified,
+    owed_assertion: OwesAssertionAuthentic,
+    published_assertion_counter: 0,
   }
 }
 
@@ -130,31 +160,10 @@ fn no_attestation_refusal() -> AttestationRefusal? {
   Absent
 }
 
-// SAME CONSTRUCTOR, compared by arm and never by payload text: the owed refusal names which arm of
-// AttestationRefusal the fold must answer. Exhaustive over the owed arm, so a new refusal
-// constructor must be placed here before any row can owe it.
-fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
-  match owed {
-    AttestationFormatUnexpected { declared: _ } => match got { AttestationFormatUnexpected { declared: _ } => true  _ => false }
-    AttestationChainUntrusted { detail: _ } => match got { AttestationChainUntrusted { detail: _ } => true  _ => false }
-    AttestationNonceMismatch => match got { AttestationNonceMismatch => true  _ => false }
-    AttestationKeyIdMismatch { declared: _ } => match got { AttestationKeyIdMismatch { declared: _ } => true  _ => false }
-    AttestationAppIdMismatch { expected_app_id: _ } => match got { AttestationAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AttestationCounterNonZero { counter: _ } => match got { AttestationCounterNonZero { counter: _ } => true  _ => false }
-    AttestationEnvironmentUnexpected { expected: _ } => match got { AttestationEnvironmentUnexpected { expected: _ } => true  _ => false }
-    AttestationCredentialIdMismatch { declared: _ } => match got { AttestationCredentialIdMismatch { declared: _ } => true  _ => false }
-    AttestationValidationCategoryRefused { category: _ } => match got { AttestationValidationCategoryRefused { category: _ } => true  _ => false }
-    AttestationValidationCategoryAbsent => match got { AttestationValidationCategoryAbsent => true  _ => false }
-    AttestationBundleVersionAbsent => match got { AttestationBundleVersionAbsent => true  _ => false }
-    AttestationBundleVersionUnexpected { declared: _ } => match got { AttestationBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AttestationUndecodable { cause: _ } => match got { AttestationUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
 fn refused_with(owed: AttestationRefusal, got: AttestationRefusal?) -> Bool {
   match got {
     Absent => false
-    Present { value: g } => same_attestation_arm(owed: owed, got: g)
+    Present { value: g } => same_arm(tag: tag_of(v: owed), v: g)
   }
 }
 
@@ -165,22 +174,10 @@ fn owed_attestation_holds(owed: OwedAttestationVerdict, v: AttestationVerificati
   }
 }
 
-fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
-  match owed {
-    AssertionSignatureInvalid => match got { AssertionSignatureInvalid => true  _ => false }
-    AssertionAppIdMismatch { expected_app_id: _ } => match got { AssertionAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AssertionValidationCategoryRefused { category: _ } => match got { AssertionValidationCategoryRefused { category: _ } => true  _ => false }
-    AssertionValidationCategoryAbsent => match got { AssertionValidationCategoryAbsent => true  _ => false }
-    AssertionBundleVersionAbsent => match got { AssertionBundleVersionAbsent => true  _ => false }
-    AssertionBundleVersionUnexpected { declared: _ } => match got { AssertionBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AssertionUndecodable { cause: _ } => match got { AssertionUndecodable { cause: _ } => true  _ => false }
-  }
-}
-
 fn assertion_refused_with(owed: AssertionRefusal, v: AssertionVerification) -> Bool {
   match v {
     AssertionAuthentic { authentic: _ } => false
-    AssertionRefused { cause: c } => same_assertion_arm(owed: owed, got: c)
+    AssertionRefused { cause: c } => same_arm(tag: tag_of(v: owed), v: c)
   }
 }
 
@@ -190,12 +187,3 @@ fn owed_assertion_holds(owed: OwedAssertionVerdict, v: AssertionVerification) ->
     OwesAssertionRefusedWith { refusal: r } => assertion_refused_with(owed: r, v: v)
   }
 }
-
-data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality over AttestationRefusal / AssertionRefusal: the outer match on the owed refusal is exhaustive (a new refusal constructor must be placed there), and each inner off-constructor wildcard answers false; enumerating it is the n-squared cross product (169 arms for AttestationRefusal) cloning one false arm, and comparing the name projections instead is wrong because those names carry payload text"
-
-data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-]

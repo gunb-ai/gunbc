@@ -156,13 +156,6 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
     lookup_expression_count: 2,
   },
   {
-    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_anonymous_record_lit_heads"),
-    keys_on: "emit_inferred_type_leaf_name of the literal, as a membership test",
-    ask: NodeHeldAtAsk { holder_expression: "n -- the record-literal expression node the walk is standing on" },
-    use: SpellingEscapesToCaller { escapes_as: "the head name, admitted as an attested use-line candidate", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_use_lines") },
-    lookup_expression_count: 1,
-  },
-  {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "collect_items_field_import_surface_names"),
     keys_on: "a surface type name, then variant_summary_key when the first lookup misses",
     ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names"), map_field: "field_import_surface_names, produced by a node walk that returns List<String>" },
@@ -182,13 +175,6 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
     ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set, projected into variant_to_enum by derive_variant_to_enum" },
     use: ReKeyedIntoSameMap { second_key_source: "map_values(summary.field_type_map)", second_lookup_decides: "which payload field types are structs" },
     lookup_expression_count: 2,
-  },
-  {
-    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
-    keys_on: "the bare enum_name",
-    ask: SpellingOnlyFromMapValue { severed_at: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), map_field: "variant_name_set" },
-    use: ReKeyedIntoSameMap { second_key_source: "each variant spelling from variant_name_set, looked up in variant_to_enum", second_lookup_decides: "whether the module spells a variant that binds unambiguously back to this enum" },
-    lookup_expression_count: 1,
   },
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "module_data_field_struct_import_names"),
@@ -819,12 +805,6 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
     trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "the enum half of the composite key is a spelling, so a homonym enum answers for the one the caller meant" },
     refusal: NotAGuard { what_it_does_instead: "answers false on a miss, which is indistinguishable from answering false on a wrong-provider hit" },
     return_type_can_express_the_answer: false,
-  },
-  {
-    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_variant_induced_parent_spelled"),
-    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "build_type_summary"), what_is_lost: "the variant_name_set it reads is keyed on bare variant spellings, and it then re-consults variant_to_enum, which inherits the same merge" },
-    refusal: HoldsHere { how: "it requires the variant to bind back to this exact enum, so an ambiguous variant is refused -- when the ambiguity survives to be seen" },
-    return_type_can_express_the_answer: true,
   },
   {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_has_fn_fields"),

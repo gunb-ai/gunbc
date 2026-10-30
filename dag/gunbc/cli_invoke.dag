@@ -3,6 +3,7 @@ module gunbc.cli_invoke
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { String }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // NARROWED 2026-08-26 with the plan/walk residue cut. What stood here named four
 // claim_executor shell builders; three of them (claim_executor_run_plan_shell and the
@@ -23,10 +24,10 @@ fn source_root_transport_argv(roots: List<String>) -> List<String> {
   fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
 
-data release_bin_dir_rel: String = "target/release"
-
+// The release bin dir is cargo's DEFAULT output tree, named by its one home in
+// extdeps.rust.cargo -- this module adds no name for it, only the bin name cargo does not own.
 fn release_bin_rel_path(bin_name: String) -> String {
-  concat(concat(release_bin_dir_rel, "/"), bin_name)
+  concat(concat(cargo_default_release_dir_rel, "/"), bin_name)
 }
 
 fn release_bin_shell_path(bin_name: String) -> String {
@@ -128,6 +129,13 @@ fn admit_named_argument(name: String, value: String) -> NamedArgumentAdmission {
     NamedArgumentAdmitted { argument: NamedArgument { name: name, value: value } }
   }
 }
+
+// A NAME/VALUE PAIR ASKING TO BECOME A NAMED ARGUMENT. The pre-admission shape of the pair above:
+// a caller that has words but not yet a sealed argument asks with this, and the population
+// admission beside the installed-run builder is the only route from a list of requests to admitted
+// arguments. It carries no wall of its own because a request is not an argument -- nothing consumes
+// a request except admission, and a bad one produces no command rather than a malformed option.
+type NamedArgumentRequest { name: String, value: String }
 
 fn named_argument_words(argument: NamedArgument) -> List<InvocationWord> {
   [

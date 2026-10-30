@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.reachability_read_as_occupancy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data reachability_read_as_occupancy: RecurringFailureMode = RecurringFailureMode {
   identity: "reachability_read_as_occupancy" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**reachability read as occupancy** (a guard's arm, disposition or check is deleted because nothing currently lands in it.",
@@ -21,7 +23,7 @@ data reachability_read_as_occupancy: RecurringFailureMode = RecurringFailureMode
 
     "Reachability is judged against what a FIXTURE MAY AUTHOR, never what the accepted corpus contains — a regression probe is an invalid program by definition, so a state no `Accepted` program holds is usually still authorable as source, and scoping reachability to corpus-expressible is this same conflation one layer out.",
 
-    "And an arm is reachable relative to ONE operation: `gunbc.scm`'s path-exclusion disposition is unreachable from the floor's own fold, which drops excluded subjects before inventory, yet reachable from a join over admission ROWS, which exclusion never removes — so *the arm's reachability is a property of the denominator of the operation that returns it, not of what some lower mechanism observes internally*.",
+    "And an arm is reachable relative to ONE operation: gunbc.scm's path-exclusion disposition is unreachable from the floor's own fold, which drops excluded subjects before inventory, yet reachable from a join over admission ROWS, which exclusion never removes — so *the arm's reachability is a property of the denominator of the operation that returns it, not of what some lower mechanism observes internally*.",
 
     "Both halves were found the same day by separate lanes, from opposite directions.",
 

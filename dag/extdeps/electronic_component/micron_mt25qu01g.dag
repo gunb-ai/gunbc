@@ -1,0 +1,58 @@
+module extdeps.electronic_component.micron_mt25qu01g
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.micron { micron }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { ElectronicComponentRow, SerialFlashSpec, SerialFlashSpecification, MillivoltRange }
+
+// Micron's MT25QU01GBBB datasheet, "1Gb, 1.8V Multiple I/O Serial Flash Memory" (mt25q_qlkt_u_01g_bbb_0,
+// read 2026-10-21 from the operator's copy): a stacked device of two 512Mb die; SPI-compatible with
+// extended, dual and quad I/O in STR and DTR, 166 MHz maximum in STR; JEDEC 3-byte signature BB21h;
+// 64KB sectors, 4KB and 32KB subsectors; 3- and 4-byte address modes. The ordering code reads by its
+// part-number figure: U = 1.7-2.0 V, 01G = 1Gb, B = 2 die stacked, B generation, B die revision,
+// 8 = RESET and HOLD# pins, E = 64KB sectors, 12 = 24-ball T-PBGA 6 x 8 mm (5 x 5 array), 0 = standard
+// security, S = standard, IT = -40 to +85 C. Micron's FBGA part-marking decoder maps the package code
+// RW188 to this part number (operator lookup, 2026-10-21). The operator's copy of the datasheet is the
+// Drive file cited second.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.micron.com/products/memory/nor-flash/serial-nor-flash/part-catalog/part-detail/mt25qu01gbbb8e12-0sit"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.micron_mt25qu01g",
+      decl_name: "mt25qu01gbbb8e12",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "drive.google.com/file/d/1UrOsvPR0h8N3VE73bPIwSdxWJ665EAah/view" } },
+  ]
+}
+
+data mt25qu01gbbb8e12: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: micron,
+  ordering_code: "MT25QU01GBBB8E12-0SIT",
+  package: "T-PBGA-24, 6 x 8 mm (5 x 5 array), code 12",
+  top_marking: "a lot line over the FBGA code RW188",
+  specification: SerialFlashSpec { flash: SerialFlashSpecification {
+    capacity_mbit: 1024,
+    supply: MillivoltRange { minimum: millivolt(count: 1700), maximum: millivolt(count: 2000) },
+    data_lanes: 4,
+    clock_mhz: 166,
+    jedec_signature: "BB21h",
+    dies: 2,
+    reset_pin: true,
+  } },
+  vendor_application_statements: [
+    "MT25QU01GBBB: 1Gb, 1.8V multiple I/O serial flash, stacked device of two 512Mb die",
+    "SPI-compatible serial bus; extended, dual and quad I/O protocols in STR and DTR; execute-in-place",
+  ],
+}

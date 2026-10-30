@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.guard_protects_a_different_object_than_the_h
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data guard_protects_a_different_object_than_the_harm_travels_through: RecurringFailureMode = RecurringFailureMode {
   identity: "guard_protects_a_different_object_than_the_harm_travels_through" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a guard exists, is correct, and guards the wrong object** (INVALID STATE: a check is present, its logic is right, it was reviewed and believed, and the object it protects is not the object the harm travels through -- head instead of bytes, instance instead of node, completion instead of spawn, criteria instead of contract. HARM: whatever reaches the unprotected object passes, and the passing guard is cited as the reason it cannot.",

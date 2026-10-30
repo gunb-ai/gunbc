@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.derived_effectful_recursion_bypasses_admission
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data derived_effectful_recursion_bypasses_admission: RecurringFailureMode = RecurringFailureMode {
   identity: "derived_effectful_recursion_bypasses_admission" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
+
   receipts: [
     "INVALID STATE: the Rust emitter selects the async realization from derived service demand, but its recursion admission tests only the authored uses clause. An ordinary function calling Filesystem.List can therefore emit an unboxed async self-call while the same self-call with an explicit resource requirement refuses.",
     "RECEIPT: emitting gunbc.source_root_read against source base main 906c321f033 with the pre-change installed seed reported zero blocking diagnostics; cargo then refused source_root_walk and source_root_read_paths with E0733. Both are tail-recursive ordinary functions with derived Filesystem demand.",

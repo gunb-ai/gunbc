@@ -16,7 +16,7 @@ import gunbc.machine_intake.mtjade1_access_observation {
   recorded_manager_family_standing,
 }
 import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_observed_network }
-import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten }
 import gunbc.tools.bmc_intake_first_contact {
   HostUnreachable,
   RedfishHttpSurface,
@@ -24,6 +24,7 @@ import gunbc.tools.bmc_intake_first_contact {
   classify_intake_probe,
   intake_probe_host_unreachable_cause,
 }
+import std.content_hash { sha256_hex_of_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -93,7 +94,7 @@ fn decode_self_digested(text: String) -> RecordedManagerDecode {
 
 test fn w_a_bound_ami_manager_is_observed_megarac() -> Bool {
   match recorded_manager_family_standing(decoded: decode_self_digested(text: ami_manager(board_extra: "70:E2:84:95:33:6B", model_member: "\"Model\": \"130582050\", "))) {
-    FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false }
+    FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false  SupermicroAten => false }
     FamilyUnobserved { discriminator: _ } => false
   }
 }

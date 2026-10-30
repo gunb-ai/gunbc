@@ -1,6 +1,7 @@
 module test.claim.record_literal_names_a_union_type_witness
 
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -73,57 +74,67 @@ data zz_record_still_accepted: String = "module zz_union_probe_record\ntype ZzA 
 data zz_union_named_class: String = "TypeNameCarriesNoRecordConstructor"
 
 // THE RED: each position refused, exactly once, at the name the author wrote.
-test fn a_record_literal_naming_a_union_refuses_at_a_data_binding() -> Bool {
-  blocking_class_count_for(source: zz_union_named_at_data, wanted_class: zz_union_named_class) == 1
+test fn a_record_literal_naming_a_union_refuses_at_a_data_binding() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
-test fn a_record_literal_naming_a_union_refuses_at_a_return() -> Bool {
-  blocking_class_count_for(source: zz_union_named_at_return, wanted_class: zz_union_named_class) == 1
+test fn a_record_literal_naming_a_union_refuses_at_a_return() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_return, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
-test fn a_record_literal_naming_a_union_refuses_at_a_list_element() -> Bool {
-  blocking_class_count_for(source: zz_union_named_at_list_element, wanted_class: zz_union_named_class) == 1
+test fn a_record_literal_naming_a_union_refuses_at_a_list_element() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_list_element, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
-test fn a_record_literal_naming_a_union_refuses_at_a_call_argument() -> Bool {
-  blocking_class_count_for(source: zz_union_named_at_call_argument, wanted_class: zz_union_named_class) == 1
+test fn a_record_literal_naming_a_union_refuses_at_a_call_argument() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_call_argument, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 // THE ONE REFUSAL, NOT A CASCADE. The constructor question is asked before the field walk, so a
 // missing field or a field no arm declares does not add a second diagnostic: both stay at 1 while
 // they refuse, and the total blocking difference against an accepted arm is the single refusal.
-test fn the_constructor_question_is_asked_before_the_fields() -> Bool {
-  blocking_class_count_for(source: zz_union_named_missing_field, wanted_class: zz_union_named_class) == 1
-    && blocking_class_count_for(source: zz_union_named_bogus_field, wanted_class: zz_union_named_class) == 1
-    && blocking_class_count_for(source: zz_union_named_at_data, wanted_class: zz_union_named_class) == 1
+test fn the_constructor_question_is_asked_before_the_fields() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_union_named_missing_field, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_class_census(source: zz_union_named_bogus_field, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }),
+  ])
 }
 
-test fn a_record_literal_naming_an_alias_of_a_union_refuses() -> Bool {
-  blocking_class_count_for(source: zz_union_named_through_alias, wanted_class: zz_union_named_class) == 1
+test fn a_record_literal_naming_an_alias_of_a_union_refuses() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_through_alias, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 // THE CONTROLS, EACH BY THE DIFFERENCE AGAINST THE RED IT IS THE FIX OF: the accepted arm compiles
 // with 0 of this class AND 0 blocking in total, so the refusals above are the whole difference and
 // not a fixture that fails for some other reason.
-test fn the_fielded_arm_is_accepted() -> Bool {
-  blocking_class_count_for(source: zz_variant_named_arm, wanted_class: zz_union_named_class) == 0
-    && total_blocking_count_for(source: zz_variant_named_arm) == 0
+test fn the_fielded_arm_is_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_variant_named_arm, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_variant_named_arm), holds: fn(n) { n == 0 }),
+  ])
 }
 
-test fn the_empty_arm_is_accepted() -> Bool {
-  blocking_class_count_for(source: zz_variant_empty_arm, wanted_class: zz_union_named_class) == 0
-    && total_blocking_count_for(source: zz_variant_empty_arm) == 0
+test fn the_empty_arm_is_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_variant_empty_arm, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_variant_empty_arm), holds: fn(n) { n == 0 }),
+  ])
 }
 
-test fn a_record_and_an_alias_of_a_record_are_accepted() -> Bool {
-  blocking_class_count_for(source: zz_record_still_accepted, wanted_class: zz_union_named_class) == 0
-    && total_blocking_count_for(source: zz_record_still_accepted) == 0
+test fn a_record_and_an_alias_of_a_record_are_accepted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_record_still_accepted, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_record_still_accepted), holds: fn(n) { n == 0 }),
+  ])
 }
 
 // AN UNRESOLVED NAME KEEPS ITS OWN REFUSAL AND DOES NOT GAIN THIS ONE: the new class answers the
 // constructor question of a name that DOES resolve to a declaration, and a name resolving to nothing
 // is refused by the unresolved diagnostic that already existed.
-test fn an_unknown_name_keeps_its_own_refusal() -> Bool {
-  blocking_class_count_for(source: zz_unknown_name, wanted_class: zz_union_named_class) == 0
-    && total_blocking_count_for(source: zz_unknown_name) == 1
+test fn an_unknown_name_keeps_its_own_refusal() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: zz_unknown_name, wanted_class: zz_union_named_class), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: zz_unknown_name), holds: fn(n) { n == 1 }),
+  ])
 }

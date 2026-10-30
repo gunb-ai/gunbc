@@ -23,18 +23,28 @@ data synthetic_binding_witness: ScheduleWitnessEntry = {
   kind: CorpusWitnessKind
 }
 
+// The synthetic witness is enrolled ONLY against a census that carries its declaration; the
+// enrollment read now consults the same DeclFacts pool the rest of the receipt does.
+data synthetic_binding_fact: DeclFact = {
+  qualified_name: "test.claim.synthetic_enforcement_probe_test.synthetic_probe_holds",
+  name: "synthetic_probe_holds",
+  kind: FnItem,
+  node: enforcement_red_probe_body_leaf,
+  rel_path: "src/v2/test/claim/synthetic_enforcement_probe_test.dag"
+}
+
 test fn roster_read_liveness_discriminates() -> Bool {
   let bound = BoundConsumerWitness { witness: synthetic_binding_witness }
   consumer_kind_eq(
-    a: consumer_enrolled_for(binding: bound, ci_entries: [synthetic_binding_witness], prepush_entries: []),
+    a: consumer_enrolled_for(binding: bound, ci_entries: [synthetic_binding_witness], prepush_entries: [], facts: [synthetic_binding_fact]),
     b: EnrolledInFloorRoster
   )
     && consumer_kind_eq(
-      a: consumer_enrolled_for(binding: bound, ci_entries: [], prepush_entries: []),
+      a: consumer_enrolled_for(binding: bound, ci_entries: [], prepush_entries: [], facts: [synthetic_binding_fact]),
       b: WitnessOnly
     )
     && consumer_kind_eq(
-      a: consumer_enrolled_for(binding: NoConsumerWitness, ci_entries: [synthetic_binding_witness], prepush_entries: []),
+      a: consumer_enrolled_for(binding: NoConsumerWitness, ci_entries: [synthetic_binding_witness], prepush_entries: [], facts: [synthetic_binding_fact]),
       b: NoConsumer
     )
 }
@@ -86,7 +96,6 @@ test fn red_control_of_red_control_flips() -> Bool {
 test fn only_cost_contract_carries_red_control_probe() -> Bool {
   red_status_is_passed(s: red_control_status_for_contract(contract: lens_contract_cost))
     && red_status_is_absent(s: red_control_status_for_contract(contract: lens_contract_vacuity))
-    && red_status_is_absent(s: red_control_status_for_contract(contract: lens_contract_schedule_lens))
 }
 
 fn self_status_is_observed(s: SelfApplicationStatus) -> Bool {

@@ -1,0 +1,172 @@
+// gunbc.host.bmc_control_binding — a host's SECURED baseboard-control route, sealed.
+//
+// cut 2 of the managed-host untangle. The BMC route was previously an ad-hoc bundle
+// (gunbc.host.managed_host.ManagedHostBinding) that lifted the whole ManagedHost row -- board facts,
+// capability row, unit-hold policy, SMpro site -- just to say "this unit's controller was reached and
+// its secured credential still answers at this endpoint". The route only needs three facts:
+//
+//   the endpoint it was observed at,
+//   the unit whose credential secured it, and
+//   the secured standing (secured endpoint + account + the policy it was adjudicated under).
+//
+// The join and its endpoint-mismatch refusal move here, unchanged in semantics from
+// gunbc.host.managed_host.managed_host_binding: the observed endpoint must equal the secured endpoint,
+// or the route is refused (RED3). The join reads the access observation and the secured standing as
+// INPUTS -- it does not lift them off a ManagedHost row, so this standing stands for an unenrolled
+// unit whose subject is valid (crisp-newt-630 cut 1) and does not require a host identity.
+//
+// ControlledHost (gunbc.host.host_control_route) consumes this standing: its BmcControlRoute carries a
+// BmcControlBinding unchanged.
+
+module gunbc.host.bmc_control_binding
+
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved, bmc_observation_ipmi_cipher_suite }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding, BmcSecured, BmcSecureRefused, BmcSecureRefusalCause }
+import gunbc.machine_intake.subject { UnitKey }
+import std.types { Int, NonEmptyStr }
+import extdeps.bmc.ipmi { IpmiCipherSuite }
+
+// THE SECURED ROUTE. sole_constructor: it is minted only on the bound arm of the join below, from the
+// endpoint the access observation read and the secured standing that proved the credential reaches it.
+// endpoint is the observed controller endpoint (the join key); unit is the unit of the secured subject
+// (never a separately authored field); secured carries the secured endpoint, the account reference, and
+// the policy the standing was adjudicated under.
+type BmcControlBinding sole_constructor {
+  endpoint: BmcControllerEndpoint
+  unit: UnitKey
+  secured: BmcSecureStanding
+}
+
+// THE ROUTE'S STANDING. A refusal carries its cause unchanged rather than a re-coined one; the
+// endpoint-mismatch arm names both endpoints so the caller can say which was observed and which was
+// secured. (This is the refusal that moved out of gunbc.host.managed_host.)
+//
+// The bound arm carries the binding plus ONE further fact: the BmcAccessObservation the join read. It
+// is genuinely new -- the binding names the endpoint, unit and secured standing, and the observation is
+// the controller's own reading (its reported identity, its discovered surfaces, its boot-control routes)
+// that a write drives. The endpoint and the account are NOT copied here: they are already
+// binding.endpoint and binding.secured, and are read through the accessors below, so the joined facts
+// have exactly one representation. Minted only by bmc_control_binding, so the observation standing
+// beside the binding is the one the join checked the endpoint against.
+// THE BOUND ARM'S PAYLOAD, as its own sealed value: the route's binding plus the observation the join
+// checked. A carrier that can only exist when a controller IS bound (an admitted boot subject, an
+// admitted reset subject, an admitted MegaRAC host) stores this rather than a whole standing, so reading
+// the endpoint or the account through it needs no arm that can never occur. Minted only by
+// bmc_control_binding, beside the endpoint check that admitted it.
+type BmcControlBoundRoute sole_constructor {
+  binding: BmcControlBinding
+  observation: BmcAccessObservation
+}
+
+type BmcControlStanding
+  = BmcControlBound { route: BmcControlBoundRoute }
+  | BmcControlAccessUnobserved { endpoint: BmcControllerEndpoint }
+  | BmcControlNotSecured { cause: BmcSecureRefusalCause }
+  | BmcControlEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+// THE JOIN. From an access observation and a secured standing, decide whether the unit's controller is
+// a bound, secured control route. The observed endpoint must equal the secured endpoint; otherwise the
+// route is refused with both endpoints named. The unit is read off the secured subject -- there is no
+// separately minted unit field to swap.
+fn bmc_control_binding(observed: BmcAccessObservationStanding, secured: BmcSecureStanding) -> BmcControlStanding {
+  match secured.outcome {
+    BmcSecureRefused { cause: c } => BmcControlNotSecured { cause: c }
+    BmcSecured { endpoint: secured_endpoint, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      match observed {
+        BmcAccessUnobserved { endpoint: e } => BmcControlAccessUnobserved { endpoint: e }
+        BmcAccessObserved { observation: o } =>
+          if (o.endpoint.host as String) == (secured_endpoint.host as String) {
+            BmcControlBound {
+              route: BmcControlBoundRoute {
+                binding: BmcControlBinding {
+                  endpoint: o.endpoint,
+                  unit: secured.subject.subject.unit_key,
+                  secured: secured,
+                },
+                observation: o,
+              },
+            }
+          } else {
+            BmcControlEndpointMismatch { observed: o.endpoint, secured: secured_endpoint }
+          }
+      }
+  }
+}
+
+// THE ACCOUNT, READ THROUGH THE BINDING. The join minted this binding only from the BmcSecured arm, so
+// the account is the one that answered at the endpoint the binding names; the none arm is the standing's
+// own type (a refused standing never reaches this join), never a state a bound binding can be in.
+fn bmc_control_account(binding: BmcControlBinding) -> NonEmptyStr? {
+  match binding.secured.outcome {
+    BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      Present { value: r.account }
+    BmcSecureRefused { cause: _ } => none
+  }
+}
+
+// THE ENDPOINT THIS ROUTE DRIVES, read through the binding rather than copied beside it.
+fn bmc_control_endpoint(binding: BmcControlBinding) -> BmcControllerEndpoint {
+  binding.endpoint
+}
+
+// THE SECURED ENDPOINT THE JOIN CHECKED THE OBSERVED ONE AGAINST.
+fn bmc_control_secured_endpoint(binding: BmcControlBinding) -> BmcControllerEndpoint? {
+  match binding.secured.outcome {
+    BmcSecured { endpoint: e, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      Present { value: e }
+    BmcSecureRefused { cause: _ } => none
+  }
+}
+
+// THE OBSERVED READING A BOUND ROUTE CARRIES, or none on every refusal arm.
+fn bmc_control_observation(standing: BmcControlStanding) -> BmcAccessObservation? {
+  match standing {
+    BmcControlBound { route: r } => Present { value: r.observation }
+    BmcControlAccessUnobserved { endpoint: _ } => none
+    BmcControlNotSecured { cause: _ } => none
+    BmcControlEndpointMismatch { observed: _, secured: _ } => none
+  }
+}
+
+// THE BINDING A BOUND ROUTE CARRIES, or none on every refusal arm.
+fn bmc_control_binding_of(standing: BmcControlStanding) -> BmcControlBinding? {
+  match standing {
+    BmcControlBound { route: r } => Present { value: r.binding }
+    BmcControlAccessUnobserved { endpoint: _ } => none
+    BmcControlNotSecured { cause: _ } => none
+    BmcControlEndpointMismatch { observed: _, secured: _ } => none
+  }
+}
+
+// THE ROUTE A BOUND STANDING CARRIES, as a value a carrier can hold. none on every refusal arm.
+fn bmc_control_bound_route(standing: BmcControlStanding) -> BmcControlBoundRoute? {
+  match standing {
+    BmcControlBound { route: r } => Present { value: r }
+    BmcControlAccessUnobserved { endpoint: _ } => none
+    BmcControlNotSecured { cause: _ } => none
+    BmcControlEndpointMismatch { observed: _, secured: _ } => none
+  }
+}
+
+// THE ENDPOINT A BOUND ROUTE DRIVES.
+fn bmc_control_route_endpoint(route: BmcControlBoundRoute) -> BmcControllerEndpoint {
+  route.binding.endpoint
+}
+
+// THE ACCOUNT A BOUND ROUTE DRIVES WITH, read through its binding. The join minted the binding only
+// from a BmcSecured arm, so a bound route always names an account; the none arm is that premise stated,
+// and an admission that cannot name one refuses rather than writing.
+fn bmc_control_route_account(route: BmcControlBoundRoute) -> NonEmptyStr? {
+  bmc_control_account(binding: route.binding)
+}
+
+// THE READING THE JOIN CHECKED THE ENDPOINT AGAINST.
+fn bmc_control_route_observation(route: BmcControlBoundRoute) -> BmcAccessObservation {
+  route.observation
+}
+
+// THE LANPLUS CIPHER SUITE A BOUND ROUTE'S IPMI CALLS USE, read through the observation the join checked.
+fn bmc_control_route_ipmi_cipher_suite(route: BmcControlBoundRoute) -> IpmiCipherSuite? {
+  bmc_observation_ipmi_cipher_suite(observation: route.observation)
+}

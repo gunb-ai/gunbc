@@ -40,7 +40,7 @@ type PowerState
 // never assumed removed.
 type ModuleState
   = ModuleRemoved
-  | ModuleInstalled
+  | ModuleInstalled { asset: PhysicalAssetIdentity }
   | ModuleUnrecorded
 
 type BenchConditions {

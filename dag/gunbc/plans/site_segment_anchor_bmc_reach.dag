@@ -1,0 +1,72 @@
+module gunbc.plans.site_segment_anchor_bmc_reach
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling {
+  project_documentation_projections_are_not_checkout_artifacts,
+  epistemic_humility_is_symmetric,
+}
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
+import std.types { List, String }
+
+// THE DESIGN FOR SITE-SEGMENT ANCHORS AND BMC REACH (session bright-swift-248, 2026-10-25): BMCs
+// and pre-OS clients cannot join the fleet overlay, so they are found and reached through a selected
+// tamed member on the same segment, at any site, with or without a router. Split from
+// gunbc.plans.fleet_naming_reach_access so each retires on its own condition. Design only.
+
+fn ruling_names() -> List<String> {
+  [epistemic_humility_is_symmetric.reference.decl_name as String]
+}
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    p(text: "Find, bind and reach BMC/pre-OS clients through an overlay-attached member on their segment, at any site. Capture MACs rather than authoring them; census unknown devices before convergence. Endpoint lookup consumes these observations through fleet_naming_reach_access’s endpoint authority. Router reach is current scope; routerless realization is a typed refusal."),
+    p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
+  ]
+}
+
+fn survey() -> List<MarkdownBlock> {
+  [
+    p(text: "Existing owners: extdeps.network.mac.Eui48Address (permanent/software-set identity and OUI), iputils.arping (named-interface presence), linux.neighbour (ARP states), fleet.runtime_identity_match, machine_intake.ethernet (shared-port functions), product.network_topology.NetworkSegment/NetworkAttachmentRole and placement_supply.SiteIdentity. site_uefi_arm64_pxe_edge already renders MAC-keyed ProxyDHCP. Missing: per-host interface inventory and network discovery before arrival_converge’s access_discover→identity_bind_provisional→prior_life_boundary→bmc_secure."),
+    p(text: "Convert authored BMC/pre-OS/PXE/appliance literals in fleet_intent/fleet_intent_network, mtcollins1_media_share, bmc_virtual_media NBD, site_pxe_edge_converge TFTP, mtjade1_factory_network and printers into observations. Migrate dhcp.v4.MacAddress, Cr1000aDhcpLeaseRow and mtcollins1_host_nic_mac to Eui48Address."),
+  ]
+}
+
+fn model() -> List<MarkdownBlock> {
+  [
+    p(text: "Per HostIdentity, capture each interface’s role (host OS/dedicated/shared BMC), permanent Eui48Address and provenance. Extend NetworkSegment: bind one host interface to a segment; sites list their segments and discovery routes. Eligibility requires tamed overlay membership, captured interfaces, site assignment and an interface on that segment. Exclude the subject being acted on; no eligible member gives NoAnchorOnSegment."),
+    p(text: "Any eligible member may observe leases/ARP/arping. Active DHCP, NFS export, credential delivery and BMC actuation require one selected holder per segment, std.temporal_effect.HeldLease with epoch and std.durable_compare_and_set fencing. Two members must never both own segment DHCP."),
+  ]
+}
+
+fn site_reach() -> List<MarkdownBlock> {
+  [
+    p(text: "Prepare the first site host offsite. It reads its BMC MAC/LAN in-band via KCS/local ipmitool. If it fails before a second member exists, the site remains unreachable until another member or person arrives. Learn BMC MACs via ipmitool lan print; host NICs via ip link with permanence check; either via leases/ARP; precontact BMC identity via the MAC-keyed bmc_operator_credential_inventory factory sticker."),
+    p(text: "Census: with a router, subnet ping sweep then ARP; designed routerless census uses passive ARP/DHCP and one IPv6 all-nodes ping. Known learned-MAC devices converge; unknown devices receive only unauthenticated OUI/IPMI UDP-623 channel-auth/Redfish service-root UUID fingerprinting into CandidateBmc/CandidateHost/Foreign. Bind via expected arrival (board serial/vendor), sticker MAC or operator confirmation, then arrival_converge records provenance."),
+    p(text: "Never send factory or fleet credentials to an unbound device. Before every delivery, arping on the named interface must match its learned MAC. This proves current address binding, not authentication against MAC spoofing. On uncontrolled segments, reusable credentials require stronger intake binding (pinned BMC TLS/SSH key, recorded Redfish UUID or equivalent); otherwise use one-session credentials and rotate afterwards. Firmware observations determine supported bindings."),
+    p(text: "Lookup order: readable router leases (CR1000A lab); then ARP plus MAC-verified arping; then RouterlessDiscoveryNotRealized. Its realization awaits per-firmware DHCP-absent/link-local IPv4/IPv6 observations: one holder’s DHCP, decided per segment only after a bounded check finds no server. Never switch automatically. BMCs use DHCP because foreign subnets are unknown."),
+  ]
+}
+
+fn phases() -> List<MarkdownBlock> {
+  [
+    p(text: "S1 capture inventory/MAC migrations; S2 segments, generalized site attachment and holder lease; S3 lookup with routerless refusal; S4 census→intake with a red no-credential-to-unbound control; S5 route BMC actions through the holder, use IpAddress for remaining fleet_intent_network.NetworkEndpoint facts and observations for BMC addresses."),
+  ]
+}
+
+fn risks() -> List<MarkdownBlock> {
+  [
+    p(text: "Rogue DHCP and credential spray remain bounded by holder fencing, binding and per-delivery checks. Open observations: each firmware’s no-DHCP behavior and available stronger identity bindings."),
+  ]
+}
+
+data site_segment_anchor_bmc_reach_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "site-segment-anchor-bmc-reach",
+  title: "Site-segment anchors and BMC reach: learned MACs, a segment census feeding intake, and a fenced holder for active effects at any site",
+  body: concat(concat(concat(concat(concat(opening(), survey()), model()), site_reach()), phases()), risks()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when no BMC or pre-OS address is authored as a literal outside historical evidence and topology; a BMC on a segment outside the operator lab has been reached through that segment's selected holder after a MAC-verified lookup; and the segment census has bound a previously unknown device and handed it to arrival_converge."),
+  },
+}

@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.merge_carries_prose_true_on_one_side_and_false_on_the_other
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable }
 
 data merge_carries_prose_true_on_one_side_and_false_on_the_other: RecurringFailureMode = RecurringFailureMode {
   identity: "merge_carries_prose_true_on_one_side_and_false_on_the_other" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: Mitigatable, ceiling_reason: "mitigatable, and this is the honest answer rather than an unbuilt one." as NonEmptyStr } },
 
   receipts: [
     "**a merge brings in a prose claim that is TRUE ON THE SIDE THAT WROTE IT AND FALSE ON THE MERGED TREE, because the other side adds the behaviour the claim denies.** INVALID STATE: a doc block, annotation or receipt that correctly describes one branch, landed unmodified on a branch where it asserts the opposite of what the code does. NEITHER SIDE IS WRONG, which is why no conflict fires and why taking a side -- the only operation a text merge offers -- is exactly how the falsehood ships.",
@@ -25,7 +28,7 @@ data merge_carries_prose_true_on_one_side_and_false_on_the_other: RecurringFailu
 
     "RUNG FOUND AT: mitigatable. The defect is caught, when it is caught, by a person reading the merged text against the merged behaviour, which is review rather than a mechanism.",
 
-    "CEILING: MITIGATABLE, AND THIS IS THE HONEST ANSWER RATHER THAN AN UNBUILT ONE. `this prose describes this code` is not a decidable property, so no wall can refuse a false annotation in general, and a trigger promising one would never fire -- DESIGN section 4b(2) calls that an untracked stall dressed as a plan. What IS decidable is narrower and is where the next rung sits.",
+    "CEILING: MITIGATABLE, AND THIS IS THE HONEST ANSWER rather than an unbuilt one. `this prose describes this code` is not a decidable property, so no wall can refuse a false annotation in general, and a trigger promising one would never fire -- DESIGN section 4b(2) calls that an untracked stall dressed as a plan. What IS decidable is narrower and is where the next rung sits.",
 
     "NEXT TRIGGER, NAMING THE CAPABILITY AND SCOPED TO THE DECIDABLE SUBSET: a merge over annotated declarations that REFUSES to auto-resolve an annotation block whose ADJACENT DECLARATION differs between the two sides, requiring the merging author to state the resolution explicitly instead of taking a side. Adjacency and per-side difference are both decidable from the three trees, and either specimen above would have been refused by it: each doc block sits on a declaration the two sides changed differently. It does not decide truth and does not claim to -- it removes the case where the falsehood ships WITHOUT ANYONE BEING ASKED, which is every instance measured so far. Discriminating RED: a merge where one side edits a declaration and the other side edits its annotation, refused. Positive control: a merge where the annotation is untouched on both sides, or where only one side changed either, merged silently.",
   ],

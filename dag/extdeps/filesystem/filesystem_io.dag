@@ -35,6 +35,25 @@ fn filesystem_read_outcome(
   }
 }
 
+// THE SAME FOLD FOR A WHOLE-FILE WRITE (`Write`, `WriteOwnerOnly`): the bytes landed at the path,
+// or the host refused with its own words. `WriteOwnerOnly` declares no `error_kind`, so nothing here
+// classifies the refusal; a consumer that needs the kind uses the create-new fold, which has it.
+type FilesystemWriteOutcome
+  = FilesystemWritten { path: String }
+  | FilesystemWriteRefused { path: String, error: String }
+
+fn filesystem_write_outcome(
+  path: String,
+  success: Bool,
+  error: String,
+) -> FilesystemWriteOutcome {
+  if success {
+    FilesystemWritten { path: path }
+  } else {
+    FilesystemWriteRefused { path: path, error: error }
+  }
+}
+
 // THE HOST'S OWN FAILURE CLASSIFICATION, AS A CHANNEL RATHER THAN AS TEXT. The file transport
 // answers `error_kind` beside `error`: the realization projects the host error's kind
 // (std::io::ErrorKind on the Rust realizations) into one of the closed names below, and
@@ -597,6 +616,13 @@ fn filesystem_entry_presence(
         )
       }
   }
+}
+
+// THE EFFECTFUL FORM: list the directory now and fold the reading. Every consumer that asks whether
+// one named entry exists binds this rather than re-sequencing List and the fold itself.
+fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPresence {
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
 }
 
 // THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is

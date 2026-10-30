@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.gate_population_covers_only_new_subjects
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data gate_population_covers_only_new_subjects: RecurringFailureMode = RecurringFailureMode {
   identity: "gate_population_covers_only_new_subjects" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**a gate whose population is NEW subjects, guarding a property that degrades in EXISTING ones** INVALID STATE: a gate exists to stop a property of the standing corpus, and the population it actually ranges over is only identities enrolled in this change -- declared now minus declared at the resolved diff base -- so an already-enrolled subject that degrades into the same state passes unremarked.",

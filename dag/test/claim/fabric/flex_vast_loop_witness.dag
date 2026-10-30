@@ -20,7 +20,7 @@ import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexDestroy, FlexKeep, flex_owner_label_gunbc_flex,
 }
 import product.fabric.serving_recipe { SelectionQuoteEstablished, SelectionQuoteRefusedUnavailable }
-import product.fabric.flex_vast_shadow {
+import product.fabric.flex_vast_shadow { FlexInstancesUnobserved,
   FlexInstancesStanding, FlexInstancesPartial, FlexShadowFieldEntry, FlexChargesPageTurn, FlexChargesStanding, FlexChargesUnobserved,
   FlexCreateStanding, FlexCreateAnswered, FlexCreateLost, FlexCreateRefused,
   ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded,
@@ -28,7 +28,7 @@ import product.fabric.flex_vast_shadow {
   FlexWriteBlockedOverCap, flex_trial_policy, flex_trial_fleet_rate_cap, flex_fold_charge_pages,
   flex_serving_recipe,
 }
-import product.fabric.flex_vast_loop {
+import product.fabric.flex_vast_loop { flex_vast_destroy_target, flex_vast_rented_instance,
   FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
   FlexPassInput, FlexCreateRequest, FlexTemplateHashRow, FlexPassPlan,
   FlexPlanRefused, FlexPlanIdle, FlexPlanDryCreate, FlexPlanDryDestroy, FlexPlanCreate, FlexPlanDestroy,
@@ -40,13 +40,15 @@ import product.fabric.flex_vast_loop {
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
+  flex_vast_template_hashes, flex_vast_template_hash, flex_vast_template_hash_binding, FlexVastTemplateHashBound, FlexVastTemplateHashUnbound,
   FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step, FlexReleaseInputs, FlexPassReleaseReadingsUnread, flex_key_from_custody, FlexPassStopped,
 }
+import product.fabric.flex_vast_template { flex_template_retired_hash, flex_vast_args_launch, flex_vast_onstart_b64_flag, flex_launch_runtype_wire, flex_launch_args, flex_launch_onstart, FlexArgsLaunch, FlexRentLaunch }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, rented_allocation_identity,
 }
-import gunbc.serving.rented_release {
+import gunbc.serving.rented_release { RentedDestroyRequest,
   RentedReleasePlanned, RentedReleaseGone, RentedReleaseHeld, RentedReleaseDestroyRefused, RentedReleaseReadings,
   RentedHostReading, RentedHostSilent, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
   RentedLegDrain, RentedLegOutcomeNotPerformedHostSilent, RentedInstanceReading, RentedInstanceAbsent, RentedAnchorAbsent,
@@ -57,7 +59,7 @@ import test.claim.fabric.flex_bid_admission_witness {
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.cloud.vast_ai { VastAiCharges }
-import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance }
+import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected }
 import gunbc.serving.rented_release { RentedInstanceObserved, rented_bound_instance_id }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
@@ -314,6 +316,44 @@ fn w_quote_refusal() -> FlexPassRefusal? {
   w_refusal_of(p: flex_plan_pass(input: base))
 }
 
+// ---- THE PER-RENT LAUNCH: the create body carries runtype args, the container command and the base64
+// on-start script in the env; the stored onstart is empty.
+test fn the_create_body_carries_runtype_args_the_args_list_and_onstart_b64() -> Bool {
+  let p = flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) }))
+  match w_plan_create_request(p: p) {
+    Present { value: r } =>
+      (flex_launch_runtype_wire(launch: r.launch.mode) == "args")
+        && (flex_launch_args(launch: r.launch.mode) == flex_vast_args_launch)
+        && (list_length(flex_launch_args(launch: r.launch.mode)) == 3)
+        && (flex_launch_onstart(launch: r.launch.mode) == "")
+        && r.launch.env.contains(flex_vast_onstart_b64_flag())
+        && !r.launch.env.contains("POOL_API_KEY")
+    Absent => false
+  }
+}
+
+// ---- THE HASH BINDING: unbound until flex_template_ensure binds a hash. The retired hash is refused
+// whoever names it, and a create with no bound hash refuses.
+test fn the_binding_is_declared_unbound_and_a_create_with_no_bound_hash_refuses() -> Bool {
+  let unbound = match flex_vast_template_hash_binding { FlexVastTemplateHashUnbound { reason: _ } => true  FlexVastTemplateHashBound { rows: _ } => false }
+  let none_rows = list_length(flex_vast_template_hashes) == 0
+  let refused = match w_wet_refusal(entry: w_established(), admitted: true, gates: w_open, hashes: flex_vast_template_hashes) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateHashUnread } } => true
+    _ => false
+  }
+  unbound && none_rows && refused
+}
+
+test fn the_retired_hash_is_refused_even_when_bound() -> Bool {
+  let retired = [FlexTemplateHashRow { recipe: w_recipe.id, hash: flex_template_retired_hash as String as NonEmptyStr }]
+  let absent = match flex_vast_template_hash(rows: retired, recipe: w_recipe.id) { Present { value: _ } => false  Absent => true }
+  let refused = match w_wet_refusal(entry: w_established(), admitted: true, gates: w_open, hashes: retired) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateHashUnread } } => true
+    _ => false
+  }
+  absent && refused
+}
+
 // The wet gates start closed: the key custody stops a create that cleared every wall.
 test fn the_wet_gates_start_closed_and_stop_a_create_that_cleared_every_wall() -> Bool {
   match w_wet_refusal(entry: w_established(), admitted: true, gates: w_closed, hashes: w_hashes) {
@@ -462,7 +502,8 @@ fn w_request() -> FlexCreateRequest {
     Present { value: r } => r
     Absent => FlexCreateRequest {
       offer_id: 7, machine_id: 42, price: ExactDecimal { units: 0, fraction_digits: 6 }, bid: usd_hour(amount: money_amount_micro(count: 0)),
-      disk: byte_size(count: 34359738368), template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr, reservation: money_amount_micro(count: 0),
+      disk: byte_size(count: 34359738368), template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr,
+      launch: FlexRentLaunch { mode: FlexArgsLaunch { args: [] }, env: "" }, reservation: money_amount_micro(count: 0),
     }
   }
 }
@@ -524,8 +565,8 @@ test fn an_answered_create_constructs_the_acquired_allocation_keyed_by_provider_
   let a = flex_acquired_allocation(policy: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy, request: r, placement: w_placement(), instance_id: 555, asked_at: 1792008000000)
   (a.identity == rented_allocation_identity(provider: flex_provider_declaration, contract: "555" as NonEmptyStr))
     && match a.origin {
-      RentedAllocationAcquired { owner: o, asked_at: at, asked_rate: rate, provider_ask: ask } =>
-        ((o as String) == "gunbc-flex") && (at == 1792008000000) && (money_per_hour_micros(q: rate) == w_bid_micros()) && (ask.ask_id == 7) && (ask.machine_id == 42)
+      RentedAllocationAcquired { owner: o, asked_at: at, asked_rate: rate } =>
+        ((o as String) == "gunbc-flex") && (at == 1792008000000) && (money_per_hour_micros(q: rate) == w_bid_micros())
       _ => false
     }
     && match a.contract {
@@ -536,13 +577,13 @@ test fn an_answered_create_constructs_the_acquired_allocation_keyed_by_provider_
 
 // ---- RELEASE BINDING: the allocation is released through S5's receipt with the policy actuation as mode.
 test fn the_release_binding_passes_the_policy_actuation_to_the_s5_receipt() -> Bool {
-  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: Present { value: "gunbc-flex" }) }
+  let listed = RentedInstanceObserved { instance: flex_vast_rented_instance(instance: w_vast_instance(id: 1001, label: Present { value: "gunbc-flex" })) }
   let readings = w_readings(before: listed, after: listed)
   let dry = flex_release_card(input: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none), allocation: w_acquired(), roots: w_roots, protected: w_protected, readings: readings)
   match dry {
     FlexPassReleased { receipt: r, destroy_status: none } =>
       match r.outcome {
-        RentedReleasePlanned { request: q } => q.instance_id == 1001
+        RentedReleasePlanned { request: q } => (q.instance_id as String) == "1001"
         _ => false
       }
     _ => false
@@ -571,7 +612,7 @@ fn w_release_readings(host: RentedHostReading, before: RentedInstanceReading, af
 }
 
 fn w_listed(id: Int) -> RentedInstanceReading {
-  RentedInstanceObserved { instance: w_instance(id: id, label: Present { value: "gunbc-flex" }) }
+  RentedInstanceObserved { instance: flex_vast_rented_instance(instance: w_vast_instance(id: id, label: Present { value: "gunbc-flex" })) }
 }
 
 fn w_step(readings: RentedReleaseReadings) -> FlexPassStep {
@@ -593,7 +634,7 @@ test fn a_release_without_readings_stops_typed_and_destroys_nothing() -> Bool {
 test fn a_never_started_silent_card_is_released_with_its_destroy_due() -> Bool {
   match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageReached }, before: w_listed(id: 1001), after: w_listed(id: 1001))) {
     FlexPassDestroyDue { receipt: r, request: q } =>
-      (q.instance_id == 1001) && match r.drain {
+      ((q.instance_id as String) == "1001") && match r.drain {
         RentedLegOutcomeNotPerformedHostSilent => true
         _ => false
       } && match r.clean {
@@ -657,3 +698,50 @@ test fn the_selected_flex_recipe_has_an_unresolved_template_until_its_served_id_
   }
 }
 
+
+// Recorded-shape Vast rows (the fields the interface returns), never an error rendering.
+fn w_vast_instance(id: Int, label: String?) -> VastAiInstance {
+  VastAiInstance {
+    id: id,
+    machine_id: 42,
+    actual_status: Present { value: "running" },
+    gpu_name: "RTX PRO 5000",
+    gpu_ram: 49152,
+    num_gpus: 1,
+    image_uuid: "ninfer",
+    is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
+    label: label,
+  }
+}
+
+// THE VAST DESTROY NAMES ONLY AN INSTANCE OF OURS THIS PASS READ. The agnostic request carries a string id;
+// the Vast row resolves it against the complete roster REDUCED TO OUR LABEL, so an id outside the roster,
+// any roster that is not complete, and a foreign or unlabelled row that carries the authorized id all
+// resolve to nothing and no destroy is sent.
+test fn the_vast_destroy_target_is_an_instance_of_the_complete_roster() -> Bool {
+  let ours = flex_owner_label_gunbc_flex
+  let q = RentedDestroyRequest { instance_id: "1001" as NonEmptyStr }
+  let other = RentedDestroyRequest { instance_id: "2002" as NonEmptyStr }
+  (match flex_vast_destroy_target(roster: w_under_roster(), ours: ours, request: q) { Present { value: i } => i.id == 1001  Absent => false })
+    && (match flex_vast_destroy_target(roster: w_under_roster(), ours: ours, request: other) { Present { value: _ } => false  Absent => true })
+    && (match flex_vast_destroy_target(roster: FlexInstancesUnobserved, ours: ours, request: q) { Present { value: _ } => false  Absent => true })
+}
+
+// THE AUTHORIZED ID ON A FOREIGN ROW IS NOT DESTROYED. The release authorized id 1001 from a reading that
+// said ours; the current roster's row 1001 carries another label (or none), so actuation finds no target.
+test fn a_foreign_row_with_the_authorized_id_is_not_destroyed() -> Bool {
+  let ours = flex_owner_label_gunbc_flex
+  let q = RentedDestroyRequest { instance_id: "1001" as NonEmptyStr }
+  (match flex_vast_destroy_target(roster: exhausted(rows: [w_foreign(id: 1001, dollars: 1)]), ours: ours, request: q) { Present { value: _ } => false  Absent => true })
+    && (match flex_vast_destroy_target(roster: exhausted(rows: [w_vast_instance(id: 1001, label: none)]), ours: ours, request: q) { Present { value: _ } => false  Absent => true })
+}
+
+// THE VAST MAPPING INTO THE AGNOSTIC READING keeps the id, the label and the status, and nothing else.
+test fn the_vast_instance_maps_to_the_agnostic_reading() -> Bool {
+  let r = flex_vast_rented_instance(instance: w_vast_instance(id: 1001, label: Present { value: "gunbc-flex" }))
+  ((r.id as String) == "1001")
+    && (match r.owner_label { Present { value: l } => l == "gunbc-flex"  Absent => false })
+    && (match r.status { Present { value: s } => s == "running"  Absent => false })
+}

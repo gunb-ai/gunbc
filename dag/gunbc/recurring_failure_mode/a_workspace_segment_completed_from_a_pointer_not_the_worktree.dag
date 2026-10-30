@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_workspace_segment_completed_from_a_pointer
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_workspace_segment_completed_from_a_pointer_not_the_worktree: RecurringFailureMode = RecurringFailureMode {
   identity: "a_workspace_segment_completed_from_a_pointer_not_the_worktree" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a dispatched attempt whose worktree does not exist reads its Workspace segment COMPLETE. The segment (gunbc.roadmap.roadmap_workflow_progress, WorkspaceWorkflowSegment) was decided from modeled_state_present -- the attempt's current-key pointer -- and launch took `git worktree add` exiting zero as the worktree's existence. Observed on srv2 2026-10-02 (dogfood G5 brief): an attempt with no worktree reported Workspace complete. HARM: every later stage (commit, verify, publish) addresses a path that is not there and refuses far from the cause, while the progress view says the workspace stage succeeded.",

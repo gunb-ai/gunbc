@@ -1,8 +1,10 @@
 module test.claim.artifact_store_fs_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
 import std.logic { Bool }
 import std.types { String }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.content_hash { content_hash_atom }
 import std.types { Int }
 import std.measure { byte_size }
@@ -69,7 +71,7 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
     ArtifactFsPutFailed { path: p } => false
   }
   let listed = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, key))
+    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, serialize_content_hash(hash: key)))
     ArtifactFsListRefused { verb: v, target: t, frame: f } => false
     ArtifactFsListFailed { path: p } => false
   }
@@ -84,7 +86,7 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
     ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   let unlisted = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, key))) == false
+    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, serialize_content_hash(hash: key)))) == false
     ArtifactFsListRefused { verb: v, target: t, frame: f } => false
     ArtifactFsListFailed { path: p } => false
   }
@@ -122,11 +124,11 @@ fn eviction_key(tag: String) -> ContentHash {
 }
 
 fn eviction_probe_store() -> ArtifactStore {
-  ArtifactStore { budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
+  ArtifactStore { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
 }
 
 fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
-  entries |> any(e => string_contains(e, key))
+  entries |> any(e => string_contains(e, serialize_content_hash(hash: key)))
 }
 
 test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
@@ -162,10 +164,14 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
             ArtifactFsListFailed { path: p } => false
           }
         },
-        did_not_fit: (a, b) => false
+        did_not_fit: (a, b) => false,
+        at_capacity: (a, b) => false,
+        policy_refused: c => false
       )
     },
-    did_not_fit: (a, b) => false
+    did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false
   )
 }
 
@@ -177,6 +183,8 @@ test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
       let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
       (steps.count() == 0) && eviction_all_applied(steps: steps)
     },
-    did_not_fit: (a, b) => false
+    did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false
   )
 }

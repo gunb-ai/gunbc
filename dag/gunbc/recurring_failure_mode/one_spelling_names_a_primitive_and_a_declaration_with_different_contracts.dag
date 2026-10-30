@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_spelling_names_a_primitive_and_a_declaration_with_different_contracts
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data one_spelling_names_a_primitive_and_a_declaration_with_different_contracts: RecurringFailureMode = RecurringFailureMode {
   identity: "one_spelling_names_a_primitive_and_a_declaration_with_different_contracts" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: one bare spelling names two materially different contracts, and which contract a call gets is decided by the caller's import scope, not by anything at the call. The interpreter primitive map_get(m, key) returns the value as Optional; v2.std.collection map_get takes named arguments and returns Outcome<Optional<V>>. map_insert and empty_map have the same split. v1.compiler.infer call inference binds a declared signature in scope first and the builtin only otherwise, so adding or removing one import line silently moves every such call from one contract to the other (DESIGN 3: a materially different contract needs a materially different name).",

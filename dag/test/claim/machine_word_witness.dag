@@ -353,6 +353,15 @@ test fn octet_packing_round_trips_holds() -> Bool {
   }
 }
 
+test fn octet_packing_round_trips_little_endian_holds() -> Bool {
+  let v = word32_or_zero(value: 305419896)
+  match word_to_octets(a: v, endianness: LittleEndian) {
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: octets } =>
+      word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: LittleEndian), fallback: 0 - 1) == 305419896
+  }
+}
+
 test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
   match word_from_octets(width: Width32, octets: octet_words(values: [1, 2, 3]), endianness: BigEndian) {
     WordRefused { cause: OctetCountMismatch { width: _, expected: e, observed: o } } => e == 4 && o == 3
@@ -862,3 +871,106 @@ test fn a_wrong_row_would_disagree_with_the_definition_holds() -> Bool {
     && machine_word_apply(op: OperatorAnd, width: Width32, a: operand_a(), b: operand_b())
       != word32_value_or(result: word_or(a: word32_or_zero(value: operand_a()), b: word32_or_zero(value: operand_b())), fallback: 0 - 1)
 }
+
+// ── Checked arithmetic: the crossing refuses, wrapping exists only under its own name ───────────
+// These are the controls of std.machine_word word_checked_*; the first four are the operator ruling's
+// discriminating pairs (the same operands that WRAP under word_wrapping_add are REFUSED here, so a
+// silent wrap in either direction reds one of the pair). The expected values are the arithmetic at the
+// stated width, not read back out of the implementation.
+fn word_at(width: WordWidth, value: Int) -> Word {
+  match word_of_int(width: width, value: value) {
+    WordReady { word: w } => w
+    WordRefused { cause: _ } => Word { width: width, value: 0 }
+  }
+}
+
+fn checked_value(result: WordResult) -> Int {
+  word32_value_or(result: result, fallback: 0 - 1)
+}
+
+fn refused_overflow(result: WordResult) -> Bool {
+  match result {
+    WordRefused { cause: WordOverflow { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+test fn checked_add_of_255_and_1_at_width8_overflows() -> Bool {
+  refused_overflow(result: word_checked_add(a: word_at(width: Width8, value: 255), b: word_at(width: Width8, value: 1)))
+    && checked_value(result: word_checked_add(a: word_at(width: Width8, value: 254), b: word_at(width: Width8, value: 1))) == 255
+}
+
+test fn wrapping_add_of_255_and_1_at_width8_is_zero() -> Bool {
+  checked_value(result: word_wrapping_add(a: word_at(width: Width8, value: 255), b: word_at(width: Width8, value: 1))) == 0
+}
+
+test fn checked_add_at_the_top_of_width32_overflows_where_wrapping_wraps() -> Bool {
+  refused_overflow(result: word_checked_add(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 1)))
+    && checked_value(result: word_wrapping_add(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 1))) == 0
+}
+
+test fn checked_subtract_below_zero_is_a_negative_result_not_a_wrap() -> Bool {
+  match word_checked_subtract(a: word_at(width: Width8, value: 3), b: word_at(width: Width8, value: 4)) {
+    WordRefused { cause: WordNegativeResult { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+    && checked_value(result: word_checked_subtract(a: word_at(width: Width8, value: 4), b: word_at(width: Width8, value: 4))) == 0
+    && checked_value(result: word_wrapping_subtract(a: word_at(width: Width8, value: 3), b: word_at(width: Width8, value: 4))) == 255
+}
+
+test fn checked_multiply_refuses_at_the_edge_and_never_forms_the_product() -> Bool {
+  refused_overflow(result: word_checked_multiply(a: word_at(width: Width8, value: 16), b: word_at(width: Width8, value: 16)))
+    && checked_value(result: word_checked_multiply(a: word_at(width: Width8, value: 15), b: word_at(width: Width8, value: 17))) == 255
+    && refused_overflow(result: word_checked_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 4294967295)))
+    && checked_value(result: word_checked_multiply(a: word_at(width: Width32, value: 65535), b: word_at(width: Width32, value: 65537))) == 4294967295
+    && checked_value(result: word_checked_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 0))) == 0
+    && checked_value(result: word_wrapping_multiply(a: word_at(width: Width8, value: 16), b: word_at(width: Width8, value: 16))) == 0
+}
+
+fn refused_divides_by_zero(result: WordResult) -> Bool {
+  match result {
+    WordRefused { cause: WordDividesByZero { width: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+test fn checked_divide_and_remainder_refuse_a_zero_divisor_and_otherwise_answer() -> Bool {
+  refused_divides_by_zero(result: word_checked_divide(a: word_at(width: Width8, value: 5), b: word_at(width: Width8, value: 0)))
+    && refused_divides_by_zero(result: word_checked_remainder(a: word_at(width: Width8, value: 5), b: word_at(width: Width8, value: 0)))
+    && checked_value(result: word_checked_divide(a: word_at(width: Width8, value: 7), b: word_at(width: Width8, value: 2))) == 3
+    && checked_value(result: word_checked_remainder(a: word_at(width: Width8, value: 7), b: word_at(width: Width8, value: 2))) == 1
+}
+
+test fn checked_operands_of_different_widths_refuse_rather_than_widen() -> Bool {
+  match word_checked_add(a: word_at(width: Width8, value: 1), b: word_at(width: Width32, value: 1)) {
+    WordRefused { cause: WordWidthMismatch { left: _, right: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
+  }
+}
+
+test fn checked_arithmetic_at_width64_refuses_as_unrealizable() -> Bool {
+  match word_checked_add(a: Word { width: Width64, value: 0 }, b: Word { width: Width64, value: 0 }) {
+    WordRefused { cause: _ } => true
+    WordReady { word: _ } => false
+  }
+}
+
+// THE TWO WIDTH-32 WRAPPING VECTORS RETIRED WITH std.bounded_nat (review of gunbc#11645). Both products have
+// 64 significant bits, which the host Int cannot hold, so the answer is reachable only by the half-radix
+// split in word_wrapping_multiply, never by forming x * y and reducing. The paired half is that the CHECKED
+// product of the same operands reports WordOverflow, not an unrealizable-width refusal.
+test fn the_width32_wrapping_product_is_computed_where_forming_the_product_cannot() -> Bool {
+  checked_value(result: word_wrapping_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 4294967295))) == 1
+    && checked_value(result: word_wrapping_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 3735928559))) == 559038737
+    && refused_overflow(result: word_checked_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 4294967295)))
+}
+
+// DISPOSITION OF THE RETIRED WIDTH-0/40/42/43 CONTROLS. WordWidth is the closed coproduct 8/16/32/64, so a
+// Word at 0, 40, 42 or 43 bits has no constructor: those controls are not portable, and the wrapping
+// product's 42/43 ceiling dissolves because the split is fixed per realizable width (Width64 refuses as
+// unrealizable, asserted above). The range half of width 0 and the host-bound edge live in
+// machine_width_range_witness, which reads machine_width_admits directly.

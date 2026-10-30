@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme, NotADeclaration }
 import std.optional { Optional, Present, Absent }
 import std.algebra { Cons, Empty, fold_list, length, list_at_optional }
 import std.types { Int, List, NonEmptyStr, String }
@@ -142,7 +142,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
           Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Authored { name: decl_name }, target: arrow }]
+              children: [Edge { label: Authored { name: decl_name }, target: arrow, declaration: NotADeclaration }]
             )])
           Absent => inner
         }
@@ -247,7 +247,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
           match first_arrow_in(root: e.target) {
             Present { value: _ } => concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Authored { name: n }, target: e.target }]
+              children: [Edge { label: Authored { name: n }, target: e.target, declaration: NotADeclaration }]
             )])
             Absent => inner
           }
@@ -296,7 +296,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, occurrence_bindings: program.occurrence_bindings, duplicate_binding_records: program.duplicate_binding_records, module_outcomes: program.module_outcomes, outcome_index: program.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers, constructing_module: program.constructing_module }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, occurrence_resolutions: program.occurrence_resolutions, duplicate_binding_records: program.duplicate_binding_records, module_outcomes: program.module_outcomes, outcome_index: program.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers, constructing_module: program.constructing_module }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

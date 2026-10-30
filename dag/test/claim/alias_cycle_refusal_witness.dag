@@ -1,0 +1,69 @@
+module test.claim.alias_cycle_refusal_witness
+
+import std.types { String, Int, Bool }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A TRANSPARENT TYPE ALIAS THAT REACHES ITSELF MUST REFUSE, AND AN ACYCLIC CHAIN OF ANY LENGTH MUST
+// BE ACCEPTED. The class is `gunbc.recurring_failure_mode.cyclic_alias_head_is_accepted`; the wall
+// is `TypeAliasCycle`, raised once per alias declaration at `v1.compiler.resolve` `resolve_item_types`
+// (the one declaration-resolution boundary), not as fuel in each alias walk.
+//
+// THE SUBJECTS ARE SOURCE STRINGS: a cycle written inline would stop this module compiling the day
+// the wall lands (DESIGN section 4b, the duplicate_record_field_refusal_witness argument).
+//
+// REVERT SENSITIVITY. Removing the `alias_cycle_diags` arm in `resolve_item_types` makes every red
+// below count 0 and fail, while every control stays green; the controls are what say a refusal is
+// about the cycle and not about an unparseable fixture. The 21-declaration chain exceeds the former
+// fixed chase fuel of 16, so it also discriminates a fuel-bounded walk from a bounded-by-chain one.
+// NOT-RUNNABLE IS NOT ZERO: a census that never ran is CensusUnobserved, which satisfies neither a
+// red nor a control.
+
+fn alias_cycle_verdict(source: String, holds: fn(Int) -> Bool) -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: source, wanted_class: "TypeAliasCycle"), holds: holds))
+}
+
+data red_direct_source: String = "module probe_alias_cycle_direct\ntype CycA = CycB\ntype CycB = CycA\n"
+
+data red_self_source: String = "module probe_alias_cycle_self\ntype CycSelf = CycSelf\n"
+
+data red_three_source: String = "module probe_alias_cycle_three\ntype Cyc3A = Cyc3B\ntype Cyc3B = Cyc3C\ntype Cyc3C = Cyc3A\n"
+
+data red_param_source: String = "module probe_alias_cycle_param\ntype CycPA<T> = CycPB<T>\ntype CycPB<T> = CycPA<T>\n"
+
+data green_chain_source: String = "module probe_alias_chain_ok\ntype OkA = OkB\ntype OkB = Int\n"
+
+data green_generic_source: String = "module probe_alias_generic_ok\ntype Box<T> = List<T>\ntype BoxBox<T> = Box<T>\ntype BoxInt = BoxBox<Int>\n"
+
+data green_long_source: String = "module probe_alias_long_chain_ok\ntype LongChain0 = LongChain1\ntype LongChain1 = LongChain2\ntype LongChain2 = LongChain3\ntype LongChain3 = LongChain4\ntype LongChain4 = LongChain5\ntype LongChain5 = LongChain6\ntype LongChain6 = LongChain7\ntype LongChain7 = LongChain8\ntype LongChain8 = LongChain9\ntype LongChain9 = LongChain10\ntype LongChain10 = LongChain11\ntype LongChain11 = LongChain12\ntype LongChain12 = LongChain13\ntype LongChain13 = LongChain14\ntype LongChain14 = LongChain15\ntype LongChain15 = LongChain16\ntype LongChain16 = LongChain17\ntype LongChain17 = LongChain18\ntype LongChain18 = LongChain19\ntype LongChain19 = LongChain20\ntype LongChain20 = Int\n"
+
+test fn a_two_member_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_direct_source, holds: fn(n) { n >= 1 })
+}
+
+test fn a_self_alias_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_self_source, holds: fn(n) { n >= 1 })
+}
+
+test fn a_three_member_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_three_source, holds: fn(n) { n >= 1 })
+}
+
+test fn a_parameterized_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_param_source, holds: fn(n) { n >= 1 })
+}
+
+test fn an_alias_of_an_alias_of_int_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_chain_source, holds: fn(n) { n == 0 })
+}
+
+test fn an_alias_of_an_alias_of_a_generic_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_generic_source, holds: fn(n) { n == 0 })
+}
+
+test fn a_twenty_one_hop_acyclic_chain_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_long_source, holds: fn(n) { n == 0 })
+}

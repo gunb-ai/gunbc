@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unsolved_placeholder_reads_back_as_unit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unsolved_placeholder_reads_back_as_unit: RecurringFailureMode = RecurringFailureMode {
   identity: "unsolved_placeholder_reads_back_as_unit" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an element whose type is an UNSOLVED inference placeholder reaches a consumer typed as the concrete kernel type Unit. v1.compiler.infer types an empty list literal with no expected type as List of type_variable_node empty_list_element. When nothing later solves that variable, an element read from the list arrives at field access as Unit, and the refusal names Unit as the type. The value's type was never established, and the diagnostic reports a type it does not have.",
@@ -16,6 +18,7 @@ data unsolved_placeholder_reads_back_as_unit: RecurringFailureMode = RecurringFa
     "PRODUCER, PARTLY LOCATED 2026-10-14 (gunbc#14005): the Unit fallback was v1.compiler.infer ExprListLit typing an empty literal as List<Unit> when its expected type was present but not a collection (a fold accumulator formal); it now carries the unsolved placeholder, and a field read of that placeholder refuses (test.claim.unsolved_empty_list_element_witness). Other readers (arithmetic operands, the Present-arm binding) are unmeasured. Original note: PRODUCER: NOT LOCATED. The placeholder carries inferred TypeVariable empty_list_element, and v1.compiler.infer type_node_label would print that id, so the Unit is substituted somewhere between the element read and the field-access refusal. The candidates, unread: the Present arm's binding of the optional's value, the first builtin's element extraction, and the unit_type fallbacks in v1.compiler.infer and v1.compiler.method resolve_builtin_call_type. What decides it: the fixture above with each candidate replaced by a typed refusal, run until the Unit message changes.",
 
     "RUNG FOUND AT: mitigatable (loud, located, misattributed). CEILING: 3 -- an unsolved placeholder is a modeled state (TypeVariable), so every reader can refuse it as unresolved instead of substituting a concrete type. NEXT TRIGGER: the producer above is located, and an unsolved placeholder reaching field access refuses with the same unresolved-type cause the Present-arm refusal already uses; evidence is the specimen refusing with that cause, with the declared-return form of the same fold as the accepted control.",
+    "SECOND READER, executed 2026-10-19 on main 82798047967a (gunbc compile of a fixture under dag/test/claim, deleted afterwards): `fold_list(xs: xs, empty: [], cons: fn(acc, m) { let seen = any(acc, a => a.v == m.v)  if seen { acc } else { concat(acc, [m]) } })` over List<Item> refuses `no field 'v' on type 'empty_list_element'`; the same fold seeded by a declared `seed() -> List<Item>` has 0 blocking errors. Here the callback RETURN is informative (List<Item>) and still never refines the accumulator, so this is not the unchanged-acc case above: v1.compiler.infer unify_generics binds a generic from the first argument it sees and keeps it, while unify_lambda_solves already drops an uninformative candidate (unify_binding_is_uninformative). Surfaced in dag/product/build_fulfillment.dag derive_bom and owned_stock_consumed. NEXT TRIGGER for this reader: one refine-not-fix rule for an uninformative binding in unify_generics, shared with unify_lambda_solves, coordinated with gunbc#14152.",
   ],
 
   evidence: [],

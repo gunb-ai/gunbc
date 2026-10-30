@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data instruction_and_subject_resolved_from_different_revisions: RecurringFailureMode = RecurringFailureMode {
   identity: "instruction_and_subject_resolved_from_different_revisions" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a step's INSTRUCTION and the TREE it operates on are resolved from different revisions** (INVALID STATE: the command a step runs -- which entry point, which function, which path -- is taken from revision A, while the working tree that command is pointed at is checked out at revision B, and nothing in the step binds the two or reports which is which. HARM: the split has TWO ARMS AND THEY ARE NOT THE SAME RUNG. LOUD ARM: the step's refusal is REAL, typed and located, and it names a subject that never carried the instruction; Section 5's located diagnostic is intact and points at the wrong tree, so the repair it invites -- edit the module the error names -- is correct-looking and cannot work, because that module is not what disagreed. SILENT ARM: the step does not refuse at all. When the subject revision lacks the instruction's NEW PART rather than the entry point itself, the older subject still answers the command and prints a counts shape the instruction never specified, and the step exits 0. The lane is then green over a subject that was never judged by the instruction the run executed.",

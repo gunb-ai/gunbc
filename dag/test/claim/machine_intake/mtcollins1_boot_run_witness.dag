@@ -1,5 +1,15 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
+import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded, FanGateEvidence, FanGateWritten, post_power_fan_gate_text, PostPowerFanGateReading }
+import gunbc.machine_intake.mtcollins1_boot_run { fan_gate_continuation, FanGateContinuation, FanGateStopsBoot, FanGateAdmitsBoot, post_power_fan_gate_exit_of }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set, mtcollins1_boot_fan_gate_allowance }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
+import gunbc.machine_intake.chassis_fan_establishment { PostPowerChassisUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
+import extdeps.bmc.ipmi_chassis_control { ChassisUnreadable }
+import extdeps.linux.proc_uptime { UptimeRefused }
+import gunbc.host.managed_host_boot_phase_timing { PhaseStepSkipped }
+import std.process { ExitSuccess, ExitFailure }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_still_allowance }
 import gunbc.machine_intake.mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
 import gunbc.machine_intake.mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
@@ -13,27 +23,27 @@ import std.measure { byte_size_count, second_count, minute_count, hardware_threa
 import std.optional { Present }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, SmproReading, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
-}
+
 import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_notice_final_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart, SolAcquireStart, sol_acquire_plan, mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance, mtcollins1_boot_sol_is_held, SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset, SolExitPidGone, SolExitPidReused, SolExitZombie, ProcReadOutcome, ProcRead, ProcReadRefused, sol_collector_observation_of, held_lease_of_collector, sol_capture_opens_with_banner, SolActivationUnconfirmed, SolObservationLoss, SolLostDuringWatch, sol_observation_loss_text, mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_pre_os_verdict, MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending, HardwareThreadCountMismatch, WorkloadWriteFailed, mtcollins1_boot_medium_refusal, SolEstablishmentFailure, SolSpawnRefused, SolActivateRefused, SolSessionRefused, SolCollectorLeftUnexplained, sol_establishment_failure, sol_establishment_failure_text, SolPidNotPublished, SolChannelReading, SolChannelLive, SolChannelNotLive, sol_channel_reading, SolClientDiagnostics, SolCollectorExitRecorded, SolCollectorExitUnrecorded, SolClientReportedSessionClosed, SolClientReportedKeepaliveUnanswered, SolClientReportedNothing, sol_client_diagnostics, sol_client_diagnostics_text, WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick }
 import extdeps.bmc.ipmi { SolPayloadAlreadyActive, SolPayloadActivationUnanswered }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_line_prefix, mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_release_script }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { BmcAuthRefused, BmcSessionUnestablished }
+
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_one_socket_milestone, mtcollins1_boot_topology_expectation, mtcollins1_dual_socket_workload }
 import gunbc.machine_intake.host_capture_envelope { host_capture_workload_total_bytes }
 import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
+
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_mtcollins1_boot_grant_await_if, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
+import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
+import extdeps.github.expressions { serialize_expression }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
 import std.temporal_effect {
@@ -42,15 +52,28 @@ import std.temporal_effect {
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BmcAuthRefused, BmcSessionUnestablished, BootParam5Read, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, megarac_diagnostics_allowance,
+}
+import gunbc.host.smpro_platform_capability {
+  SmproNotTaken, SmproProbed, SmproReading,
+}
+// The override and the post-attempt power are the CORE's sums since review 81601 deleted this row's
+// copies; the witness names the arms of the sums the record actually stores.
+import gunbc.host.boot_attempt {
+  HostPowerReading, HostPowerRead, PowerOff,
+  OverrideNotHandedOff, OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt,
+}
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 
 // A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
 // the medium the claim needs; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor). Absent fails the claim that asked for it.
 fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
-  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }
@@ -82,7 +105,9 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
     + (second_count(s: mtcollins1_boot_in_run_smpro_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
-    + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
+    + (second_count(s: megarac_diagnostics_allowance(row: mtcollins1_boot_row_value)) as Int)
+    + (second_count(s: mtcollins1_boot_fan_gate_allowance()) as Int)
+    + (second_count(s: mtcollins1_fan_transition_window) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 
@@ -553,12 +578,17 @@ test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
   filter(runs, r => r == supplied_fleet_key_marker || r == supplied_boot_marker) == [supplied_fleet_key_marker, supplied_boot_marker]
 }
 
-// RED: a branch run with no approved grant reaches the fleet key. Await and WIF sit before the
-// supplied key step; await is skipped only on reviewed main.
+// RED: a branch run with no approved grant reaches the fleet key. The wait is the grant-wait job the
+// boot job needs, never a step of the boot job (which would hold srv1 while the grant run needs srv1);
+// the boot job runs only after that wait succeeded or was skipped, and the wait names the boot mode off
+// reviewed main.
 test fn a_branch_boot_awaits_its_grant_before_the_fleet_key() -> Bool {
   let ids = map(supplied_boot_steps(), s => step_id(s: s))
-  filter(ids, i => i == "branch_run_grant_await" || i == "wif_auth") == ["branch_run_grant_await", "wif_auth"]
-    && fleet_converge_mtcollins1_boot_grant_await_if() == "github.ref != 'refs/heads/main'"
+  !ids.contains("branch_run_grant_await")
+    && fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)) == [fleet_converge_branch_run_grant_await_job_id as String]
+    && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: serialize_expression(expression: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "success")))
+    && string_contains(s: fleet_converge_branch_run_grant_wait_if(), pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
+    && string_contains(s: fleet_converge_branch_run_grant_wait_if(), pattern: "github.ref != 'refs/heads/main'")
     && string_contains(s: fleet_converge_mtcollins1_boot_wif_service_account(), pattern: fleet_converge_mtcollins1_boot_service_account())
     && string_contains(s: fleet_converge_mtcollins1_boot_wif_service_account(), pattern: "mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com")
     && string_contains(s: fleet_converge_mtcollins1_boot_wif_provider_resource(), pattern: fleet_converge_mtcollins1_boot_provider_resource())
@@ -701,13 +731,12 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
+// The trusted-checkout conjuncts live once in test.claim.fleet.fleet_converge_checkout_trust; #14690's three per-file copies were consolidated there, the literal shared-job exclusion included.
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
-  fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
+  fleet_converge_checkout_trust_holds()
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && fleet_converge_checkout_ref_expr == "${{ github.sha }}"
-    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 
 fn runner_labels(r: RunnerSpec) -> List<String> {
@@ -738,7 +767,7 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
     && !string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "inputs.host")
     && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
     && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
-    && filter(ids, i => i == "mtcollins1_boot_admit" || i == "branch_run_grant_await" || i == "wif_auth") == ["mtcollins1_boot_admit", "branch_run_grant_await", "wif_auth"]
+    && filter(ids, i => i == "mtcollins1_boot_admit" || i == "branch_run_grant_await" || i == "wif_auth") == ["mtcollins1_boot_admit", "wif_auth"]
 }
 
 // THE RUN RECORD FOLLOWS HOW FAR THE ACTUATION GOT. An attempt that never observed power on hands
@@ -746,21 +775,21 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
+  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
-    media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-    stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
-    before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+    media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
+    stage: ActuationCensusEnded { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
+    before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
+    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
-    && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
+    && (match ended.override { OverrideConsumedByAttempt => true _ => false })
     && (match mtcollins1_boot_run_record(
-      media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-      stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
-      before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-      timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+      media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
+      stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
+      before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
+      timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
 }
@@ -1051,4 +1080,65 @@ test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool 
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 1000)) { PaceClockStalled => true  _ => false })
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 900)) { PaceClockStalled => true  _ => false })
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 2000)) { PaceAdvanced => true  _ => false })
+}
+
+// THE GATE-TO-BOOT DECISION, EXECUTED (side-chat hold 2026-10-19, the pairing obligation). fan_gate_continuation is the one decision
+// mtcollins1_boot_actuate branches on; each control supplies a gate reading and reads whether the boot is admitted or stopped. Ignoring the
+// reading (always admitting) fails the Refused and Abandoned controls; always stopping fails the Established control. The decision takes
+// the POWERED gate, which has no not-reached arm, so the former unreached control is now a compile RED
+// (test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness). The effectful gate (settle, read, PowerDown) is exercised
+// only by a real boot; no control here claims it.
+fn gc_round() -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
+}
+
+fn gc_refused_reading() -> PoweredFanGate {
+  PostPowerFanGateReached {
+    fitted: mtcollins1_fitted_fan_set,
+    outcome: PostPowerFanRefused {
+      cause: PostPowerChassisUnreadable,
+      observation: gc_round(),
+      stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded },
+      manager: FanManagerUnread { read_obligation: "fixture" as NonEmptyStr },
+      evidence: FanGateEvidence { observation_file: FanGateWritten { path: "f" as NonEmptyStr }, step_summary: FanGateWritten { path: "s" as NonEmptyStr } },
+    },
+  }
+}
+
+fn gc_established_reading() -> PoweredFanGate {
+  PostPowerFanGateReached { fitted: mtcollins1_fitted_fan_set, outcome: PostPowerFanEstablished { observation: gc_round() } }
+}
+
+fn gc_abandoned_reading() -> PoweredFanGate {
+  PostPowerFanGateAbandoned {
+    reason: "fixture: the settle stopped the boot" as NonEmptyStr,
+    stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded },
+  }
+}
+
+fn gc_decision(reading: PoweredFanGate) -> FanGateContinuation {
+  fan_gate_continuation(gate: reading, selection: uefi_once_boot_selection(device: IpmiBootCdrom), at_power_on: smpro_probed_empty(), smpro_read: UptimeRefused { detail: "fixture" })
+}
+
+fn gc_stopped_failure(reading: PoweredFanGate) -> Bool {
+  match gc_decision(reading: reading) {
+    FanGateStopsBoot { watch: w } => (match w.outcome { ExitFailure { code: _, reason: _ } => true  ExitSuccess => false })
+      && (match w.terminal_step { PhaseStepSkipped { reason: _ } => true  _ => false })
+      && post_power_fan_gate_text(reading: w.fan_gate) == post_power_fan_gate_text(reading: PostPowerFanGatePowered { gate: reading })
+    FanGateAdmitsBoot => false
+  }
+}
+
+test fn an_observed_established_gate_admits_the_boot() -> Bool {
+  match gc_decision(reading: gc_established_reading()) { FanGateAdmitsBoot => true  FanGateStopsBoot { watch: _ } => false }
+}
+
+test fn a_refused_gate_stops_the_boot_carrying_the_reading() -> Bool { gc_stopped_failure(reading: gc_refused_reading()) }
+
+test fn an_abandoned_gate_stops_the_boot_carrying_the_reading() -> Bool { gc_stopped_failure(reading: gc_abandoned_reading()) }
+
+test fn the_gate_exit_is_failure_unless_established() -> Bool {
+  (match post_power_fan_gate_exit_of(gate: gc_established_reading()) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match post_power_fan_gate_exit_of(gate: gc_refused_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+    && (match post_power_fan_gate_exit_of(gate: gc_abandoned_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
 }

@@ -286,6 +286,63 @@ pub fn cargo_workspace_footprint(
     })
 }
 
+pub fn cargo_default_target_relative_segment() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "target".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cargo_default_target_dir(build_root: String) -> String {
+    Rc::new(vec![
+        build_root.clone(),
+        "/".to_string(),
+        cargo_default_target_relative_segment(),
+    ])
+    .join(&"".to_string())
+}
+
+pub fn cargo_default_dev_profile() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "debug".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cargo_default_release_profile() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "release".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cargo_profile_dir_under_target_dir(target_dir: String, profile: String) -> String {
+    Rc::new(vec![target_dir.clone(), "/".to_string(), profile.clone()]).join(&"".to_string())
+}
+
+pub fn cargo_default_profile_dir(build_root: String, profile: String) -> String {
+    cargo_profile_dir_under_target_dir(cargo_default_target_dir(build_root), profile)
+}
+
+pub fn cargo_default_release_dir(build_root: String) -> String {
+    cargo_default_profile_dir(build_root, cargo_default_release_profile())
+}
+
+pub fn cargo_default_release_dir_rel() -> String {
+    thread_local! {
+        static CACHED: String = {
+            Rc::new(vec![cargo_default_target_relative_segment(), "/".to_string(), cargo_default_release_profile()]).join(&"".to_string())
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Edition2015;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

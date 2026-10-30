@@ -2,9 +2,6 @@ module test.claim.machine_intake.no_fallback_plan_ineligibility_wall
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
   CompileDiagnosticCensusRow,
   census_blocking_rows,
   census_rows_of_class,
@@ -12,6 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_count_at_key,
   censuses_differ_by_exactly_the_target_key
 }
+import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
 import std.optional { Absent, Present }
 
 // THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (DESIGN §4b).
@@ -53,19 +51,13 @@ fn plan_ineligible_probe_source(cause: String) -> String {
 // would be. A fixture-local claim needs either exact subject attribution or an
 // exact differential against a structurally paired control; this test carries
 // both.
-type ProbeCensusRows {
-  rows: List<CompileDiagnosticCensusRow>
-}
-
-// Absent is the CensusNotRunnable arm: a census that could not run is not a
-// green, and keeping it in the optional rather than answering 0 is why this
-// reads rows through the coproduct instead of a rows-of-census accessor.
-fn plan_ineligible_probe_rows(cause: String) -> ProbeCensusRows? {
-  match compile_dag_diagnostic_census(plan_ineligible_probe_source(cause: cause)) {
-    CensusObserved { rows: rows } => Present { value: ProbeCensusRows { rows: rows } }
-    CensusNotRunnable { cause: _ } => none
-  }
-}
+// THE ROWS ACCESSOR IS NOT REDECLARED HERE -- it is imported from its one home,
+// gunbc.compile_census_probe. This file used to carry its own `type ProbeCensusRows` and a
+// `plan_ineligible_probe_rows` that matched the census coproduct by hand; that was the second local
+// implementation of one rule (§6b), which a third copy exposed. The
+// semantics the deleted comment carried are preserved in the home: `Absent` is the `CensusNotRunnable`
+// arm, a census that could not run is not a green, and the optional keeps that fact visible instead
+// of answering 0.
 
 data target_class: String = "TypeMismatch"
 
@@ -100,11 +92,11 @@ fn censuses_differ_by_exactly_the_target_row(
 }
 
 fn red_rows() -> ProbeCensusRows? {
-  plan_ineligible_probe_rows(cause: "CandidateEligible")
+  census_rows_for(source: plan_ineligible_probe_source(cause: "CandidateEligible"))
 }
 
 fn green_rows() -> ProbeCensusRows? {
-  plan_ineligible_probe_rows(cause: "CandidateStagingAbsent")
+  census_rows_for(source: plan_ineligible_probe_source(cause: "CandidateStagingAbsent"))
 }
 
 // THE DISCRIMINATING RED. Before the refusal-only split this source compiled,
@@ -180,6 +172,7 @@ fn fabricated_row(diagnostic_class: String, subject_name: String, blocking: Bool
     subject_name: subject_name,
     blocking: blocking,
     count: count,
+    rendered_pair: Absent {},
   }
 }
 

@@ -92,6 +92,7 @@ import gunbc.namespace_cut.namespace_step0_canary_v2 {
   step0_v2_entered_prefix,
   step0_v2_pre_strip_prefix
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THE ONE-DISPATCH CANDIDATE COMMAND. Everything the receipt names is observed by THIS run: the
 // revision and its tree and the compiler's bytes, the population collected out of that revision, the
@@ -669,7 +670,7 @@ fn step0_candidate_receipt_of_run(
   namespace_step0_v2_candidate_receipt(
     source_commit: vector.source_commit,
     source_tree: vector.source_tree,
-    compiler_program: "target/release/gunbc" as NonEmptyStr,
+    compiler_program: concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr,
     compiler_executable_sha256: compiler,
     collected_population: step0_collected_population_identity(vector: vector),
     excluded_sources: partition.excluded,
@@ -735,7 +736,7 @@ fn run_current_step0_candidate() -> Step0CandidateRun {
   match collect_current_step0_subject_vector() {
     Step0SubjectCollectionRefused { cause: cause } => Step0CandidateSubjectUnavailable { cause: cause }
     Step0SubjectCollected { vector: vector } =>
-      match sha256sum_file_digest_via_shell(path: "target/release/gunbc" as NonEmptyStr) {
+      match sha256sum_file_digest_via_shell(path: concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr) {
         Sha256FileDigestUnavailable { path: path, reason: reason } =>
           Step0CandidateCompilerUnavailable { program: path, reason: reason }
         Sha256FileDigest { digest: observed } =>

@@ -1,0 +1,7 @@
+module v2.fx.misplaced
+
+import std.types { Int }
+
+type FxRow {
+  weight: Int
+}

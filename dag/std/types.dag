@@ -104,6 +104,14 @@ fn canonical_container_names() -> List<String> {
 
 type Bool = True | False
 
+// THE TEXT OF A BOOL, held once in Bool's owner. Bool has no to_string route and no implicit route
+// into host text (a Bool at a host-text formal refuses, as `b as String` does); kernel to_string over
+// a Bool is the host's Display spelling, which no declaration owns. Every consumer that writes a Bool
+// as text asks this function, so its bytes are this declaration's: `true` and `false`.
+fn bool_text(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
 type Unit
 
 // THE UNINHABITED TYPE Never and the eliminator absurd live in std.error_primitives so
@@ -361,7 +369,6 @@ type SignalKey    = NonEmptyStr where brand("SignalKey")
 type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
 type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
 type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
-type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
 type GitRef       = String where string_non_empty
 

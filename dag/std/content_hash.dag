@@ -1,7 +1,7 @@
 module std.content_hash
 import std.optional { Absent, Present }
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.algebra { collection_concat_shape, collection_join_shape }
 import std.host_text { chars }
 
@@ -71,8 +71,18 @@ fn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structu
   Fnv1a64Structural { digest: digest }
 }
 
+type HexCodePointRange { first: Int, last: Int }
+
+// THE LOWERCASE-HEX ALPHABET, as data: `0-9` and `a-f`. content_hash_is_lower_hex_code_point reads
+// it, and a realization that must spell the same alphabet in another notation (a shell ERE bracket)
+// reads it too, so the alphabet has one home rather than one per notation.
+data lower_hex_code_point_ranges: List<HexCodePointRange> = [
+  HexCodePointRange { first: 48, last: 57 },
+  HexCodePointRange { first: 97, last: 102 },
+]
+
 fn content_hash_is_lower_hex_code_point(cp: Int) -> Bool {
-  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+  fold(lower_hex_code_point_ranges, init: false, f: (acc, r) => acc || (cp >= r.first && cp <= r.last))
 }
 
 fn content_hash_validate_lower_hex_syntax(text: String) -> Bool {
@@ -94,8 +104,10 @@ fn lower_hex_40(value: String) -> Bool {
   content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 40)
 }
 
+data sha256_hex_digit_count: Int = 64
+
 fn lower_hex_64(value: String) -> Bool {
-  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 64)
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: sha256_hex_digit_count)
 }
 
 fn lower_hex_128(value: String) -> Bool {
@@ -108,6 +120,21 @@ fn sha256_hex_digest(hex: String) -> Sha256Digest? {
   } else {
     none
   }
+}
+
+// THE ONE DECLARED HOME OF sha256_hex_of_text (NAMESPACE-XL; root-coordinator decision, sleek-owl-397). Its meaning
+// is three steps, in order: ENCODE the text as UTF-8 (std.bytes utf8_encode_bytes -- not Latin-1, not UTF-16, not the
+// Unicode scalars of std.host_text chars), DIGEST those octets with SHA-256 (FIPS 180-4; the substrate's own fold is
+// extdeps.crypto.sha2 sha256_hex), RENDER the 32-octet digest as 64 lowercase hex digits (the sha256_hex_digest wall
+// above admits it). The body cannot compose those pieces: extdeps.crypto.sha2 imports this module, so composing it here
+// is a cycle, and this module has no digest-of-octets piece of its own. So it is a host seam: a self-call body bound
+// by THIS declaration's identity (std.primitive_projection primitive_sha256_hex_of_text, HostRealizedSeam), realized by
+// the interpreter's RustCrypto arm (gunbc.host_crypto_digest_seed_growth). The pure fold stays its differential oracle
+// through the known answers they share (test.claim.sha256_host_known_answer_witness). There is no Rust bridge row, so
+// emitted code refuses (the unrealized-seam panic), never recurses. The std.primitives sha256_hex_of_text_contract row
+// that admitted the bare name with no import is retired; a caller reaches this by `import std.content_hash`.
+fn sha256_hex_of_text(text: String) -> String {
+  sha256_hex_of_text(text: text)
 }
 
 fn sha1_hex_digest(hex: String) -> Sha1Digest? {

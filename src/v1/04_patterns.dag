@@ -37,12 +37,12 @@ import v1.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name, lookup_type_for,
   symbol_index_lookup,
-  declaration_ref_of_type_node, declaration_ref_of_declaration_node
+  declaration_ref_of_type_node, declaration_ref_of_declaration_node,
+  substitute_type_slots, substitute_type_slots_scoped
 }
 
 import v1.compiler.infer_resolve {
-  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-  substitute_type_slots_scoped
+  is_user_generic_use_site, resolve_generic_use_decl
 }
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
@@ -54,6 +54,32 @@ fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node
       Absent => acc
     }
   )
+}
+
+// The scrutinee of a pattern is the use site's type, so a generic coproduct use is expanded from its
+// declaration with the use site's type arguments bound to the declaration's own slots (the call the
+// qualified head and expand_scrut_from_type_name already make). The node reached through the use's
+// `inferred` link is the callee's DECLARED return type: its fields name the callee's type parameters,
+// which can share a spelling with the coproduct's own slot, so rewriting that node would bind twice.
+// A type argument arrives as a use-site node whose NAME is read off the span of the callee's declared
+// slot, so it is followed to the type it resolved to before it is bound: the bound node must name what
+// it is, because every later reader (field access, method lookup) asks the node's own name.
+fn instantiate_scrutinee_expansion(use_site: Node, expanded: Node, env: TypeEnv) -> Node {
+  let is_generic_coproduct_use = use_site.connective == NoConnective && use_site.children |> count > 0 && expanded.connective == Disj
+  if is_generic_coproduct_use {
+    let decl = resolve_generic_use_decl(env: env, n: use_site)
+    let decl_is_generic_coproduct = decl.connective == Disj && (decl.params |> count) > 0
+    if decl_is_generic_coproduct {
+      let resolved_args = use_site.children |> map(fn(arg) {
+        match arg.inferred {
+          Present { value: Resolved { node: target } } =>
+            if arg.children |> count == 0 && arg.connective == NoConnective { target } else { arg }
+          _ => arg
+        }
+      })
+      expand_scrut_from_decl(decl: decl, scrut_node: node_with_children(n: use_site, children: resolved_args), name: authored_name_at(source_indices: env.source_indices, node: decl), env: env)
+    } else { expanded }
+  } else { expanded }
 }
 
 fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {

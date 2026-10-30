@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.callee_arm_carried_past_its_exclusion
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data callee_arm_carried_past_its_exclusion: RecurringFailureMode = RecurringFailureMode {
   identity: "callee_arm_carried_past_its_exclusion" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**AN OPERATION'S OUTCOME CARRIES A REFUSAL ARM OF A GENERIC CALLEE THAT THE OPERATION'S OWN ROUTE HAS ALREADY EXCLUDED.** The route answered the question before reaching the callee -- found the parent, traced both merge sides, computed the digest over the value it proposes -- and then invoked a construction that asks the question again, so the operation's type admits a state its route cannot produce. It is honest about the CALLEE's domain and dishonest about the OPERATION's.",

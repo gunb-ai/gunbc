@@ -1,7 +1,8 @@
 module gunbc.rung_drop.match_arm_guard_seed_interpreter_witnesses_deleted
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 
 // The two witnesses held the seed interpreter's authored match-arm guard behavior at rung 2. v2's
@@ -15,16 +16,11 @@ data match_arm_guard_seed_interpreter_witnesses_deleted: RungDrop = RungDrop {
 
   declared: "2026-10-11",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
-    population: [
-      "test.claim.interpreter_match_guard_witness (deleted: every rejecting-guard RED and admitting control)",
-      "test.claim.emit.nested_constant_pattern_emission_witness the_interpreter_honors_an_authored_guard_on_a_nested_arm (deleted with its ncp_guarded fixture)",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "test.claim.interpreter_match_guard_witness (deleted: every rejecting-guard RED and admitting control)", tail: ["test.claim.emit.nested_constant_pattern_emission_witness the_interpreter_honors_an_authored_guard_on_a_nested_arm (deleted with its ncp_guarded fixture)"] } },
     restoration_trigger: "the seed interpreter retires: a claim-evaluation route that is not the seed interpreter judges authored arm guards, sufficient that a guard evaluating false never selects its arm and a non-Bool guard refuses, shown by a discriminating RED and an admitting control on that route; until then no executed evidence holds the class",
-  }
+  } }
 }

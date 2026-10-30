@@ -3,6 +3,7 @@ module gunbc.auth.approval_device_crypto_client
 import std.types { String, Int, Bool, List, NonEmptyStr, Port }
 import std.native_realization_proof { NativeRealizationProof }
 import std.measure { Second, second }
+import gunbc.native_serve { native_serve_startup_deadline }
 import extdeps.http.client
 import extdeps.http.client { http_client_max_time_flag }
 import extdeps.tools.curl { CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
@@ -20,11 +21,12 @@ import extdeps.shell
 import std.optional { Present, Absent }
 import gunbc.auth.approval_device_crypto_realization {
   approval_device_crypto_deployed_digest_env_name,
-  DeviceCryptoAdmission, device_crypto_proof_of, device_crypto_handler_identity, DeviceCryptoExpectation, DeviceCryptoEchoJoin, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join,
+  DeviceCryptoAdmission, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, DeviceCryptoRequirement, device_crypto_proof_of, DeviceCryptoExpectation, DeviceCryptoEchoJoin, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join,
 }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
 import gunbc.auth.approval_device_crypto_wire {
-  device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path,
+  device_crypto_signature_path, device_crypto_attestation_path, device_crypto_assertion_path, device_crypto_p256_order_path,
+  p256_multiple_request_json, P256Multiple, OrderMinusOne,
   SignatureCheck, signature_check_request_json, attestation_check_request_json, assertion_check_request_json,
   DeviceCryptoAnswer, DeviceCryptoVerdict, CryptoVerified, CryptoInvalid, CryptoRefused,
   DeviceCryptoPayload, NoPayload, SignedPayload, AttestedPayload, AssertedPayload, RefusedPayload,
@@ -33,7 +35,7 @@ import gunbc.auth.approval_device_crypto_wire {
 }
 
 // THE BROKER'S CLIENT OF THE DEVICE-CRYPTO VERIFIER SIDECAR (gunbc.auth.approval_device_crypto_serve). When
-// device_crypto_admission admits, the device routes ask the sidecar instead of folding the verifiers in the
+// device_crypto_gate admits, the device routes ask the sidecar instead of folding the verifiers in the
 // interpreted process, over the broker's existing HTTP effect (extdeps.http.client PostStdinWithin) and the
 // byte contract of gunbc.auth.approval_device_crypto_wire: no second transport, no second request shape.
 //
@@ -74,13 +76,13 @@ type SidecarResult<V>
   | SidecarFailed { cause: NonEmptyStr }
 
 type SidecarReply
-  = SidecarReplied { answer: DeviceCryptoAnswer }
+  = SidecarReplied { answer: DeviceCryptoAnswer, admission: DeviceCryptoAdmission }
   | SidecarReplyFailed { cause: NonEmptyStr }
 
 
-fn device_crypto_expectation_of(bound: String?) -> DeviceCryptoExpectation? {
+fn device_crypto_expectation_of(bound: String?, requirement: DeviceCryptoRequirement) -> DeviceCryptoExpectation? {
   match bound {
-    Present { value: v } => if v == "" { none } else { Present { value: DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: v as NonEmptyStr } } }
+    Present { value: v } => if v == "" { none } else { Present { value: DeviceCryptoExpectation { requirement: requirement, deployed_digest: v as NonEmptyStr } } }
     Absent => none
   }
 }
@@ -101,7 +103,7 @@ fn sidecar_reply_from_status(stdout: String, expectation: DeviceCryptoExpectatio
           WireRefused { at: a, cause: c } => SidecarReplyFailed { cause: join(["the sidecar's answer is undecodable at ", a as String, ": ", c as String], "") as NonEmptyStr }
           WireDecoded { value: echoed } =>
             match device_crypto_echo_join(expectation: expectation, echo: echoed.echo) {
-              DeviceCryptoEchoJoined => SidecarReplied { answer: echoed.answer }
+              DeviceCryptoEchoJoined { admission: joined } => SidecarReplied { answer: echoed.answer, admission: joined }
               DeviceCryptoEchoRefused { cause: c } => SidecarReplyFailed { cause: c }
             }
         }
@@ -116,8 +118,8 @@ fn sidecar_reply_from(exit_code: Int, stdout: String, stderr: String, expectatio
   }
 }
 
-fn sidecar_post(path: NonEmptyStr, request: String) -> SidecarReply {
-  match device_crypto_expectation_of(bound: shell.Env.Get(name: approval_device_crypto_deployed_digest_env_name).value) {
+fn sidecar_post(path: NonEmptyStr, request: String, requirement: DeviceCryptoRequirement) -> SidecarReply {
+  match device_crypto_expectation_of(bound: shell.Env.Get(name: approval_device_crypto_deployed_digest_env_name).value, requirement: requirement) {
     Absent => SidecarReplyFailed { cause: join([approval_device_crypto_deployed_digest_env_name as String, " is not bound in this process: the deployed sidecar's digest is unknown, so no answer can be joined to it"], "") as NonEmptyStr }
     Present { value: expectation } => sidecar_post_expecting(path: path, request: request, expectation: expectation)
   }
@@ -131,6 +133,53 @@ fn sidecar_post_expecting(path: NonEmptyStr, request: String, expectation: Devic
     max_seconds: http_client_max_time_flag(max_time: approval_device_crypto_request_bound),
   )
   sidecar_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr, expectation: expectation)
+}
+
+// THE SIDECAR'S STARTUP WINDOW IS ITS OWN DECLARED BOUND, read from the authority its rendered main reads: a
+// native-serve driver without a native_serve_startup_bound waits gunbc.native_serve native_serve_startup_deadline before it
+// is refused, and the verifier sidecar (gunbc.auth.approval_device_crypto_serve) declares none. So that deadline is how long
+// "restart returned" may precede "listening", and the readback admits connection-refused for exactly that long. A sidecar
+// that later declares native_serve_startup_bound must change this one function to read it.
+fn device_crypto_sidecar_startup_bound() -> Second {
+  native_serve_startup_deadline
+}
+
+fn sidecar_post_within_startup(endpoint: NonEmptyStr, path: NonEmptyStr, request: String, startup: Second, expectation: DeviceCryptoExpectation) -> SidecarReply {
+  let r = http.Client.PostStdinWithinRetryingRefused(
+    url: join([endpoint as String, path as String], "") as NonEmptyStr,
+    request_body: request,
+    connect_seconds: http_client_max_time_flag(max_time: approval_device_crypto_connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: approval_device_crypto_request_bound),
+    startup_seconds: http_client_max_time_flag(max_time: startup),
+  )
+  sidecar_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr, expectation: expectation)
+}
+
+// THE READBACK IS A REAL REQUEST, because the wire carries the receipt only inside an answer (there is no receipt read
+// apart from one). live_deploy asks the one fact-only route and joins the echo to the digest of the bytes it installed:
+// the running sidecar is the installed binary, or this is SidecarReplyFailed with the join's own cause.
+// It is the FIRST request after a restart, so it alone waits out the sidecar's startup window (a refused connection
+// before the bound is "not listening yet", after it a typed unreachable); the broker's own requests do not.
+fn device_crypto_sidecar_readback(expectation: DeviceCryptoExpectation) -> SidecarReply {
+  device_crypto_sidecar_readback_at(endpoint: approval_device_crypto_sidecar_endpoint(), startup: device_crypto_sidecar_startup_bound(), expectation: expectation)
+}
+
+fn device_crypto_sidecar_readback_at(endpoint: NonEmptyStr, startup: Second, expectation: DeviceCryptoExpectation) -> SidecarReply {
+  sidecar_post_within_startup(endpoint: endpoint, path: device_crypto_p256_order_path as NonEmptyStr, request: p256_multiple_request_json(m: OrderMinusOne), startup: startup, expectation: expectation)
+}
+
+// THE SIDECAR IS READ BACK THE WAY THE BROKER WILL USE IT: the digest of the binary INSTALLED in the locus
+// (observed from the host, not taken from the packed artifact) is the expectation, and a request to the running
+// sidecar must come back with a receipt echo that joins it. A sidecar running some other binary, a down sidecar and
+// a receipt of another revision are each a refusal here, before the broker is trusted to route device requests.
+// The readback's expectation is the broker's own gate result, never a second construction of the requirement: a refused
+// gate yields none (the broker would answer 503 on every device route), an open one yields exactly the requirement the
+// broker's route gate opened on, joined to the digest observed on the host.
+fn device_crypto_readback_expectation(gate: DeviceCryptoGate, deployed_digest: NonEmptyStr) -> DeviceCryptoExpectation? {
+  match gate {
+    DeviceCryptoGateRefused { status: _, reason: _ } => none
+    DeviceCryptoGateOpen { requirement: q } => Present { value: DeviceCryptoExpectation { requirement: q, deployed_digest: deployed_digest } }
+  }
 }
 
 fn sidecar_refusal_cause(what: String, answer: DeviceCryptoAnswer) -> NonEmptyStr {
@@ -349,23 +398,35 @@ fn assertion_from_answer(admission: DeviceCryptoAdmission, answer: DeviceCryptoA
 }
 
 // ── The three calls, the routes' one entry to the verifiers ───────────────────────────────────
-fn sidecar_signature_verification(admission: DeviceCryptoAdmission, key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SidecarResult<SignatureVerification> {
-  match sidecar_post(path: device_crypto_signature_path, request: signature_check_request_json(c: SignatureCheck { key: key, signature: signature, message: message })) {
+fn sidecar_signature_verification(gate: DeviceCryptoGate, key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SidecarResult<SignatureVerification> {
+  match gate {
+    DeviceCryptoGateRefused { status: _, reason: why } => SidecarFailed { cause: why as NonEmptyStr }
+    DeviceCryptoGateOpen { requirement: q } =>
+  match sidecar_post(path: device_crypto_signature_path, request: signature_check_request_json(c: SignatureCheck { key: key, signature: signature, message: message }), requirement: q) {
     SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
-    SidecarReplied { answer: a } => signature_from_answer(admission: admission, answer: a, key: key, message: message)
+    SidecarReplied { answer: a, admission: admission } => signature_from_answer(admission: admission, answer: a, key: key, message: message)
+    }
   }
 }
 
-fn sidecar_attestation_verification(admission: DeviceCryptoAdmission, object_b64: NonEmptyStr, e: AttestationExpectation) -> SidecarResult<AttestationVerification> {
-  match sidecar_post(path: device_crypto_attestation_path, request: attestation_check_request_json(object_b64: object_b64, e: e)) {
+fn sidecar_attestation_verification(gate: DeviceCryptoGate, object_b64: NonEmptyStr, e: AttestationExpectation) -> SidecarResult<AttestationVerification> {
+  match gate {
+    DeviceCryptoGateRefused { status: _, reason: why } => SidecarFailed { cause: why as NonEmptyStr }
+    DeviceCryptoGateOpen { requirement: q } =>
+  match sidecar_post(path: device_crypto_attestation_path, request: attestation_check_request_json(object_b64: object_b64, e: e), requirement: q) {
     SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
-    SidecarReplied { answer: a } => attestation_from_answer(admission: admission, answer: a, expectation: e)
+    SidecarReplied { answer: a, admission: admission } => attestation_from_answer(admission: admission, answer: a, expectation: e)
+    }
   }
 }
 
-fn sidecar_assertion_verification(admission: DeviceCryptoAdmission, object_b64: NonEmptyStr, e: AssertionExpectation) -> SidecarResult<AssertionVerification> {
-  match sidecar_post(path: device_crypto_assertion_path, request: assertion_check_request_json(object_b64: object_b64, e: e)) {
+fn sidecar_assertion_verification(gate: DeviceCryptoGate, object_b64: NonEmptyStr, e: AssertionExpectation) -> SidecarResult<AssertionVerification> {
+  match gate {
+    DeviceCryptoGateRefused { status: _, reason: why } => SidecarFailed { cause: why as NonEmptyStr }
+    DeviceCryptoGateOpen { requirement: q } =>
+  match sidecar_post(path: device_crypto_assertion_path, request: assertion_check_request_json(object_b64: object_b64, e: e), requirement: q) {
     SidecarReplyFailed { cause: c } => SidecarFailed { cause: c }
-    SidecarReplied { answer: a } => assertion_from_answer(admission: admission, answer: a, expectation: e)
+    SidecarReplied { answer: a, admission: admission } => assertion_from_answer(admission: admission, answer: a, expectation: e)
+    }
   }
 }

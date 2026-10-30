@@ -14,7 +14,7 @@ import gunbc.host.host_effect_realize {
 
 // THE TWO INSTALL-PLAN CLAIMS USED TO READ A SHELL PIPELINE (emit.dag
 // workspace_executor_install_steps / microvm_slot_unit_write_steps, rendered by
-// emit_pipeline_or_poison and grepped for `systemctl start`). Those builders are
+// the since-deleted emit_pipeline_or_poison and grepped for `systemctl start`). Those builders are
 // retired with census W5; the claims now read the TYPED PLAN the controller
 // install folds, which is the same question asked of the artifact that actually
 // runs. The unit-text claim below is untouched -- it was never about the script.
@@ -32,7 +32,7 @@ fn installed_and_observed_controller_units_are_identical_control() -> Bool {
 }
 
 fn workspace_install_plan() -> List<MicrovmControllerInstallStep> {
-  match microvm_controller_install_staging(revision: workspace_install_revision()) {
+  match microvm_controller_install_staging(revision: workspace_install_revision(), checkout_root: "/fixture/checkout") {
     MicrovmControllerInstallReady { steps: steps } => steps
     MicrovmControllerInstallRefused { reason: _ } => []
   }

@@ -1,5 +1,7 @@
 module v2.extdeps.languages.rust_wire_serde
 
+import std.host_text { chars }
+
 fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> String {
   match naming {
     AsAuthored => ""
@@ -87,7 +89,7 @@ fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToke
 fn rust_ws_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 
@@ -238,6 +240,7 @@ fn rust_ws_authority_source_text(naming: VariantNaming) -> String {
 
 fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_ws_target_model_bundle(naming: naming),
     lex: rust_ws_lex(),

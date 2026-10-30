@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_kind_level_default_hides_the_children_its_producer_minted
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_kind_level_default_hides_the_children_its_producer_minted: RecurringFailureMode = RecurringFailureMode {
   identity: "a_kind_level_default_hides_the_children_its_producer_minted" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A shared node reader carries a KIND-LEVEL default: for one node kind it answers `missing` unconditionally, without consulting the node's actual children, while the same query on a sibling kind folds them. Any node the pipeline mints in the defaulted kind therefore carries facts no reader can see.",

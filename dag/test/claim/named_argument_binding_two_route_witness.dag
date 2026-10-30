@@ -1,7 +1,8 @@
 module test.claim.named_argument_binding_two_route_witness
 
 import std.types { String, Bool, Int }
-import gunbc.compile_census_probe { total_blocking_count_for }
+import gunbc.compile_census_probe { census_verdict, total_blocking_census, census_exit, blocking_class_census}
+import std.process { ProcessExit }
 
 // WHAT THIS FILE ESTABLISHES, AND WHAT IT DELIBERATELY NO LONGER CLAIMS.
 //
@@ -59,10 +60,16 @@ data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: 
 
 data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
 
-test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool {
-  total_blocking_count_for(source: nab_inorder_source) == 0
+test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nab_inorder_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
-  total_blocking_count_for(source: nab_reordered_source) == 0
+test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nab_reordered_source), holds: fn(n) { n == 0 }))
+}
+
+data nab_wrong_label_source: String = "module nab_wrong_label\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, c: true)\n}\n"
+
+test fn the_v1_routes_refuse_a_label_the_callee_does_not_declare() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: nab_wrong_label_source, wanted_class: "CallArgumentNameUnknown"), holds: fn(n) { n > 0 }))
 }

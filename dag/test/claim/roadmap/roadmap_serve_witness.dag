@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
-import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap.roadmap_serve {
@@ -14,6 +14,8 @@ import gunbc.roadmap.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
+  serve_issue_assign_response_over,
+  serve_dispatch_handler_response_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
@@ -21,9 +23,8 @@ import gunbc.roadmap.roadmap_serve {
   roadmap_serve_own_route_specs,
   roadmap_serve_approval_cutover_route_specs,
   ApprovalBrokerCutoverHandler,
-  roadmap_serve_selection_response,
-  roadmap_serve_invoke,
-  roadmap_serve_respond,
+  roadmap_serve_selection_response_for_instance,
+  roadmap_serve_invoke_for_instance,
   roadmap_serve_respond_for_instance,
   roadmap_serve_respond_over,
   ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
@@ -38,7 +39,7 @@ import gunbc.roadmap.roadmap_serve {
   serve_text_response,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnLaunchPending, SpawnNotAdmitted,
   belt_dispatch_result_exemplars,
   BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
@@ -51,7 +52,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 }
 import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
@@ -76,6 +77,7 @@ import std.types {
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
@@ -97,7 +99,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
 
 // Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
 // goes RED (nothing selects) — the discriminating direction; the production path never does this
-// (roadmap_serve_respond answers 500 on Refused).
+// (roadmap_serve_respond_for_instance answers 500 on Refused).
 
 fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
@@ -131,7 +133,8 @@ test fn witness_serve_table_selection() -> Bool {
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
-  let r = roadmap_serve_invoke(
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
     handler: DispatchAssetHandler,
     params: [],
     request: fixture_request(method: GET, path: roadmap_dispatch_asset_path),
@@ -176,13 +179,122 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<Request
   }
 }
 
+fn fixture_dispatch_params() -> List<PathParamBinding> {
+  [PathParamBinding { name: "node_id", value: "some-node" }]
+}
+
+// INHABITANCE: invoke the real handler with AuthAbsent and no fabric/plan mock. A Get before
+// admission is HostEffectRefused, not 403. Cleanup has no plan argument; dispatch must not force one.
+test fn unauthenticated_dispatch_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    handler: BeltDispatchHandler,
+    params: fixture_dispatch_params(),
+    request: fixture_request(method: POST, path: "/dispatch/some-node"),
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+fn fixture_live_session() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "session-live" as NonEmptyStr,
+    principal: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: "sub-1" as NonEmptyStr,
+    },
+    authenticated_at: "2026-09-27T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
+    profile: SessionProfile {
+      picture: none,
+      name: Present { value: "Test Operator" },
+      email: Present { value: "operator@gunb.ai" as Email },
+    },
+  }
+}
+
+// CSRF REFUSAL IS BEFORE THE CLOCK. csrf_write_decision does not read observed_at; a live
+// session with an empty body must 403 here without Clock.Now.
+test fn dispatch_without_csrf_refuses_as_cross_site() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    handler: BeltDispatchHandler,
+    params: fixture_dispatch_params(),
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/dispatch/some-node",
+      body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: fixture_live_session() } },
+    },
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
+}
+
+test fn authenticated_dispatch_with_csrf_passes_the_write_law() -> Bool {
+  match human_write_admission(
+    route_path: "/dispatch" as NonEmptyStr,
+    action: ServeActionDispatchNode,
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } },
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    csrf_presented: "csrf-1",
+    observed_at: fn() { "2026-09-27T01:00:00Z" },
+  ) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+// CSRF-BEFORE-CLOCK ON AN EXISTING CALLER: assign goes through human_write_admission, not a
+// serve wrapper. A live session with no token must 403 without Clock.Now.
+test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
+  let r = serve_issue_assign_response_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { caller_supplied_plan_fixture() },
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/issue/demo-node/assign",
+      body: "",
+      security: RequestSecurityContext {
+        access_path: AccessPathLocalDev,
+        authentication: GoogleOidcSession { session: fixture_live_session() },
+      },
+    },
+    params: [PathParamBinding { name: "node_id", value: "demo-node" }],
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
+}
+
+test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    handler: BeltStopHandler,
+    params: fixture_dispatch_params(),
+    request: fixture_request(method: POST, path: "/cleanup/some-node"),
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+test fn dispatch_client_posts_the_session_csrf_token() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "fetch('/auth/session'")
+    && string_contains(s: js, pattern: "csrf=")
+    && string_contains(s: js, pattern: "session && session.csrf")
+}
+
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response_for_instance(instance: srv1_live_dashboard_instance(), sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response_for_instance(instance: srv1_live_dashboard_instance(), sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
@@ -205,11 +317,12 @@ test fn witness_405_response_carries_allowed() -> Bool {
 fn na(r: LaunchRefusal) -> BeltSpawnOutcome { SpawnNotAdmitted { node_id: "n", refusal: r } }
 
 fn status_is_typed(s: Int) -> Bool {
-  s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
+  s == 200 || s == 202 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
 }
 
 test fn witness_dispatch_status_total() -> Bool {
   belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
+    && belt_dispatch_status(r: SpawnLaunchPending { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar(), entry: "e" }) == 202
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
@@ -228,14 +341,38 @@ test fn witness_dispatch_status_total() -> Bool {
     && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
-test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
+fn fixture_preview_dispatch_params() -> List<PathParamBinding> {
+  [PathParamBinding { name: "node_id", value: "ts-dispatch-provider-events" }]
+}
+
+test fn unauthenticated_preview_dispatch_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
     instance: srv2_preview_dashboard_instance(),
-    method_label: "POST",
-    path: "/dispatch/ts-dispatch-provider-events",
-    body: "",
-    tailscale_identity: "",
+    handler: BeltDispatchHandler,
+    params: fixture_preview_dispatch_params(),
+    request: fixture_request(method: POST, path: "/dispatch/ts-dispatch-provider-events"),
     release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
+  let request = ServeHttpRequest {
+    method: POST,
+    path: "/dispatch/ts-dispatch-provider-events",
+    body: "csrf=csrf-1",
+    security: RequestSecurityContext {
+      access_path: AccessPathLocalDev,
+      authentication: GoogleOidcSession { session: fixture_live_session() },
+    },
+  }
+  let r = serve_dispatch_handler_response_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    params: fixture_preview_dispatch_params(),
+    executor_word: "",
+    request: request,
+    observed_at: fn() { "2026-09-27T01:00:00Z" },
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
@@ -314,7 +451,7 @@ test fn witness_unknown_method_refuses() -> Bool {
 // two arms must stay distinct statuses; collapsing them reds this row.
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_respond_for_instance(instance: srv1_live_dashboard_instance(), method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
@@ -329,45 +466,29 @@ test fn witness_known_methods_parse() -> Bool {
   }
 }
 
-// ── The approval routes: opening the link is not deciding ────────────────────────────────────
-// THE PAIR EXISTS SO THESE TWO ARE DISTINGUISHABLE. A GET at the approval URL must render and
-// stop; everything that fetches a URL without a person behind it -- link previews, mail scanners,
-// chat unfurlers, browser prefetch -- issues exactly that request, and if it decided, an approval
-// would be spent with an audit row naming the operator.
-
-test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
-  let r = roadmap_serve_respond(
+// ── No approval link is served here or anywhere ──────────────────────────────────────────────
+// THE BEARER PAIR WAS DELETED IN THE DEVICE CUTOVER (ruling gunbc.design_ruling
+// one_approval_route_for_every_privileged_action): a capability is redeemed only through the device
+// route under an enrolled device's signature, so neither the GET that rendered a confirmation page nor
+// the POST that spent the capability is answered by this process. Restoring either mount reds this.
+test fn the_approval_link_routes_are_not_served() -> Bool {
+  let get = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "GET",
     path: "/approve/abc123",
     body: "",
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 200
-    && string_contains(s: r.body, pattern: "does not decide anything")
-    && string_contains(s: r.body, pattern: "abc123")
-    && string_contains(s: r.body, pattern: "method=\"post\"")
-    && string_contains(s: r.body, pattern: "action=\"/approve/abc123\"")
-}
-
-// THE POST IS A DIFFERENT ROUTE, and the hermetic frame can reach it only up to the first host
-// read: once approval_identity_trust is established (it is derived from the instance bind, and
-// opens with the loopback row), a well-formed segment goes on to Clock.Now, the keyring and the
-// store, none of which has a hermetic arm. So this witness posts a segment that is not <escalation>.<decision>.<hex> and
-// pins that the refusal is 400 BEFORE any of those reads -- the ordering that also protects the
-// live route from spending effects on the way to a refusal. Redemption of a real segment is
-// covered by the store witness (redeem_over_store) and the live probe.
-test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
-  let r = roadmap_serve_respond(
+  let post = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approve/abc123",
     body: "",
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 400
-    && string_contains(s: r.body, pattern: "capability segment is not")
-    && !string_contains(s: r.body, pattern: "does not decide anything")
+  get.status == 404 && post.status == 404
 }
 
 // THE FILING ROUTE STILL MOUNTED HERE IS NOT THE WRITER: under the cutover posture
@@ -379,7 +500,8 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
 // THE RED: drop the admission consult from approval_submit_response and this route parses the
 // body and answers 400 "submission unreadable".
 test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
-  let r = roadmap_serve_respond(
+  let r = roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
     method_label: "POST",
     path: "/approvals",
     body: "not an envelope",
@@ -390,51 +512,16 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
     && !string_contains(s: r.body, pattern: "submission unreadable")
 }
 
-// THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
-// this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
-// nothing can — so the consent record names no login. Without this the plumbing could
-// be silently laundering the header back into an identity and every unit-level witness would
-// still pass. The positive half (a modeled proxy path carries the observation) is
-// test.claim.request_authentication_witness's subject; the wiring between them is one function
-// call, roadmap_serve_request_security.
-test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond(
-    method_label: "POST",
-    path: "/approve/abc123",
-    body: "",
-    tailscale_identity: "briansrls@github",
-    release_revision: deploy_witness_release_revision,
-  )
-  string_contains(s: r.body, pattern: "transport observation: \n")
-    && !string_contains(s: r.body, pattern: "briansrls")
-}
-
-// AND A GENUINELY ABSENT HEADER IS THE SAME ANSWER: no observation, no identity, no default.
-test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond(
-    method_label: "POST",
-    path: "/approve/abc123",
-    body: "",
-    tailscale_identity: "",
-    release_revision: deploy_witness_release_revision,
-  )
-  string_contains(s: r.body, pattern: "transport observation: \n")
-    && !string_contains(s: r.body, pattern: "briansrls")
-}
-
-test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
-  let r = roadmap_serve_respond(
-    method_label: "POST",
-    path: "/approvals",
-    body: "nope",
-    tailscale_identity: "",
-    release_revision: deploy_witness_release_revision,
-  )
-  r.status == 400
-    && string_contains(s: r.body, pattern: "approval submission:")
-    && !string_contains(s: r.body, pattern: "http")
-}
+// THE TRANSPORT-OBSERVATION CONTROLS LEFT WITH THE BEARER ROUTE. The forged-header controls posted to
+// /approve/{capability} and read the consent record's "transport observation" line; that route and
+// gunbc.auth.approval_broker IdentityAttribution's header arms were deleted in the device cutover
+// (ruling gunbc.design_ruling one_approval_route_for_every_privileged_action), so no handler here
+// turns a header into a principal any more -- a redemption names the enrolled login its device
+// signature verifies. The header's own reading stays test.claim.request_authentication_witness's
+// subject, and a_planted_header_list_reads_as_absent_single_or_repeated keeps the serve entry's half.
+// The garbage-body claim beside them expected the parse-first 400 from a process that is not the
+// writer; the non-writer 503 above is this route's answer and the 400 is the writer's
+// (test.claim.approval_broker_serve_witness).
 
 test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool {
   let body = filed_approval_status_text(status: StatusNotFiled)
@@ -637,10 +724,9 @@ test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
     && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
 }
 
-// THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404,
-// and a request WITHOUT a Google session is 403 at the write law's authentication axis —
-// whether or not a tailnet header is present (the 2026-09-25 ruling's no-fallback law: tailnet
-// transport alone authorizes no write), and the 403 precedes even selector validation.
+// AUTH FIRST: an unauthenticated write is 403 at the authentication axis, including an unknown
+// issue — there is no existence oracle for callers without a session, and no host read to
+// decide 404. Tailnet transport alone is not a person. 404 is after Permit.
 test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
@@ -674,7 +760,8 @@ test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool 
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  unknown.status == 404
+  unknown.status == 403
+    && string_contains(s: unknown.body, pattern: "google-oidc-session")
     && no_session_no_header.status == 403
     && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
     && tailnet_only.status == 403
@@ -780,9 +867,7 @@ test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_ve
     && issue_comment_body_of(wire: "") == ""
 }
 
-// THE COMMENT ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is
-// 404, and a request WITHOUT a Google session is 403 at the write law's authentication axis —
-// tailnet header or not — with the 403 preceding even the empty-body validation.
+// AUTH FIRST on comment, same as assign: unknown issue without a session is 403, not 404.
 test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
@@ -816,7 +901,8 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  unknown.status == 404
+  unknown.status == 403
+    && string_contains(s: unknown.body, pattern: "google-oidc-session")
     && no_session_no_header.status == 403
     && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
     && tailnet_only.status == 403
@@ -926,6 +1012,8 @@ test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Boo
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "\"authenticated\": true")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "principal:google-oidc/accounts/sub-1")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "2026-09-27T12:00:00Z")
+    && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "csrf-1")
+    && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "csrf")
 }
 
 // THE SESSION WIRE CARRIES THE PROFILE PROJECTION, OPTIONALLY (the never-blocks law on the
@@ -970,7 +1058,8 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
 }
 
 // ── THE APPROVAL ROUTES, MID-CUTOVER ────────────────────────────────────────────────────────
-// The four approval routes are being moved to gunbc.auth.approval_broker_serve under its own unit
+// The approval routes (the filing POST and the status GET, since the device cutover deleted the
+// bearer pair) are being moved to gunbc.auth.approval_broker_serve under its own unit
 // and slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
 // status poll because THIS process's heap was swapped and OOM-killed (side-chat ruling
 // 2026-09-19). The staged transaction deploys the broker dark and measures it BEFORE anything is
@@ -985,11 +1074,17 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
 //
 // THE WALL THIS BECOMES. At stage 6 of gunbc.auth.approval_broker_cutover the arm and the
 // projection are deleted, and these two claims are replaced by the standing regression control that
-// this table answers NOTHING for the four approval (method, path) pairs.
+// this table answers NOTHING for the two approval (method, path) pairs.
 
+// THE PROJECTION IS A SUBSET, BY IDENTITY: the broker also serves the device routes, which this table
+// deliberately does not mount (roadmap_mounts_during_cutover), so the old count equality with the
+// broker's whole table was false the day the device routes landed. Each projected row is the broker's
+// row (same method, same path literal), and the live table is exactly own rows plus projected rows.
 test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool {
   let projected = roadmap_serve_approval_cutover_route_specs()
-  count(projected) == count(approval_broker_route_specs())
+  let broker = approval_broker_route_specs()
+  count(projected) > 0
+    && all(projected, p => any(broker, b => b.method == p.method && b.raw == p.raw))
     && count(roadmap_serve_route_specs())
        == count(roadmap_serve_own_route_specs()) + count(projected)
 }
@@ -1010,9 +1105,7 @@ fn roadmap_approval_request_lands_on_the_broker_arm(method: HttpMethod, path: St
 }
 
 test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
-  roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
+  roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
     && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
 }
 
@@ -1082,7 +1175,7 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
     && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: true).status == 401
-    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: "2026-09-27T01:00:00Z") {
+    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: fn() { "2026-09-27T01:00:00Z" }) {
       Deny { refusal: _ } => true
       Permit => false
     }

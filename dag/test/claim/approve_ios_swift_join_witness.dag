@@ -1,0 +1,38 @@
+module test.claim.approve_ios_swift_join_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import gunbc.approve_ios_swift_join { swift_join_is_clean, swift_join_findings, retained_swift_paths, registered_artifact_paths, path_set }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The listing is supplied: the files that exist today under apps/approve-ios/Approve, plus the
+// generated ones. The real-tree route is observed by gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report.
+fn real_listing() -> List<String> {
+  [
+    "apps/approve-ios/Approve/ApproveApp.swift", "apps/approve-ios/Approve/AppState.swift",
+    "apps/approve-ios/Approve/DeviceKeys.swift", "apps/approve-ios/Approve/EnrolmentMachine.swift",
+    "apps/approve-ios/Approve/EnrolmentState.swift", "apps/approve-ios/Approve/Protocol.swift",
+    "apps/approve-ios/Approve/Views.swift", "apps/approve-ios/Approve/Wire.swift",
+    "apps/approve-ios/Approve/OperationErrors.swift",
+    "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift", "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift",
+    "apps/approve-ios/ApproveTests/OperationErrorsTests.swift",
+    "apps/approve-ios/project.yml"
+  ]
+}
+
+test fn every_swift_file_is_registered_or_retained() -> Bool {
+  swift_join_is_clean(tree: real_listing())
+}
+
+test fn a_stray_swift_file_refuses() -> Bool {
+  !swift_join_is_clean(tree: concat(real_listing(), ["apps/approve-ios/Approve/Stray.swift"]))
+}
+
+test fn a_non_swift_file_is_not_the_joins_business() -> Bool {
+  swift_join_is_clean(tree: concat(real_listing(), ["apps/approve-ios/Approve/Notes.md"]))
+}
+
+test fn a_path_in_both_refuses() -> Bool {
+  length(swift_join_findings(tree: real_listing(), registered: path_set(paths: concat(registered_artifact_paths(), ["apps/approve-ios/Approve/Views.swift"])), retained: path_set(paths: retained_swift_paths()))) == 1
+}

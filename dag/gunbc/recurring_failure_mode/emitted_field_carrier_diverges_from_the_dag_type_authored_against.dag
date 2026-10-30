@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.emitted_field_carrier_diverges_from_the_dag_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data emitted_field_carrier_diverges_from_the_dag_type_authored_against: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_field_carrier_diverges_from_the_dag_type_authored_against" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**hand-authored target text binds an emitted field whose carrier the .dag declaration does not reveal** INVALID STATE: target-language text authored INSIDE an emitter template reads a field of a carrier type declared in `.dag`, and the field's emitted Rust carrier is decided by a whole-corpus analysis that is not reachable from the declaration the author is reading.",

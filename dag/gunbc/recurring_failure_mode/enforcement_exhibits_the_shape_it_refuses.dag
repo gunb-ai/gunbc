@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.enforcement_exhibits_the_shape_it_refuses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data enforcement_exhibits_the_shape_it_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "enforcement_exhibits_the_shape_it_refuses" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**the machinery that enforces an invariant is itself written in the shape that invariant refuses** (INVALID STATE: a gate, lens or fold rejects a construction, and the code performing that rejection contains the same construction. The check is correct, the refusal is real, and the enforcement is a standing instance of the class it exists to eliminate -- so the corpus's own worst example of the defect lives in the one place that cannot report it.",

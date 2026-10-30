@@ -2,36 +2,105 @@ module test.claim.host.managed_host_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import std.algebra { FreeSemigroup, string_contains }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.managed_host_unit_hold { admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided }
 import gunbc.host.managed_host {
   managed_host_fixture,
-  ManagedHostAccessUnobserved,
-  ManagedHostBound,
-  ManagedHostEndpointMismatch,
-  ManagedHostNotSecured,
-  ResetNoUnitHold,
-  ResetUnitHoldRequired,
-  managed_host_binding,
+  managed_host_admission,
+  mtcollins1_managed_host_admission,
+  project_managed_host_admission,
+  OrdinaryMember,
   managed_host_smpro_subject,
   managed_hosts,
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
+import extdeps.board_authority { BoardFruRead, BoardFruIdentity }
+import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
-  SmproTarget, SiteFromOperatorBrief, smpro_site_admit,
-  SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
+  SmproTarget, SiteFromOperatorBrief, smpro_site_admit, SmproSiteRefused, SiteHasNoTargets, SmproSiteAdmitted,
+}
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
+  BmcControlEndpointMismatch, bmc_control_route_endpoint,
+}
+import gunbc.host.smpro_platform_capability {
+  SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
+  SmproPlatformUnestablished, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
+  smpro_subject_absence_reason,
+  smpro_facility, smpro_facility_of_families, SmproFacilityStanding, SmproFacilityCarried,
+  SmproFacilityNotCarried, SmproFacilityUnestablished,
+  SmproUnestablishedCause, NoBoardRowBound, SmproPlatformSiteRefused,
+  smpro_platform_join_obligation, SmproJoinOwesEndpoint, SmproJoinNoEndpointOwed, SmproJoinRefused,
+  SmproJoinRefusal, SmproJoinSiteRefused, SmproJoinPlatformUnestablished,
+  MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
+}
+import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
+import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
+import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
+import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
+  mtcollins1_bmc_secure_standing_predates_reflash,
 }
 import gunbc.host.host_reset_subject_roster {
   OrdinaryResetRosterHost,
   ResetRosterHostUnderDeclaredDrop,
   ResetSubjectAdmitted,
   ResetSubjectControllerNotAdmitted,
+  ResetSubjectHoldUndecided,
   ResetSubjectNoSelection,
   ResetSubjectUnbound,
   admit_reset_subject,
   reset_subject_roster,
   reset_subject_roster_of,
+}
+
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.machine_intake.megarac_operation_evidence {
+  megarac_operation_evidence_fixture_for,
+  megarac_operation_evidence_fixture_none,
+}
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import std.content_hash { content_hash_of_value }
+import std.decl_ref { decl_ref }
+
+// EVIDENCE THAT REPORTS A BUILD AT THIS CONTROLLER, for a fixture machine. A witness that means "this
+// controller now runs build X" produces a build reading naming X -- the same move production makes --
+// and never rewrites the immutable probe receipt, because the release is no longer read off that
+// receipt. The board and chassis stay the machine's own and only the reported build changes, so a
+// refusal is about the build and not about some other board. The reading's own label says plainly that
+// no artifact stands behind it: it is a statement about a build, not a report that a capture happened.
+// THE SANCTIONED EVIDENCE HELPER OF THE ADMISSION WITNESS, SEALED TO ITS CLAIM ROSTER for the same
+// reason as fixture_evidence_at: it stands between the claims and the sealed mint, so an unrostered
+// caller is refused at this door too -- the indirect forged probe drives this path.
+fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+  ]
+{
+  match h.access {
+    BmcAccessObserved { observation: o } => megarac_operation_evidence_fixture_for(
+      endpoint: o.endpoint,
+      identity: BmcObservedIdentity {
+        board: o.identity.board,
+        chassis_part_number: o.identity.chassis_part_number,
+        firmware: build,
+      },
+      evidence: EvidenceRef {
+        label: "hypothetical roster-witness build reading (no artifact behind it)",
+        digest: content_hash_of_value(value: "roster witness hypothetical build reading"),
+      },
+      observed_at: o.observed_at,
+    )
+    BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
+  }
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -42,31 +111,76 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // row, or its secure standing going Absent, turns this red.
 test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission() -> Bool {
   let hosts = managed_hosts()
-  let roster = reset_subject_roster()
+  let roster = reset_subject_roster(evidence: megarac_operation_evidence())
   count(hosts) == 1
     && hosts |> all(h =>
       (h.host as String) == (operator_host_mtcollins1 as String)
-        && match managed_host_binding(host: h) {
-          ManagedHostBound { binding: b } => (b.observation.endpoint.host as String) != ""
-          ManagedHostAccessUnobserved { endpoint: _ } => false
-          ManagedHostNotSecured { cause: _ } => false
-          ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+        && match bmc_control_binding(observed: h.access, secured: h.secure) {
+          BmcControlBound { route: r } => (bmc_control_route_endpoint(route: r).host as String) != ""
+          BmcControlAccessUnobserved { endpoint: _ } => false
+          BmcControlNotSecured { cause: _ } => false
+          BmcControlEndpointMismatch { observed: _, secured: _ } => false
         }
-        && match admit_reset_subject(host: h) {
+        && match admit_reset_subject(evidence: megarac_operation_evidence(), host: h) {
           ResetSubjectAdmitted { subject: _ } => true
           ResetSubjectUnbound { standing: _ } => false
-          ResetSubjectNoSelection { host: _ } => false
+          ResetSubjectNoSelection { host: _, cause: _ } => false
           ResetSubjectControllerNotAdmitted { admission: _ } => false
+          ResetSubjectHoldUndecided { host: _ } => false
         }
-        && match h.unit_hold {
-          ResetUnitHoldRequired { key: _, store_host: _ } => true
-          ResetNoUnitHold => false
+        && match admit_unit_hold_subject(host: h) {
+          UnitHoldSubjectAdmitted { subject: _ } => true
+          UnitHoldNotRequired { host: _ } => false
+          UnitHoldUndecided { host: _ } => false
         })
     && count(roster) == 1
     && roster |> all(r => match r {
       OrdinaryResetRosterHost { host: _ } => false
       ResetRosterHostUnderDeclaredDrop { host: h, drop: _ } => (h as String) == (operator_host_mtcollins1 as String)
     })
+}
+
+// AN OBSERVATION WHOSE BOARD NO AUTHORITY CLAIMS. The board lookup reads the FRU, NOT the endpoint
+// (host_board_soc_families -> observed_board_authority(o.identity.board)), so re-pointing only the
+// endpoint would still resolve Mount Diablo and answer Carried -- the fixture would test nothing. This
+// keeps every other field of a real reading and replaces the board area with a vendor/product no
+// BoardAuthorityBinding names, which is the honest shape of "we looked, and the board is unbound".
+// ONE FAMILY, WRITTEN AS THE CARRIER IT IS. smpro_facility_of_families takes a FreeSemigroup because
+// BoardSocEdge.soc_families is one (review 81501), so a witness asking about a single family writes the
+// non-empty shape instead of a List it hopes is not empty. A constructor, not a check.
+fn one_family(family: SoCFamily) -> FreeSemigroup<SoCFamily> {
+  FreeSemigroup { head: family, tail: [] }
+}
+
+// TWO FAMILIES, for the mixed and unanimous rosters. The second element rides in the tail, which is all
+// a FreeSemigroup is: a head plus a list behind it.
+fn two_families(first: SoCFamily, second: SoCFamily) -> FreeSemigroup<SoCFamily> {
+  FreeSemigroup { head: first, tail: [second] }
+}
+
+fn observation_with_unbound_board(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
+  let with_board = BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
+    identity: BmcObservedIdentity {
+      board: BoardFruRead {
+        fru: BoardFruIdentity {
+          manufacturer: "UNBOUND-FIXTURE-VENDOR",
+          product: "UNBOUND-FIXTURE-BOARD",
+          part_number: none,
+        },
+      },
+      chassis_part_number: o.identity.chassis_part_number,
+      firmware: o.identity.firmware,
+    },
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+  with_board
 }
 
 fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
@@ -92,38 +206,77 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, smpro: h.smpro)
     }
-    let mismatched = match managed_host_binding(host: crossed) {
-      ManagedHostEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
-      ManagedHostBound { binding: _ } => false
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
+    let mismatched = match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
+      BmcControlEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
+      BmcControlBound { route: _ } => false
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
     }
-    mismatched && count(reset_subject_roster_of(hosts: [crossed])) == 0
+    mismatched && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [crossed])) == 0
   }) && count(managed_hosts()) == 1
 }
 
-// RED: A CAPABLE HOST WITH NO RESET SELECTION. The real row's standings are kept under a host name
-// gunbc.host.host_reset_boot_selection has no selection for; it binds, but admission refuses it as
-// selection-less and the roster over both hosts is exactly mtcollins1.
+// (d) RED: A HOST ITS CONTROLLER CANNOT GIVE A SELECTION TO. The real row's standings are kept under
+// a host name whose controller REPORTS a build the catalog has not yet read; it binds (the endpoint
+// and secure are the same), but the derived boot selection refuses because the per-release row does
+// not resolve (virtual media unestablished), and admission refuses the host as selection-less, so the
+// roster over both hosts is exactly mtcollins1. No host-name or per-unit row decides this: the refusal
+// is the catalog lookup's.
 test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
   managed_hosts() |> all(h => {
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-    let bound = match managed_host_binding(host: unselected) {
-      ManagedHostBound { binding: _ } => true
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
+    // THE SAME MACHINE IN EVERY RESPECT, its immutable probe receipt included. What differs is only the
+    // operator's evidence, which now reports a build no release row has been established for -- so its
+    // boot selection derives to nothing. Rewriting a probe receipt to say "now it runs 9.9.9" is exactly
+    // what the release stopped being read off, so it is no longer a lever any witness may pull.
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, secure: h.secure, smpro: h.smpro)
+    let bound = match bmc_control_binding(observed: unselected.access, secured: unselected.secure) {
+      BmcControlBound { route: _ } => true
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
+      BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
-    let refused = match admit_reset_subject(host: unselected) {
-      ResetSubjectNoSelection { host: x } => (x as String) == "fixture-unselected-host"
+    let refused = match admit_reset_subject(evidence: witness_evidence_reporting(h, uncatalogued), host: unselected) {
+      ResetSubjectNoSelection { host: x, cause: _ } => (x as String) == "fixture-unselected-host"
       ResetSubjectAdmitted { subject: _ } => false
       ResetSubjectUnbound { standing: _ } => false
       ResetSubjectControllerNotAdmitted { admission: _ } => false
+      ResetSubjectHoldUndecided { host: _ } => false
     }
-    let roster = reset_subject_roster_of(hosts: [unselected, h])
-    bound && refused && count(roster) == 1 && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+    // TWO LEGS, because the operator's evidence is ONE ARGUMENT and is keyed by controller: the roster
+    // carried under the unread-build reading drops the machine with no selection entirely, and the roster
+    // carried under the committed evidence keeps exactly the one capable machine. Together these say what
+    // the single joint leg used to -- the machine with no selection is absent, the one with a selection is
+    // present -- and they differ in nothing but the evidence they bring.
+    let roster_unselected = reset_subject_roster_of(evidence: witness_evidence_reporting(h, uncatalogued), hosts: [unselected])
+    let roster_capable = reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [h])
+    bound && refused && count(roster_unselected) == 0 && count(roster_capable) == 1
+      && roster_capable |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A BOUND, SELECTABLE HOST WITH NO UNIT HOLD DECISION IS NOT A RESET SUBJECT. The real row's
+// standings under a host name gunbc.host.host_maintenance_hold_reason unit_hold_decision has no row for,
+// under the committed evidence: it binds, and its controller gives it a selection and a handoff (the
+// selection is keyed by controller, not by name), so the ONLY thing it lacks is a hold decision. The
+// reset admission refuses it as undecided -- never as a subject that needs no hold -- and the roster
+// over it and the real row is exactly mtcollins1. A hold admission that read a missing decision as
+// ResetNoUnitHold admits it and turns this red.
+test fn w_a_bound_selectable_host_with_no_hold_decision_is_not_a_reset_subject() -> Bool {
+  managed_hosts() |> all(h => {
+    let undecided = managed_host_fixture(host: "fixture-undecided-host", access: h.access, secure: h.secure, smpro: h.smpro)
+    let refused = match admit_reset_subject(evidence: megarac_operation_evidence(), host: undecided) {
+      ResetSubjectHoldUndecided { host: x } => (x as String) == "fixture-undecided-host"
+      ResetSubjectAdmitted { subject: _ } => false
+      ResetSubjectUnbound { standing: _ } => false
+      ResetSubjectNoSelection { host: _, cause: _ } => false
+      ResetSubjectControllerNotAdmitted { admission: _ } => false
+    }
+    let roster = reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: [undecided, h])
+    refused && count(roster) == 1
+      && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
   }) && count(managed_hosts()) == 1
 }
 
@@ -132,45 +285,663 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
 // claim for gunbc.machine_intake.ampere_smpro_observation SmproPassSubject: the subject every SMpro
 // pass reads through is minted from the real row, not supplied.
 test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
-  managed_hosts() |> all(h => match managed_host_binding(host: h) {
-    ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
-      SmproPassSubjectBound { subject: s } =>
-        (s.endpoint.host as String) == (b.observation.endpoint.host as String)
-          && (s.site.endpoint.host as String) == (b.observation.endpoint.host as String)
-          && s.site.control.socket == 0
-          && (s.host as String) == (operator_host_mtcollins1 as String)
-      SmproPassSiteRefused { cause: _ } => false
-      SmproPassEndpointMismatch { bound: _, site: _ } => false
+  managed_hosts() |> all(h => match bmc_control_binding(observed: h.access, secured: h.secure) {
+    BmcControlBound { route: r } => match managed_host_smpro_subject(host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
+      // A platform that does not carry, or whose platform is unknown, minted nothing: the claim is red.
+      SmproSubjectNotCarried { family: _ } => false
+      SmproSubjectUnestablished { cause: _ } => false
+      SmproSubjectSiteRefused { cause: _ } => false
+      SmproSubjectEndpointMismatch { bound: _, site: _ } => false
+      SmproSubjectMinted { subject: s } =>
+          (s.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+            && (s.site.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+            && s.site.control.socket == 0
+            && (s.host as String) == (operator_host_mtcollins1 as String)
     }
-    ManagedHostAccessUnobserved { endpoint: _ } => false
-    ManagedHostNotSecured { cause: _ } => false
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    BmcControlAccessUnobserved { endpoint: _ } => false
+    BmcControlNotSecured { cause: _ } => false
+    BmcControlEndpointMismatch { observed: _, secured: _ } => false
   }) && count(managed_hosts()) == 1
 }
+
+// RED2: AN X86 MACHINE WITH NO SMpro CAPABILITY IS A VALID CONTROLLED MACHINE. The control route and
+// the SMpro facility are two independent facts. A machine whose board admits a family the cited
+// carrying set does not name — here an x86 AMD family — is answered NOT CARRIED (named, not refused,
+// not an empty reading), while its BMC control route still binds from its access observation and
+// secure standing. The two facts stand independently; neither refuses the other, and the x86 machine
+// needs no empty or refused SMpro field to be controlled.
+test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
+  managed_hosts() |> all(h => {
+    // The x86 platform does not carry SMpro: a NAMED family, negatively answered.
+    let smpro_not_carried = match smpro_facility_of_families(
+      families: one_family(family: amd_7950x3d_soc_family)) {
+      SmproFacilityNotCarried { family: f } => (f.name as String) == "Ryzen 9 7950X3D"
+      SmproFacilityCarried { family: _ } => false
+      SmproFacilityUnestablished { cause: _ } => false
+    }
+    // and it licenses no read...
+    let licenses_no_read = match smpro_facility_of_families(families: one_family(family: amd_7950x3d_soc_family)) {
+      SmproFacilityCarried { family: _ } => false
+      SmproFacilityNotCarried { family: _ } => true
+      SmproFacilityUnestablished { cause: _ } => true
+      }
+    // ...while the control route for the same machine still binds from its access + secure standings.
+    let control_bound = match bmc_control_binding(observed: h.access, secured: h.secure) {
+      BmcControlBound { route: _ } => true
+      _ => false
+    }
+    smpro_not_carried && licenses_no_read && control_bound
+  }) && count(managed_hosts()) == 1
+}
+
+// RED (review 81108 F1): A FAMILY THE CITED SET DOES NOT NAME IS NOT_CARRIED EVEN WHEN ITS
+// ARCHITECTURE IS AARCH64. The earlier key was the architecture, and this is what proves it wrong: the
+// probe below is an aarch64 family — its architecture premise is carried by a real, cited catalog row,
+// not asserted — whose NAME the cited carrying set does not list. The answer must be NotCarried, not
+// Present (which an architecture key would have given for every Graviton- or Grace-class machine) and
+// not Unestablished. The verdict turns on the family name against the cited set, never on the ISA.
+//
+// The family is a PROBE INPUT, not a fleet claim: no upstream row for a non-Ampere aarch64 server
+// family exists in extdeps and none is invented here. Its model rows are reused from Ampere Altra's
+// cited catalog row solely to make the "this family is aarch64" premise real and checkable, which is
+// the whole point of the RED.
+data aarch64_family_outside_the_cited_set: SoCFamily = SoCFamily {
+  name: "Aarch64-Family-Outside-The-Cited-Set",
+  models: FreeSemigroup { head: altra_q6430_catalog, tail: [] },
+}
+
+test fn w_an_aarch64_family_the_cited_set_does_not_name_is_not_carried() -> Bool {
+  // The premise, checked not assumed: this probe family's architecture really is aarch64, read off its
+  // catalog row through the board-authority-side derivation the corpus already has.
+  let premise_is_aarch64 = match soc_family_architecture(family: aarch64_family_outside_the_cited_set) {
+    Present { value: arch } => arch == Aarch64
+    Absent => false
+  }
+  let not_carried = match smpro_facility_of_families(
+    families: one_family(family: aarch64_family_outside_the_cited_set)) {
+    SmproFacilityNotCarried { family: f } =>
+      (f.name as String) == (aarch64_family_outside_the_cited_set.name as String)
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
+  }
+  // And a machine in that position licenses no SMpro read.
+  let no_read = match smpro_facility_of_families(families: one_family(family: aarch64_family_outside_the_cited_set)) {
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityUnestablished { cause: _ } => true
+    }
+  premise_is_aarch64 && not_carried && no_read
+}
+
+// RED (review 81108 F1): AN UNKNOWN FAMILY IS UNESTABLISHED, NEVER NOT_CARRIED. "The board admits no
+// SoC family" is not "the family lacks SMpro"; collapsing the two is the same fabrication in the other
+// direction — it would let a machine with no silicon knowledge at all be told its platform has no
+// SMpro, and a later re-key could not tell the two apart.
+test fn w_an_unknown_family_is_unestablished_and_never_not_carried() -> Bool {
+  // WHAT "UNKNOWN" MEANS NOW, and why this claim does not need an empty roster to ask about it
+  // (review 81501). An empty SoC roster was never a fact about a machine -- BoardSocEdge.soc_families is
+  // a FreeSemigroup, so no edge can be written empty -- and the empty list this claim used to pass was
+  // a way of *pretending* an unwritable state had happened. That leg, and the BoardAdmitsNoSocFamily
+  // cause and sentence it pinned, are DELETED with it. The unknown this claim is actually about is
+  // reachable for real, twice over, and both are asserted below with their own typed cause.
+  // TWO DIFFERENT KINDS OF UNKNOWN, AND THE CAUSE SAYS WHICH (review 81322). Before the fix both
+  // reached the same NoBoardRowBound cause, because host_board_soc_families returns none for an
+  // unobserved access AND for an observed controller whose board reaches no row. Collapsing them told
+  // an operator chasing a missing board row to go bind a board, when the real gap was that nobody had
+  // ever looked at the controller -- a wrong located diagnostic, DESIGN.md Sec 5. Each case below
+  // asserts ITS OWN cause, so neither can be satisfied by the other's: if a future edit collapses
+  // them again, one of the two goes red.
+  //
+  // CASE 1: nobody has looked. The access standing was never observed.
+  let never_observed = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
+    // The endpoint RIDES THROUGH in the cause, so the claim names which controller was never read --
+    // prose could only say "something was missing" about nothing in particular.
+    SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: e } } =>
+      (e.host as String) == (fixture_bmc_endpoint.host as String)
+    SmproFacilityUnestablished { cause: _ } => false
+    SmproFacilityNotCarried { family: _ } => false
+    SmproFacilityCarried { family: _ } => false
+  }
+  // CASE 2: somebody looked, and the board it names is not bound to any authority. NOT a stand-in for
+  // case 1: mtcollins1's own reading is used, with only its board area replaced by a vendor/product no
+  // BoardAuthorityBinding names, so the board lookup genuinely reaches no row. The endpoint does NOT
+  // participate in board resolution, so re-pointing it alone would resolve Mount Diablo and answer
+  // Carried -- the fixture would assert nothing while still passing.
+  let board_unbound = match smpro_facility(access: BmcAccessObserved {
+      observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") }) {
+    SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: e } } =>
+      (e.host as String) == "fixture-unbound-bmc"
+    SmproFacilityUnestablished { cause: _ } => false
+    SmproFacilityNotCarried { family: _ } => false
+    SmproFacilityCarried { family: _ } => false
+  }
+  // AND THE DISCRIMINATOR ITSELF: the same query must not answer both causes. A cause is worth having
+  // only if it distinguishes, so this asserts the two paths disagree rather than merely both passing.
+  let causes_differ = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
+    SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: _ } } =>
+      match smpro_facility(access: BmcAccessObserved {
+          observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") }) {
+        SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+  // And neither unknown licenses a read.
+  // A board that reaches no SoC edge licenses no read either -- the real route to "unknown silicon".
+  let no_read = match smpro_facility(access: BmcAccessObserved { observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-no-edge") }) {
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityUnestablished { cause: _ } => true
+    }
+  let unbound_licenses_no_read = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityUnestablished { cause: _ } => true
+    }
+  let board_unbound_licenses_no_read = match smpro_facility(access: BmcAccessObserved { observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") }) {
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityUnestablished { cause: _ } => true
+    }
+  never_observed && board_unbound && causes_differ && no_read
+    && unbound_licenses_no_read && board_unbound_licenses_no_read
+}
+
+// The endpoint used to ask about a host nobody has ever observed (case 1 of the two unknowns).
+data fixture_bmc_endpoint: BmcControllerEndpoint = BmcControllerEndpoint {
+  host: "fixture-unbound-bmc",
+}
+
+// RED: AN AMPERE FAMILY THE CITED SET NAMES IS CARRIED, through the board authority itself (not a
+// hand-passed list): mtcollins1's own board admits Altra and Altra Max, both cited as carrying SMpro,
+// so its standing is Carried with the family reported. This is the production path — access
+// observation -> board authority -> SoC edge -> cited set.
+test fn w_the_amps_board_establishes_the_smpro_facility_as_carried() -> Bool {
+  managed_hosts() |> all(h => {
+    match smpro_facility(access: h.access) {
+      SmproFacilityCarried { family: f } =>
+        (f.name as String) == (ampere_altra_soc_family.name as String)
+      SmproFacilityNotCarried { family: _ } => false
+      SmproFacilityUnestablished { cause: _ } => false
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// A BOARD ADMITTING SEVERAL FAMILIES answers Carried when ANY admitted family carries the facility:
+// the board edge bounds what may be installed, and the installed silicon is observed separately. Here
+// the mixed list (an Ampere family and an x86 one) must still be Carried by the Ampere family.
+// RED (genericity): A MIXED COMPATIBILITY ROSTER IS UNESTABLISHED, NOT CARRIED. A board's SoC edge
+// bounds what MAY be installed; it says nothing about what IS. The earlier rule answered Carried if ANY
+// rostered family carried the interface, which licensed an SMpro read on a machine whose actual silicon
+// has no such interface -- the same class of error as keying on the architecture, one layer down. This
+// claim used to freeze the 'any' behaviour; it now pins the opposite, and inverting the roster rule
+// turns it red. A unanimous all-carrying roster is still Carried (w_the_amperes_carrying_set), and an
+// installed-family observation would settle the mixed case -- none exists in the corpus yet, so the
+// honest answer is 'unknown', never the optimistic arm.
+test fn w_a_board_admitting_carrying_and_non_carrying_families_is_unestablished() -> Bool {
+  let mixed = match smpro_facility_of_families(
+    families: two_families(first: amd_7950x3d_soc_family, second: ampere_altra_max_soc_family)) {
+    // The cause is CHECKABLE, which a NonEmptyStr reason never was: the counts are facts a witness
+    // asserts, so "one mixed family of two" is a different verdict from "one of nine" -- a regression
+    // that miscounted the roster goes RED here instead of printing a different sentence.
+    SmproFacilityUnestablished { cause: MixedRosterWithoutInstalledSelection { total: t, carrying: c } } =>
+      t == 2 && c == 1
+    SmproFacilityUnestablished { cause: _ } => false
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => false
+  }
+  // The mixed roster licenses no read...
+  let no_read = match smpro_facility_of_families(families: two_families(first: amd_7950x3d_soc_family, second: ampere_altra_max_soc_family)) {
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityUnestablished { cause: _ } => true
+    }
+  // ...while the SAME decision over a unanimous carrying roster still says Carried, so the inversion
+  // has not simply become 'never carry'.
+  let unanimous_still_carries = match smpro_facility_of_families(
+    families: two_families(first: ampere_altra_soc_family, second: ampere_altra_max_soc_family)) {
+    SmproFacilityCarried { family: _ } => true
+    _ => false
+  }
+  // And a unanimous non-carrying roster stays NotCarried, not Unestablished.
+  let unanimous_no_still_absent = match smpro_facility_of_families(
+    families: one_family(family: amd_7950x3d_soc_family)) {
+    SmproFacilityNotCarried { family: _ } => true
+    _ => false
+  }
+  mixed && no_read && unanimous_still_carries && unanimous_no_still_absent
+}
+
+// The supplied x86 stand-in that stood here is dissolved: the x86 NotCarried verdict is witnessed against
+// the cited H11SSL edge in gunbc test claim host h11ssl_smpro_platform_witness.
+
+// RED (review 81149, finding 3): A FAMILY ROW THAT MERELY SPELLS ITS NAME 'Altra' DOES NOT CARRY SMpro.
+// Membership was first decided by comparing `name`, which handed the SMpro facility to any row that
+// wrote the right string while grouping entirely different silicon. Membership is now FAMILY IDENTITY —
+// the grouping of cited model rows — so this impostor, same name and same architecture as Altra but
+// grouping the x86 model row, must be answered NotCarried. A name-based test cannot produce this answer;
+// that is what makes the claim worth having.
+data altra_named_impostor_family: SoCFamily = SoCFamily {
+  name: "Altra",
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
+}
+
+test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
+  // The premise, checked not assumed: same name as the carrying family, and NOT the same family.
+  let same_name = (altra_named_impostor_family.name as String) == (ampere_altra_soc_family.name as String)
+  let different_family = soc_family_eq(a: altra_named_impostor_family, b: ampere_altra_soc_family) == false
+  // ...and the verdict follows the identity, not the name.
+  let not_carried = match smpro_facility_of_families(families: one_family(family: altra_named_impostor_family)) {
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
+  }
+  // And the real Altra row is still Carried, so the test is not simply rejecting everything.
+  let real_carried = match smpro_facility_of_families(families: one_family(family: ampere_altra_soc_family)) {
+    SmproFacilityCarried { family: _ } => true
+    _ => false
+  }
+  same_name && different_family && not_carried && real_carried
+}
+
+// RED (review 81149 / manager): THE PLATFORM GATE ITSELF IS ENFORCED, NOT JUST ASSERTED. Deleting the
+// gate in managed_host_smpro_subject — minting a pass subject for every bound host regardless of what its
+// platform carries — MUST turn this red. A host whose family is NotCarried (an x86 family) or whose board
+// admits no family at all (Unestablished) binds NO SMpro pass subject, while a host whose family IS carried
+// binds exactly one. The control route is untouched either way, so a host with no subject is still fully
+// controlled — the x86 machine needs no empty or refused SMpro field, it simply has no subject to pair.
+test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
+  managed_hosts() |> all(h => {
+    // THE REAL ROW, end to end: the board establishes the family as carried, the platform arm is
+    // Carried, and the production mint (the only admitted caller of the sealed subject constructor)
+    // binds exactly one subject.
+    let carried_and_binds = match h.smpro {
+      SmproPlatformCarried { family: _, site: _ } => true
+      _ => false
+    } && match managed_host_smpro_subject(
+      host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
+      SmproSubjectMinted { subject: _ } => true
+      _ => false
+    }
+    // THE SAME MACHINE ON A FAMILY THE CITED SET DOES NOT NAME. The platform arm decides, so there is
+    // no separate licensing step left to delete: making the gate license everything -- the pre-rework
+    // behaviour -- turns this red, because a NotCarried row would mint a subject.
+    let not_carried_binds_nothing = match managed_host_smpro_subject(
+      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure,
+        smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family }),
+      control: bmc_control_binding(observed: h.access, secured: h.secure)) {
+      SmproSubjectNotCarried { family: f } => soc_family_eq(a: f, b: amd_7950x3d_soc_family)
+      _ => false
+    }
+    // ...and on an UNKNOWN platform, whose reason survives rather than collapsing into not-carried.
+    let unknown_binds_nothing_with_its_own_reason = match managed_host_smpro_subject(
+      host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure,
+        smpro: SmproPlatformUnestablished {
+          cause: MixedRosterWithoutInstalledSelection { total: 2, carrying: 1 },
+        }),
+      control: bmc_control_binding(observed: h.access, secured: h.secure)) {
+      // The CAUSE rides through unchanged -- which is what makes the arm checkable: the witness
+      // compares an arm of a closed set, not a sentence two sites would have to keep in sync.
+      SmproSubjectUnestablished {
+        cause: MixedRosterWithoutInstalledSelection { total: 2, carrying: 1 },
+      } => true
+      _ => false
+    }
+    // THE POINT OF THE WHOLE SHAPE: the machine is still fully controlled either way. The route binds
+    // from access + secure, independent of the platform fact -- an x86 unit needs no empty or refused
+    // SMpro field to be managed.
+    let still_controlled = match bmc_control_binding(observed: h.access, secured: h.secure) {
+      BmcControlBound { route: _ } => true
+      _ => false
+    }
+    carried_and_binds && not_carried_binds_nothing && unknown_binds_nothing_with_its_own_reason && still_controlled
+  }) && count(managed_hosts()) == 1
+}
+
+// THE SUPPLIED x86 SPECIMEN IS ADMITTED AS A MANAGED HOST. Manager ruling, 2026-10-16: a witness's
+// inputs are supplied values at the interface under test, so this machine may be invented PROVIDED the
+// part that decides the claim is real -- here the SoC roster is the corpus's cited AMD family, so
+// NotCarried comes from the cited carrying set applied to real silicon facts. It is a row on the row
+// type, not just a facility verdict: it carries NO site at all, still binds its BMC control route, and
+// mints no SMpro pass subject. Under the pre-rework type this row could not be written -- the field was
+// SmproSiteStanding, so an x86 machine had to fabricate an Ampere site to be managed.
+test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bool {
+  let real = first(managed_hosts())
+  match real {
+    Absent => false
+    Present { value: h } => {
+      let x86 = managed_host_fixture(
+        host: h.host,
+        access: h.access,
+        secure: h.secure,
+       
+        smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
+      )
+      // (1) the platform answers with the cited AMD family, negatively -- no site anywhere in the arm
+      let platform_not_carried = match x86.smpro {
+        SmproPlatformNotCarried { family: f } => soc_family_eq(a: f, b: amd_7950x3d_soc_family)
+        _ => false
+      }
+      // (2) it is still a fully managed, fully controlled machine: the route binds from access + secure
+      let route_binds = match bmc_control_binding(observed: x86.access, secured: x86.secure) {
+        BmcControlBound { route: r } => true
+        _ => false
+      }
+      // (3) the arm carries NO SITE AT ALL -- and that is now a type-level fact rather than a check:
+      // SmproPlatformNotCarried has no site field, and SmproPlatformCarried holds an admitted SmproSite
+      // directly, so 'not carried but smuggled a site' is unwritable (DESIGN §5). Matching the arm is
+      // the whole assertion; a validator here would be a check that cannot fail.
+      // (4) no SMpro pass subject is minted for it, and the refusal says WHY in the machine's own words
+      let control = bmc_control_binding(observed: x86.access, secured: x86.secure)
+      let no_subject = match managed_host_smpro_subject(host: x86, control: control) {
+        SmproSubjectNotCarried { family: _ } => true
+        _ => false
+      }
+      // (5) the diagnostic never claims the controller is missing: the controller IS bound here, and a
+      // message saying so would be false. The reason text names the platform cause and the family.
+      let outcome = managed_host_smpro_subject(host: x86, control: control)
+      let text = smpro_subject_absence_reason(outcome: outcome) as String
+      // The wording is pinned, not grepped: this is the sentence an operator reads, and the bug it
+      // replaces was a sentence that told them the controller was missing when it was bound.
+      let expected = join(["the platform does not carry the SMpro interface: the bound board's SoC family ",
+        (amd_7950x3d_soc_family.name as String),
+        " is not among the cited SMpro-carrying families, so there is no pass to take"], "") as String
+      let false_controller_message = "mtcollins1 has no bound controller to read SMpro through"
+      let text_names_the_platform = text == expected
+        // the old false rendering must not come back
+        && text != false_controller_message
+        // and an unknown platform must not be described in the same words as a not-carried one
+        && text != (smpro_subject_absence_reason(outcome: SmproSubjectUnestablished {
+             cause: MixedRosterWithoutInstalledSelection { total: 2, carrying: 1 } }) as String)
+      platform_not_carried && route_binds && no_subject && text_names_the_platform
+    }
+  }
+}
+
+// THE NON-AMPERE FAMILY THIS WITNESS ASKS ABOUT, built from a catalog row the corpus already has
+// (extdeps.cpu.amd.ryzen_9_7950x3d_catalog, X86_64). The family name is the model number that row
+// names — the row carries the identity, this only wraps it in the SoC-family term the capability keys
+// on.
+data amd_7950x3d_soc_family: SoCFamily = SoCFamily {
+  name: "Ryzen 9 7950X3D",
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
+}
+
 
 // RED: A ROW WHOSE SMpro SITE IS EVIDENCE ABOUT ANOTHER CONTROLLER. The real row is kept whole, so it
 // still binds, but its site is admitted behind "fixture-other-bmc"; the subject mint refuses it with
 // both controllers named, so the pass that would have read this host's BMC against another board's
 // addresses has no subject to read with.
-test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
-  managed_hosts() |> all(h => {
-    let crossed = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold,
-      smpro: smpro_site_admit(
-        endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" },
-        bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
-        targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
-        control_socket: 0,
-        evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
-      ))
-    match managed_host_binding(host: crossed) {
-      ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
-        SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (b.observation.endpoint.host as String)
-        SmproPassSubjectBound { subject: _ } => false
-        SmproPassSiteRefused { cause: _ } => false
+// RED (this is the claim the boot-run gauntlet row MUT-SITE-AS-NEGATIVE is measured against): A
+// REFUSED SITE IS REPORTED AS A REFUSED SITE. Everything else about the machine is intact — the
+// controller is observed, the route binds, the platform carries SMpro — and the ONLY thing missing is
+// the site, refused for having no targets at all. Before cut 2 the subject mint had no refused-site arm,
+// so this host was reported as having no bound controller and an operator went off re-securing a route
+// that was fine. If the mint ever folds SmproPlatformSiteRefused into NotCarried or Unestablished —
+// indistinguishable from a platform whose silicon does not carry the interface at all — this goes red,
+// which is what makes that gauntlet row able to go red at all.
+// RED (this is the claim review 81478 asked for, and the one the boot-run gauntlet row
+// MUT-SITE-AS-NEGATIVE is measured against): THE ADMISSION JOIN REFUSES THE ARMS THAT FAILED TO READ,
+// AND ADMITS ONLY THE ARM THAT NEVER HAD AN INTERFACE. Three of the four platform arms answer "no
+// endpoint" to the same question, and they are three different facts. The join used to ask one Optional
+// and answer its Absent branch `true`, which put a host whose SMpro READ FAILED on the roster next to a
+// host whose board has no such interface -- DESIGN Sec 5: "a failure arm refuses, never widens". The
+// obligation is now a declared sum with one arm per fact, so widening any single arm to true is a
+// one-line mutation this claim goes red on:
+//   SmproJoinRefused => true                     (both refusals vanish; this claim AND the boot-run
+//                                                 gauntlet row go red -- the boot row covers the subject
+//                                                 leg, this one covers the roster leg)
+//   SmproJoinNoEndpointOwed => false             (x86 cannot be managed; blocker 2's RED goes red)
+//   SmproJoinOwesEndpoint arm returning true     (the endpoint mismatch stops being a refusal; the
+//                                                 BmcControlBinding mismatch RED covers the route leg)
+// Mutating the OTHER file's arms cannot hide it: the obligation is computed here and matched here.
+test fn w_only_an_absent_interface_joins_the_roster_a_failed_read_does_not() -> Bool {
+  // THE ARM THAT OWES NOTHING IS THE ONE WITH NO INTERFACE: an x86 family the cited set answers
+  // negatively. This is the single arm blocker 2 opened, and opening it is what the reviewer's widen
+  // accusation was about -- so the claim asserts both halves: this arm passes AND nothing else does.
+  let not_carried_joins = match smpro_platform_join_obligation(
+    standing: SmproPlatformNotCarried { family: amd_7950x3d_soc_family }) {
+    SmproJoinNoEndpointOwed => true
+    SmproJoinOwesEndpoint { host: _ } => false
+    SmproJoinRefused { cause: _ } => false
+  }
+  // A REFUSED SITE REFUSES, and carries its cause so the refusal is checkable rather than anonymous.
+  // Pre-cut-2 this arm failed admission through an Option's Absent; it must still fail, and for the
+  // reason a site really was read and really was refused.
+  let site_refused_refuses = match smpro_platform_join_obligation(
+    standing: SmproPlatformSiteRefused { family: ampere_altra_soc_family, cause: SiteHasNoTargets }) {
+    SmproJoinRefused { cause: cause } => match cause {
+      SmproJoinSiteRefused { cause: SiteHasNoTargets } => true
+      SmproJoinSiteRefused { cause: SiteControlNotATarget { socket: _ } } => false
+      SmproJoinSiteRefused { cause: SiteControlAmbiguous { socket: _, matches: _ } } => false
+      SmproJoinSiteRefused { cause: SiteSocketRepeated { socket: _ } } => false
+      SmproJoinSiteRefused { cause: SiteAddressRepeated { seven_bit_address: _ } } => false
+      SmproJoinPlatformUnestablished { cause: _ } => false
+    }
+    SmproJoinNoEndpointOwed => false
+    SmproJoinOwesEndpoint { host: _ } => false
+  }
+  // UNKNOWN SILICON REFUSES TOO. Nothing was read and nothing is claimed about what the board admits;
+  // a compatibility roster is not a place to guess a platform into membership.
+  let unestablished_refuses = match smpro_platform_join_obligation(
+    standing: SmproPlatformUnestablished { cause: NoBoardRowBound { endpoint: fixture_bmc_endpoint } }) {
+    SmproJoinRefused { cause: SmproJoinPlatformUnestablished { cause: NoBoardRowBound { endpoint: e } } } =>
+      // the cause is not summarised away: the endpoint that was looked at and found no board rides through
+      (e.host as String) == (fixture_bmc_endpoint.host as String)
+    SmproJoinRefused { cause: _ } => false
+    SmproJoinNoEndpointOwed => false
+    SmproJoinOwesEndpoint { host: _ } => false
+  }
+  // AND THE CARRIED ARM STILL OWES THE JOIN, naming the endpoint it read. Dropping this to true would
+  // make the mismatch a member; the route-level RED covers the same refusal from the binding side.
+  let carried_owes_its_endpoint = managed_hosts() |> all(h =>
+    match h.smpro {
+      SmproPlatformCarried { family: _, site: s } => match smpro_platform_join_obligation(standing: h.smpro) {
+        SmproJoinOwesEndpoint { host: joined } => (joined as String) == (s.endpoint.host as String)
+        SmproJoinNoEndpointOwed => false
+        SmproJoinRefused { cause: _ } => false
       }
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+      _ => false
+    }) && count(managed_hosts()) == 1
+  not_carried_joins && site_refused_refuses && unestablished_refuses && carried_owes_its_endpoint
+}
+
+test fn w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller() -> Bool {
+  managed_hosts() |> all(h => {
+    let refused = managed_host_fixture(
+      host: h.host, access: h.access, secure: h.secure,
+      // THE CAUSE IS THE CLAIM'S OWN: SiteHasNoTargets is what smpro_site_admit answers to an empty
+      // target roster, so this is the shape a real read produces, not an arm nobody can reach.
+      smpro: SmproPlatformSiteRefused { family: ampere_altra_soc_family, cause: SiteHasNoTargets },
+    )
+    let control = bmc_control_binding(observed: refused.access, secured: refused.secure)
+    match control {
+      // THE ROUTE MUST BIND. If it did not, this claim would go green on a route refusal and never
+      // reach the arm it is about — the exact shape of a claim that cannot fail.
+      BmcControlBound { route: _ } => {
+        let outcome = managed_host_smpro_subject(host: refused, control: control)
+        let names_the_cause = match outcome {
+          SmproSubjectSiteRefused { cause: cause } => match cause {
+            SiteHasNoTargets => true
+            SiteControlNotATarget { socket: _ } => false
+            SiteControlAmbiguous { socket: _, matches: _ } => false
+            SiteSocketRepeated { socket: _ } => false
+            SiteAddressRepeated { seven_bit_address: _ } => false
+          }
+          // A swallowed refusal is a minted pass; anything else silently recategorises a refusal.
+          SmproSubjectMinted { subject: _ } => false
+          SmproSubjectEndpointMismatch { bound: _, site: _ } => false
+          SmproSubjectNotCarried { family: _ } => false
+          SmproSubjectUnestablished { cause: _ } => false
+        }
+        // AND THE TEXT SAYS WHAT IS TRUE: a controller IS bound, so a rendering claiming none was is
+        // false — the defect this arm exists to kill.
+        let text = smpro_subject_absence_reason(outcome: outcome) as String
+        let says_a_controller_is_bound = string_contains(s: text, pattern: "a controller is bound")
+        let does_not_claim_no_controller = !string_contains(s: text, pattern: "no bound controller")
+          && !string_contains(s: text, pattern: "does not carry the SMpro interface")
+        names_the_cause && says_a_controller_is_bound && does_not_claim_no_controller
+      }
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
+      BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
   }) && count(managed_hosts()) == 1
+}
+
+// THE ADMITTED PATH ADMITS A MACHINE WHOSE PLATFORM HAS NO SMpro INTERFACE, Pin for manager blocker 2
+// and for review 81478. Everything else in this entry asks about a row that already exists; this is the
+// only claim that drives project_managed_host_admission through the ADMISSION record, which is where the
+// platform arm actually decides membership. It is written as a discriminating PAIR, because a claim that
+// only asserts admission succeeds cannot tell an x86 machine from a broken one:
+//   NotCarried    -> the SAME membership the real Altra row gets. This is the half the old model could
+//                    not express: an x86 unit had to carry an SMpro field, and "no field" was written as
+//                    an empty or refused Ampere site. If the join still demanded an endpoint from this arm
+//                    the leg goes Absent and this claim goes RED.
+//   SiteRefused   -> Absent. The platform DOES carry the interface and the read came back refusing.
+//   Unestablished-> Absent. The silicon is unknown; a compatibility roster is not a place to guess one.
+// The middle two are exactly the two arms review 81478 found being widened into membership by an
+// Absent => true branch, and neither was pinned by any claim then: the fix was only safe to land because
+// the arms were reasoned about, not because a witness would have caught a regression. Now one does.
+//
+// THE CONTROL IS THE REAL ROW, projected the same way, so no leg can pass on a record that was refused
+// for an unrelated reason: same host, same subject, same access, same secured account, same hold, same
+// receipt, same allocation set. The platform arm is the ONLY difference between the three records.
+test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    // THE FIXTURE MUST EXIST. A none here is not a refusal to be celebrated; it is a claim that would
+    // pass on nothing, so it fails loudly and the fixture is fixed.
+    Absent => false
+    Present { value: r } => {
+      // THE CONTROL: the row as actually admitted, on its real Ampere platform, is an ordinary member.
+      // Every leg below is measured against this one, so no leg can pass on a record that was refused
+      // for some unrelated reason -- same host, same subject, same access, same secured account, same
+      // hold, same receipt, same allocation set. The platform arm is the ONLY difference.
+      let carried = project_managed_host_admission(
+        record: r,
+        current_subject: Present { value: r.binding.subject },
+        allocations: gunbc_fleet_hostname_allocations,
+      )
+      let carried_is_a_member = match carried {
+        Present { value: m } => match m {
+          // OrdinaryMember, not merely Present: the subject is the standing one, so any other arm means
+          // something else moved underneath the claim.
+          OrdinaryMember { host: h } => (h.host as String) == (operator_host_mtcollins1 as String)
+          _ => false
+        }
+        Absent => false
+      }
+      // THE X86 UNIT, THE REQUIRED RED: a platform with NO SMpro interface at all, and still the same
+      // membership. Before this PR an x86 unit had to carry an SMpro field, and "no such field" could
+      // only be written as an empty or refused Ampere site -- which then had to be forgiven downstream.
+      // If the endpoint join still demanded a site from this arm, the projection goes Absent and this
+      // claim goes RED.
+      let not_carried = project_managed_host_admission(
+        record: managed_host_admission(
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
+          smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
+          receipt: r.receipt,
+          current_subject: Present { value: r.binding.subject },
+          covering_drop: r.covering_drop,
+        ),
+        current_subject: Present { value: r.binding.subject },
+        allocations: gunbc_fleet_hostname_allocations,
+      )
+      let not_carried_is_a_member = match not_carried {
+        Present { value: m } => match m {
+          OrdinaryMember { host: h } => (h.host as String) == (operator_host_mtcollins1 as String)
+          _ => false
+        }
+        Absent => false
+      }
+      // A REFUSED READ IS NOT AN ABSENT INTERFACE. The platform does carry SMpro here and the read came
+      // back refusing, so the host is not a member. This arm and the next are exactly the two that
+      // review 81478 found being widened into membership by a single Absent => true branch; no claim
+      // pinned them then, so the fix was safe because the arms were reasoned about, not because a
+      // witness would have caught it. Now one does, in both directions.
+      let site_refused = project_managed_host_admission(
+        record: managed_host_admission(
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
+          smpro: SmproPlatformSiteRefused {
+            family: ampere_altra_soc_family, cause: SiteHasNoTargets,
+          },
+          receipt: r.receipt,
+          current_subject: Present { value: r.binding.subject },
+          covering_drop: r.covering_drop,
+        ),
+        current_subject: Present { value: r.binding.subject },
+        allocations: gunbc_fleet_hostname_allocations,
+      )
+      let unknown = project_managed_host_admission(
+        record: managed_host_admission(
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure,
+          smpro: SmproPlatformUnestablished { cause: NoBoardRowBound { endpoint: fixture_bmc_endpoint } },
+          receipt: r.receipt,
+          current_subject: Present { value: r.binding.subject },
+          covering_drop: r.covering_drop,
+        ),
+        current_subject: Present { value: r.binding.subject },
+        allocations: gunbc_fleet_hostname_allocations,
+      )
+      // Two separate bindings, not one && of two matches: a match nested inside a boolean operand does
+      // not parse in this language, and the named legs are the better evidence anyway.
+      let refused_read_refuses = match site_refused {
+        Absent => true
+        Present { value: _ } => false
+      }
+      let unknown_silicon_refuses = match unknown {
+        Absent => true
+        Present { value: _ } => false
+      }
+      carried_is_a_member && not_carried_is_a_member && refused_read_refuses && unknown_silicon_refuses
+    }
+  }
+}
+
+test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
+  managed_hosts() |> all(h =>
+    // THE SITE IS ADMITTED FIRST AND ITS ARM MATCHED. SmproPlatformCarried holds an ADMITTED SmproSite
+    // directly, not a standing that might be a refusal, so handing a standing to that arm is a shape the
+    // model does not carry. It reached runtime anyway: `gunbc run --claim-run` swallows a runtime error
+    // as NO VERDICT, so this claim printed neither PASS nor FAIL while the entry still reported 13/13
+    // PASS. crisp-newt-630 caught it with claim_batch --functions; the contract now is that an entry
+    // whose verdict lines do not match its declared count gets a per-function pass before anyone writes
+    // a row. Matching the standing here means a refusal of the fixture's own admission fails the claim
+    // loudly instead of being smuggled into the carried arm.
+    match smpro_site_admit(
+      endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" },
+      bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
+      targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
+      control_socket: 0,
+      evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
+    ) {
+      SmproSiteRefused { cause: _ } => false
+      SmproSiteAdmitted { site: admitted_site } => {
+        let crossed = managed_host_fixture(
+          host: h.host, access: h.access, secure: h.secure,
+          smpro: SmproPlatformCarried { family: ampere_altra_soc_family, site: admitted_site },
+        )
+        match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
+          // The route must bind: if it did not, this claim could go green on a route refusal instead of
+          // on the site join it is about.
+          BmcControlBound { route: r } =>
+            match managed_host_smpro_subject(
+              host: crossed,
+              control: bmc_control_binding(observed: crossed.access, secured: crossed.secure),
+            ) {
+              SmproSubjectEndpointMismatch { bound: bd, site: st } =>
+                (st.host as String) == "fixture-other-bmc"
+                  && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+              SmproSubjectMinted { subject: _ } => false
+              SmproSubjectSiteRefused { cause: _ } => false
+              SmproSubjectNotCarried { family: _ } => false
+              SmproSubjectUnestablished { cause: _ } => false
+            }
+          BmcControlAccessUnobserved { endpoint: _ } => false
+          BmcControlNotSecured { cause: _ } => false
+          BmcControlEndpointMismatch { observed: _, secured: _ } => false
+        }
+      }
+    }
+  ) && count(managed_hosts()) == 1
 }

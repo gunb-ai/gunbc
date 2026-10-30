@@ -5,10 +5,9 @@ import std.logic { Bool }
 import std.integer { UInt8 }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, exit_failure }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.encoding { base64_decode, Standard, UrlSafe }
 import extdeps.clock { Clock }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host_state_root { host_state_tree }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.crypto.mac { MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign }
 import extdeps.crypto.signature { SignatureVerification, SignatureInvalid, EcdsaP256Sha256 }
@@ -26,14 +25,14 @@ import gunbc.auth.approval_app_attest_config {
   AppAttestVerifierConfig, AppAttestVerifierConfigured, AppAttestVerifierAwaitingOperator, approval_app_attest_verifier, approval_app_attest_app_id,
 }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoRealization, DeviceCryptoAdmission, DeviceCryptoRefused, device_crypto_admission, approval_device_crypto_realization,
+  DeviceCryptoRealization, DeviceCryptoGate, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization,
 }
 import gunbc.auth.approval_device_crypto_client {
   SidecarResult, SidecarAnswered, SidecarFailed,
   sidecar_signature_verification, sidecar_attestation_verification, sidecar_assertion_verification,
 }
 import gunbc.auth.approval_assertion_counter {
-  AssertionCounterAdmitted, admit_assertion_counter, approval_assertion_counter_root, assertion_counter_refusal_status, assertion_counter_refusal_reason,
+  AssertionCounterAdmitted, AssertionCounterStoreRefused, AssertionCounterAdmission, admit_assertion_counter, assertion_counter_store, AssertionCounterStoreReady, AssertionCounterStoreUnready, assertion_counter_refusal_status, assertion_counter_refusal_reason,
 }
 import gunbc.auth.approval_writer_authority {
   ApprovalServingProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission, approval_write_refusal_reason,
@@ -43,32 +42,70 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, observe_escalation, EscalationPending, EscalationDecided, EscalationNotFiled, EscalationUnreadable,
   claims_for, pending_escalations, PendingEscalationsListed, PendingEscalationsRefused,
 }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.auth.approval_device_wire {
-  MobileIos, MobileAndroid, enrolment_transcript, device_read_client_data, device_push_update_client_data, approval_device_read_skew,
-  ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request, push_update_json,
-  EnrolmentRequest, decode_enrolment_request, IosAppAttestAttestation, AndroidKeyAttestationChain,
+  MobileIos, MobileAndroid, device_read_client_data, device_push_update_client_data, approval_device_read_skew,
+  ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request,
+  GoogleEnrolmentRequest, decode_google_enrolment_request,
   SignedRedemption, decode_signed_redemption, IosAppAttestAssertion, AndroidDecisionKeyOnly, device_redemption_signing_input,
   WireDecoded, WireRefused,
-  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
-  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
-  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_json,
+  GoogleEnrolmentRefusalWire, GoogleRefusalTokenRefused, GoogleRefusalAudienceNotExact, GoogleRefusalAuthorizedPartyNotAdmitted,
+  GoogleRefusalEmailAbsent, GoogleRefusalNotAnApprover, GoogleRefusalSubjectMismatch, GoogleRefusalAttestationRefused,
+  GoogleRefusalAttestationForOtherBytes, GoogleRefusalAttestKeyMismatch, GoogleRefusalAndroidUnrealized, GoogleRefusalRevokedKey,
+  GoogleRefusalStoredMismatch, GoogleRefusalStoreUnreadable,
+  StoredEnrolmentFieldWire, StoredFieldWireEnrollmentId, StoredFieldWireGoogleSubject, StoredFieldWireGoogleEmail,
+  StoredFieldWireDecisionKey, StoredFieldWirePlatform, StoredFieldWireAttestKeyId, google_enrolment_refusal_json,
   EnrolmentGrant, enrolment_grant_json, PendingApproval, pending_list_json, VerbCapability, FetchedRequest, fetched_request_json,
   RedemptionChallenge, redemption_challenge_message, enrolment_readback_json, redemption_response_json,
   approval_device_pending_path, device_request_path, device_enrollment_path, approval_device_push_path,
   decode_path_segment, PathSegmentDecoded, PathSegmentMalformed, PathSegmentNonCanonical,
 }
+import gunbc.auth.approval_google_enrolment {
+  GoogleDeviceEnrollment, GoogleEnrolmentSlot, GoogleEnrolmentAbsent, GoogleEnrolmentActive, GoogleEnrolmentRevoked, GoogleEnrolmentUnreadable,
+  IosAttestedAppInstance, AndroidAttestedDecisionKey, GoogleEnrolmentKeys, google_enrolment_keys_transcript, google_enrollment_id,
+  admit_google_approver, GoogleApproverAdmitted, GoogleApproverRefused, join_subject_pin, SubjectPinJoined, SubjectPinRefused, SubjectPinCreateOrRead, SubjectPinUnreadable,
+  google_enrolment_admission, GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused,
+  GoogleEnrolmentRefusal, GoogleEnrolmentTokenRefused, GoogleEnrolmentAudienceNotExact, GoogleEnrolmentAuthorizedPartyNotAdmitted,
+  GoogleEnrolmentEmailAbsent, GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch, GoogleEnrolmentAttestationRefused,
+  GoogleEnrolmentAttestationForOtherBytes, GoogleEnrolmentAttestKeyMismatch, GoogleEnrolmentAndroidUnrealized, GoogleEnrolmentRevokedKey,
+  GoogleEnrolmentStoredMismatch, GoogleEnrolmentStoreUnreadable,
+  StoredEnrolmentField, StoredFieldEnrollmentId, StoredFieldGoogleSubject, StoredFieldGoogleEmail, StoredFieldDecisionKey, StoredFieldPlatform, StoredFieldAttestKeyId,
+  NewDeviceNotice, new_device_notice,
+}
+import extdeps.tailscale.identity { TailnetIdentity, IdentityMatches, IdentityMismatch, IdentityMissing, match_tailnet_identity, identity_match_reason }
+import gunbc.auth.approval_decision_store {
+  approval_identity_trust, approval_operator_login, IdentityTrustStanding,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished,
+}
 import gunbc.auth.approval_device_redemption {
-  approval_device_store_root, EnrolmentSlotStanding, EnrolmentCodeConsumed, EnrolmentRevoked, EnrolmentCodeUnspent, EnrolmentCodeUnknown, EnrolmentSlotUnreadable,
-  VerifiedDeviceEnrollment, IosAttestedAppInstance, AndroidAttestedDecisionKey,
-  observe_enrolment_slot, observe_enrollment, enrolment_readback_of, commit_enrolment,
-  enrolment_admission, EnrolmentAdmitted, EnrolmentRefused, EnrolmentRefusal,
-  EnrolmentCodeNotIssued, EnrolmentCodeAlreadyUsed, EnrolmentCodeExpired, EnrolmentStoreUnreadable, EnrolmentAttestationRefused, EnrolmentAttestationForOtherBytes, EnrolmentAndroidUnrealized,
+  ApprovalDeviceStoreReading, ApprovalDeviceStoreReady, ApprovalDeviceStoreUnready, approval_device_store,
+  BrokerJwksCache, BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache,
+  GoogleEnrolmentListing,
+  commit_push_registration, PushRegistrationWritten, PushRegistrationUnchanged, PushRegistrationRaced, PushRegistrationRefused,
+  observe_google_enrolment, commit_google_enrolment, create_or_read_subject_pin, enrolment_readback_of,
+  list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused, revoke_google_enrolment,
   DeviceStoreWrite, DeviceStoreWritten, DeviceStoreSlotOccupied, DeviceStoreRefused,
   redeem_device_over_store, DeviceRedemptionOutcome, redemption_response_of, DeviceRedeemed, DeviceAlreadyDecided, DeviceLostTheRace,
   DeviceEnrollmentUnknown, DeviceEnrollmentRevoked, DeviceEscalationNotFiled, DeviceStoreUnreadable, DeviceKeyringUnavailable, DeviceCommitRefused,
-  DeviceEnrollmentForAnotherOperator, DeviceSignedForAnotherRequest, DeviceChallengeExpired, DeviceChallengeNotIssuedHere, DeviceCapabilityTagMalformed,
+  DeviceEnrollmentNotAnApprover, DeviceSignedForAnotherRequest, DeviceChallengeExpired, DeviceChallengeNotIssuedHere, DeviceCapabilityTagMalformed,
   DeviceCapabilityRefused, DeviceSignatureRefused, DevicePlatformProofRefused, DevicePlatformProofForOtherBytes, DevicePlatformProofWrongKey, DevicePlatformUnrealized,
 }
+import gunbc.auth.oidc_id_token_verification {
+  oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused,
+}
+import extdeps.auth.oidc { OidcIdTokenSignature, OidcIdTokenSignatureRefused, oidc_id_token_refusal_reason }
+import extdeps.auth.jwt { JwtCompactSerialization, NumericDateWholeSeconds }
+import extdeps.entropy { Urandom }
+import extdeps.numeric.base16 { base16_encode_lower }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_octets }
+import std.algebra { trim, length }
+import std.types { FilePath }
+import gunbc.auth.approval_apns_publish {
+  read_device_push_targets, read_apns_sender, notify_devices, new_device_push_notice, device_notification_reached_anyone, device_notification_sentence,
+  DeviceNotificationAttempted, DeviceNotificationNoRecipient, DeviceNotificationNotAttempted,
+}
+import std.decl_ref { decl_ref }
 
 // ── THE SIX DEVICE ROUTES, as folds the broker mounts ────────────────────────────────────────
 // Each fold takes what the serve entry hands a route -- the body, the path suffix where there is
@@ -78,16 +115,15 @@ import gunbc.auth.approval_device_redemption {
 // adapter between them and it decides nothing an authority module has not already decided.
 //
 // EVERY OPERATION IS A POST AND ITS AUTHENTICATION RIDES IN THE BODY (decision msg_5b415336): the
-// enrolment POST consumes a code; the redeem POST carries a signature and a platform proof; the
+// enrolment POST carries a Google ID token and an App Attest attestation; the redeem POST carries a signature and a platform proof; the
 // three reads and the push update carry a ReadAuthentication -- an App Attest assertion over the
 // route's framed client data -- and are admitted only for an ACTIVE enrolment inside the skew
 // window around the observed instant.
 //
-// WHAT NO ROUTE HERE DOES: issue an enrolment code (gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code is the
-// operator's verb over the SSH edge, never a route), and mint a verified value -- SignatureVerified,
+// WHAT NO ROUTE HERE DOES: mint a verified value -- SignatureVerified,
 // AttestationVerified, AssertionAuthentic and the admitted enrolment/redemption are minted by the
 // seams and folds they belong to, and this module only carries them from the verifier to the
-// admission.
+// gate.
 
 type DeviceRouteResponse {
   status: HttpStatus
@@ -155,7 +191,7 @@ fn assertion_expectation_for(app_id: NonEmptyStr, config: AppAttestVerifierConfi
 // The App Attest assertion for an enrolment's evidence over given client data: the verifier's
 // verdict, or a refusal minted through the seam when the object does not decode as base64 or the
 // enrolment is not an iOS one.
-fn assertion_for_enrollment(enrollment: VerifiedDeviceEnrollment, assertion_b64: NonEmptyStr, client_data: NonEmptyStr, app_id: NonEmptyStr, config: AppAttestVerifierConfig, admission: DeviceCryptoAdmission) -> SidecarResult<AssertionVerification> {
+fn assertion_for_enrollment(enrollment: GoogleDeviceEnrollment, assertion_b64: NonEmptyStr, client_data: NonEmptyStr, app_id: NonEmptyStr, config: AppAttestVerifierConfig, gate: DeviceCryptoGate) -> SidecarResult<AssertionVerification> {
   match enrollment.evidence {
     AndroidAttestedDecisionKey => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no assertion verifier for an Android enrolment" } } }
     IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: _ } =>
@@ -164,7 +200,7 @@ fn assertion_for_enrollment(enrollment: VerifiedDeviceEnrollment, assertion_b64:
         Present { value: _ } =>
           match assertion_expectation_for(app_id: app_id, config: config, key_id: k, public_key_point_b64url: pk, client_data: client_data) {
             Absent => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "verifier unconfigured" } } }
-            Present { value: e } => sidecar_assertion_verification(admission: admission, object_b64: assertion_b64, e: e)
+            Present { value: e } => sidecar_assertion_verification(gate: gate, object_b64: assertion_b64, e: e)
           }
       }
   }
@@ -172,7 +208,7 @@ fn assertion_for_enrollment(enrollment: VerifiedDeviceEnrollment, assertion_b64:
 
 // ── Authenticated reads ──────────────────────────────────────────────────────────────────────
 type DeviceReadAdmission
-  = DeviceReadAdmitted { enrollment: VerifiedDeviceEnrollment }
+  = DeviceReadAdmitted { enrollment: GoogleDeviceEnrollment }
   | DeviceReadRefused { status: HttpStatus, reason: String }
 
 // The window is closed below and open above, in whole seconds from the observed instant: a pure
@@ -202,9 +238,9 @@ fn seconds_within_half_open_window(d: Int, w: Int) -> Bool {
 // redeem_device_over_store, and because Apple's counter is monotonic across the key, a redemption
 // that does not advance the standing leaves the reads' strict comparison sound.
 fn admit_device_read(realization: DeviceCryptoRealization, auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
-  match device_crypto_admission(r: realization) {
-    DeviceCryptoRefused { status: st, reason: why } => DeviceReadRefused { status: st, reason: why }
-    admitted => admit_device_read_realized(auth: auth, client_data: client_data, observed_at: observed_at, admission: admitted)
+  match device_crypto_gate(r: realization) {
+    DeviceCryptoGateRefused { status: st, reason: why } => DeviceReadRefused { status: st, reason: why }
+    admitted => admit_device_read_realized(auth: auth, client_data: client_data, observed_at: observed_at, gate: admitted)
   }
 }
 
@@ -217,26 +253,25 @@ fn sidecar_failure_response(cause: NonEmptyStr) -> DeviceRouteResponse {
   device_refused(status: 503, reason: sidecar_unavailable_reason(cause: cause))
 }
 
-fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp, admission: DeviceCryptoAdmission) -> DeviceReadAdmission {
+fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp, gate: DeviceCryptoGate) -> DeviceReadAdmission {
   match verifier_expectations() {
     VerifierUnconfigured { missing: m } => DeviceReadRefused { status: 503, reason: "the App Attest verifier is not configured: " + (m as String) }
     VerifierReady { app_id: app_id, config: config } =>
-      match observe_enrollment(root: approval_device_store_root, enrollment_id: auth.enrollment_id) {
-        EnrolmentCodeUnknown => DeviceReadRefused { status: 404, reason: "no such enrolment" }
-        EnrolmentCodeUnspent { challenge: _ } => DeviceReadRefused { status: 404, reason: "no such enrolment" }
-        EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => DeviceReadRefused { status: 403, reason: "the enrolment is revoked" }
-        EnrolmentSlotUnreadable { detail: d } => DeviceReadRefused { status: 503, reason: d as String }
-        EnrolmentCodeConsumed { enrollment: e } =>
+      match enrolment_in(devices: approval_device_store(tree: host_state_tree()), enrollment_id: auth.enrollment_id) {
+        GoogleEnrolmentAbsent => DeviceReadRefused { status: 404, reason: "no such enrolment" }
+        GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => DeviceReadRefused { status: 403, reason: "the enrolment is revoked" }
+        GoogleEnrolmentUnreadable { detail: d } => DeviceReadRefused { status: 503, reason: d as String }
+        GoogleEnrolmentActive { enrollment: e } =>
           if !requested_at_within_skew(requested_at: auth.requested_at, observed_at: observed_at) {
             DeviceReadRefused { status: 403, reason: "requested_at is outside the read skew window" }
           } else {
-            match assertion_for_enrollment(enrollment: e, assertion_b64: auth.assertion_b64, client_data: client_data, app_id: app_id, config: config, admission: admission) {
+            match assertion_for_enrollment(enrollment: e, assertion_b64: auth.assertion_b64, client_data: client_data, app_id: app_id, config: config, gate: gate) {
               SidecarFailed { cause: why } => DeviceReadRefused { status: 503, reason: sidecar_unavailable_reason(cause: why) }
               SidecarAnswered { verification: AssertionRefused { cause: _ } } => DeviceReadRefused { status: 403, reason: "the read assertion did not verify" }
               SidecarAnswered { verification: AssertionAuthentic { authentic: a } } =>
                 if a.client_data != client_data { DeviceReadRefused { status: 403, reason: "the read assertion covers other bytes" } }
                 else {
-                  match admit_assertion_counter(root: approval_assertion_counter_root, enrollment_id: e.enrollment_id, observed: a.counter) {
+                  match assertion_counter_admitted(enrollment_id: e.enrollment_id, observed: a.counter) {
                     AssertionCounterAdmitted { enrollment_id: _, counter: _ } => DeviceReadAdmitted { enrollment: e }
                     refused => DeviceReadRefused { status: assertion_counter_refusal_status(a: refused), reason: assertion_counter_refusal_reason(a: refused) }
                   }
@@ -248,130 +283,281 @@ fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr
 }
 
 // ── POST /approve/device/enrol ───────────────────────────────────────────────────────────────
-fn enrolment_refusal_status(r: EnrolmentRefusal) -> HttpStatus {
+// ONE total match from the model's refusal to its status, reason and wire arm each; the wire arm
+// spells through google_enrolment_refusal_wire_label, covered by the injectivity witness.
+fn google_enrolment_refusal_status(r: GoogleEnrolmentRefusal) -> HttpStatus {
   match r {
-    EnrolmentCodeNotIssued => 403
-    EnrolmentCodeAlreadyUsed => 409
-    EnrolmentCodeExpired { expires_at: _, observed_at: _ } => 403
-    EnrolmentStoreUnreadable { detail: _ } => 503
-    EnrolmentAttestationRefused { cause: _ } => 403
-    EnrolmentAttestationForOtherBytes => 403
-    EnrolmentAndroidUnrealized => 501
+    GoogleEnrolmentTokenRefused { cause: _ } => 403
+    GoogleEnrolmentAudienceNotExact => 403
+    GoogleEnrolmentAuthorizedPartyNotAdmitted => 403
+    GoogleEnrolmentEmailAbsent => 403
+    GoogleEnrolmentNotAnApprover { email: _ } => 403
+    GoogleEnrolmentSubjectMismatch { email: _ } => 403
+    GoogleEnrolmentAttestationRefused { cause: _ } => 403
+    GoogleEnrolmentAttestationForOtherBytes => 403
+    GoogleEnrolmentAttestKeyMismatch => 403
+    GoogleEnrolmentAndroidUnrealized => 501
+    GoogleEnrolmentRevokedKey => 403
+    GoogleEnrolmentStoredMismatch { field: _ } => 409
+    GoogleEnrolmentStoreUnreadable { detail: _ } => 503
   }
 }
 
-fn enrolment_refusal_reason(r: EnrolmentRefusal) -> String {
+fn google_enrolment_refusal_reason(r: GoogleEnrolmentRefusal) -> String {
   match r {
-    EnrolmentCodeNotIssued => "the code was not issued"
-    EnrolmentCodeAlreadyUsed => "the code was already consumed"
-    EnrolmentCodeExpired { expires_at: x, observed_at: _ } => "the code expired at " + x
-    EnrolmentStoreUnreadable { detail: d } => d as String
-    EnrolmentAttestationRefused { cause: _ } => "the attestation did not verify"
-    EnrolmentAttestationForOtherBytes => "the attestation covers other bytes"
-    EnrolmentAndroidUnrealized => "Android enrolment is not realized"
+    GoogleEnrolmentTokenRefused { cause: c } => "the ID token was refused: " + oidc_id_token_refusal_reason(cause: c)
+    GoogleEnrolmentAudienceNotExact => "the ID token's audience is not exactly the Approve client"
+    GoogleEnrolmentAuthorizedPartyNotAdmitted => "the ID token's authorized party is not the Approve client"
+    GoogleEnrolmentEmailAbsent => "the ID token carries no email"
+    GoogleEnrolmentNotAnApprover { email: _ } => "the signed-in account is not an approver"
+    GoogleEnrolmentSubjectMismatch { email: _ } => "another Google account is already pinned to this address"
+    GoogleEnrolmentAttestationRefused { cause: _ } => "the attestation did not verify"
+    GoogleEnrolmentAttestationForOtherBytes => "the attestation covers other bytes"
+    GoogleEnrolmentAttestKeyMismatch => "the attestation is for another App Attest key"
+    GoogleEnrolmentAndroidUnrealized => "Android enrolment is not realized"
+    GoogleEnrolmentRevokedKey => "this key was revoked; create a new key and sign in again"
+    GoogleEnrolmentStoredMismatch { field: _ } => "the stored enrolment for this key disagrees with the request"
+    GoogleEnrolmentStoreUnreadable { detail: d } => d as String
   }
 }
 
-fn enrolment_refusal_wire(r: EnrolmentRefusal) -> EnrolmentRefusalWire {
-  match r {
-    EnrolmentCodeNotIssued => EnrolmentRefusalCodeNotIssued
-    EnrolmentCodeAlreadyUsed => EnrolmentRefusalCodeAlreadyUsed
-    EnrolmentCodeExpired { expires_at: _, observed_at: _ } => EnrolmentRefusalCodeExpired
-    EnrolmentStoreUnreadable { detail: _ } => EnrolmentRefusalStoreUnreadable
-    EnrolmentAttestationRefused { cause: _ } => EnrolmentRefusalAttestationRefused
-    EnrolmentAttestationForOtherBytes => EnrolmentRefusalAttestationForOtherBytes
-    EnrolmentAndroidUnrealized => EnrolmentRefusalAndroidUnrealized
+fn stored_enrolment_field_wire(f: StoredEnrolmentField) -> StoredEnrolmentFieldWire {
+  match f {
+    StoredFieldEnrollmentId => StoredFieldWireEnrollmentId
+    StoredFieldGoogleSubject => StoredFieldWireGoogleSubject
+    StoredFieldGoogleEmail => StoredFieldWireGoogleEmail
+    StoredFieldDecisionKey => StoredFieldWireDecisionKey
+    StoredFieldPlatform => StoredFieldWirePlatform
+    StoredFieldAttestKeyId => StoredFieldWireAttestKeyId
   }
 }
 
-fn enrolment_refused(r: EnrolmentRefusal) -> DeviceRouteResponse {
+fn google_enrolment_refusal_wire(r: GoogleEnrolmentRefusal) -> GoogleEnrolmentRefusalWire {
+  match r {
+    GoogleEnrolmentTokenRefused { cause: _ } => GoogleRefusalTokenRefused
+    GoogleEnrolmentAudienceNotExact => GoogleRefusalAudienceNotExact
+    GoogleEnrolmentAuthorizedPartyNotAdmitted => GoogleRefusalAuthorizedPartyNotAdmitted
+    GoogleEnrolmentEmailAbsent => GoogleRefusalEmailAbsent
+    GoogleEnrolmentNotAnApprover { email: _ } => GoogleRefusalNotAnApprover
+    GoogleEnrolmentSubjectMismatch { email: _ } => GoogleRefusalSubjectMismatch
+    GoogleEnrolmentAttestationRefused { cause: _ } => GoogleRefusalAttestationRefused
+    GoogleEnrolmentAttestationForOtherBytes => GoogleRefusalAttestationForOtherBytes
+    GoogleEnrolmentAttestKeyMismatch => GoogleRefusalAttestKeyMismatch
+    GoogleEnrolmentAndroidUnrealized => GoogleRefusalAndroidUnrealized
+    GoogleEnrolmentRevokedKey => GoogleRefusalRevokedKey
+    GoogleEnrolmentStoredMismatch { field: f } => GoogleRefusalStoredMismatch { field: stored_enrolment_field_wire(f: f) }
+    GoogleEnrolmentStoreUnreadable { detail: _ } => GoogleRefusalStoreUnreadable
+  }
+}
+
+fn google_enrolment_refused(r: GoogleEnrolmentRefusal) -> DeviceRouteResponse {
   DeviceRouteResponse {
-    status: enrolment_refusal_status(r: r),
-    body: enrolment_refusal_json(reason: enrolment_refusal_reason(r: r), kind: enrolment_refusal_wire(r: r)),
+    status: google_enrolment_refusal_status(r: r),
+    body: google_enrolment_refusal_json(reason: google_enrolment_refusal_reason(r: r), kind: google_enrolment_refusal_wire(r: r)),
   }
 }
 
-fn attestation_for_request(r: EnrolmentRequest, app_id: NonEmptyStr, config: AppAttestVerifierConfig, observed_at: Timestamp, admission: DeviceCryptoAdmission) -> SidecarResult<AttestationVerification> {
-  match r.evidence {
-    AndroidKeyAttestationChain { chain: _ } => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "no attestation verifier for Android" } } }
-    IosAppAttestAttestation { attest_key_id: k, attestation_b64: b } =>
-      match base64_decode(s: b as String, variant: Standard) {
-        Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "attestation_b64 is not base64" } } }
-        Present { value: _ } =>
-          match attestation_expectation_for(app_id: app_id, config: config, key_id: k, client_data: enrolment_transcript(code: r.code, decision_key: r.decision_key, platform: r.platform), observed_at: observed_at) {
-            Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "verifier unconfigured" } } }
-            Present { value: e } => sidecar_attestation_verification(admission: admission, object_b64: b, e: e)
-          }
+// The App Attest attestation over the transcript of the SUBMITTED keys: the same bytes the token's
+// nonce is checked against, so one fresh sign-in vouches for exactly one key pair.
+fn attestation_for_request(r: GoogleEnrolmentRequest, app_id: NonEmptyStr, config: AppAttestVerifierConfig, observed_at: Timestamp, gate: DeviceCryptoGate) -> SidecarResult<AttestationVerification> {
+  match base64_decode(s: r.attestation_b64 as String, variant: Standard) {
+    Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "attestation_b64 is not base64" } } }
+    Present { value: _ } =>
+      match attestation_expectation_for(app_id: app_id, config: config, key_id: r.attest_key_id, client_data: google_enrolment_keys_transcript(k: google_enrolment_keys_of(r: r)), observed_at: observed_at) {
+        Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "verifier unconfigured" } } }
+        Present { value: e } => sidecar_attestation_verification(gate: gate, object_b64: r.attestation_b64, e: e)
       }
   }
 }
 
-// THE PUSH REGISTRATION HAS ITS OWN ROOT. gunbc.durable_cas_file_store owns both directions of the
-// layout under approval_device_store_root (review 69827 of gunbc#12000), so a record that is not a
-// CAS generation does not live there: it is a last-write-wins owner-only file under a sibling root
-// this module owns, keyed by the server-derived enrolment id (never a request-supplied string --
-// both writers pass the verified enrolment's id).
-data approval_device_push_root: NonEmptyStr = "/var/lib/gunbc/approval-device-push"
-
-fn push_registration_path(enrollment_id: NonEmptyStr) -> String {
-  (approval_device_push_root as String) + "/" + (enrollment_id as String) + ".json"
+fn google_enrolment_keys_of(r: GoogleEnrolmentRequest) -> GoogleEnrolmentKeys {
+  GoogleEnrolmentKeys { platform: r.platform, decision_key: r.decision_key, attest_key_id: r.attest_key_id }
 }
 
-// WRITTEN BY TWO ROUTES, READ BY A CONSUMER THAT DOES NOT EXIST YET, and the frontier is declared
-// beside the write rather than left for the reader to infer (DESIGN section 3c). Nothing in this
-// corpus sends an APNs push: the consumer is the push sender that wakes the phone when a request is
-// filed (gunbc.auth.approval_request_submission notify_filed is where it attaches), loading this
-// record by the pending request's operator enrolment. It cannot land before the operator creates an
-// APNs authentication key (Apple Developer > Keys) and it reaches srv1 as a secret; until then the
-// app polls its pending list on the authenticated read route, which needs no registration.
-data approval_device_push_sender_frontier: DissolutionCondition = unbound_dissolution(
-  description: "an APNs push sender bound at notify_filed that loads the operator's push registration from approval_device_push_root by enrolment id and sends the wakeup with the operator-created APNs key held on srv1 -- SUFFICIENT FOR a filed request to wake the enrolled phone without polling; until it lands the registration is stored and unread, and the app polls",
-)
+// THE BROKER'S STORES, EACH MINTED FROM THE PRODUCTION HOST-STATE TREE (gunbc.host_state_root
+// host_state_tree) at the route that uses it. A store whose directory does not list answers through the arm
+// its operation already had for an unreadable store, so a refused mint is the same refusal a refused read
+// was, never a silently empty answer.
+fn enrolment_in(devices: ApprovalDeviceStoreReading, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
+  match devices {
+    ApprovalDeviceStoreUnready { detail: d } => GoogleEnrolmentUnreadable { detail: d as NonEmptyStr }
+    ApprovalDeviceStoreReady { store: s } => observe_google_enrolment(devices: s, enrollment_id: enrollment_id)
+  }
+}
 
-fn store_push_registration(enrollment_id: NonEmptyStr, push_json: String) -> DeviceRouteResponse? {
-  let w = Filesystem.WriteOwnerOnly(path: push_registration_path(enrollment_id: enrollment_id), content: push_json)
-  if w.success { none } else { Present { value: device_refused(status: 503, reason: "push registration not stored: " + w.error) } }
+fn subject_pin_in(devices: ApprovalDeviceStoreReading, email: NonEmptyStr, subject: NonEmptyStr) -> SubjectPinCreateOrRead {
+  match devices {
+    ApprovalDeviceStoreUnready { detail: d } => SubjectPinUnreadable { detail: d as NonEmptyStr }
+    ApprovalDeviceStoreReady { store: s } => create_or_read_subject_pin(devices: s, email: email, subject: subject)
+  }
+}
+
+fn commit_enrolment_in(devices: ApprovalDeviceStoreReading, enrollment: GoogleDeviceEnrollment) -> DeviceStoreWrite {
+  match devices {
+    ApprovalDeviceStoreUnready { detail: d } => DeviceStoreRefused { detail: d as NonEmptyStr }
+    ApprovalDeviceStoreReady { store: s } => commit_google_enrolment(devices: s, enrollment: enrollment)
+  }
+}
+
+fn revoke_enrolment_in(devices: ApprovalDeviceStoreReading, enrollment_id: NonEmptyStr, revoked_at: Timestamp) -> DeviceStoreWrite {
+  match devices {
+    ApprovalDeviceStoreUnready { detail: d } => DeviceStoreRefused { detail: d as NonEmptyStr }
+    ApprovalDeviceStoreReady { store: s } => revoke_google_enrolment(devices: s, slot: observe_google_enrolment(devices: s, enrollment_id: enrollment_id), revoked_at: revoked_at)
+  }
+}
+
+fn enrolments_in(devices: ApprovalDeviceStoreReading) -> GoogleEnrolmentListing {
+  match devices {
+    ApprovalDeviceStoreUnready { detail: d } => GoogleEnrolmentListingRefused { detail: d as NonEmptyStr }
+    ApprovalDeviceStoreReady { store: s } => list_google_enrolments(devices: s)
+  }
+}
+
+fn assertion_counter_admitted(enrollment_id: NonEmptyStr, observed: Int) -> AssertionCounterAdmission {
+  match assertion_counter_store(tree: host_state_tree()) {
+    AssertionCounterStoreUnready { detail: d } => AssertionCounterStoreRefused { detail: d as NonEmptyStr }
+    AssertionCounterStoreReady { store: counters } => admit_assertion_counter(counters: counters, enrollment_id: enrollment_id, observed: observed)
+  }
+}
+
+// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23: no second fetch path): the broker's
+// sealed cache (gunbc.auth.approval_device_redemption BrokerJwksCache) hands its operations to the one
+// verification code of gunbc.auth.oidc_id_token_verification.
+fn broker_token_signature(id_token: JwtCompactSerialization, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
+  match broker_jwks_cache(tree: host_state_tree()) {
+    BrokerJwksCacheUnready { detail: d } => OidcIdTokenSignatureRefused { reason: join(["the broker JWKS cache is not ready: ", d], "") }
+    BrokerJwksCacheReady { cache: jwks } => broker_token_signature_over(cache: jwks, id_token: id_token, epoch: epoch, verify_id: verify_id)
+  }
+}
+
+// The broker's verification takes the broker's cache and no other: an instance's InstanceJwksCache is a
+// different type and does not stand here.
+fn broker_token_signature_over(cache: BrokerJwksCache, id_token: JwtCompactSerialization, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
+  oidc_id_token_signature_verify(cache: cache.cache, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+}
+
+// A fresh id for the signature verification's scratch files: 128 bits of entropy as lowercase hex.
+fn device_verify_id() -> NonEmptyStr? {
+  match base64_decode(s: trim(Urandom.ReadBytes(count: 16).octets_b64), variant: Standard) {
+    Absent => none
+    Present { value: octets } =>
+      if count(octets) != 16 { none }
+      else {
+        match base64_octets(values: octets) {
+          QualifiedOctetsRefused { observed: _ } => none
+          QualifiedOctetsReady { value: q } => Present { value: base16_encode_lower(octets: q) as NonEmptyStr }
+        }
+      }
+  }
+}
+
+// THE NEW-DEVICE NOTICE, pushed to every enrolled approver device (gunbc.auth.approval_apns_publish
+// new_device_push_notice). Sent only for a GoogleEnrolmentWrites, never a replay. An enrolment whose
+// notice was not delivered is still written: the route answers 503 so the phone resends, the resend
+// replays the same grant, and no second notice is sent -- the undelivered notice is named in the
+// response, never swallowed. THE FIRST DEVICE HAS NOBODY TO TELL: no registered recipient (and no
+// enrolment that failed to read) is a delivered notice, not a refusal, or the first enrolment could
+// never complete; an enrolment that did not read is named, because it might have been the recipient.
+fn publish_new_device_notice(notice: NewDeviceNotice) -> String?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_admit"),
+  ]
+{
+  let pushed = notify_devices(targets: read_device_push_targets(), sender: read_apns_sender(), notice: new_device_push_notice(enrollment_id: notice.enrollment_id))
+  match pushed {
+    DeviceNotificationNoRecipient { unregistered: _, unreadable: ur } =>
+      if length(ur) == 0 { none } else { Present { value: device_notification_sentence(n: pushed) } }
+    DeviceNotificationNotAttempted { detail: _ } => Present { value: device_notification_sentence(n: pushed) }
+    DeviceNotificationAttempted { outcomes: _, unregistered: _, unreadable: _ } =>
+      if device_notification_reached_anyone(n: pushed) { none } else { Present { value: device_notification_sentence(n: pushed) } }
+  }
 }
 
 fn device_enrol_response(body: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_enrol_response_at(realization: approval_device_crypto_realization, body: body, process: process, observed_at: now)
+    Present { value: now } =>
+      match Clock.UnixSecs() {
+        epoch_read =>
+          match parse_int(s: trim(epoch_read.unix_secs)) {
+            Absent => device_refused(status: 503, reason: "the clock's epoch reading refused, so the token verdict cannot be decided")
+            Present { value: epoch } => device_enrol_response_at(realization: approval_device_crypto_realization, body: body, process: process, observed_at: now, epoch: epoch)
+          }
+      }
   }
 }
 
-fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
+fn device_enrol_grant(e: GoogleDeviceEnrollment) -> DeviceRouteResponse {
+  DeviceRouteResponse { status: 200, body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: e.enrollment_id }) }
+}
+
+fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp, epoch: Int) -> DeviceRouteResponse {
   match approval_write_admission(asker: process) {
     ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
     ApprovalWriteAdmitted { writer: _ } =>
-      match decode_enrolment_request(text: body) {
+      match decode_google_enrolment_request(text: body) {
         WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
         WireDecoded { value: r } =>
-          match device_crypto_admission(r: realization) {
-            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+          match device_crypto_gate(r: realization) {
+            DeviceCryptoGateRefused { status: st, reason: why } => device_refused(status: st, reason: why)
             admitted =>
               match verifier_expectations() {
                 VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
-                VerifierReady { app_id: app_id, config: config } => {
-                  let slot = observe_enrolment_slot(root: approval_device_store_root, code: r.code)
-                  match attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at, admission: admitted) {
-                    SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
-                    SidecarAnswered { verification: attestation } =>
-                  match enrolment_admission(slot: slot, platform: r.platform, decision_key: r.decision_key, attestation: attestation, observed_at: observed_at) {
-                    EnrolmentRefused { cause: c } => enrolment_refused(r: c)
-                    EnrolmentAdmitted { enrollment: e } =>
-                      match commit_enrolment(root: approval_device_store_root, admitted: EnrolmentAdmitted { enrollment: e }) {
-                        DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the code was consumed concurrently")
-                        DeviceStoreRefused { detail: d } => device_refused(status: 503, reason: d as String)
-                        DeviceStoreWritten =>
-                          match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {
-                            Present { value: refused } => refused
-                            Absent => DeviceRouteResponse { status: 200, body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: e.enrollment_id }) }
+                VerifierReady { app_id: app_id, config: config } =>
+                  match oidc_id_token_wire_decode(token: r.id_token as JwtCompactSerialization) {
+                    OidcIdTokenWireRefused { reason: why } => device_refused(status: 400, reason: "the ID token did not decode: " + why)
+                    OidcIdTokenWireDecoded { claims: claims, header: _, signing_input: _ } =>
+                      match device_verify_id() {
+                        Absent => device_refused(status: 503, reason: "the entropy draw for the token verification refused")
+                        Present { value: verify_id } =>
+                          device_enrol_admit(
+                            r: r, claims: claims,
+                            signature: broker_token_signature(id_token: r.id_token as JwtCompactSerialization, epoch: epoch, verify_id: verify_id),
+                            app_id: app_id, config: config, gate: admitted, observed_at: observed_at, epoch: epoch,
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The admission order is the plan's: token verdict (policy from the SUBMITTED keys), attestation over
+// the same transcript, the subject pin's create-or-read, then the slot read and the model's
+// admission. Nothing is written to the enrolment slot without the pin join, and a refused
+// attestation writes nothing at all.
+fn device_enrol_admit(r: GoogleEnrolmentRequest, claims: OidcIdTokenClaims, signature: OidcIdTokenSignature, app_id: NonEmptyStr, config: AppAttestVerifierConfig, gate: DeviceCryptoGate, observed_at: Timestamp, epoch: Int) -> DeviceRouteResponse {
+  match admit_google_approver(claims: claims, signature: signature, keys: google_enrolment_keys_of(r: r), observed_at: NumericDateWholeSeconds { seconds: epoch }) {
+    GoogleApproverRefused { cause: c } => google_enrolment_refused(r: c)
+    GoogleApproverAdmitted { approver: approver } =>
+      match attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at, gate: gate) {
+        SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
+        SidecarAnswered { verification: AttestationRefused { cause: c } } => google_enrolment_refused(r: GoogleEnrolmentAttestationRefused { cause: c })
+        SidecarAnswered { verification: attestation } =>
+          let devices = approval_device_store(tree: host_state_tree())
+          match join_subject_pin(approver: approver, observed: subject_pin_in(devices: devices, email: approver.email, subject: approver.subject)) {
+            SubjectPinRefused { cause: c } => google_enrolment_refused(r: c)
+            SubjectPinJoined { pinned: pinned } =>
+              let slot = enrolment_in(devices: devices, enrollment_id: google_enrollment_id(subject: approver.subject, decision_key: r.decision_key))
+              let admission = google_enrolment_admission(pinned: pinned, attestation: attestation, slot: slot, observed_at: observed_at)
+              match admission {
+                GoogleEnrolmentRefused { cause: c } => google_enrolment_refused(r: c)
+                GoogleEnrolmentReplays { enrollment: e } => device_enrol_grant(e: e)
+                GoogleEnrolmentWrites { enrollment: e } =>
+                  match commit_enrolment_in(devices: devices, enrollment: e) {
+                    DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the enrolment was created concurrently; resend to read it back")
+                    DeviceStoreRefused { detail: d } => device_refused(status: 503, reason: d as String)
+                    DeviceStoreWritten =>
+                      match new_device_notice(a: admission) {
+                        Absent => device_enrol_grant(e: e)
+                        Present { value: notice } =>
+                          match publish_new_device_notice(notice: notice) {
+                            Absent => device_enrol_grant(e: e)
+                            Present { value: undelivered } => device_refused(status: 503, reason: "enrolled, but the new-device notice was not delivered (resend to read the enrolment back): " + undelivered)
                           }
                       }
                   }
-                  }
-                }
               }
           }
       }
@@ -388,7 +574,7 @@ fn redemption_status(o: DeviceRedemptionOutcome) -> HttpStatus {
     DeviceAlreadyDecided { decision: _ } => 200
     DeviceEnrollmentUnknown => 404
     DeviceEnrollmentRevoked { enrollment_id: _ } => 403
-    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => 403
+    DeviceEnrollmentNotAnApprover { email: _ } => 403
     DeviceEscalationNotFiled { escalation_id: _ } => 404
     DeviceStoreUnreadable { detail: _ } => 503
     DeviceKeyringUnavailable { cause: _ } => 503
@@ -411,27 +597,25 @@ fn redemption_status(o: DeviceRedemptionOutcome) -> HttpStatus {
 // over exactly the signing input's framed bytes. With no active enrolment there is no key to
 // verify under, and the fold refuses on the slot before it reads this value; SignatureInvalid is
 // the honest carrier for "not verified", never a success.
-fn redemption_signature(slot: EnrolmentSlotStanding, r: SignedRedemption, admission: DeviceCryptoAdmission) -> SidecarResult<SignatureVerification> {
+fn redemption_signature(slot: GoogleEnrolmentSlot, r: SignedRedemption, gate: DeviceCryptoGate) -> SidecarResult<SignatureVerification> {
   match slot {
-    EnrolmentCodeConsumed { enrollment: e } => sidecar_signature_verification(admission: admission, key: e.decision_key, signature: r.signature, message: device_redemption_signing_input(i: r.signing_input))
-    EnrolmentCodeUnspent { challenge: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
-    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
-    EnrolmentCodeUnknown => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
-    EnrolmentSlotUnreadable { detail: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    GoogleEnrolmentActive { enrollment: e } => sidecar_signature_verification(gate: gate, key: e.decision_key, signature: r.signature, message: device_redemption_signing_input(i: r.signing_input))
+    GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    GoogleEnrolmentAbsent => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    GoogleEnrolmentUnreadable { detail: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
   }
 }
 
-fn redemption_assertion(slot: EnrolmentSlotStanding, r: SignedRedemption, app_id: NonEmptyStr, config: AppAttestVerifierConfig, admission: DeviceCryptoAdmission) -> SidecarResult<AssertionVerification> {
+fn redemption_assertion(slot: GoogleEnrolmentSlot, r: SignedRedemption, app_id: NonEmptyStr, config: AppAttestVerifierConfig, gate: DeviceCryptoGate) -> SidecarResult<AssertionVerification> {
   match slot {
-    EnrolmentCodeConsumed { enrollment: e } =>
+    GoogleEnrolmentActive { enrollment: e } =>
       match r.platform_proof {
         AndroidDecisionKeyOnly => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no platform proof verifier for Android" } } }
-        IosAppAttestAssertion { assertion_b64: b } => assertion_for_enrollment(enrollment: e, assertion_b64: b, client_data: device_redemption_signing_input(i: r.signing_input), app_id: app_id, config: config, admission: admission)
+        IosAppAttestAssertion { assertion_b64: b } => assertion_for_enrollment(enrollment: e, assertion_b64: b, client_data: device_redemption_signing_input(i: r.signing_input), app_id: app_id, config: config, gate: gate)
       }
-    EnrolmentCodeUnspent { challenge: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
-    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
-    EnrolmentCodeUnknown => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
-    EnrolmentSlotUnreadable { detail: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    GoogleEnrolmentAbsent => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    GoogleEnrolmentUnreadable { detail: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
   }
 }
 
@@ -449,17 +633,17 @@ fn device_redeem_response_at(realization: DeviceCryptoRealization, body: String,
       match decode_signed_redemption(text: body) {
         WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
         WireDecoded { value: r } =>
-          match device_crypto_admission(r: realization) {
-            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+          match device_crypto_gate(r: realization) {
+            DeviceCryptoGateRefused { status: st, reason: why } => device_refused(status: st, reason: why)
             admitted =>
               match verifier_expectations() {
                 VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
                 VerifierReady { app_id: app_id, config: config } => {
-                  let slot = observe_enrollment(root: approval_device_store_root, enrollment_id: r.signing_input.enrollment_id)
-                  match redemption_signature(slot: slot, r: r, admission: admitted) {
+                  let slot = enrolment_in(devices: approval_device_store(tree: host_state_tree()), enrollment_id: r.signing_input.enrollment_id)
+                  match redemption_signature(slot: slot, r: r, gate: admitted) {
                     SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
                     SidecarAnswered { verification: signature } =>
-                      match redemption_assertion(slot: slot, r: r, app_id: app_id, config: config, admission: admitted) {
+                      match redemption_assertion(slot: slot, r: r, app_id: app_id, config: config, gate: admitted) {
                         SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
                         SidecarAnswered { verification: assertion } => {
                           let outcome = redeem_device_over_store(
@@ -497,7 +681,7 @@ fn device_pending_response_at(realization: DeviceCryptoRealization, body: String
       match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: approval_device_pending_path, enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
         DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
         DeviceReadAdmitted { enrollment: _ } =>
-          match pending_escalations(root: approval_decision_store_root) {
+          match pending_escalations(root: approval_decision_store_root, observed_at: observed_at) {
             PendingEscalationsRefused { detail: d } => device_refused(status: 503, reason: d)
             PendingEscalationsListed { pending: rows, unreadable: u } =>
               if count(u) > 0 { device_refused(status: 503, reason: "an escalation slot could not be read: " + join(map(u, x => x as String), ", ")) }
@@ -584,7 +768,7 @@ fn device_request_response_at(realization: DeviceCryptoRealization, body: String
 
 // ── POST /approve/device/enrollments/<segment> ───────────────────────────────────────────────
 // The readback authenticates under the enrolment it asks about, so a revoked enrolment answers
-// through the read admission's refusal, and an unknown one is 404 before any verification.
+// through the read gate's refusal, and an unknown one is 404 before any verification.
 fn device_enrollment_readback_response(body: String, segment: String) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
@@ -605,7 +789,7 @@ fn device_enrollment_readback_response_at(realization: DeviceCryptoRealization, 
             match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: device_enrollment_path(enrollment_id: enrollment_id), enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
               DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
               DeviceReadAdmitted { enrollment: _ } =>
-                match enrolment_readback_of(standing: observe_enrollment(root: approval_device_store_root, enrollment_id: enrollment_id)) {
+                match enrolment_readback_of(slot: enrolment_in(devices: approval_device_store(tree: host_state_tree()), enrollment_id: enrollment_id)) {
                   Absent => device_refused(status: 404, reason: "no such enrolment")
                   Present { value: rb } => DeviceRouteResponse { status: 200, body: enrolment_readback_json(r: rb) }
                 }
@@ -633,9 +817,98 @@ fn device_push_update_response_at(realization: DeviceCryptoRealization, body: St
           match admit_device_read(realization: realization, auth: r.auth, client_data: device_push_update_client_data(enrollment_id: r.auth.enrollment_id, requested_at: r.auth.requested_at, push: r.push), observed_at: observed_at) {
             DeviceReadRefused { status: s, reason: rr } => device_refused(status: s, reason: rr)
             DeviceReadAdmitted { enrollment: e } =>
-              match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {
-                Present { value: refused } => refused
-                Absent => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
+              match approval_device_store(tree: host_state_tree()) {
+                ApprovalDeviceStoreUnready { detail: d } => device_refused(status: 503, reason: "push registration not stored: " + d)
+                ApprovalDeviceStoreReady { store: devices } =>
+                  match commit_push_registration(devices: devices, enrollment_id: e.enrollment_id, push: r.push) {
+                    PushRegistrationRefused { detail: d } => device_refused(status: 503, reason: "push registration not stored: " + (d as String))
+                    PushRegistrationRaced => device_refused(status: 503, reason: "a concurrent push update for this enrolment won; present the token again")
+                    PushRegistrationWritten => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
+                    PushRegistrationUnchanged => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── GET /approve/devices and POST /approve/devices/revoke/{id} ───────────────────────────────
+// THE OPERATOR'S TWO ROUTES (ruling of clever-eagle-893, 2026-10-23). The broker is the store's sole
+// writer, so it serves them, and the principal is the Tailscale identity against approval_operator_login
+// -- the same gate the capability redemption uses -- not a dashboard session. The gate is honest about
+// what is attributed: IdentityHeaderTrustEstablished is minted by nothing until peer attribution
+// lands (approval_identity_attribution_frontier), so these routes REFUSE in production until then.
+// Revoke additionally passes the single-writer gate.
+fn device_operator_refusal(presented: TailnetIdentity) -> DeviceRouteResponse? {
+  match approval_identity_trust {
+    IdentityHeaderTrustNotEstablished { blocker: b } => Present { value: device_refused(status: 503, reason: "the operator identity is not attributed: " + (b as String)) }
+    IdentityHeaderUnattributed { residual: r } => Present { value: device_refused(status: 503, reason: "the operator identity is not attributed: " + (r as String)) }
+    IdentityHeaderTrustEstablished { evidence: _ } =>
+      match match_tailnet_identity(presented: presented, expected: approval_operator_login) {
+        IdentityMatches { login: _ } => none
+        IdentityMismatch { presented: p, expected: e } => Present { value: device_refused(status: 403, reason: identity_match_reason(m: IdentityMismatch { presented: p, expected: e })) }
+        IdentityMissing { expected: e } => Present { value: device_refused(status: 403, reason: identity_match_reason(m: IdentityMissing { expected: e })) }
+      }
+  }
+}
+
+fn device_listing_row_json(slot: GoogleEnrolmentSlot) -> String {
+  match slot {
+    GoogleEnrolmentActive { enrollment: e } => device_listing_member(e: e, standing: "active")
+    GoogleEnrolmentRevoked { enrollment: e, revoked_at: _ } => device_listing_member(e: e, standing: "revoked")
+    GoogleEnrolmentAbsent => ""
+    GoogleEnrolmentUnreadable { detail: _ } => ""
+  }
+}
+
+fn device_listing_member(e: GoogleDeviceEnrollment, standing: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
+    json_kv(key: "google_email", value: json_string(s: e.google_email as String)),
+    json_kv(key: "attest_key_id", value: json_string(s: device_attest_key_of(e: e))),
+    json_kv(key: "enrolled_at", value: json_string(s: e.enrolled_at)),
+    json_kv(key: "standing", value: json_string(s: standing)),
+  ]))
+}
+
+fn device_attest_key_of(e: GoogleDeviceEnrollment) -> String {
+  match e.evidence {
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } => k as String
+    AndroidAttestedDecisionKey => ""
+  }
+}
+
+fn device_list_response(presented: TailnetIdentity) -> DeviceRouteResponse {
+  match device_operator_refusal(presented: presented) {
+    Present { value: refused } => refused
+    Absent =>
+      match enrolments_in(devices: approval_device_store(tree: host_state_tree())) {
+        GoogleEnrolmentListingRefused { detail: d } => device_refused(status: 503, reason: d as String)
+        GoogleEnrolmentsListed { slots: slots } =>
+          DeviceRouteResponse { status: 200, body: "[" + join(filter(map(slots, s => device_listing_row_json(slot: s)), r => r != ""), ",") + "]" }
+      }
+  }
+}
+
+fn device_revoke_response(presented: TailnetIdentity, segment: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
+  match device_operator_refusal(presented: presented) {
+    Present { value: refused } => refused
+    Absent =>
+      match approval_write_admission(asker: process) {
+        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+        ApprovalWriteAdmitted { writer: _ } =>
+          match decode_path_segment(presented: segment) {
+            PathSegmentMalformed { cause: c } => device_refused(status: 400, reason: "enrollment path: " + (c as String))
+            PathSegmentNonCanonical { presented: _, canonical: _ } => device_refused(status: 400, reason: "enrollment path segment is not canonical")
+            PathSegmentDecoded { identity: enrollment_id } =>
+              match device_observed_at() {
+                Absent => device_clock_refused()
+                Present { value: now } =>
+                  match revoke_enrolment_in(devices: approval_device_store(tree: host_state_tree()), enrollment_id: enrollment_id, revoked_at: now) {
+                    DeviceStoreWritten => DeviceRouteResponse { status: 200, body: "{\"revoked\":true}" }
+                    DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the enrolment changed concurrently; read the list and retry")
+                    DeviceStoreRefused { detail: d } => device_refused(status: 409, reason: d as String)
+                  }
               }
           }
       }

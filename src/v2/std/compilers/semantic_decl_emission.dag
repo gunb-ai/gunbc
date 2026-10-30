@@ -4,6 +4,7 @@ import std.types { List, Map }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaration }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -29,7 +30,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
@@ -43,6 +44,13 @@ import v2.std.compilers.target_model {
   render_target_text,
   symbol_interned_spelling,
   target_model_emit_transforms_empty,
+  TokenClassEmitTransform,
+  EmitLineBreaks,
+  EmitSpellingConstant,
+  EmitSpellingIdentity,
+  EmitSpellingQuote,
+  EmitSpellingEscape,
+  EmitSpellingWrap,
   target_model_type_atom_node,
   target_model_type_conj_node,
   target_model_named_edge,
@@ -67,7 +75,6 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -78,12 +85,14 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
+  symbol_intern_lexeme,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
-import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
+import v2.std.text { Char, CharAbsent, CharFound, String, string_any_char_in, string_head, string_tail }
+import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, map_lookup, collection_concat_shape }
 import std.host_text { chars }
 
 type TargetSemanticDeclDecorationLine {
@@ -102,6 +111,22 @@ type TargetSemanticDeclCoproductSurfaceLayout
       union_field: Symbol
     }
 
+// ONE COLUMN SHAPE for a declaration's surface: a target either does not wire the column (`ColumnUnwired`: a value for
+// it refuses, located, under the consuming column's own reason) or wires it with a placement `P`. Header, imports, docs
+// and conformance have one placement (`TargetSemanticDeclColumnPlain`); members place inside the type body or in an associated block.
+type TargetSemanticDeclColumn<P>
+  = ColumnUnwired
+  | ColumnWired { placement: P }
+
+type TargetSemanticDeclColumnPlain {
+}
+
+// WHERE A TARGET PUTS A DECLARATION'S MEMBERS, the one authority for member position. A target whose declarations
+// cannot carry members leaves the column unwired and a member refuses, located.
+type TargetSemanticDeclMemberPlacement
+  = MembersInsideTypeBody
+  | MembersInAssociatedBlock
+
 type TargetSemanticDeclSurfaceProjection {
   record_decoration_lines: List<TargetSemanticDeclDecorationLine>
   coproduct_decoration_rules: List<TargetSemanticDeclCoproductDecorationRule>
@@ -111,11 +136,42 @@ type TargetSemanticDeclSurfaceProjection {
   enum_name_after_variants: Bool
   field_type_permit_only_int: Bool
   coproduct_layout: TargetSemanticDeclCoproductSurfaceLayout
+  member_projection: TargetSemanticDeclColumn<TargetSemanticDeclMemberPlacement>
+  import_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  header_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  doc_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  conformance_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+}
+
+// WHETHER A TARGET HAS A CONFORMANCE CLAUSE, the protocol or raw-type names a declaration states after its name.
+// `ConformancesTargetDefault` states none, so the target's own fixed clause (if it has one) prints; `ConformancesNamed`
+// prints the names given under a wired conformance column, and refuses, located, under a target with no such clause.
+type TargetSemanticDeclConformances
+  = ConformancesTargetDefault
+  | ConformancesNamed { names: List<Symbol> }
+
+// A constant a declaration carries beside its fields: `name` is the member's identifier and `literal` the
+// text of its string value (printed through the target's string-quote transform row). The member's type is
+// the type of its literal, spelled by the target's own literal row, so there is no type column to disagree.
+type TargetSemanticDeclMember {
+  name: Symbol
+  literal: Symbol
 }
 
 type TargetSemanticDeclSerializeProfile {
   lex_rule_rows: List<Node>
   binding_spelling_rows: List<Node>
+  emit_transform_rows: List<TargetSemanticDeclEmitTransformRow>
+}
+
+// A token class whose lexeme the target transforms on emit: the TokenClassEmitTransform rows a TargetModel
+// carries, held as that type. The bundle encodes two arms (EmitLineBreaks, EmitSpellingQuote); a profile
+// holding any other arm encodes it as the unproven marker, which decoding refuses with a typed diagnostic.
+// Every profile states its rows; a target whose declarations print on one line with no quoted text states
+// the empty list.
+type TargetSemanticDeclEmitTransformRow {
+  token_class: Symbol
+  transform: TokenClassEmitTransform
 }
 
 // Bundle row nodes are the single authority; lex and binding_spellings are derived at point of use via semantic_decl_profile_lex_rules / semantic_decl_profile_binding_spellings.
@@ -163,8 +219,12 @@ fn semantic_decl_char_identity(c: Char) -> Symbol {
 // missing view. That diagnostic is what sent this to the `String`-fork program on first reading; it
 // is a missing conversion at one site.
 fn semantic_decl_string_to_bundle_node(s: String) -> Node {
+  semantic_decl_chars_to_bundle_node(cs: chars(text: s))
+}
+
+fn semantic_decl_chars_to_bundle_node(cs: v2.std.text.String) -> Node {
   fold_list(
-    xs: chars(text: s),
+    xs: cs,
     empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
       target_model_type_conj_node(
@@ -214,7 +274,6 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
                 TypeNode { connective: Conj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
-                TypeNode { connective: Occupancy } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
               }
@@ -224,7 +283,6 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
       )
     TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
     TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
-    TypeNode { connective: Occupancy } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
     TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
     ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
   }
@@ -299,7 +357,7 @@ fn semantic_decl_lex_rules_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -392,7 +450,6 @@ fn semantic_decl_lex_rule_rows_from_catalog(catalog: Node) -> Outcome<List<Node>
     TypeNode { connective: Atom { identity: _ } } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Disj } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Arrow } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
-    TypeNode { connective: Occupancy } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Instantiation } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
     ComputationNode { behavior: _ } => semantic_decl_lex_rule_rows_from_catalog_otherwise(catalog: catalog)
   }
@@ -462,7 +519,7 @@ fn semantic_decl_binding_spellings_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -525,7 +582,6 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: Node) -> Outcome<Li
     TypeNode { connective: Atom { identity: _ } } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Disj } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Arrow } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
-    TypeNode { connective: Occupancy } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Instantiation } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
     ComputationNode { behavior: _ } => semantic_decl_binding_spelling_rows_from_catalog_otherwise(catalog: catalog)
   }
@@ -716,6 +772,7 @@ fn semantic_decl_serialize_target(
         f: fn(binding_spellings) {
           outcome_accepted(
             value: TargetModel {
+              primitive_realizations: PrimitiveRealizationsUnwired,
               produced_decl_support: ProducedDeclUnwired,
               bundle: target_model_type_conj_node(
                 children: [
@@ -727,7 +784,7 @@ fn semantic_decl_serialize_target(
               ),
               lex: lex,
               binding_spellings: binding_spellings,
-              token_class_emit_transforms: target_model_emit_transforms_empty,
+              token_class_emit_transforms: semantic_decl_emit_transforms(rows: profile.emit_transform_rows),
               authority_source_text: "",
               runtime_row: target_emit_host_runtime_row_unconfigured
             }
@@ -749,7 +806,8 @@ fn semantic_decl_binding_spellings_from_catalog(catalog: Node) -> Outcome<Map<Sy
 
 fn semantic_decl_serialize_profile_bundle(
   lex_rows: List<Node>,
-  spelling_rows: List<Node>
+  spelling_rows: List<Node>,
+  emit_transform_rows: List<TargetSemanticDeclEmitTransformRow>
 ) -> Node {
   target_model_type_conj_node(
     children: [
@@ -760,8 +818,290 @@ fn semantic_decl_serialize_profile_bundle(
       target_model_named_edge(
         name: ^semantic_decl_profile_field_binding_spellings,
         target: semantic_decl_binding_spellings_catalog(rows: spelling_rows)
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_profile_field_emit_transforms,
+        target: semantic_decl_emit_transform_rows_catalog(rows: emit_transform_rows)
       )
     ]
+  )
+}
+
+// A count is a conj of that many unit atoms: the bundle has no Int node, and a count read back is the
+// children's length, so the encoding cannot disagree with itself. A negative count has no conj; it is the
+// marker atom, which semantic_decl_count_from_node refuses rather than reading as zero.
+fn semantic_decl_count_node(n: Int) -> Node {
+  if n < 0 {
+    target_model_type_atom_node(identity: ^semantic_decl_count_negative)
+  } else {
+    target_model_type_conj_node(
+      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit), declaration: NotADeclaration }]) }
+    )
+  }
+}
+
+fn semantic_decl_count_from_node(n: Node) -> Outcome<Int> {
+  match n.kind {
+    TypeNode { connective: Conj } => outcome_accepted(value: fold(n.children, init: 0, f: fn(acc, e) { acc + 1 }))
+    TypeNode { connective: Atom { identity: _ } } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Disj } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Arrow } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    TypeNode { connective: Instantiation } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+    ComputationNode { behavior: _ } => outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: n))
+  }
+}
+
+fn semantic_decl_emit_transform_unproven_diagnostic(bundle: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^semantic_decl_emit_transform_arm_unproven,
+    at: node_locus(node: bundle),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn semantic_decl_emit_escape_node(e: EmitSpellingEscape) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(name: ^semantic_decl_emit_escape_field_from, target: semantic_decl_chars_to_bundle_node(cs: e.from)),
+      target_model_named_edge(name: ^semantic_decl_emit_escape_field_to, target: semantic_decl_chars_to_bundle_node(cs: e.to))
+    ]
+  )
+}
+
+fn semantic_decl_emit_unproven_node() -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_unproven))
+    ]
+  )
+}
+
+fn semantic_decl_emit_transform_node(t: TokenClassEmitTransform) -> Node {
+  match t {
+    EmitLineBreaks { before: b, after: a } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_line_breaks)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_before, target: semantic_decl_count_node(n: b)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_after, target: semantic_decl_count_node(n: a))
+        ]
+      )
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_kind, target: target_model_type_atom_node(identity: ^semantic_decl_emit_transform_string_quote)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_prefix, target: semantic_decl_string_to_bundle_node(s: p)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_open, target: semantic_decl_string_to_bundle_node(s: o)),
+          target_model_named_edge(name: ^semantic_decl_emit_transform_field_close, target: semantic_decl_string_to_bundle_node(s: c)),
+          target_model_named_edge(
+            name: ^semantic_decl_emit_transform_field_escapes,
+            target: target_model_type_conj_node(
+              children: fold_list(
+                xs: es,
+                empty: Empty,
+                cons: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_escape_node(e: e), declaration: NotADeclaration }) }
+              )
+            )
+          )
+        ]
+      )
+    EmitSpellingIdentity => semantic_decl_emit_unproven_node()
+    EmitSpellingConstant { value: _ } => semantic_decl_emit_unproven_node()
+    EmitSpellingWrap { prefix: _, suffix: _ } => semantic_decl_emit_unproven_node()
+  }
+}
+
+fn semantic_decl_emit_transform_row(row: TargetSemanticDeclEmitTransformRow) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(name: ^semantic_decl_emit_row_field_token_class, target: target_model_type_atom_node(identity: row.token_class)),
+      target_model_named_edge(name: ^semantic_decl_emit_row_field_transform, target: semantic_decl_emit_transform_node(t: row.transform))
+    ]
+  )
+}
+
+fn semantic_decl_emit_transform_rows_catalog(rows: List<TargetSemanticDeclEmitTransformRow>) -> Node {
+  target_model_type_conj_node(
+    children: fold_list(
+      xs: rows,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_transform_row(row: row), declaration: NotADeclaration })
+      }
+    )
+  )
+}
+
+fn decode_semantic_decl_chars(bundle: Node) -> Outcome<v2.std.text.String> {
+  bind_outcome(o: semantic_decl_string_from_bundle_node(bundle: bundle), f: fn(s) { outcome_accepted(value: chars(text: s)) })
+}
+
+fn decode_semantic_decl_emit_escape(row: Node) -> Outcome<EmitSpellingEscape> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^semantic_decl_emit_escape_field_from),
+    f: fn(from_node) {
+      bind_outcome(
+        o: decode_semantic_decl_chars(bundle: from_node),
+        f: fn(from) {
+          bind_outcome(
+            o: find_named_child(root: row, name: ^semantic_decl_emit_escape_field_to),
+            f: fn(to_node) {
+              bind_outcome(
+                o: decode_semantic_decl_chars(bundle: to_node),
+                f: fn(to) { outcome_accepted(value: EmitSpellingEscape { from: from, to: to }) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_escapes(catalog: Node) -> Outcome<List<EmitSpellingEscape>> {
+  fold(
+    catalog.children,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: decode_semantic_decl_emit_escape(row: edge.target),
+            f: fn(e) { outcome_accepted(value: list_snoc_item(xs: acc, item: e)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_line_breaks(t: Node) -> Outcome<TokenClassEmitTransform> {
+  bind_outcome(
+    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_before),
+    f: fn(before_node) {
+      bind_outcome(
+        o: semantic_decl_count_from_node(n: before_node),
+        f: fn(before) {
+          bind_outcome(
+            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_after),
+            f: fn(after_node) {
+              bind_outcome(
+                o: semantic_decl_count_from_node(n: after_node),
+                f: fn(after) { outcome_accepted(value: EmitLineBreaks { before: before, after: after }) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_quote(t: Node) -> Outcome<TokenClassEmitTransform> {
+  bind_outcome(
+    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_prefix),
+    f: fn(prefix_node) {
+      bind_outcome(
+        o: semantic_decl_string_from_bundle_node(bundle: prefix_node),
+        f: fn(prefix) {
+          bind_outcome(
+            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_open),
+            f: fn(open_node) {
+              bind_outcome(
+                o: semantic_decl_string_from_bundle_node(bundle: open_node),
+                f: fn(open) {
+                  bind_outcome(
+                    o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_close),
+                    f: fn(close_node) {
+                      bind_outcome(
+                        o: semantic_decl_string_from_bundle_node(bundle: close_node),
+                        f: fn(close) {
+                          bind_outcome(
+                            o: find_named_child(root: t, name: ^semantic_decl_emit_transform_field_escapes),
+                            f: fn(esc_node) {
+                              bind_outcome(
+                                o: decode_semantic_decl_emit_escapes(catalog: esc_node),
+                                f: fn(escapes) { outcome_accepted(value: EmitSpellingQuote { prefix: prefix, open: open, close: close, escapes: escapes }) }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// The arm is read from the kind atom's identity: the two proven arms decode, the unproven marker refuses
+// typed, and any other kind is a malformed bundle.
+fn decode_semantic_decl_emit_transform(t: Node) -> Outcome<TokenClassEmitTransform> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: t, field: ^semantic_decl_emit_transform_field_kind),
+    f: fn(kind) {
+      if kind == ^semantic_decl_emit_transform_line_breaks {
+        decode_semantic_decl_emit_line_breaks(t: t)
+      } else if kind == ^semantic_decl_emit_transform_string_quote {
+        decode_semantic_decl_emit_quote(t: t)
+      } else if kind == ^semantic_decl_emit_transform_unproven {
+        outcome_rejected(d: semantic_decl_emit_transform_unproven_diagnostic(bundle: t))
+      } else {
+        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: t))
+      }
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_transform_row(row: Node) -> Outcome<TargetSemanticDeclEmitTransformRow> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: row, field: ^semantic_decl_emit_row_field_token_class),
+    f: fn(token_class) {
+      bind_outcome(
+        o: find_named_child(root: row, name: ^semantic_decl_emit_row_field_transform),
+        f: fn(t) {
+          bind_outcome(
+            o: decode_semantic_decl_emit_transform(t: t),
+            f: fn(transform) { outcome_accepted(value: TargetSemanticDeclEmitTransformRow { token_class: token_class, transform: transform }) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_semantic_decl_emit_transform_rows_catalog(catalog: Node) -> Outcome<List<TargetSemanticDeclEmitTransformRow>> {
+  fold(
+    catalog.children,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: decode_semantic_decl_emit_transform_row(row: edge.target),
+            f: fn(row) { outcome_accepted(value: list_snoc_item(xs: acc, item: row)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+// The profile's rows as the TargetModel's emit transforms.
+fn semantic_decl_emit_transforms(rows: List<TargetSemanticDeclEmitTransformRow>) -> Map<Symbol, TokenClassEmitTransform> {
+  fold_list(
+    xs: rows,
+    empty: target_model_emit_transforms_empty,
+    cons: fn(acc, row) {
+      map_insert(m: acc, key: row.token_class, value: row.transform)
+    }
   )
 }
 
@@ -826,7 +1166,8 @@ fn semantic_decl_decoration_lines_catalog_from_lines(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_decoration_line_row(line: line)
+            target: semantic_decl_decoration_line_row(line: line),
+            declaration: NotADeclaration
           }
         )
       }
@@ -880,7 +1221,6 @@ fn semantic_decl_decoration_lines_from_catalog(catalog: Node) -> Outcome<List<Ta
     TypeNode { connective: Atom { identity: _ } } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Disj } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Arrow } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
-    TypeNode { connective: Occupancy } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Instantiation } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
     ComputationNode { behavior: _ } => semantic_decl_decoration_lines_from_catalog_otherwise(catalog: catalog)
   }
@@ -918,7 +1258,8 @@ fn semantic_decl_coproduct_decoration_rules_catalog(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_coproduct_decoration_rule_row(rule: rule)
+            target: semantic_decl_coproduct_decoration_rule_row(rule: rule),
+            declaration: NotADeclaration
           }
         )
       }
@@ -992,7 +1333,6 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
     TypeNode { connective: Atom { identity: _ } } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Disj } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Arrow } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
-    TypeNode { connective: Occupancy } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
     TypeNode { connective: Instantiation } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
     ComputationNode { behavior: _ } => semantic_decl_coproduct_decoration_rules_from_catalog_otherwise(catalog: catalog)
   }
@@ -1066,12 +1406,85 @@ fn semantic_decl_surface_projection_bundle(
           target: semantic_decl_surface_projection_coproduct_layout_kind_node(
             layout: projection.coproduct_layout
           )
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_member_projection,
+          target: semantic_decl_column_node(column: projection.member_projection, placement_node: fn(p) { semantic_decl_member_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_import_projection,
+          target: semantic_decl_column_node(column: projection.import_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_header_projection,
+          target: semantic_decl_column_node(column: projection.header_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_doc_projection,
+          target: semantic_decl_column_node(column: projection.doc_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_conformance_projection,
+          target: semantic_decl_column_node(column: projection.conformance_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
         )
       ],
       right: semantic_decl_surface_projection_coproduct_layout_extra_edges(
         layout: projection.coproduct_layout
       )
     )
+  )
+}
+
+fn semantic_decl_plain_placement_node(p: TargetSemanticDeclColumnPlain) -> Node {
+  target_model_type_atom_node(identity: ^semantic_decl_column_plain)
+}
+
+fn semantic_decl_member_placement_node(p: TargetSemanticDeclMemberPlacement) -> Node {
+  match p {
+    MembersInsideTypeBody => target_model_type_atom_node(identity: ^semantic_decl_members_inside_type_body)
+    MembersInAssociatedBlock => target_model_type_atom_node(identity: ^semantic_decl_members_in_associated_block)
+  }
+}
+
+fn semantic_decl_column_node<P>(column: TargetSemanticDeclColumn<P>, placement_node: fn(P) -> Node) -> Node {
+  match column {
+    ColumnUnwired => target_model_type_atom_node(identity: ^semantic_decl_column_unwired)
+    ColumnWired { placement: p } => placement_node(p)
+  }
+}
+
+fn decode_semantic_decl_plain_placement(id: Symbol, bundle: Node) -> Outcome<TargetSemanticDeclColumnPlain> {
+  if id == ^semantic_decl_column_plain {
+    outcome_accepted(value: TargetSemanticDeclColumnPlain {})
+  } else {
+    outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
+  }
+}
+
+fn decode_semantic_decl_member_placement(id: Symbol, bundle: Node) -> Outcome<TargetSemanticDeclMemberPlacement> {
+  if id == ^semantic_decl_members_inside_type_body {
+    outcome_accepted(value: MembersInsideTypeBody)
+  } else if id == ^semantic_decl_members_in_associated_block {
+    outcome_accepted(value: MembersInAssociatedBlock)
+  } else {
+    outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
+  }
+}
+
+fn decode_semantic_decl_column<P>(
+  bundle: Node,
+  field: Symbol,
+  placement: fn(Symbol) -> Outcome<P>
+) -> Outcome<TargetSemanticDeclColumn<P>> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: field),
+    f: fn(id) {
+      if id == ^semantic_decl_column_unwired {
+        outcome_accepted(value: ColumnUnwired)
+      } else {
+        bind_outcome(o: placement(id), f: fn(p) { outcome_accepted(value: ColumnWired { placement: p }) })
+      }
+    }
   )
 }
 
@@ -1136,7 +1549,6 @@ fn decode_semantic_decl_surface_projection_bool_flag(
         TypeNode { connective: Conj } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
         TypeNode { connective: Disj } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
         TypeNode { connective: Arrow } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
-        TypeNode { connective: Occupancy } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
         TypeNode { connective: Instantiation } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
         ComputationNode { behavior: _ } => decode_semantic_decl_surface_projection_bool_flag_otherwise(bundle: bundle)
       }
@@ -1194,7 +1606,6 @@ fn decode_semantic_decl_surface_projection_coproduct_layout(
         TypeNode { connective: Conj } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
         TypeNode { connective: Disj } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
         TypeNode { connective: Arrow } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
-        TypeNode { connective: Occupancy } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
         TypeNode { connective: Instantiation } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
         ComputationNode { behavior: _ } => decode_semantic_decl_surface_projection_coproduct_layout_otherwise(bundle: bundle)
       }
@@ -1274,6 +1685,21 @@ fn decode_semantic_decl_surface_projection_bundle(
                                           bundle: bundle
                                         ),
                                         f: fn(coproduct_layout) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_member_projection, placement: fn(id) { decode_semantic_decl_member_placement(id: id, bundle: bundle) }),
+                                            f: fn(member_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_import_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(import_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_header_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(header_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_doc_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(doc_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_conformance_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(conformance_projection) {
                                           outcome_accepted(
                                             TargetSemanticDeclSurfaceProjection {
                                               record_decoration_lines: record_decoration_lines,
@@ -1283,7 +1709,22 @@ fn decode_semantic_decl_surface_projection_bundle(
                                               struct_typedef_name_after_fields: struct_typedef_name_after_fields,
                                               enum_name_after_variants: enum_name_after_variants,
                                               field_type_permit_only_int: field_type_permit_only_int,
-                                              coproduct_layout: coproduct_layout
+                                              coproduct_layout: coproduct_layout,
+                                              member_projection: member_projection,
+                                              import_projection: import_projection,
+                                              header_projection: header_projection,
+                                              doc_projection: doc_projection,
+                                              conformance_projection: conformance_projection
+                                            }
+                                          )
+                                            }
+                                          )
+                                            }
+                                          )
+                                            }
+                                          )
+                                            }
+                                          )
                                             }
                                           )
                                         }
@@ -1326,10 +1767,21 @@ fn decode_semantic_decl_serialize_profile_bundle(
               bind_outcome(
                 o: semantic_decl_lex_rule_rows_from_catalog(catalog: spellings_catalog),
                 f: fn(binding_spelling_rows) {
-                  outcome_accepted(
-                    TargetSemanticDeclSerializeProfile {
-                      lex_rule_rows: lex_rule_rows,
-                      binding_spelling_rows: binding_spelling_rows
+                  bind_outcome(
+                    o: find_named_child(root: bundle, name: ^semantic_decl_profile_field_emit_transforms),
+                    f: fn(emit_transform_catalog) {
+                      bind_outcome(
+                        o: decode_semantic_decl_emit_transform_rows_catalog(catalog: emit_transform_catalog),
+                        f: fn(emit_transform_rows) {
+                          outcome_accepted(
+                            TargetSemanticDeclSerializeProfile {
+                              lex_rule_rows: lex_rule_rows,
+                              binding_spelling_rows: binding_spelling_rows,
+                              emit_transform_rows: emit_transform_rows
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
@@ -1435,7 +1887,7 @@ fn semantic_decl_emission_from_target(target: TargetModel) -> Outcome<TargetSema
 }
 
 fn target_semantic_decl_surface_pos(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn target_semantic_decl_surface_conj(children: List<Edge>) -> Node {
@@ -1592,7 +2044,6 @@ fn target_semantic_decl_field_surface_from_edge(
         TypeNode { connective: Conj } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
         TypeNode { connective: Disj } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
         TypeNode { connective: Arrow } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
-        TypeNode { connective: Occupancy } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
         TypeNode { connective: Instantiation } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
         ComputationNode { behavior: _ } => target_semantic_decl_field_surface_from_edge_otherwise(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
       }
@@ -1625,12 +2076,19 @@ fn target_semantic_decl_field_surface_from_edge_otherwise(
 }
 
 fn target_semantic_decl_surface_field_block(fields: List<Node>) -> Node {
+  target_semantic_decl_surface_field_block_with(fields: fields, body_edges: Empty)
+}
+
+fn target_semantic_decl_surface_field_block_with(fields: List<Node>, body_edges: List<Edge>) -> Node {
   target_semantic_decl_surface_conj(
-    children: [
-      target_semantic_decl_surface_pos(
-        target: target_semantic_decl_surface_cons_list(items: fields)
-      )
-    ]
+    children: list_append(
+      left: [
+        target_semantic_decl_surface_pos(
+          target: target_semantic_decl_surface_cons_list(items: fields)
+        )
+      ],
+      right: body_edges
+    )
   )
 }
 
@@ -1660,18 +2118,26 @@ fn target_semantic_decl_surface_decoration_pos_edges(
 fn target_semantic_decl_surface_struct_name_field_edges(
   name: Symbol,
   fields: List<Node>,
+  body_edges: List<Edge>,
+  conformance_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> List<Edge> {
   if struct_typedef_name_after_fields {
-    [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
-    ]
+    list_append(
+      left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)) ],
+      right: list_append(
+        left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+        right: conformance_edges
+      )
+    )
   } else {
-    [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-    ]
+    list_append(
+      left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+      right: list_append(
+        left: conformance_edges,
+        right: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)) ]
+      )
+    )
   }
 }
 
@@ -1679,36 +2145,239 @@ fn target_semantic_decl_surface_struct_nongeneric(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   fields: List<Node>,
+  body_member_edges: List<Edge>,
+  trailing_member_edges: List<Edge>,
+  conformance_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
     children: list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: target_semantic_decl_surface_struct_name_field_edges(
-        name: name,
-        fields: fields,
-        struct_typedef_name_after_fields: struct_typedef_name_after_fields
+      right: list_append(
+        left: target_semantic_decl_surface_struct_name_field_edges(
+          name: name,
+          fields: fields,
+          body_edges: body_member_edges,
+          conformance_edges: conformance_edges,
+          struct_typedef_name_after_fields: struct_typedef_name_after_fields
+        ),
+        right: trailing_member_edges
       )
     )
   )
+}
+
+fn target_semantic_decl_import_surface(path: Symbol) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: path)) ]
+  )
+}
+
+// The imports a declaration leads with, one arm per import projection. Under a wired target the leading edge is
+// ALWAYS present (an empty list is the nil terminator the target's nullable import list consumes), so a
+// declaration without imports prints nothing extra; under an unwired target an import refuses, located.
+fn target_semantic_decl_import_surfaces(imports: List<Symbol>) -> List<Node> {
+  fold_list(
+    xs: imports,
+    empty: Empty,
+    cons: fn(acc, path) { list_snoc_item(xs: acc, item: target_semantic_decl_import_surface(path: path)) }
+  )
+}
+
+fn target_semantic_decl_line_surfaces(lines: List<String>) -> List<Node> {
+  fold_list(
+    xs: lines,
+    empty: Empty,
+    cons: fn(acc, line) { list_snoc_item(xs: acc, item: target_semantic_decl_header_line_surface(line: line)) }
+  )
+}
+
+// The leading list a declaration states ahead of its keyword (header lines, imports, doc lines), one arm per column.
+// Under a wired column the leading edge is ALWAYS present (an empty list is the nil the target's nullable list
+// consumes), so nothing extra prints; under an unwired column an item refuses, located, under `reason`.
+fn target_semantic_decl_surface_with_leading_lines(
+  column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  reason: Symbol,
+  items: List<Node>,
+  surface: Node
+) -> Outcome<Node> {
+  match column {
+    ColumnUnwired =>
+      if is_empty(xs: items) {
+        outcome_accepted(value: surface)
+      } else {
+        outcome_rejected(d: Diagnostic {
+              reason: reason,
+              at: node_locus(node: surface),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+      }
+    ColumnWired { placement: _ } =>
+      outcome_accepted(
+        value: Node {
+          kind: surface.kind,
+          children: list_append(
+            left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_cons_list(items: items)) ],
+            right: surface.children
+          ),
+          occurrence_id: surface.occurrence_id
+        }
+      )
+  }
+}
+
+// A leading line is ONE line of the target's line comment: a line break inside it ends the comment and the rest
+// of the text would print as code, so such a line refuses (located) rather than printing.
+data target_semantic_decl_line_break_alphabet: String = "\n\r"
+
+fn target_semantic_decl_lines_break(lines: List<String>) -> Bool {
+  !(for_all(xs: lines, predicate: fn(line) { !string_any_char_in(s: line, alphabet: target_semantic_decl_line_break_alphabet) }))
+}
+
+// Text lines (header and doc) lead through the same column function, after the line-break refusal.
+fn target_semantic_decl_surface_with_leading_text_lines(
+  column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  reason: Symbol,
+  lines: List<String>,
+  surface: Node
+) -> Outcome<Node> {
+  if target_semantic_decl_lines_break(lines: lines) {
+    outcome_rejected(d: Diagnostic {
+          reason: ^target_semantic_decl_line_break,
+          at: node_locus(node: surface),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+  } else {
+    target_semantic_decl_surface_with_leading_lines(column: column, reason: reason, items: target_semantic_decl_line_surfaces(lines: lines), surface: surface)
+  }
+}
+
+fn target_semantic_decl_header_line_surface(line: String) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: symbol_intern_lexeme(lexeme: line))) ]
+  )
+}
+
+// The header lines a declaration leads with, one arm per header projection. Under a wired target the leading edge
+// is ALWAYS present (an empty list is the nil the target's nullable header list consumes); under an unwired target
+// a line refuses, located. Applied last, so the header leads the imports.
+// The doc lines a declaration carries, one arm per doc projection; the same leading-edge shape as the header.
+// The conformance edge a declaration states after its name: absent when it names none (the target's own fixed clause
+// prints), present under a wired target when it names some, and a located refusal under an unwired target.
+fn target_semantic_decl_conformance_edges(
+  projection: TargetSemanticDeclSurfaceProjection,
+  conformances: TargetSemanticDeclConformances,
+  at: Node
+) -> Outcome<List<Edge>> {
+  match conformances {
+    ConformancesTargetDefault => outcome_accepted(value: Empty)
+    ConformancesNamed { names: names } =>
+      match projection.conformance_projection {
+        ColumnUnwired =>
+          outcome_rejected(d: Diagnostic {
+                reason: ^target_semantic_decl_conformance_unwired,
+                at: node_locus(node: at),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+        ColumnWired { placement: _ } =>
+          outcome_accepted(
+            value: [
+              target_semantic_decl_surface_pos(
+                target: target_semantic_decl_surface_cons_list(
+                  items: fold_list(
+                    xs: names,
+                    empty: Empty,
+                    cons: fn(acc, c) { list_snoc_item(xs: acc, item: target_semantic_decl_surface_atom(id: c)) }
+                  )
+                )
+              )
+            ]
+          )
+      }
+  }
+}
+
+fn target_semantic_decl_member_surface(m: TargetSemanticDeclMember) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: m.name)),
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: m.literal))
+    ]
+  )
+}
+
+fn target_semantic_decl_member_block_edge(members: List<TargetSemanticDeclMember>) -> Edge {
+  target_semantic_decl_surface_pos(
+    target: target_semantic_decl_surface_cons_list(
+      items: fold_list(
+        xs: members,
+        empty: Empty,
+        cons: fn(acc, m) { list_snoc_item(xs: acc, item: target_semantic_decl_member_surface(m: m)) }
+      )
+    )
+  )
+}
+
+// The trailing surface children a declaration's members add, one arm per member projection. No members adds
+// nothing under any arm; members under an unwired target refuse, located, rather than being dropped.
+fn target_semantic_decl_member_edges(
+  projection: TargetSemanticDeclSurfaceProjection,
+  name: Symbol,
+  members: List<TargetSemanticDeclMember>,
+  inside_body: Bool,
+  at: Node
+) -> Outcome<List<Edge>> {
+  if is_empty(xs: members) {
+    outcome_accepted(value: Empty)
+  } else {
+    match projection.member_projection {
+      ColumnUnwired =>
+        outcome_rejected(d: Diagnostic {
+              reason: ^target_semantic_decl_members_unwired,
+              at: node_locus(node: at),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+      ColumnWired { placement: MembersInsideTypeBody } =>
+        outcome_accepted(
+          value: if inside_body { [target_semantic_decl_member_block_edge(members: members)] } else { [] }
+        )
+      ColumnWired { placement: MembersInAssociatedBlock } =>
+        outcome_accepted(
+          value: if inside_body {
+            []
+          } else {
+            [
+              target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+              target_semantic_decl_member_block_edge(members: members)
+            ]
+          }
+        )
+    }
+  }
 }
 
 fn target_semantic_decl_surface_struct_generic(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
-  fields: List<Node>
+  fields: List<Node>,
+  conformance_edges: List<Edge>
 ) -> Node {
   target_semantic_decl_surface_conj(
     children: list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_generic_params(params: params)
-        ),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-      ]
+      right: list_append(
+        left: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_generic_params(params: params)
+          )
+        ],
+        right: list_append(
+          left: conformance_edges,
+          right: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields)) ]
+        )
+      )
     )
   )
 }
@@ -1716,6 +2385,7 @@ fn target_semantic_decl_surface_struct_generic(
 fn target_semantic_decl_surface_enum_name_variant_edges(
   name: Symbol,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> List<Edge> {
   if enum_name_after_variants {
@@ -1725,20 +2395,24 @@ fn target_semantic_decl_surface_enum_name_variant_edges(
           target: target_semantic_decl_surface_variant_block(variants: variants)
         )
       ],
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
-      ]
+      right: list_append(
+        left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+        right: conformance_edges
+      )
     )
   } else {
     list_append(
       left: [
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
       ],
-      right: [
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_variant_block(variants: variants)
-        )
-      ]
+      right: list_append(
+        left: conformance_edges,
+        right: [
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_variant_block(variants: variants)
+          )
+        ]
+      )
     )
   }
 }
@@ -1747,6 +2421,7 @@ fn target_semantic_decl_surface_enum_nongeneric(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
@@ -1755,6 +2430,7 @@ fn target_semantic_decl_surface_enum_nongeneric(
       right: target_semantic_decl_surface_enum_name_variant_edges(
         name: name,
         variants: variants,
+        conformance_edges: conformance_edges,
         enum_name_after_variants: enum_name_after_variants
       )
     )
@@ -1766,6 +2442,7 @@ fn target_semantic_decl_surface_enum_generic(
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> Node {
   if enum_name_after_variants {
@@ -1782,6 +2459,7 @@ fn target_semantic_decl_surface_enum_generic(
         right: target_semantic_decl_surface_enum_name_variant_edges(
           name: name,
           variants: variants,
+          conformance_edges: conformance_edges,
           enum_name_after_variants: true
         )
       )
@@ -1790,15 +2468,22 @@ fn target_semantic_decl_surface_enum_generic(
     target_semantic_decl_surface_conj(
       children: list_append(
         left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-        right: [
-          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-          target_semantic_decl_surface_pos(
-            target: target_semantic_decl_surface_generic_params(params: params)
-          ),
-          target_semantic_decl_surface_pos(
-            target: target_semantic_decl_surface_variant_block(variants: variants)
+        right: list_append(
+          left: [
+            target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+            target_semantic_decl_surface_pos(
+              target: target_semantic_decl_surface_generic_params(params: params)
+            )
+          ],
+          right: list_append(
+            left: conformance_edges,
+            right: [
+              target_semantic_decl_surface_pos(
+                target: target_semantic_decl_surface_variant_block(variants: variants)
+              )
+            ]
           )
-        ]
+        )
       )
     )
   }
@@ -1885,6 +2570,8 @@ fn target_semantic_decl_surface_tagged_union_nongeneric(
           projection: projection,
           variants: variants
         ),
+        body_edges: Empty,
+        conformance_edges: Empty,
         struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
       )
     )
@@ -1957,7 +2644,6 @@ fn target_semantic_decl_coproduct_shape_key(coproduct: Node) -> Outcome<Symbol> 
     TypeNode { connective: Atom { identity: _ } } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
     TypeNode { connective: Conj } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
     TypeNode { connective: Arrow } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
-    TypeNode { connective: Occupancy } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
     TypeNode { connective: Instantiation } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
     ComputationNode { behavior: _ } => target_semantic_decl_coproduct_shape_key_otherwise(coproduct: coproduct)
   }
@@ -2063,9 +2749,114 @@ fn target_semantic_decl_coproduct_decoration_lines(
     )
   }
 }
+// A DECLARATION'S DOCUMENTATION IS ONE INPUT: the lines above the declaration and the lines above each field. A
+// field is keyed by its identity, a DeclarationRef whose NamedField names a field of THIS declaration.
+type TargetSemanticDeclFieldDoc { field: DeclarationRef, lines: List<String> }
+
+type TargetSemanticDeclDocumentation { lines: List<String>, fields: List<TargetSemanticDeclFieldDoc> }
+
+fn target_semantic_decl_no_documentation() -> TargetSemanticDeclDocumentation {
+  TargetSemanticDeclDocumentation { lines: [], fields: [] }
+}
+
+// The field name a documentation entry keys, or absent when the entry names no field of the declaration `name`.
+fn target_semantic_decl_field_doc_key(entry: TargetSemanticDeclFieldDoc, name: Symbol) -> Symbol? {
+  match entry.field.field {
+    NamedField { field_name: f } =>
+      if symbol_intern_lexeme(lexeme: entry.field.decl_name as String) == name {
+        Present { value: symbol_intern_lexeme(lexeme: f as String) }
+      } else {
+        Absent
+      }
+    WholeDeclaration => Absent
+    TypeParameter { name: _ } => Absent
+  }
+}
+
+// The record's field names, built once: membership is then a lookup, not a walk of the children.
+fn target_semantic_decl_record_field_names(record: Node) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: record.children,
+    empty: empty_map(),
+    cons: fn(acc, e) {
+      match declared_field_from_edge(e: e) {
+        Present { value: binder } => map_insert(m: acc, key: binder.name, value: true)
+        Absent => acc
+      }
+    }
+  )
+}
+
+// FAIL CLOSED: an entry naming a field the record lacks (or another declaration, or no field) and a second entry
+// for one field each refuse, located at the record; nothing is dropped.
+fn target_semantic_decl_documentation_fields_admitted(
+  documentation: TargetSemanticDeclDocumentation,
+  name: Symbol,
+  record: Node
+) -> Outcome<Node> {
+  let fields = target_semantic_decl_record_field_names(record: record)
+  bind_outcome(
+    o: fold_list(
+      xs: documentation.fields,
+      empty: outcome_accepted(value: empty_map()),
+      cons: fn(acc_o, entry) {
+        bind_outcome(
+          o: acc_o,
+          f: fn(seen) {
+            match target_semantic_decl_field_doc_key(entry: entry, name: name) {
+              Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+              Present { value: key } =>
+                match map_lookup(m: fields, key: key) {
+                  Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+                  Present { value: _ } =>
+                    match map_lookup(m: seen, key: key) {
+                      Present { value: _ } => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_duplicate, record: record)
+                      Absent => outcome_accepted(value: map_insert(m: seen, key: key, value: true))
+                    }
+                }
+            }
+          }
+        )
+      }
+    ),
+    f: fn(_) { outcome_accepted(value: record) }
+  )
+}
+
+fn target_semantic_decl_field_doc_refused(reason: Symbol, record: Node) -> Outcome<Map<Symbol, Bool>> {
+  outcome_rejected(d: Diagnostic {
+    reason: reason,
+    at: node_locus(node: record),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+fn target_semantic_decl_field_doc_lines(edge: Edge, name: Symbol, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
+  match declared_field_from_edge(e: edge) {
+    Present { value: binder } =>
+      fold_list(
+        xs: field_docs,
+        empty: Empty,
+        cons: fn(acc, d) {
+          match target_semantic_decl_field_doc_key(entry: d, name: name) {
+            Present { value: k } => if k == binder.name { list_append(left: acc, right: d.lines) } else { acc }
+            Absent => acc
+          }
+        }
+      )
+    Absent => Empty
+  }
+}
+
+// Field docs ride the declaration's doc column, one leading list per field, so a field's docs state themselves
+// under the same wired/unwired rule a declaration's do. A position that takes no field docs passes ColumnUnwired
+// and an empty list, which adds no edge.
 fn target_semantic_decl_field_surfaces(
   edges: List<Edge>,
   projection: TargetSemanticDeclSurfaceProjection,
+  doc_column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  name: Symbol,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
@@ -2081,8 +2872,16 @@ fn target_semantic_decl_field_surfaces(
               projection: projection,
               type_binding: type_binding
             ),
-            f: fn(fnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
+            f: fn(bare) {
+              bind_outcome(
+                o: target_semantic_decl_surface_with_leading_text_lines(
+                  column: doc_column,
+                  reason: ^target_semantic_decl_doc_unwired,
+                  lines: target_semantic_decl_field_doc_lines(edge: edge, name: name, field_docs: field_docs),
+                  surface: bare
+                ),
+                f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
+              )
             }
           )
         }
@@ -2103,6 +2902,9 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            name: vname,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -2172,6 +2974,9 @@ fn target_semantic_decl_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            name: vname,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -2287,6 +3092,7 @@ fn target_semantic_enum_surface_from_coproduct(
   name: Symbol,
   params: List<Symbol>,
   coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: coproduct) {
@@ -2299,7 +3105,7 @@ fn target_semantic_enum_surface_from_coproduct(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: coproduct))
     PlainTypeDecl { member: m } =>
-      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m, type_binding: type_binding)
+      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m, conformances: conformances, type_binding: type_binding)
   }
 }
 
@@ -2308,6 +3114,7 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
   name: Symbol,
   params: List<Symbol>,
   coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match coproduct.kind {
@@ -2325,6 +3132,9 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
               type_binding: type_binding
             ),
             f: fn(variants) {
+            bind_outcome(
+            o: target_semantic_decl_conformance_edges(projection: projection, conformances: conformances, at: coproduct),
+            f: fn(conformance_edges) {
               if target_semantic_decl_coproduct_uses_tagged_union_layout(
                     layout: projection.coproduct_layout
                   )
@@ -2352,6 +3162,7 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
                     name: name,
                     decoration_lines: decoration_lines,
                     variants: variants,
+                    conformance_edges: conformance_edges,
                     enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
@@ -2362,10 +3173,13 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
                     decoration_lines: decoration_lines,
                     params: params,
                     variants: variants,
+                    conformance_edges: conformance_edges,
                     enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
               }
+            }
+            )
             }
           )
         }
@@ -2373,7 +3187,6 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
     TypeNode { connective: Atom { identity: _ } } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
     TypeNode { connective: Conj } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
     TypeNode { connective: Arrow } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
-    TypeNode { connective: Occupancy } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
     TypeNode { connective: Instantiation } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
     ComputationNode { behavior: _ } => target_semantic_enum_surface_from_coproduct_admitted_otherwise(coproduct: coproduct)
   }
@@ -2392,6 +3205,9 @@ fn target_semantic_struct_surface_from_record(
   name: Symbol,
   params: List<Symbol>,
   record: Node,
+  members: List<TargetSemanticDeclMember>,
+  conformances: TargetSemanticDeclConformances,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
@@ -2404,7 +3220,7 @@ fn target_semantic_struct_surface_from_record(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
-      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, type_binding: type_binding)
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, documentation: documentation, type_binding: type_binding)
   }
 }
 
@@ -2413,26 +3229,55 @@ fn target_semantic_struct_surface_from_record_admitted(
   name: Symbol,
   params: List<Symbol>,
   record: Node,
+  members: List<TargetSemanticDeclMember>,
+  conformances: TargetSemanticDeclConformances,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match record.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
-        o: target_semantic_decl_field_surfaces(
-          edges: record.children,
-          projection: projection,
-          type_binding: type_binding
+        o: bind_outcome(
+          o: target_semantic_decl_documentation_fields_admitted(documentation: documentation, name: name, record: record),
+          f: fn(_) {
+            target_semantic_decl_field_surfaces(
+              edges: record.children,
+              projection: projection,
+              doc_column: projection.doc_projection,
+              name: name,
+              field_docs: documentation.fields,
+              type_binding: type_binding
+            )
+          }
         ),
         f: fn(fields) {
+        bind_outcome(
+        o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, inside_body: true, at: record),
+        f: fn(body_member_edges) {
+        bind_outcome(
+        o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, inside_body: false, at: record),
+        f: fn(trailing_member_edges) {
+        bind_outcome(
+        o: target_semantic_decl_conformance_edges(projection: projection, conformances: conformances, at: record),
+        f: fn(conformance_edges) {
           if is_empty(xs: params) {
             outcome_accepted(
               value: target_semantic_decl_surface_struct_nongeneric(
                 name: name,
                 decoration_lines: projection.record_decoration_lines,
                 fields: fields,
+                body_member_edges: body_member_edges,
+                trailing_member_edges: trailing_member_edges,
+                conformance_edges: conformance_edges,
                 struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
               )
             )
+          } else if !is_empty(xs: members) {
+            outcome_rejected(d: Diagnostic {
+                  reason: ^target_semantic_decl_members_on_generic_unsupported,
+                  at: node_locus(node: record),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
           } else {
             if projection.struct_typedef_name_after_fields {
               outcome_rejected(d: Diagnostic {
@@ -2446,17 +3291,23 @@ fn target_semantic_struct_surface_from_record_admitted(
                   name: name,
                   decoration_lines: projection.record_decoration_lines,
                   params: params,
-                  fields: fields
+                  fields: fields,
+                  conformance_edges: conformance_edges
                 )
               )
             }
           }
         }
+        )
+        }
+        )
+        }
+        )
+        }
       )
     TypeNode { connective: Atom { identity: _ } } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
     TypeNode { connective: Disj } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
     TypeNode { connective: Arrow } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
-    TypeNode { connective: Occupancy } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
     TypeNode { connective: Instantiation } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
     ComputationNode { behavior: _ } => target_semantic_struct_surface_from_record_admitted_otherwise(record: record)
   }

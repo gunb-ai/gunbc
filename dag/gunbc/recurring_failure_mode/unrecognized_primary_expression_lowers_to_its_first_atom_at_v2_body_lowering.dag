@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.unrecognized_primary_expression_lowers_to_it
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed." as NonEmptyStr } },
 
   receipts: [
     "**a primary expression the v2 primary readers do not recognize lowers to its FIRST ATOM, and normalize ACCEPTS the module** (INVALID STATE: a map literal `{ \"k\": v, .. }` lowers to the single atom `dag_token_lbrace`, and a module-qualified constructor literal `a.b.T { f: v }` lowers to the single atom `a`, its head path segment. Every key, field, value, the tag and the rest of the path are gone, with no diagnostic.) A name inside never reaches resolve, so an undeclared one is accepted, and every consumer of the value reads a brace token or a bare module segment where the source wrote a construction. The unqualified constructor literal, the qualified value path `a.b.X` and the qualified call `a.b.f(x)` lower in full (fixtures at 8bf4b66774c), so the class is the fall-through, not qualification or braces as such.",

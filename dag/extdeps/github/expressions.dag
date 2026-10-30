@@ -721,6 +721,8 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
           NotEquals { left: _, right: _ } =>
             ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
+          LogicalNot { operand: _ } =>
+            ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatTemplateNotLiteral } }
         }
     }
   }

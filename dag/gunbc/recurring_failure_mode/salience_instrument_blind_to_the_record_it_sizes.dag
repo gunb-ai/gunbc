@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.salience_instrument_blind_to_the_record_it_sizes
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data salience_instrument_blind_to_the_record_it_sizes: RecurringFailureMode = RecurringFailureMode {
   identity: "salience_instrument_blind_to_the_record_it_sizes" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a salience instrument blind to the record it sizes** (a change's SIZE IN THE DIFF is read to decide how much attention it deserves, and for one class of artifact that number is wrong by orders of magnitude, so a substantive edit is allocated a trivial edit's scrutiny.",

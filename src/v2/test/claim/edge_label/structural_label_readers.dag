@@ -19,6 +19,7 @@ import v2.std.node {
   edge_is_core,
   label_occurrences,
   all_names_distinct,
+  NotADeclaration
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag {
@@ -47,7 +48,7 @@ fn slr_atom(id: Symbol) -> Node {
 }
 
 fn slr_authored(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: slr_atom(id: name) }
+  Edge { label: Authored { name: name }, target: slr_atom(id: name), declaration: NotADeclaration }
 }
 
 fn slr_conj(children: List<Edge>) -> Node {

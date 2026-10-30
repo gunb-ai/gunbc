@@ -12,19 +12,19 @@ import std.measure { BitWidth, bit_width_count }
 // WHICH INTEGERS A MACHINE WIDTH ADMITS, AS THE WIDTH'S OWN MEANING AND NOT A CONSUMER'S TABLE.
 // `unsigned` bits N is [0, 2^N - 1]; signed bits N is [-2^(N-1), 2^(N-1) - 1]. A literal at a
 // position typed Compose<A, MachineWidth<N>> is admitted only when this holds (v2.compiler.infer
-// infer_int_literal_value_at); it is the CHECKED reading of the operator ruling -- a width is a
-// refinement on Int, never a silent truncation or widening -- applied at the literal boundary.
+// infer_int_literal_value_at); it is the checked reading of the width rule -- a width is a
+// refinement on Int, narrowing into it is a checked, named route, and same-signedness widening is
+// the implicit-safe coercion of gunbc.design_ruling coercion_is_the_implicit_safe_subset, so nothing
+// is silently truncated -- applied at the literal boundary.
 //
 // THE HOST BOUND: a source literal is a host Int (signed 64), so every host value fits width >= 64
 // when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
 // below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally.
 //
-// WIDTH ZERO, STATED ONCE: the unsigned range [0, 2^0 - 1] is {0}, which is std.bounded_nat's own range at
-// zero bits (bounded_nat_admit admits width 0, and bounded_nat mints 0 there), so the two authorities agree
-// and the mint's behavior at zero is unchanged by routing through this one. The signed range
-// [-2^(N-1), 2^(N-1) - 1] at N = 0 is empty (2^-1 is not an integer), so a signed zero width admits nothing.
-// Whether a zero width is a VALID machine width is a separate question, left to the declaration that names
-// MachineWidth<0>; this function answers only membership.
+// WIDTH ZERO, STATED ONCE: the unsigned range [0, 2^0 - 1] is {0}; the signed range [-2^(N-1), 2^(N-1) - 1]
+// at N = 0 is empty (2^-1 is not an integer), so a signed zero width admits nothing. Whether a zero width
+// is a VALID machine width is a separate question, left to the declaration that names MachineWidth<0>
+// (std.machine_word's WordWidth has no zero member); this function answers only membership.
 fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> Bool {
   let n = bit_width_count(b: bits)
   let signed = match signedness {

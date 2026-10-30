@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.emitted_field_accessor_panics_on_a_variant_without_the_field
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data emitted_field_accessor_panics_on_a_variant_without_the_field: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_field_accessor_panics_on_a_variant_without_the_field" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "emitted field accessor panics on a variant without the field. INVALID STATE: a coproduct whose arms do not all carry a field name, for which the Rust emitter renders one shared accessor over every arm, giving the arms that lack the field a `panic!` body. HARM: the emitted crate COMPILES CLEAN and aborts at runtime when that arm is reached. That is a fail-open arm authored by the compiler into the program it emits -- the absorbing fallback DESIGN section 5 forbids -- and nothing at the .dag layer says it happened.",

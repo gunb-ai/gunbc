@@ -1,0 +1,80 @@
+module gunbc.roadmap.roadmap_attempt_worktree_claim_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE WORKTREE CLAIM STORE'S ROOT (the store itself is gunbc.roadmap.roadmap_attempt_worktree_claim), kept in a
+// leaf module because the instance directory list must import its declaration and the claim store sits above
+// the belt, which the list's own importers reach.
+// THE ONE DECLARATION OF THE CLAIM STORE: the member it lives under in the instance's dispatch attempt state
+// root, and the mode its directory is created with. The store (worktree_claim_store) and the directory row
+// (worktree_claim_slots_directory) are both derived from it, so deleting this declaration removes both and
+// there is no second place to enroll a directory. Owner-only: the claims record which attempt owns which tree.
+type WorktreeClaimSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data worktree_claim_slots: WorktreeClaimSlotsDeclaration = WorktreeClaimSlotsDeclaration {
+  member: "worktree-claims" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", worktree_claim_slots.member as String], "") as NonEmptyStr
+}
+
+// THE CLAIM STORE, A SEALED VALUE MINTED FROM ITS DECLARATION. WorktreeClaimStore is sole_constructor and this
+// file builds it in one place, worktree_claim_store, which takes the instance and NOTHING ELSE: the root is
+// derived here from worktree_claim_slots and that instance (worktree_claim_slots_path), the directory is
+// listed (Filesystem.List), and only a listed directory yields a store. No function
+// takes a path and answers a claim store directly, but the instance itself is buildable over any root
+// (isolated_dashboard_instance), so a literal path DOES reach a claim store through it (declared residual route 3);
+// spelling one (literal or cast) is a SoleConstructorViolation. The claim domain
+// (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type. A holder uses the slot operations through
+// gunbc.compute.attempt_lifecycle; the root is a field of the SlotStore it holds and field reads are not
+// module-private, so a holder CAN read it (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). Non-generic and never a variant arm, because the seal does not
+// reach variant construction (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a
+// store minted for instance A refused where B is required -- both are the same type, and the claim
+// functions take no instance to compare it with (the belt mints from the instance it holds).
+type WorktreeClaimStore sole_constructor {
+  instance: NonEmptyStr
+  slots: SlotStore
+}
+
+type WorktreeClaimStoreReading
+  = WorktreeClaimStoreReady { store: WorktreeClaimStore }
+  | WorktreeClaimStoreUnready { detail: String }
+
+fn worktree_claim_store(instance: HostDashboardInstance) -> WorktreeClaimStoreReading {
+  match listed_slot_store(member: worktree_claim_slots.member as String, root: worktree_claim_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => WorktreeClaimStoreUnready { detail: d }
+    SlotStoreListed { root: r } => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE CLAIM STORE ROOT IS A DEMANDED DIRECTORY, declared beside the path it is and enrolled in the one instance
+// directory list (gunbc.roadmap.dashboard_instance_directories), the creator the corpus names for a store root
+// (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory). The CAS slot store
+// (gunbc.durable_cas_file_store) refuses a root it cannot list rather than reading it as empty, so a root
+// nothing creates refuses the spawn step worktree-claim of EVERY executor: the srv1 lab's first dispatch past
+// #14235 did exactly that (2026-10-20, "the directory .../worktree-claims could not be listed"). Owner-only:
+// the claims record which attempt owns which tree.
+fn worktree_claim_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: worktree_claim_slots.member,
+    path: worktree_claim_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: worktree_claim_slots.mode,
+    // DERIVED, not copied from neighbours. The SameUserRegroupToDeclaredGroup posture is authorized
+    // ONLY where a discriminator declares a group the worker's writes need (the six worker-writable
+    // directories of a dedicated-worker instance, dashboard_instance_worker_writable_group_adoption).
+    // This root has no such discriminator: it is owner-only mode (the group bits are all false, so a
+    // regroup hands the target's group NOTHING), its consumers are the belt alone
+    // (belt_worktree_claim_before_add, the settlement pass -- the worker never writes it), and a claim
+    // says which attempt owns which tree, so a tree a third party left must be refused outright
+    // (ownership is never adopted), not re-grouped into our name. The historical posture, derived.
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

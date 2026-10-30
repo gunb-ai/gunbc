@@ -7,7 +7,11 @@ import std.human_intervention {
   BreakGlassOnly, ProvisioningHumanBurden, HumanInterventionIdentity,
   InterventionCompletionEvidence, NoDischargeSiteModeled,
 }
-import gunbc.auth.approval_notification { approval_ntfy_topic }
+import extdeps.ntfy.ntfy { NtfyTopic }
+import std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import gunbc.executor_privileged_operation {
@@ -17,6 +21,39 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+
+// ── RETIRING: THE APPROVAL ROUTE NO LONGER PUBLISHES HERE ───────────────────────────────────
+// The broker notified the operator through this server until the device cutover (ruling
+// gunbc.design_ruling one_approval_route_for_every_privileged_action): the publish binding
+// (gunbc.auth.approval_ntfy_publish) and the message builder (gunbc.auth.approval_notification) were
+// deleted then, and the phone is woken by gunbc.auth.approval_apns_publish. What remains below is the
+// model of a server that is STILL INSTALLED on srv1 -- its account, directories, unit, front door,
+// tokens and their custody -- kept because deleting the model of a running service would leave the
+// host carrying state nothing reads back. It is frozen: no new consumer, no new rows. It goes in ONE
+// change that also uninstalls it from srv1, which is an actuation and so the operator's to approve.
+data approval_ntfy_retirement_frontier: DissolutionCondition = unbound_dissolution(
+  description: "one change that uninstalls the srv1 ntfy server (unit, front door on approval_ntfy_serve_port, the gunbc-ntfy account and its directories, the publisher user and token, the subscriber grant) under operator approval, reads its absence back, and deletes this module with gunbc.auth.approval_ntfy_converge, the custody arm gunbc.fleet.host_credential_custody_converge ApprovalNtfyPublisherToken, gunbc.auth.fleet_secret_accessor_roster approval_ntfy_publisher_token_accessor_row and the keyring converge's ntfy group admission -- SUFFICIENT FOR no approval-era ntfy state to remain on srv1 or in the corpus",
+)
+
+// THE TOPIC AND THE ADDRESS, moved here from the deleted publish binding and message builder: they
+// are facts of the installed server (its ACL names the topic, its front door the port), which this
+// module models until the retirement above.
+data approval_ntfy_topic: NtfyTopic = "gunbc-approvals" as NtfyTopic
+
+// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
+// :443 already carries the dashboard, so the approval server takes its own.
+data approval_ntfy_serve_port: Port = 8443
+
+// WHERE THE CUSTODY CONVERGE DELIVERS THE PUBLISHER TOKEN (gunbc.fleet.host_credential_custody_converge
+// ApprovalNtfyPublisherToken). Nothing reads it since the publish was deleted; it stays while the
+// token is still placed on srv1, and goes with the retirement above.
+data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
+
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: operator_host_srv1 as NonEmptyStr, domain: domain, port: Present { value: approval_ntfy_serve_port })
+}
+
+data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_tailnet_domain)
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -57,7 +94,7 @@ data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as 
 // THE FILE NAME WAS A GUESS, AND srv1 FALSIFIED IT. It read `user.db`. The server srv1 runs was
 // installed with `auth-file: /var/lib/gunbc-ntfy/auth.db` in /etc/gunbc-ntfy/server.yml, and that file
 // exists while user.db does not. proud-deer-538 read this on 2026-09-29 running
-// issue_device_enrolment_code by hand against release 02568b3046, and the readback refused before
+// the retired enrolment-code verb by hand against release 02568b3046, and the readback refused before
 // minting. The name is now the observed one, and it changes the exact stat argv that this module's
 // human step asks the operator to grant.
 //
@@ -72,16 +109,15 @@ data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root 
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback
-// (gunbc.auth.approval_ntfy_access_readback) can compare against them and so the mint and grant
+// can be compared against them and so the mint and grant
 // interventions below say which names to create. The publisher is the broker's credential and may
 // only WRITE the topic; the operator is the phone's sign-in and may only READ it. A server whose
-// users carry other names reads back as a deviation and enrolment-code issuance refuses -- loudly,
-// never by guessing which user is which.
+// users carry other names is a deviation from this declaration; the names are never guessed.
 //
 // THE NAMES ARE THE ONES srv1's SERVER CARRIES, AND THE PREVIOUS ONES WERE NEVER CREATED. They read
 // gunbc-approval-publisher and gunbc-approval-operator, names chosen here that no step on the host
 // used. The live `ntfy access` that proud-deer-538 read on srv1 on 2026-09-29, running
-// issue_device_enrolment_code by hand, lists publisher `gunbc-broker` (write-only on the topic) and
+// the retired enrolment-code verb by hand, lists publisher `gunbc-broker` (write-only on the topic) and
 // operator `briansrls` (read-only), with anonymous access denied. Those accounts already carry the
 // broker's publisher token and the operator's phone subscription, so the declaration follows them
 // rather than asking for both credentials to be minted again. These stay declarations: the readback
@@ -98,7 +134,7 @@ data approval_ntfy_operator_user: NonEmptyStr = "briansrls"
 // on the ground that the upstream .deb installs there. But no model member installs this binary
 // (gunbc.auth.approval_ntfy_converge names it as outside its roster), and srv1's server was installed
 // 2026-09-07 at /usr/local/bin/ntfy. gunbc-ntfy.service ExecStart names that path, as read on the host
-// by proud-deer-538 on 2026-09-28 while running issue_device_enrolment_code by hand. The readback then
+// by proud-deer-538 on 2026-09-28 while running the retired enrolment-code verb by hand. The readback then
 // refused before minting by stat-ing a path the server does not run. So the row is the observed install,
 // and it stays a declaration: an install moved elsewhere refuses loudly here until the row moves with
 // it, which is the intended wall. Its dissolution is an installer member that places the binary, at
@@ -118,7 +154,7 @@ data approval_ntfy_listen_port: Port = 2586
 // APNs push, so a self-hosted server forwards a poll request upstream and the app fetches the body
 // from us. The upstream sees a hashed topic and a message id -- never the topic name, the body, or
 // the approval URL -- so the credential stays on the tailnet and the residual disclosure is
-// timing. gunbc.auth.approval_notification carries that argument in full.
+// timing (the argument the deleted gunbc.auth.approval_notification carried in full).
 data approval_ntfy_upstream_base_url: NonEmptyStr = "https://ntfy.sh"
 
 // ── The acquisition facts this install owes ─────────────────────────────────────────────────
@@ -308,20 +344,8 @@ fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
       approval_ntfy_publisher_user as String,
       "' and read-only ONLY to the operator's ntfy user '",
       approval_ntfy_operator_user as String,
-      "', and create no other users. Enrolment-code issuance reads this list back with `ntfy access`",
-      " and refuses on any other shape (gunbc.auth.approval_ntfy_access_readback), so this step is",
-      " checked rather than trusted. Six of its reads (four distinct argv) run as '",
-      approval_ntfy_principal_name as String,
-      "' and one as root, each via `sudo -n` at an exact argv (gunbc.auth.approval_ntfy_access_readback",
-      " approval_ntfy_read_command: stat identity and cat of the config, stat identity of the auth file,",
-      " ntfy access under /usr/bin/env -i; and tailscale serve status --json), so the broker's POSIX",
-      " user needs one sudoers line for each of those five argv and nothing else; without them every",
-      " issuance refuses. The listing is then bound to the running process itself by the per-release",
-      " runtime-observation helper (gunbc.auth.approval_ntfy_runtime_observe), which the broker",
-      " release install places under root and grants the verb's account to run as '",
-      approval_ntfy_principal_name as String,
-      "' by one further exact sudoers line (gunbc.live_deploy.emit approval_broker_helper_sudoers_line);",
-      " without that release installed and granted, every issuance refuses. The server must run as",
+      "', and create no other users. Nothing reads this list back mechanically: the access policy is",
+      " DECLARED here and its discharge is an operator observation. The server must run as",
       " the unit's main process: `",
       approval_ntfy_binary_path as String,
       " serve --config ",

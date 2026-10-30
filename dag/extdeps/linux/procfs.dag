@@ -60,6 +60,21 @@ fn procfs_status_effective_uid(content: String) -> Int? {
   })
 }
 
+// THE SUPPLEMENTARY GROUP IDS FROM /proc/<pid>/status (proc(5)): the `Groups:` line lists them as
+// space-separated decimals, possibly none. A missing line or a non-decimal field is no reading, never
+// an empty membership: an unreadable membership must not read as "in no group".
+fn procfs_status_supplementary_gids(content: String) -> List<Int>? {
+  fold(split(s: content, delimiter: "\n"), init: none, f: (acc, line) => match acc {
+    Present { value: _ } => acc
+    Absent => if !starts_with(s: line, prefix: "Groups:") { none } else {
+      let ids = split(s: trim(s: substring(s: line, start: 7, end: string_length(s: line))), delimiter: " ") |> filter(f => f != "")
+      if any(ids, e => !all(e |> chars, cp => cp >= 48 && cp <= 57)) { none } else {
+        Present { value: flat_map(ids, e => match parse_int(s: e) { Present { value: n } => [n], Absent => [] as List<Int> }) }
+      }
+    }
+  })
+}
+
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
     ProcMeminfo => "/proc/meminfo"
@@ -164,7 +179,7 @@ service linux.Procfs {
     readonly
     transport file { path: "/proc/uptime" }
     mock_response {
-      0 => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
+      => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
     }
   }
 
@@ -183,6 +198,27 @@ service linux.Procfs {
     }
     mock_response {
       0 => { value: "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n", success: true } "hermetic linux.Procfs.ReadMeminfo"
+    }
+  }
+
+  // ReadBootId IS THE INDEPENDENT CURRENT-BOOT READ (random(4), extdeps.linux.kernel_random kernel_boot_id_path): the
+  // value names THIS boot of the executing kernel, so over a host transport it is the host's own answer and not a
+  // supervisor's. The UUID is one line, so the shell transport's trimming of the trailing newline loses nothing.
+  operation ReadBootId {
+    requires none
+    input { path: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "boot id read failed"
+    }
+    mock_response {
+      0 => { value: "aaaaaaaa-0000-4000-8000-0000000000b1", success: true } "hermetic linux.Procfs.ReadBootId"
     }
   }
 

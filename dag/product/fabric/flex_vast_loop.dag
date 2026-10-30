@@ -23,7 +23,6 @@ import extdeps.cloud.vast_ai { VastAiOffer, VastAiInstance, VastAiCharge }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import product.host_identity { HostIdentity }
-import product.supplier.vast_ai { VastAiAskReceipt }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
@@ -42,6 +41,11 @@ import product.fabric.flex_vast_shadow {
   flex_serving_template, flex_trial_total,
   flex_vast_api_read_grant,
 }
+import product.fabric.flex_vast_template {
+  flex_vast_template_spec, flex_template_retired_hash, flex_vast_rent_launch,
+  FlexRentLaunch, FlexRentLaunchRefusal, flex_vast_create_env_cap, FlexCreateEnvCap, FlexRentLaunchBuilt, FlexRentLaunchRefused, flex_launch_runtype_wire,
+  flex_rent_launch_refusal_cause, flex_launch_args, flex_launch_onstart, flex_vast_onstart_b64_flag,
+}
 import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref, flex_vast_api_key_host_path, flex_vast_api_key_custody_host }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, RentedEndCondition,
@@ -53,7 +57,7 @@ import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_release {
   RentedReleaseReadings, RentedReleaseReceiptV1, RentedInstanceReading, RentedDestroyRequest,
-  RentedReleasePending, rented_release_receipt, rented_bound_instance_id, rented_destroy_perform,
+  RentedReleasePending, rented_release_receipt, rented_bound_instance_id, RentedObservedInstance,
 }
 
 // THE EXECUTING WET LOOP of the flex tier (acquisition and release only). ONE PASS reads a sealed
@@ -119,23 +123,46 @@ data flex_key_custody_declaration: FlexKeyCustodyDeclaration = FlexKeyCustodyDec
   host_path: flex_vast_api_key_host_path,
 }
 
-// ---- TEMPLATE HASH. The Vast create body names a Vast template, which the recipe's template does not
-// carry. A recipe with no row here has no Vast template hash and refuses typed.
+// ---- TEMPLATE HASH. The Vast create body names a Vast template by hash. The hash is not a fact this
+// repository may invent: it is whatever flex_template_ensure read back live
+// (product.fabric.flex_vast_template_control). The binding below is therefore a TYPED STATE, and it is
+// declared UNBOUND. The only hash this account has ever carried for the flex template is the retired,
+// credential-carrying template (product.fabric.flex_vast_template flex_template_retired_hash), which is
+// never adopted; it has been removed from the binding rather than left to name a template that must not
+// be rented. A pass over an unbound binding asks for no create: it refuses typed.
 type FlexTemplateHashRow {
   recipe: DeclarationRef
   hash: NonEmptyStr
 }
 
-data flex_vast_template_hashes: List<FlexTemplateHashRow> = [
-  FlexTemplateHashRow {
-    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
-    hash: "c6793d31e3204da102145c4c331e42ae" as NonEmptyStr,
-  },
-]
+type FlexVastTemplateHashBinding
+  = FlexVastTemplateHashBound { rows: List<FlexTemplateHashRow> }
+  | FlexVastTemplateHashUnbound { reason: NonEmptyStr }
+
+data flex_vast_template_hash_binding: FlexVastTemplateHashBinding = FlexVastTemplateHashUnbound {
+  reason: "flex_template_ensure has not bound a hash; the only hash this account has for the flex template is the retired, credential-carrying template, which is never adopted" as NonEmptyStr,
+}
+
+// The rows a pass reads, derived from the binding so the binding is the only authority: unbound means no
+// rows, and bound means exactly what the ensure read back. The retired hash is refused once, at the
+// lookup (flex_vast_template_hash), whoever binds it.
+fn flex_vast_template_hash_rows(binding: FlexVastTemplateHashBinding) -> List<FlexTemplateHashRow> {
+  match binding {
+    FlexVastTemplateHashUnbound { reason: _ } => []
+    FlexVastTemplateHashBound { rows: rows } => rows
+  }
+}
+
+data flex_vast_template_hashes: List<FlexTemplateHashRow> = flex_vast_template_hash_rows(binding: flex_vast_template_hash_binding)
 
 fn flex_vast_template_hash(rows: List<FlexTemplateHashRow>, recipe: DeclarationRef) -> NonEmptyStr? {
   match first_where(rows, row => (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name)) {
-    Present { value: row } => Present { value: row.hash }
+    Present { value: row } =>
+      if (row.hash as String) == (flex_template_retired_hash as String) {
+        none
+      } else {
+        Present { value: row.hash }
+      }
     Absent => none
   }
 }
@@ -203,6 +230,11 @@ type FlexCreateRequest {
   disk: ByteSize
   template_hash_id: NonEmptyStr
   label: NonEmptyStr
+  // The launch this rent carries, built from the declared template spec
+  // (product.fabric.flex_vast_template flex_vast_rent_launch): runtype args, the container command, an
+  // empty onstart, and the template's docker-options string with the on-start script appended base64.
+  // It holds no credential: the per-rental password is drawn in the write path and never enters the plan.
+  launch: FlexRentLaunch
   reservation: MoneyAmountMicro
 }
 
@@ -213,6 +245,7 @@ type FlexCreateRefusal
   | FlexRefusedAdmissionNotAdmitted
   | FlexRefusedTemplateUnresolved
   | FlexRefusedTemplateHashUnread
+  | FlexRefusedLaunchNotBuilt { cause: FlexRentLaunchRefusal }
   | FlexRefusedChargesUnreadable
   | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, unattributed: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
   | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration, causes: List<String> }
@@ -351,21 +384,33 @@ fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, inten
           Absent => [FlexRefusedAdmissionNotAdmitted]
           Present { value: bid } => flex_budget_wall(policy: policy, charges: observation.charges, bid: bid)
         },
-        match flex_serving_template(recipe: recipe) {
-          FlexTemplateResolved { template: _ } =>
-            match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
-              Absent => [FlexRefusedTemplateHashUnread]
-              Present { value: _ } => []
-            }
-          _ => [FlexRefusedTemplateUnresolved]
-        },
+        concat(
+          match flex_serving_template(recipe: recipe) {
+            FlexTemplateResolved { template: _ } =>
+              match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
+                Absent => [FlexRefusedTemplateHashUnread]
+                Present { value: _ } => []
+              }
+            _ => [FlexRefusedTemplateUnresolved]
+          },
+          flex_launch_wall(cap: flex_vast_create_env_cap),
+        ),
       ),
     ),
     ),
   )
 }
 
-// The create request, only when the bid, the template and its Vast hash all exist.
+// The launch wall: a create whose per-rent launch cannot be built from the declared spec would rent a
+// card that boots with no server on it, so it refuses typed rather than sending an ask with no command.
+fn flex_launch_wall(cap: FlexCreateEnvCap) -> List<FlexCreateRefusal> {
+  match flex_vast_rent_launch(spec: flex_vast_template_spec, cap: cap, reserved_chars: flex_create_env_reserved_chars) {
+    FlexRentLaunchBuilt { launch: _ } => []
+    FlexRentLaunchRefused { cause: cause } => [FlexRefusedLaunchNotBuilt { cause: cause }]
+  }
+}
+
+// The create request, only when the bid, the template, its Vast hash and the per-rent launch all exist.
 fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: ServingRecipe, hashes: List<FlexTemplateHashRow>) -> FlexCreateRequest? {
   match flex_admitted_bid(admission: intent.admission) {
     Absent => none
@@ -375,17 +420,22 @@ fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: Ser
           match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
             Absent => none
             Present { value: hash } =>
-              Present {
-                value: FlexCreateRequest {
-                  offer_id: intent.offer.id,
-                  machine_id: intent.offer.machine_id,
-                  price: flex_bid_price(bid: bid),
-                  bid: bid,
-                  disk: t.disk,
-                  template_hash_id: hash,
-                  label: policy.owner as NonEmptyStr,
-                  reservation: flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon),
-                },
+              match flex_vast_rent_launch(spec: flex_vast_template_spec, cap: flex_vast_create_env_cap, reserved_chars: flex_create_env_reserved_chars) {
+                FlexRentLaunchRefused { cause: _ } => none
+                FlexRentLaunchBuilt { launch: launch } =>
+                  Present {
+                    value: FlexCreateRequest {
+                      offer_id: intent.offer.id,
+                      machine_id: intent.offer.machine_id,
+                      price: flex_bid_price(bid: bid),
+                      bid: bid,
+                      disk: t.disk,
+                      template_hash_id: hash,
+                      label: policy.owner as NonEmptyStr,
+                      launch: launch,
+                      reservation: flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon),
+                    },
+                  }
               }
           }
         _ => none
@@ -398,16 +448,24 @@ fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: Ser
 // draws a fresh one from extdeps.entropy Urandom and sends it only in the create body's env. It is a
 // Secret and is never rendered: FlexCreateRequest, the printable plan, holds none, and the draw happens
 // in flex_run_create, the write path, not in the pure plan. ctrl's pool reads it per instance.
+// The draw is appended to the per-rent LAUNCH env (the template's docker-options string plus the on-start
+// script base64, product.fabric.flex_vast_template flex_vast_rent_launch) in one step, so the password is
+// never a String the model holds: the launch half is secret-free and printable, the password half goes
+// straight into the Secret.
 data flex_pool_password_length_chars: Int = 48
 
-fn mint_flex_pool_password() -> Secret {
-  concat("-e POOL_API_KEY=", Urandom.ReadPassword(count: flex_pool_password_length_chars).password) as Secret
+// What the write path appends after the launch env, counted so the create env's cap is judged on the whole
+// string that is sent.
+data flex_create_env_reserved_chars: Int = string_length(s: " -e POOL_API_KEY=") + flex_pool_password_length_chars
+
+fn mint_flex_create_env(launch: FlexRentLaunch) -> Secret {
+  join([launch.env, " -e POOL_API_KEY=", Urandom.ReadPassword(count: flex_pool_password_length_chars).password], "") as Secret
 }
 
 // ---- THE CREATE ACTUATION. An answer with success is Answered; a refusal that proves no rental (a
 // 4xx other than an undecodable answer) is Refused; every uncertain completion (transport lost, a 5xx,
 // an answer that did not decode) is Lost, because the machine may have rented.
-fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, pool_password: Secret) -> FlexCreateStanding uses net: Network {
+fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, create_env: Secret) -> FlexCreateStanding uses net: Network {
   let sent = vast_ai.Asks.Create(
     api_key: api_key,
     offer_id: request.offer_id,
@@ -415,7 +473,10 @@ fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, pool_passwor
     disk: flex_vast_disk_gigabytes(disk: request.disk),
     template_hash_id: request.template_hash_id,
     label: request.label,
-    env: pool_password,
+    env: create_env,
+    runtype: flex_launch_runtype_wire(launch: request.launch.mode),
+    args: flex_launch_args(launch: request.launch.mode),
+    onstart: flex_launch_onstart(launch: request.launch.mode),
   )
   match sent {
     RestAnswered { answer: a } =>
@@ -468,7 +529,6 @@ fn flex_acquired_allocation(
       owner: policy.owner as NonEmptyStr,
       asked_at: asked_at,
       asked_rate: request.bid,
-      provider_ask: VastAiAskReceipt { ask_id: request.offer_id, machine_id: request.machine_id },
     },
     contract: RentedContractUnread { obligation: flex_contract_unread_obligation },
     card: placement.card,
@@ -622,7 +682,7 @@ fn flex_created_outcome(input: FlexPassInput, request: FlexCreateRequest, intent
 }
 
 fn flex_run_create(input: FlexPassInput, api_key: Secret, request: FlexCreateRequest, intent: FlexCreateIntent) -> FlexPassOutcome uses net: Network {
-  flex_created_outcome(input: input, request: request, intent: intent, standing: flex_create_perform(api_key: api_key, request: request, pool_password: mint_flex_pool_password()))
+  flex_created_outcome(input: input, request: request, intent: intent, standing: flex_create_perform(api_key: api_key, request: request, create_env: mint_flex_create_env(launch: request.launch)))
 }
 
 // A create whose answer was lost and whose instance the NEXT pass's observation shows carrying our label
@@ -719,7 +779,40 @@ fn flex_run_pass(input: FlexPassInput, api_key: Secret, releasing: FlexReleaseIn
     FlexPassDone { outcome: outcome } => outcome
     FlexPassCreateDue { request: request, intent: intent } => flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
     FlexPassDestroyDue { receipt: receipt, request: q } =>
-      FlexPassReleased { receipt: receipt, destroy_status: Present { value: rented_destroy_perform(api_key: api_key, request: q) } }
+      FlexPassReleased { receipt: receipt, destroy_status: Present { value: flex_vast_destroy_perform(api_key: api_key, roster: input.observation.roster, ours: input.policy.owner, request: q) } }
+  }
+}
+
+// ---- THE VAST ROW'S HALF OF RELEASE. gunbc.serving.rented_release reads a supplier-agnostic instance; the
+// Vast instance maps into it here (id, label, actual_status), and the authorized destroy, which names the
+// instance by the agnostic id, is performed against the Vast instance of that id in the COMPLETE roster
+// this pass observed, REDUCED TO OUR LABEL first: a destroy can only ever name an instance this pass read
+// carrying policy.owner, never a parsed number and never a foreign row that shares the id string.
+fn flex_vast_rented_instance(instance: VastAiInstance) -> RentedObservedInstance {
+  RentedObservedInstance {
+    id: int_to_decimal_string(value: instance.id) as NonEmptyStr,
+    owner_label: instance.label,
+    status: instance.actual_status,
+  }
+}
+
+fn flex_vast_destroy_target(roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> VastAiInstance? {
+  match flex_ours_roster(roster: roster, ours: ours) {
+    FlexInstancesComplete { roster: r } => first_where(r.instances, i => int_to_decimal_string(value: i.id) == (request.instance_id as String))
+    _ => none
+  }
+}
+
+fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> String uses net: Network {
+  match flex_vast_destroy_target(roster: roster, ours: ours, request: request) {
+    Absent => "destroy not sent: no instance of ours with that id is in this pass's complete Vast roster"
+    Present { value: target } =>
+      match vast_ai.InstanceLifecycle.Destroy(api_key: api_key, instance_id: target.id) {
+        RestAnswered { answer: _ } => "destroy answered"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["destroy refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "destroy got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["destroy status ", to_string(status), " body undecodable"], "")
+      }
   }
 }
 
@@ -733,6 +826,7 @@ fn flex_create_refusal_wire(r: FlexCreateRefusal) -> String {
     FlexRefusedAdmissionNotAdmitted => "admission-not-admitted"
     FlexRefusedTemplateUnresolved => "template-unresolved"
     FlexRefusedTemplateHashUnread => "template-hash-unread"
+    FlexRefusedLaunchNotBuilt { cause: cause } => concat("launch-not-built ", flex_rent_launch_refusal_cause(cause: cause))
     FlexRefusedChargesUnreadable => "charges-unreadable"
     FlexRefusedBudgetCeiling { spent: s, unattributed: u, reservation: r2, ceiling: c } =>
       join(["budget-ceiling spent_micro=", int_to_decimal_string(value: money_amount_micro_count(m: s)), " unattributed_micro=", int_to_decimal_string(value: money_amount_micro_count(m: u)), " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: r2)), " ceiling_micro=", int_to_decimal_string(value: money_amount_micro_count(m: c))], "")
@@ -758,6 +852,12 @@ fn flex_create_request_wire(q: FlexCreateRequest) -> String {
     " bid_micro_per_hour=", int_to_decimal_string(value: money_per_hour_micros(q: q.bid)),
     " disk_gb=", int_to_decimal_string(value: flex_vast_disk_gigabytes(disk: q.disk)),
     " template=", q.template_hash_id as String, " label=", q.label as String,
+    // The launch this rent carries. The env is rendered by length, not by value: it is where the
+    // per-rental password is appended in the write path, and the base64 script is long.
+    " runtype=", flex_launch_runtype_wire(launch: q.launch.mode),
+    " args=", int_to_decimal_string(value: flex_launch_args(launch: q.launch.mode).count()),
+    " onstart_b64=", if q.launch.env.contains(flex_vast_onstart_b64_flag()) { "yes" } else { "no" },
+    " env_chars=", int_to_decimal_string(value: string_length(s: q.launch.env)),
     " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: q.reservation)),
   ], "")
 }

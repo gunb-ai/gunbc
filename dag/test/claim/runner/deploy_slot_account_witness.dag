@@ -1,0 +1,200 @@
+module test.claim.runner.deploy_slot_account_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains, list_at_optional }
+import std.optional { Present, Absent }
+import extdeps.exec.command { argv_words }
+import gunbc.runner.runner_host_file_converge {
+  DeploySlotAccountRead, DeploySlotAccountReadPresent, DeploySlotAccountReadAbsent, DeploySlotAccountReadUnreadable,
+  DeploySlotAccountStep, DeploySlotAccountSettled, DeploySlotAccountCreate,
+  DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
+  classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
+  DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
+  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned, deploy_slot_tree_owned_find_argv,
+  deploy_slot_runner_stage_dir, deploy_slot_runner_stage_fetch_commands,
+  FleetHostFileDesired, RunnerHostFileWithheld,
+  FleetHostFilesApply, FleetHostFilesObserveOnly,
+  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+}
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
+import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
+import extdeps.sudo.elevation { sudo_program }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEPLOY SLOT'S ACCOUNT (gunbc.runner.runner_host_file_converge converge_deploy_slot_account),
+// witnessed at its pure decisions with SUPPLIED getent answers. The converge creates the account only
+// when getent says the key is absent, the run applies and the administrator holds privilege; anything
+// else reports the account missing, and a missing account withholds the role drop-in by name.
+
+fn fixture_passwd_line() -> String { "ghdeploy:x:996:996::/home/ghdeploy:/usr/sbin/nologin\n" }
+
+fn is_absent(r: DeploySlotAccountRead) -> Bool {
+  match r {
+    DeploySlotAccountReadAbsent => true
+    _ => false
+  }
+}
+
+fn is_unreadable(r: DeploySlotAccountRead) -> Bool {
+  match r {
+    DeploySlotAccountReadUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// ABSENCE IS getent's KEY-NOT-FOUND STATUS ONLY: exit 2 is absent, an entry is present, and any other
+// failure is unreadable -- the RED for reading every non-zero exit as absence (which would create an
+// account over an unreadable passwd database).
+test fn only_key_not_found_reads_as_absent() -> Bool {
+  is_absent(r: classify_deploy_slot_account_read(exit_code: 2, stdout: "", stderr: ""))
+    && is_unreadable(r: classify_deploy_slot_account_read(exit_code: 1, stdout: "", stderr: "getent: bad"))
+    && match classify_deploy_slot_account_read(exit_code: 0, stdout: fixture_passwd_line(), stderr: "") {
+      DeploySlotAccountReadPresent { uid: u, passwd_line: _ } => u == 996
+      _ => false
+    }
+    && is_unreadable(r: classify_deploy_slot_account_read(exit_code: 0, stdout: "ghrunner:x:1001:1001::/home/ghrunner:/bin/bash\n", stderr: ""))
+}
+
+fn creates(s: DeploySlotAccountStep) -> Bool {
+  match s {
+    DeploySlotAccountCreate => true
+    DeploySlotAccountSettled { standing: _ } => false
+  }
+}
+
+// ONLY AN ABSENT ACCOUNT IN AN APPLY RUN WITH PRIVILEGE IS CREATED (positive control), and observe mode,
+// a refused privilege or an unreadable read never create (the reds).
+test fn only_an_absent_account_in_a_privileged_apply_is_created() -> Bool {
+  creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadUnreadable { cause: "fixture" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+}
+
+fn fixture_file(subject: String) -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: subject as NonEmptyStr,
+    path: "/etc/fixture" as FilePath,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// THE ROLE DROP-IN IS WITHHELD, AND ONLY IT, while the account is missing or a deploy slot's tree is
+// not yet its account's; a held account over held trees admits every file.
+test fn the_role_dropin_waits_for_the_account_and_the_tree() -> Bool {
+  let files = [fixture_file(subject: "runner-slot-role-dropin"), fixture_file(subject: "runner-depriv-dropin")]
+  let held = DeploySlotAccountPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr }
+  let unit = "actions-runner@srv1-02.service" as NonEmptyStr
+  let missing = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: DeploySlotAccountMissing { cause: "fixture" as NonEmptyStr }, trees: []))
+  let pending = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreePending { unit: unit, cause: "fixture" as NonEmptyStr }]))
+  let ready = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreeRebuilt { unit: unit }]))
+  map(missing.files, f => f.subject as String) == ["runner-depriv-dropin"]
+    && map(missing.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
+    && all(missing.withheld, w => string_contains(s: w.cause as String, pattern: "ghdeploy"))
+    && map(pending.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
+    && length(ready.files) == 2 && length(ready.withheld) == 0
+}
+
+fn tree_settles_held(s: DeploySlotTreeStep) -> Bool {
+  match s {
+    DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: _ } } => true
+    _ => false
+  }
+}
+
+fn tree_rebuilds(s: DeploySlotTreeStep) -> Bool {
+  match s {
+    DeploySlotTreeDrainThenRebuild => true
+    _ => false
+  }
+}
+
+// A TREE OWNED BY THE ACCOUNT IS HELD (control); one owned by anyone else is drained and rebuilt only
+// in a privileged apply, and an unread owner or a missing account never rebuilds (the reds).
+test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> Bool {
+  let u = "actions-runner@srv1-02.service" as NonEmptyStr
+  tree_settles_held(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: true }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: false, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+}
+
+// THE FAR-SIDE find ANSWERS OWNED ONLY BY PRINTING THE DIRECTORY ITSELF: printed is owned, exit 0 and
+// silent is not owned, and a failure or any other output is no reading (never "not owned", which would
+// rebuild a tree on a read that established nothing).
+test fn the_tree_owner_read_is_three_valued() -> Bool {
+  let d = "/opt/actions-runner/srv1-02"
+  classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/opt/actions-runner/srv1-02\n") == Present { value: true }
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "") == Present { value: false }
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 1, stdout: "") == none
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
+}
+
+// THE TREE IS HELD ONLY OWNER-ONLY: the far-side find that answers "held" asks for the account AND the
+// deploy role's 0700, so a tree the account owns at 0755 -- srv1-02 as read on 2026-10-30, its listener's
+// RSA key 0644 inside -- answers not held and is rebuilt (gunbc.recurring_failure_mode
+// a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids). RED: drop the -perm word.
+test fn the_tree_is_held_only_at_the_owner_only_mode() -> Bool {
+  let argv = deploy_slot_tree_owned_find_argv(slot_dir: "/opt/actions-runner/srv1-02")
+  argv == ["find", "/opt/actions-runner/srv1-02", "-maxdepth", "0", "-type", "d", "-user", "ghdeploy", "-perm", "0700"]
+}
+
+// THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
+// that order, then removes the stage as root: no file of the old tree survives and no new file is root's.
+test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
+  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  length(lines) == 4
+    && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv1-02")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "-m 00700")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "/opt/actions-runner/srv1-02")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "/var/lib/gunbc/stage/runner.tar.gz")
+    && starts_with(s: nth(xs: lines, i: 3), prefix: elevated_prefix())
+    && string_contains(s: nth(xs: lines, i: 3), pattern: "-rf /var/lib/gunbc/stage")
+}
+
+// THE ARCHIVE IS WRITABLE BY ROOT ALONE BETWEEN ITS DIGEST CHECK AND ITS EXTRACTION (review 87894): the
+// stage is a member of the root-owned host-state tree, never the /tmp the CI slots' jobs share; it is
+// removed and recreated root-owned before the fetch, and the fetch runs as root. An unelevated fetch or
+// a /tmp stage would let a pull-request job swap the verified archive before the deploy account extracts it.
+test fn the_runner_archive_stage_is_written_by_root_alone() -> Bool {
+  let stage = deploy_slot_runner_stage_dir()
+  let lines = map(deploy_slot_runner_stage_fetch_commands(stage: stage, url: "https://example.invalid/runner.tar.gz", tarball: join([stage, "/runner.tar.gz"], "")), c => join(argv_words(command: c), " "))
+  starts_with(s: stage, prefix: "/var/lib/gunbc/")
+    && !starts_with(s: stage, prefix: "/tmp")
+    && length(lines) == 3
+    && all(lines, l => starts_with(s: l, prefix: elevated_prefix()))
+    && string_contains(s: nth(xs: lines, i: 0), pattern: join(["-rf ", stage], ""))
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "-o root -g root")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: stage)
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "curl")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: join([stage, "/runner.tar.gz"], ""))
+}
+
+// AN ELEVATED LEG BEGINS WITH SUDO AS extdeps.sudo.elevation INVOKES IT, read from that authority
+// rather than spelled here.
+fn elevated_prefix() -> String {
+  join([sudo_program().invocation as String, " "], "")
+}
+
+fn nth(xs: List<String>, i: Int) -> String {
+  match list_at_optional(xs: xs, index: i) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// THE ACCOUNT IS A SYSTEM ACCOUNT WITH A HOME AND NO LOGIN SHELL, the argv the administrator runs.
+test fn the_deploy_account_is_created_with_a_home_and_no_login() -> Bool {
+  map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String)
+    == ["/usr/sbin/useradd", "--system", "--create-home", "--home-dir", "/home/ghdeploy", "--shell", "/usr/sbin/nologin", "ghdeploy"]
+}

@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_kill_between_the_capture_steps_loses_or_do
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data a_kill_between_the_capture_steps_loses_or_doubles_the_capture: RecurringFailureMode = RecurringFailureMode {
   identity: "a_kill_between_the_capture_steps_loses_or_doubles_the_capture" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a capture is three effects (scm_persist_capture, commit_staged, the capture-file write) with no durable record that the sequence began, so a belt killed between any two leaves a half capture the next pass cannot recognize. HARM: killed after the SCM save, the retry mints a second capture (double capture); killed after the git commit, the commit exists but no capture file names it (lost capture). Found by PR 14235 slice 3 (DESIGN section 4b) at mitigatable: the old belt_commit_capture_candidate was not resumable.  DISTINGUISHING FACTS: the same code is correct when uninterrupted, so only a kill between steps exposes it; no typecheck or pure witness can reach it.  Cite the red-on-main receipt in the PR 14235 body: the since-deleted belt_capture_intent_red_probe failed both kill points on main (double capture, lost capture).",

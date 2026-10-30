@@ -1,5 +1,6 @@
 module v2.extdeps.languages.rust
 import std.types { List, Map }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref }
 import std.error_primitives { Never }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
@@ -87,7 +88,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 
 import std.optional {
@@ -138,9 +139,21 @@ import v2.std.model_core {
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { EmitSpellingEscape,
+  EmitSpellingQuote,
+  PrimitiveRealizationsUnwired,
+  TargetPrimitiveRealization,
+  TargetPrimitiveArgument,
+  PrimitivePassBySharedReference,
+  PrimitiveFreeCall,
+  PrimitiveMethodCall,
+  PrimitivePassByValue,
+  TargetPrimitiveArgumentPassing,
+  PrimitiveResultAsReturned,
+  PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
+  ListIntroductionDelimited,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
@@ -284,8 +297,13 @@ import v2.std.compilers.target_model {
   TargetTypeExprVariantSlot
 }
 import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
+  MembersInAssociatedBlock,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
+  TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
   TargetSemanticDeclSerializeProfile,
@@ -301,7 +319,6 @@ import v2.std.node {
   ComputationNode,
   Arrow,
   Atom,
-  Occupancy,
   Conj,
   Disj,
   Edge,
@@ -312,11 +329,12 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Instantiation,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.node_query { binder_edge }
 import v2.std.logic { bool_node }
-import std.algebra { Empty, Cons, list_append, list_snoc_item, fold_list, fold_list_right, PointwisePower, empty_map, map_insert, map_lookup, collection_concat_shape }
+import std.algebra { Empty, Cons, list_append, list_snoc_item, fold_list, fold_list_right, PointwisePower, empty_map, map_insert, map_lookup, collection_concat_shape, map_contains_key }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, ordered_ring_node, ordered_ring_type_node }
 import v2.std.host_transport {
   HostBuildEnvironment,
@@ -939,7 +957,7 @@ fn rust_inhabitant_i32_node() -> Node {
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn rust_declared_inhabitants_root() -> Node {
@@ -1215,6 +1233,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^rust_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
+    list_introduction_form: ListIntroductionDelimited { open: ^rust_token_vec_open, separator: ^rust_token_comma, close: ^rust_token_list_close },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -1258,6 +1277,56 @@ fn rust_coerce_operator_realization_row() -> Node {
     operation: canonical_operation_op_coerce(),
     shape: OperandUnchanged
   )
+}
+
+// Rust's spelling of std.primitives contracts. The string_length row mirrors the frozen v1 `rt_function_registry` (callee = bridge_name,
+// shared-reference prefix = passes_by_ref, handle wrap = wraps_result). Their retirement is the rostered standing deficit
+// gunbc.guarantee_stall rust_primitive_rows_hand_spelled_from_the_seed_stall; the differential witness covers them meanwhile.
+fn rust_primitive_by_shared_reference_row(head: Symbol) -> TargetPrimitiveRealization {
+  TargetPrimitiveRealization {
+    primitive: primitive_contract_declaration_ref(head: head),
+    form: PrimitiveFreeCall { callee: head },
+    arguments: [
+      TargetPrimitiveArgument {
+        passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp }
+      }
+    ],
+    result: PrimitiveResultAsReturned
+  }
+}
+
+// A method-call primitive: the first call argument is the receiver (parenthesized by the emitter, so any receiver
+// expression binds), the rest are `arguments`.
+fn rust_primitive_method_row(head: Symbol, arguments: List<TargetPrimitiveArgument>) -> TargetPrimitiveRealization {
+  TargetPrimitiveRealization {
+    primitive: primitive_contract_declaration_ref(head: head),
+    form: PrimitiveMethodCall { method: head },
+    arguments: arguments,
+    result: PrimitiveResultAsReturned
+  }
+}
+
+fn rust_primitive_unlabeled_argument(passing: TargetPrimitiveArgumentPassing) -> TargetPrimitiveArgument {
+  TargetPrimitiveArgument { passing: passing }
+}
+
+// The primitives the Swift Protocol closure reaches. string_length and join mirror rt_function_registry and
+// rust_simple_method_specs and are backed by the differential witness. to_string does NOT: it is transcribed from the
+// free-call to_string arm of v1.compiler.emit_rust, which no table exposes, so the differential witness cannot cover
+// it. Its backing is the emitted-text claim in v2.test.claim.emit.rust_primitive_realization_emit plus the rustc
+// receipt recorded in that file. map has NO row on purpose: the std.primitives map contract is receiver-polymorphic
+// (Optional and List), the seed picks `(recv).map(f)` for an Optional receiver and an iterator chain for a List, and a
+// row carries no receiver type, so one method-call row would emit uncompilable Rust (E0599) for a Vec. Absent, map
+// refuses typed as missing; it returns when a row can state its receiver type.
+fn rust_primitive_realization_rows() -> List<TargetPrimitiveRealization> {
+  [
+    rust_primitive_by_shared_reference_row(head: ^string_length),
+    rust_primitive_method_row(
+      head: ^join,
+      arguments: [rust_primitive_unlabeled_argument(passing: PrimitivePassBySharedReference { prefix_token: ^rust_token_amp })]
+    ),
+    rust_primitive_method_row(head: ^to_string, arguments: [])
+  ]
 }
 
 fn rust_operator_realizations_catalog_node() -> Node {
@@ -2134,13 +2203,17 @@ fn rust_host_build_environment() -> HostBuildEnvironment {
 }
 
 fn rust_host_transport_descriptor() -> HostTransportDescriptor {
+  rust_host_transport_descriptor_with_main(manifest: rust_emit_host_cargo_manifest, main_suffix: rust_emit_host_main_suffix)
+}
+
+fn rust_host_transport_descriptor_with_main(manifest: String, main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
     build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_identity,
     workspace: [
       WorkspaceFile {
         path: "Cargo.toml",
-        content: FixedText { text: rust_emit_host_cargo_manifest }
+        content: FixedText { text: manifest }
       },
       WorkspaceFile {
         path: "rust-toolchain.toml",
@@ -2148,7 +2221,7 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
       },
       WorkspaceFile {
         path: "src/main.rs",
-        content: EmittedWithSuffix { suffix: rust_emit_host_main_suffix }
+        content: EmittedWithSuffix { suffix: main_suffix }
       }
     ],
     build: [
@@ -2165,6 +2238,35 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
   }
 }
 
+// The semantic-decl route derives serde::Serialize/Deserialize on a record (record_derive_traits_heap), so a
+// program holding its output needs the serde crate; the plain driver manifest declares no dependency.
+data rust_emit_host_serde_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nserde = { version = \"1.0.228\", features = [\"derive\"] }\n\n[lints.rust]\nunused_parens = \"allow\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
+
+// The type-declaration smoke driver: the emitted structure is built, its associated constant is read through
+// the `impl` the member row printed, and the verdict leaves as the five-byte runtime value. The fault driver
+// compares the constant against a wrong text, so a build that ignored the member would still be told apart.
+data rust_emit_host_member_decl_main_suffix: String = "\n\nfn main() { let p = Point { x: 2 }; let ok = p.x == 2 && Point::VERSION == \"V1\"; let bytes = [0u8, if ok { 5u8 } else { 4u8 }, 0, 0, 0]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+data rust_emit_host_member_decl_inject_fault_main_suffix: String = "\n\nfn main() { let p = Point { x: 2 }; let ok = p.x == 2 && Point::VERSION == \"V2\"; let bytes = [0u8, if ok { 5u8 } else { 4u8 }, 0, 0, 0]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+
+fn rust_member_decl_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_host_transport_descriptor_with_main(manifest: rust_emit_host_serde_cargo_manifest, main_suffix: rust_emit_host_member_decl_main_suffix),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn rust_member_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_host_transport_descriptor_with_main(manifest: rust_emit_host_serde_cargo_manifest, main_suffix: rust_emit_host_member_decl_inject_fault_main_suffix),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
 fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
@@ -2176,6 +2278,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
@@ -2299,6 +2402,7 @@ fn rust_target_model_node() -> Node {
 
 fn rust_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsWired { rows: rust_primitive_realization_rows() },
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
     lex: rust_production_lex(),
@@ -2368,6 +2472,7 @@ fn rust_staging_lex() -> LexRules {
 fn rust_value_expression_family_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
+    rust_lex_rule(token_class: ^rust_token_amp, text: "&"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
     rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
@@ -2385,7 +2490,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
     rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
     rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
-    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">"),
+    rust_lex_rule(token_class: ^rust_token_vec_open, text: "vec!["),
+    rust_lex_rule(token_class: ^rust_token_list_close, text: "]")
   ]
 }
 
@@ -2705,6 +2812,8 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
@@ -2714,6 +2823,8 @@ fn rust_enum_general_decl_top_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^rust_decl_enum,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_enum),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
@@ -2733,7 +2844,7 @@ fn rust_enum_general_decl_formal_productions() -> List<FormalProduction> {
         left: rust_decl_shared_generic_productions(),
         right: list_append(
           left: rust_decl_shared_variant_productions(),
-          right: rust_enum_general_decl_top_productions()
+          right: list_append(left: list_append(left: rust_decl_header_productions(), right: rust_decl_import_productions()), right: rust_enum_general_decl_top_productions())
         )
       )
     )
@@ -2800,6 +2911,11 @@ fn rust_semantic_decl_lex_rows() -> List<Node> {
       token_class: ^rust_token_derive_enum_copy,
       text: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
     ),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_comment_prefix, text: "// "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_header_end, text: "\n"),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_header_text),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_use, text: "use "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_use_end, text: ";\n"),
     semantic_decl_lex_literal_row(token_class: ^rust_token_kw_struct, text: "struct "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_kw_enum, text: "enum "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_generic_lt, text: "<"),
@@ -2808,7 +2924,13 @@ fn rust_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^rust_token_colon, text: ": "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_comma, text: ", "),
     semantic_decl_lex_literal_row(token_class: ^rust_token_rbrace, text: " }"),
-    semantic_decl_lex_ident_row(token_class: ^rust_token_ident)
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_impl, text: " impl "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_pub_const, text: "pub const "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_str_ref_type, text: "&str"),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_equals, text: " = "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_semicolon, text: ";"),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_ident),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_str_lit)
   ]
 }
 
@@ -2836,7 +2958,22 @@ fn rust_semantic_decl_binding_spelling_rows() -> List<Node> {
 fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
   semantic_decl_serialize_profile_bundle(
     lex_rows: rust_semantic_decl_lex_rows(),
-    spelling_rows: rust_semantic_decl_binding_spelling_rows()
+    spelling_rows: rust_semantic_decl_binding_spelling_rows(),
+    emit_transform_rows: [
+      TargetSemanticDeclEmitTransformRow {
+        token_class: ^rust_token_str_lit,
+        transform: EmitSpellingQuote {
+        prefix: "",
+        open: "\"",
+        close: "\"",
+          escapes: [
+            EmitSpellingEscape { from: "\\", to: "\\\\" },
+            EmitSpellingEscape { from: "\"", to: "\\\"" },
+            EmitSpellingEscape { from: "\r", to: "\\r" }
+          ]
+        }
+      }
+    ]
   )
 }
 
@@ -2853,6 +2990,11 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
+    member_projection: ColumnWired { placement: MembersInAssociatedBlock },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnUnwired,
+    conformance_projection: ColumnUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,
@@ -2892,6 +3034,7 @@ fn rust_semantic_decl_emission_bundle_node() -> Node {
 
 fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -2911,20 +3054,113 @@ fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   }
 }
 
+// A DECLARATION'S LEADING IMPORTS: `use path;` lines ahead of the derive attribute, in the same emission. The list is
+// nullable (the nil terminator of an empty import list derives nothing), so a declaration without imports is unchanged.
+fn rust_decl_header_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_header_line,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_comment_prefix),
+        grammar_formal_terminal_free(identity: ^rust_token_header_text),
+        grammar_formal_terminal(identity: ^rust_token_header_end)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_header_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_line),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_header_list, rhs: [])
+  ]
+}
+
+fn rust_decl_import_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^rust_decl_import,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_use),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_use_end)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_import_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_import_list, rhs: [])
+  ]
+}
+
 fn rust_struct_general_decl_top_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block)
       ]
     ),
+    // A structure's constants live in an inherent `impl` of the same name, in the SAME emission: the owner
+    // name is a surface atom, so the type and its impl are one printed unit (no caller concatenation).
     grammar_formal_production(
       lhs: ^rust_decl_struct,
       rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
+        grammar_formal_terminal(identity: ^rust_token_kw_struct),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_field_block),
+        grammar_formal_terminal(identity: ^rust_token_kw_impl),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list),
+        grammar_formal_terminal(identity: ^rust_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member,
+      rhs: [
+        grammar_formal_terminal(identity: ^rust_token_kw_pub_const),
+        grammar_formal_terminal_free(identity: ^rust_token_ident),
+        grammar_formal_terminal(identity: ^rust_token_colon),
+        grammar_formal_terminal(identity: ^rust_token_str_ref_type),
+        grammar_formal_terminal(identity: ^rust_token_equals),
+        grammar_formal_terminal_free(identity: ^rust_token_str_lit),
+        grammar_formal_terminal(identity: ^rust_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^rust_decl_member_list_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^rust_decl_member_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^rust_decl_struct,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_header_list),
+        grammar_formal_nonterminal_occurrence(identity: ^rust_decl_import_list),
         grammar_formal_nonterminal_occurrence(identity: ^rust_decl_derive_attr),
         grammar_formal_terminal(identity: ^rust_token_kw_struct),
         grammar_formal_terminal_free(identity: ^rust_token_ident),
@@ -2942,7 +3178,7 @@ fn rust_struct_general_decl_formal_productions() -> List<FormalProduction> {
       left: rust_decl_shared_field_productions(),
       right: list_append(
         left: rust_decl_shared_generic_productions(),
-        right: rust_struct_general_decl_top_productions()
+        right: list_append(left: list_append(left: rust_decl_header_productions(), right: rust_decl_import_productions()), right: rust_struct_general_decl_top_productions())
       )
     )
   )
@@ -2965,6 +3201,7 @@ fn rust_struct_general_decl_productions_only_translation_rules() -> Node {
 
 fn rust_struct_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
@@ -3061,8 +3298,14 @@ fn rust_catalog_surface_symbol(sym: Symbol) -> Bool {
     rust_noninteger_catalog_surface_symbol(sym: sym)
 }
 
+// The token-class membership map for rust_fn_add_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data rust_fn_add_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_fn_add_lex_rules())
+
 fn rust_fn_add_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(rules: rust_fn_add_lex_rules(), token_class: sym)
+  map_contains_key(m: rust_fn_add_lex_token_class_membership, key: sym)
 }
 
 fn rust_language_model_canonical_symbols() -> PointwisePower<Symbol> {
@@ -4354,11 +4597,17 @@ fn rust_grammar() -> ParseGrammar {
   ModeledGrammar { root: rust_grammar_root() }
 }
 
+// The token-class membership map for rust_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data rust_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_lex_rules())
+
 fn rust_canonical_symbols() -> PointwisePower<Symbol> {
   PointwisePower {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
-        lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: sym) ||
+        map_contains_key(m: rust_lex_token_class_membership, key: sym) ||
         grammar_carries_symbol(grammar: rust_grammar(), sym: sym) ||
         sym == ^rust_surface_fn_item ||
         sym == ^rust_production_fn_add ||
@@ -4410,13 +4659,14 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^rust_token_colon,
       param_list_separator: ^rust_token_comma
     },
-    occupancy_form: TargetGenericApply {
-      surface: ^rust_surface_type_occupancy,
+    optional_instantiation_form: TargetGenericApply {
+      surface: ^rust_surface_type_optional_instantiation,
       open: ^rust_token_lt,
       separator: ^rust_token_comma,
       field_label_separator: optional_absent(),
       close: ^rust_token_gt
     },
+    optional_head: ^Option,
     instantiation_form: TargetGenericApply {
       surface: ^rust_surface_type_generic_apply,
       open: ^rust_token_lt,
@@ -4739,6 +4989,7 @@ fn rust_type_expression_projection_bundle_node() -> Node {
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4755,6 +5006,7 @@ fn rust_sg2_type_expr_projection_probe_bundle_core() -> Node {
 
 fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4767,6 +5019,7 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
 
 fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_lex_rules() },
@@ -4786,10 +5039,10 @@ fn rust_sg5_non_ordable_type_node() -> Node {
 
 fn rust_sg5_set_non_ordable_source_type_node() -> Node {
   Node {
-    kind: TypeNode { connective: Occupancy },
+    kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_collection_set_carrier_node() },
-      Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
+      Edge { label: Positional, target: target_collection_set_carrier_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_sg5_non_ordable_type_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -4834,7 +5087,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -4842,7 +5096,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -4850,7 +5105,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -4867,11 +5123,13 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: rust_sg2_foobar_xy_inner_instantiation_node()
+        target: rust_sg2_foobar_xy_inner_instantiation_node(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -4928,8 +5186,8 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -5095,7 +5353,8 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic
@@ -5147,7 +5406,8 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic
@@ -5162,7 +5422,8 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic

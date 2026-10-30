@@ -14,6 +14,14 @@ type RuntimeConvergence {admitted:Bool,evidence:String}
 // Explicit Ubuntu package convergence on the modeled printer LAN host. The same
 // package roots gate preparation. Reuse the existing observe/install/readback
 // lifecycle; an unreadable observation never authorizes a blind installation.
+//
+// The route is SSH even though the workflow entry already runs on that host, and the runtime it
+// gates is observed locally (product.printing.print_runtime observe_print_runtime). For apt this
+// is the same answer either way: the packages are system-wide, so no principal or home directory
+// separates what is installed here from what the local observation reads. The shared apt ensure
+// reads LocalShell as unobserved (gunbc.host.host_effect_realize srv3_dpkg_package_installed), so
+// converging locally would refuse every package. A per-user CAD environment is not system-wide and
+// does not get this exemption: it is converged on the route it is observed on.
 fn converge(receipt:String) -> ProcessExit {
  let host=printer_lan_host_identity() as NonEmptyStr
  let read=cat_command(path:"/etc/os-release")

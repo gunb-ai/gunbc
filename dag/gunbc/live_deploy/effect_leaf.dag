@@ -3,9 +3,11 @@ module gunbc.live_deploy.effect_leaf
 import std.types { String, NonEmptyStr }
 import v2.std.effect_plan { EffectPlan, Do }
 import v2.std.orchestration { FailFast }
-import v2.std.operation_argv { OperationRef, operation_argv_bind_text }
+import std.operation_argv { OperationRef, operation_argv_bind_text }
+import v2.std.effect_plan_observed_sha256 { ObservedSha256EnvWrite }
 import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
+  BashPlanEffect,
+  ObservedSha256EnvWriteEffect,
   EffectPlanBashMaterialized,
   EffectPlanBashMaterializationRefused,
   bash_bind_operation_invocation,
@@ -17,10 +19,10 @@ import v2.workflow.effect_plan_bash_materialize {
 data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ live-deploy operation leaf could not be materialized from its extdeps declaration: "
 
 // THE MUTATION LEAVES NAME AN OPERATION, THEY DO NOT CARRY A COMMAND. A leaf here is a
-// BashBoundOperationInvocation -- an extdeps operation row plus that row's OWN declared inputs bound
+// BashPlanEffect -- an extdeps operation row plus that row's OWN declared inputs bound
 // by name -- and its argv is derived from the declaration by shell_materialize_operation_argv. The
 // carrier is the one that landed in Wave A/B (v2.std.effect_plan Do{effect} over
-// v2.std.operation_argv BoundOperationInvocation, materialized by
+// std.operation_argv BoundOperationInvocation, materialized by
 // v2.workflow.effect_plan_bash_materialize); no second vocabulary for "a mutating host operation"
 // is minted here, and the host-effect lane's HostEffect surface is untouched.
 //
@@ -40,7 +42,7 @@ data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT
 // a marker that is not valid shell, exactly as bash_intent_command_or_poison does for the grammar
 // path -- the step fails loudly and names which operation and which cause, rather than a
 // hand-spelled fallback standing in for the refused command (DESIGN section 5: refuse, never widen).
-fn deploy_effect_command(inv: BashBoundOperationInvocation) -> String {
+fn deploy_effect_command(inv: BashPlanEffect) -> String {
   match effect_plan_bash_materialize(plan: EffectPlan {
     steps: [Do { effect: inv }],
     on_failure: FailFast,
@@ -58,18 +60,13 @@ data live_deploy_systemctl_operation_path: String = "dag/extdeps/systemd/systemc
 data live_deploy_systemctl_operation_service: String = "systemd.Systemctl"
 data live_deploy_systemctl_unit_input: String = "unit"
 
-data live_deploy_apt_operation_path: String = "dag/extdeps/package_managers/apt.dag"
-data live_deploy_apt_operation_service: String = "apt.PackageManager"
-data live_deploy_dpkg_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
-data live_deploy_dpkg_operation_service: String = "dpkg.Package"
-data live_deploy_package_input: String = "package"
 
 // EVERY MUTATION ON THIS HOST CROSSES A PRIVILEGE BOUNDARY, so these constructors elevate rather
 // than taking a `privileged` flag: the deploy principal is the unprivileged CI-runner account
 // (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner), and a systemctl mutation it could issue
 // unelevated does not exist.
 // The package READ (dpkg -s) is the one leaf that does not, which is why it alone binds unelevated.
-fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOperationInvocation {
+fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashPlanEffect {
   bash_bind_operation_invocation_elevated(
     at: OperationRef {
       path: live_deploy_systemctl_operation_path,
@@ -83,66 +80,26 @@ fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOpera
   )
 }
 
-fn systemctl_daemon_reload_effect() -> BashBoundOperationInvocation {
-  bash_bind_operation_invocation_elevated(
-    at: OperationRef {
-      path: live_deploy_systemctl_operation_path,
-      service: live_deploy_systemctl_operation_service,
-      operation: "DaemonReload",
-    },
-    bindings: [],
-  )
-}
-
-fn systemctl_enable_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
-  systemctl_unit_effect(operation: "Enable", unit: unit)
-}
-
-fn systemctl_restart_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
+fn systemctl_restart_effect(unit: NonEmptyStr) -> BashPlanEffect {
   systemctl_unit_effect(operation: "Restart", unit: unit)
 }
 
-// apt-get install IS elevated and dpkg -s is NOT, and the asymmetry is the two operations'
-// own: installing writes the package database, querying it reads. The former `privileged: Bool`
-// parameter made that a caller's choice at both leaves; here the read has no elevated form to pass.
-fn apt_install_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
-  bash_bind_operation_invocation_elevated(
-    at: OperationRef {
-      path: live_deploy_apt_operation_path,
-      service: live_deploy_apt_operation_service,
-      operation: "Install",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
-}
-
-fn apt_install_unelevated_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
-  bash_bind_operation_invocation(
-    at: OperationRef {
-      path: live_deploy_apt_operation_path,
-      service: live_deploy_apt_operation_service,
-      operation: "Install",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
-}
-
-fn dpkg_status_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
-  bash_bind_operation_invocation(
-    at: OperationRef {
-      path: live_deploy_dpkg_operation_path,
-      service: live_deploy_dpkg_operation_service,
-      operation: "Status",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
+// THE OBSERVED-SHA-256 ENV FILE IS A LEAF, NOT A COMMAND: the constructor names the file observed at
+// run time, the env variable and the destination, mode and owner it is installed with. Its lowering,
+// including the fail-closed shape check and the two typed failure causes, is the one arm of
+// effect_plan_bash_materialize (BashPlanEffect); there is no writer to call separately.
+fn observed_sha256_env_write_effect(
+  path: String,
+  dest: String,
+  env_name: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+) -> BashPlanEffect {
+  ObservedSha256EnvWriteEffect { write: ObservedSha256EnvWrite {
+    path: path,
+    dest: dest,
+    env_name: env_name,
+    mode: mode,
+    owner: owner,
+  } }
 }

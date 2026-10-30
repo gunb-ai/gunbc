@@ -1,0 +1,137 @@
+module gunbc.serving.flash_next_image_capability_observation
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+data image_capability_read_obligation: NonEmptyStr = "Re-read ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7: its build arch lists (b12x sm120/sm121; FlashInfer wheel sm120-only; vLLM compiled kernels sm_80/sm_90/sm_120a plus PTX sm_80/sm_90) and the quoted engine errors (PLE format 'nvfp4' requires the b12x execution backend; Qwen4Exp QSA requires a BF16 main KV cache). These are the operator's and a peer session's reports of that image, not a read by this repository; no H200 or B200 run has executed the Hopper or sm100 rows." as NonEmptyStr
+
+// WHAT ONE IMAGE DIGEST CAN DO ON ONE GPU ARCHITECTURE, as an observation of the image (DESIGN section 3:
+// the local-inference-lab build is an upstream, these are readings this repository makes of it, so they
+// sit here and not in extdeps.vllm.local_inference_lab_build). The architecture is the CUDA compute
+// capability major the catalog already carries (extdeps.gpu.types compute_capability), not a product name.
+type ImageGpuArch = Sm90 | Sm100 | Sm120
+
+type ImageCapability
+  = B12xKernels
+  | FlashInferNativeFp4Moe
+  | CsfCheckpointLoad
+  | Nvfp4PleTable
+  | Fp8MainKvCache
+  | MarlinW4A16Experts
+  | MarlinMxfp8Linear
+
+// BuiltIn: shipped for that arch. NotBuilt: absent, with the engine refusal or build fact that says so.
+// JitIfCompiles: reachable only if a runtime compile for that arch succeeds, with the path tried next;
+// a prediction that depends on it is conditional on the compile, and the receipt of that compile is the
+// frontier below.
+type CapabilityAvailability
+  = BuiltIn
+  | NotBuilt { evidence: NonEmptyStr }
+  | JitIfCompiles { fallback: ImageCapability }
+
+type ImageCapabilityObservation {
+  arch: ImageGpuArch
+  capability: ImageCapability
+  availability: CapabilityAvailability
+  standing: CitedFigureStanding
+}
+
+fn image_observation(arch: ImageGpuArch, capability: ImageCapability, availability: CapabilityAvailability) -> ImageCapabilityObservation {
+  ImageCapabilityObservation {
+    arch: arch,
+    capability: capability,
+    availability: availability,
+    standing: TranscribedUncited { read_obligation: image_capability_read_obligation },
+  }
+}
+
+data b12x_sm120_only: NonEmptyStr = "b12x kernels are built only for sm120/sm121; compiled vLLM kernels are sm_80/sm_90/sm_120a" as NonEmptyStr
+data flashinfer_sm120_only: NonEmptyStr = "the FlashInfer wheel in the image is sm120-only" as NonEmptyStr
+data csf_needs_b12x: NonEmptyStr = "the CSF checkpoint requires the b12x execution backend" as NonEmptyStr
+data ple_needs_b12x: NonEmptyStr = "vLLM: PLE format 'nvfp4' requires the b12x execution backend (the PLE table must be re-expressed as BF16 off sm120)" as NonEmptyStr
+data fp8_kv_needs_b12x: NonEmptyStr = "Qwen4Exp QSA requires a BF16 main KV cache off the b12x path; FP8 KV is b12x/sm120-only" as NonEmptyStr
+
+data flash_next_image_observations: List<ImageCapabilityObservation> = [
+  image_observation(arch: Sm120, capability: B12xKernels, availability: BuiltIn),
+  image_observation(arch: Sm120, capability: FlashInferNativeFp4Moe, availability: BuiltIn),
+  image_observation(arch: Sm120, capability: CsfCheckpointLoad, availability: BuiltIn),
+  image_observation(arch: Sm120, capability: Nvfp4PleTable, availability: BuiltIn),
+  image_observation(arch: Sm120, capability: Fp8MainKvCache, availability: BuiltIn),
+  image_observation(arch: Sm90, capability: B12xKernels, availability: NotBuilt { evidence: b12x_sm120_only }),
+  image_observation(arch: Sm90, capability: FlashInferNativeFp4Moe, availability: NotBuilt { evidence: flashinfer_sm120_only }),
+  image_observation(arch: Sm90, capability: CsfCheckpointLoad, availability: NotBuilt { evidence: csf_needs_b12x }),
+  image_observation(arch: Sm90, capability: Nvfp4PleTable, availability: NotBuilt { evidence: ple_needs_b12x }),
+  image_observation(arch: Sm90, capability: Fp8MainKvCache, availability: NotBuilt { evidence: fp8_kv_needs_b12x }),
+  image_observation(arch: Sm90, capability: MarlinW4A16Experts, availability: BuiltIn),
+  image_observation(arch: Sm90, capability: MarlinMxfp8Linear, availability: BuiltIn),
+  image_observation(arch: Sm100, capability: B12xKernels, availability: NotBuilt { evidence: b12x_sm120_only }),
+  image_observation(arch: Sm100, capability: FlashInferNativeFp4Moe, availability: JitIfCompiles { fallback: MarlinW4A16Experts }),
+  image_observation(arch: Sm100, capability: CsfCheckpointLoad, availability: NotBuilt { evidence: csf_needs_b12x }),
+  image_observation(arch: Sm100, capability: Nvfp4PleTable, availability: NotBuilt { evidence: ple_needs_b12x }),
+  image_observation(arch: Sm100, capability: Fp8MainKvCache, availability: NotBuilt { evidence: fp8_kv_needs_b12x }),
+  image_observation(arch: Sm100, capability: MarlinW4A16Experts, availability: BuiltIn),
+  image_observation(arch: Sm100, capability: MarlinMxfp8Linear, availability: BuiltIn),
+]
+
+fn image_arch_eq(a: ImageGpuArch, b: ImageGpuArch) -> Bool {
+  match a {
+    Sm90 => match b { Sm90 => true, Sm100 => false, Sm120 => false }
+    Sm100 => match b { Sm90 => false, Sm100 => true, Sm120 => false }
+    Sm120 => match b { Sm90 => false, Sm100 => false, Sm120 => true }
+  }
+}
+
+fn image_capability_eq(a: ImageCapability, b: ImageCapability) -> Bool {
+  match a {
+    B12xKernels => match b { B12xKernels => true, _ => false }
+    FlashInferNativeFp4Moe => match b { FlashInferNativeFp4Moe => true, _ => false }
+    CsfCheckpointLoad => match b { CsfCheckpointLoad => true, _ => false }
+    Nvfp4PleTable => match b { Nvfp4PleTable => true, _ => false }
+    Fp8MainKvCache => match b { Fp8MainKvCache => true, _ => false }
+    MarlinW4A16Experts => match b { MarlinW4A16Experts => true, _ => false }
+    MarlinMxfp8Linear => match b { MarlinMxfp8Linear => true, _ => false }
+  }
+}
+
+// ABSENT WHEN NOT OBSERVED, never defaulted to NotBuilt: a pair this repository has no row for is a
+// coverage obligation, not a negative. Two rows for one pair also refuse (absent), so the answer is
+// never an arbitrary pick.
+fn image_capability_availability(rows: List<ImageCapabilityObservation>, arch: ImageGpuArch, capability: ImageCapability) -> CapabilityAvailability? {
+  let hits = rows |> filter(r => image_arch_eq(a: r.arch, b: arch) && image_capability_eq(a: r.capability, b: capability))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.availability })
+  } else {
+    none
+  }
+}
+
+fn availability_is_built(a: CapabilityAvailability?) -> Bool {
+  match a {
+    Present { value: v } => match v { BuiltIn => true, NotBuilt { evidence: _ } => false, JitIfCompiles { fallback: _ } => false }
+    none => false
+  }
+}
+
+// THE MAIN-KV ELEMENT WIDTH THIS IMAGE ALLOWS ON AN ARCH: one byte (FP8) only where the image's FP8 main
+// KV is built, two bytes (BF16) otherwise. Absent when the pair is unobserved. This is the one fact that
+// moves KV bytes per token between the Max-Q and the other cards.
+// (review 84955 sweep: the element width is a byte quantity — bytes per element — so it rides ByteSize
+// and composes with RooflineCard.main_kv_element_bytes without a re-mint. Absent stays absent: a
+// JIT-decided width is not a reading.)
+fn image_main_kv_element_bytes(rows: List<ImageCapabilityObservation>, arch: ImageGpuArch) -> ByteSize? {
+  match image_capability_availability(rows: rows, arch: arch, capability: Fp8MainKvCache) {
+    Present { value: v } => match v {
+      BuiltIn => Present { value: byte_size(count: 1) }
+      NotBuilt { evidence: _ } => Present { value: byte_size(count: 2) }
+      JitIfCompiles { fallback: _ } => none
+    }
+    none => none
+  }
+}
+
+data flash_next_image_observation_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: flash_next_image_observations is consumed by gunbc.serving.flash_next_roofline through image_main_kv_element_bytes (BF16 vs FP8 KV per card) and by the prediction rows' path conditions. Declared frontier, trigger: a committed H200 or B200 launch log of this digest replaces the Sm90/Sm100 rows' TranscribedUncited standing, and the Sm100 FlashInferNativeFp4Moe JitIfCompiles row is resolved to BuiltIn or NotBuilt by the compile's outcome. Until then the B200 rows are a conditional, not a reading." as NonEmptyStr
+)

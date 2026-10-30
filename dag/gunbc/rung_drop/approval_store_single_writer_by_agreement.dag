@@ -1,7 +1,8 @@
 module gunbc.rung_drop.approval_store_single_writer_by_agreement
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
 
 // DECLARED 2026-09-19 beside the change that introduces the second writer, not at the stage that
@@ -36,18 +37,13 @@ data approval_store_single_writer_by_agreement: RungDrop = RungDrop {
 
   declared: "2026-09-19",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyImpossible,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged {
       replacement: "gunbc.auth.approval_writer_authority approval_write_admission, consulted by both mutating routes before any store effect; the terminal replacement is a POSIX-principal restriction on the store generations",
     },
-    population: [
-      "gunbc-roadmap.service and gunbc-approval-broker.service on srv1, for the window in which both run under the service principal with gunbc.auth.approval_decision_store approval_decision_store_root readable and both keyrings loadable",
-      "any gunbc serve process started by hand from a checkout whose revision predates gunbc.auth.approval_writer_authority, which reads no such declaration at all",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "gunbc-roadmap.service and gunbc-approval-broker.service on srv1, for the window in which both run under the service principal with gunbc.auth.approval_decision_store approval_decision_store_root readable and both keyrings loadable", tail: ["any gunbc serve process started by hand from a checkout whose revision predates gunbc.auth.approval_writer_authority, which reads no such declaration at all"] } },
     restoration_trigger: "THE CAPABILITY: the approval store's generations are writable by exactly ONE POSIX principal, and the other serving process's account cannot open them -- so a second writer is refused by the kernel rather than by agreement. SUFFICIENT FOR: attempting a store write as the non-writer principal and observing the OS refusal, with the broker principal alone holding the submission MAC key, the capability MAC key, the publisher token and the store, and the roadmap principal unable to read any of them. Nothing smaller retires this row. IN PARTICULAR, A PERMISSION-BITS READBACK DOES NOT: a receipt reporting owner, group, exact mode and forbidden bits establishes that only the declared principals HOLD permission, which is a statement about metadata and not about access. This trigger asks whether the non-writer CAN OPEN THE STORE, and only an attempt answers that: the execution-as-another-principal leg IS the evidence, and a metadata receipt is not a weaker form of it but a different observation. It is named here because it is the artifact that will exist and will therefore be reached for (raised by merry-bear-816 through zesty-crane-846, 2026-09-19, against the generalized custody work that produces exactly such a receipt). Nor does moving writer authority to the broker retire it -- that changes which process refuses, not whether the guarantee is by agreement; nor does deleting the roadmap's approval routes, because the roadmap process would still hold a principal that can open the store; nor does a claim over approval_write_admission, which establishes that the fold refuses and not that a process which skips the fold is stopped.",
-  }
+  } }
 }

@@ -3,10 +3,10 @@ module v2.lens.enforcement.receipts
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, contains }
+import std.algebra { Cons, Empty, contains, non_empty }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.node { Atom, ComputationNode, Edge, Loop, Authored, Node, Positional, TypeNode, LoopBoundEdge, core_edge_label }
+import v2.std.node { Atom, ComputationNode, Edge, Loop, Authored, Node, Positional, TypeNode, LoopBoundEdge, core_edge_label, NotADeclaration }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.decl_index { DeclFact, decl_facts_is_fn_like }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
@@ -14,6 +14,7 @@ import v2.lens.cost { SymbolicCost, cost_lens }
 import v2.lens.enforcement.vocab {
   SubjectRoster, ScopeRoster, scope_roster_covers,
   ConsumerKind, EnrolledInFloorRoster, PrePushHook, WitnessOnly, NoConsumer,
+  EnrollmentWitnessUnresolved,
   ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
   NarrowingReason, TypeReflectionUnavailable,
@@ -132,18 +133,58 @@ fn scope_satisfaction_for(
   }
 }
 
+// THE RESOLUTION, NOT THE STRING MATCH. A roster row is an ENROLLMENT only if the (entry, function)
+// it names resolves to a declaration in the closure census: some DeclFact whose rel_path is the
+// entry path and whose name is the function, declared as a function item -- a `fn` or a `test fn`
+// alike. The two become alike upstream of the census: v1_compiler_parse's `test_marked_item_result`
+// carries the marker onto the item without touching its `module_item_kind`, and
+// v1_compiler_infer_items's `item_kind` classifies from body and parameters alone, so it cannot
+// read the marker even if it wanted to. v1.compiler.compiler_tests_rust
+// `test_marker_selects_the_test_item_kind` holds that as its positive control. This is also why
+// claim_batch can resolve a `test fn` by name at all.
+// A row whose witness resolves to no
+// such declaration is refused EnrollmentWitnessUnresolved rather than counted EnrolledInFloorRoster:
+// the defect this closes (proved at ee97d81d) counted any string-equal row as live, so a witness
+// that does not exist turned the enforcement-consistency gate green.
+//
+// THE EMPTY FUNCTION IS NOT A MATCH. A row with check_fns: [] projects ScheduleWitnessEntry {
+// function: "" }, and no declaration is named "" -- the census has no such row -- so an empty
+// enrollment resolves to nothing and is refused here. That is the honest reading of case (a): the
+// executed probes (claim_batch --function "" -> exit 2 "does not declare requested function(s)";
+// gunbc run --function "" -> exit 1) show the empty name runs NOTHING on every route. It is NOT
+// modeled here as a whole-file enrollment, and it is not silently excused either; the stated
+// divergence and its trigger are on the change, per dag_absence_is_one_meaning.
+fn witness_decl_resolves(witness: ScheduleWitnessEntry, facts: List<DeclFact>) -> Bool {
+  non_empty(xs: filter(xs: facts, predicate: fn(fact) {
+    decl_facts_is_fn_like(kind: fact.kind)
+      && fact.rel_path == witness.entry
+      && fact.name == witness.function
+  }))
+}
+
 fn consumer_enrolled_for(
   binding: ConsumerWitnessBinding,
   ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
+  prepush_entries: List<ScheduleWitnessEntry>,
+  facts: List<DeclFact>
 ) -> ConsumerKind {
   match binding {
     NoConsumerWitness => NoConsumer
     BoundConsumerWitness { witness } =>
       if contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq) {
-        EnrolledInFloorRoster
+        // The string match says the row is in the roster; only the census says whether the
+        // witness it promises exists. Both must hold for an enrollment.
+        if witness_decl_resolves(witness: witness, facts: facts) {
+          EnrolledInFloorRoster
+        } else {
+          EnrollmentWitnessUnresolved
+        }
       } else if contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq) {
-        PrePushHook
+        if witness_decl_resolves(witness: witness, facts: facts) {
+          PrePushHook
+        } else {
+          EnrollmentWitnessUnresolved
+        }
       } else {
         WitnessOnly
       }
@@ -152,7 +193,7 @@ fn consumer_enrolled_for(
 
 fn lens_contract_is_unbound(c: LensContract) -> Bool {
   consumer_kind_eq(
-    a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: []),
+    a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: [], facts: []),
     b: NoConsumer
   )
 }
@@ -190,9 +231,9 @@ data enforcement_red_probe_extra_leaf: Node = Node {
 data cost_red_control_probe: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: enforcement_red_probe_body_leaf },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: enforcement_red_probe_measure_leaf },
-    Edge { label: Authored { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf }
+    Edge { label: Positional, target: enforcement_red_probe_body_leaf, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: enforcement_red_probe_measure_leaf, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -240,10 +281,15 @@ fn derive_receipt(
   prepush_entries: List<ScheduleWitnessEntry>
 ) -> EnrollmentDiscoveryReceipt {
   let discovered = discovered_subject_names(facts: facts)
+  // The SAME closure census that discovers subjects and judges scope decides the enrollment: a
+  // roster row counts only when the witness it names is a declaration in this census. One pool,
+  // one seam -- a parallel witness-existence index would be a second authority for one fact
+  // (DESIGN 3) and redundant with the derivation it shadows (DESIGN 2).
   let enrolled = consumer_enrolled_for(
     binding: contract.consumer_witness,
     ci_entries: ci_entries,
-    prepush_entries: prepush_entries
+    prepush_entries: prepush_entries,
+    facts: facts
   )
   EnrollmentDiscoveryReceipt {
     contract_id: contract.entry.lens_id,

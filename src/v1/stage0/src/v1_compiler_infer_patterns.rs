@@ -14,12 +14,10 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
-    lookup_type_by_name, lookup_type_for, symbol_index_lookup, TypeEnv,
+    lookup_type_by_name, lookup_type_for, substitute_type_slots, substitute_type_slots_scoped,
+    symbol_index_lookup, TypeEnv,
 };
-pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-    substitute_type_slots_scoped,
-};
+pub use crate::v1_compiler_infer_resolve::{is_user_generic_use_site, resolve_generic_use_decl};
 pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -85,6 +83,67 @@ pub fn generic_use_slot_bindings(
     }
 }
 
+pub fn instantiate_scrutinee_expansion(
+    use_site: Rc<Node>,
+    expanded: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let is_generic_coproduct_use = (((use_site.connective.clone()
+            == Connective::NoConnective)
+            && ((use_site.children.clone().len() as i64) > 0))
+            && (expanded.connective.clone() == Connective::Disj));
+        if is_generic_coproduct_use.clone() {
+            {
+                let decl = crate::v1_compiler_infer_resolve::resolve_generic_use_decl(
+                    env.clone(),
+                    use_site.clone(),
+                );
+                let decl_is_generic_coproduct = ((decl.connective.clone() == Connective::Disj)
+                    && ((decl.params.clone().len() as i64) > 0));
+                if decl_is_generic_coproduct.clone() {
+                    {
+                        let resolved_args = Rc::new({
+                            let mut __result = Vec::new();
+                            for arg in use_site.children.clone().iter().cloned() {
+                                __result.push(match arg.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: target, .. }) => {
+                                        if (((arg.children.clone().len() as i64) == 0)
+                                            && (arg.connective.clone() == Connective::NoConnective))
+                                        {
+                                            target.clone()
+                                        } else {
+                                            arg.clone()
+                                        }
+                                    }
+                                    _ => arg.clone(),
+                                });
+                            }
+                            __result
+                        });
+                        expand_scrut_from_decl(
+                            decl.clone(),
+                            crate::v1_compiler_infer_env::node_with_children(
+                                use_site.clone(),
+                                resolved_args,
+                            ),
+                            crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                decl.clone(),
+                            ),
+                            env.clone(),
+                        )
+                    }
+                } else {
+                    expanded
+                }
+            }
+        } else {
+            expanded
+        }
+    }
+}
+
 pub fn expand_scrut_from_decl(
     decl: Rc<Node>,
     scrut_node: Rc<Node>,
@@ -102,7 +161,7 @@ pub fn expand_scrut_from_decl(
             {
                 {
                     let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                    crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                    crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                         decl.clone(),
                         subst.clone(),
                         crate::v1_std_core::authored_name_at(
@@ -122,14 +181,14 @@ pub fn expand_scrut_from_decl(
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
                         let substituted =
-                            crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                            crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                                 target.clone(),
                                 subst.clone(),
-                                name.clone(),
+                                name,
                                 env.source_indices.clone(),
                                 true,
                             );
-                        expand_scrut_type_for_variant_lookup(substituted.clone(), env.clone())
+                        expand_scrut_type_for_variant_lookup(substituted, env.clone())
                     }
                     _ => scrut_node.clone(),
                 }
@@ -140,7 +199,7 @@ pub fn expand_scrut_from_decl(
                 {
                     {
                         let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                        crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                        crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                             decl.clone(),
                             subst.clone(),
                             crate::v1_std_core::authored_name_at(
@@ -204,9 +263,9 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                                         scrut_node.clone(),
                                                         env.clone(),
                                                     );
-                                                    let substituted = crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(target.clone(), subst.clone(), name.clone(), env.source_indices.clone(), true);
+                                                    let substituted = crate::v1_compiler_infer_env::substitute_type_slots_scoped(target.clone(), subst, name.clone(), env.source_indices.clone(), true);
                                                     expand_scrut_type_for_variant_lookup(
-                                                        substituted.clone(),
+                                                        substituted,
                                                         env.clone(),
                                                     )
                                                 }
@@ -233,29 +292,33 @@ pub fn expand_scrut_type_for_variant_lookup(
     mut __tco_loop_scrut_node: Rc<Node>,
     mut __tco_loop_env: Rc<TypeEnv>,
 ) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut scrut_node = __tco_loop_scrut_node;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        let name =
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
-        let is_disj = (scrut_node.connective.clone() == Connective::Disj);
-        let is_witness = is_witness_type_name(name.clone());
-        let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
-        if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
-            break scrut_node.clone();
-        } else {
-            match scrut_node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    let __tco_1 = env;
-                    __tco_loop_scrut_node = __tco_0;
-                    __tco_loop_env = __tco_1;
-                    continue;
-                }
-                _ => {
-                    break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut scrut_node = __tco_loop_scrut_node;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            let name = crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
+                scrut_node.clone(),
+            );
+            let is_disj = (scrut_node.connective.clone() == Connective::Disj);
+            let is_witness = is_witness_type_name(name);
+            let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+            if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
+                break scrut_node.clone();
+            } else {
+                match scrut_node.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let __tco_0 = target.clone();
+                        let __tco_1 = env;
+                        __tco_loop_scrut_node = __tco_0;
+                        __tco_loop_env = __tco_1;
+                        continue;
+                    }
+                    _ => {
+                        break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
+                    }
                 }
             }
         }
@@ -578,10 +641,10 @@ pub fn variant_not_found_result(
     node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
-            type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), scrut.clone()),
+            type_name: crate::v1_std_core::authored_name_at(source_indices, scrut),
             span: site.clone(),
         }),
-        module_name.clone(),
+        module_name,
     )]))
 }
 
@@ -805,7 +868,7 @@ pub fn lookup_field_in_variant(
         ) {
             Some(field_child) => {
                 let resolved = crate::v1_compiler_infer_types::child_type_node(field_child.clone());
-                node_lookup_resolved(resolved.clone())
+                node_lookup_resolved(resolved)
             }
             std::option::Option::None => {
                 node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
@@ -848,7 +911,7 @@ pub fn find_variant_child_keyed(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
-        let key = variant_pattern_coverage_key(variant_name.clone());
+        let key = variant_pattern_coverage_key(variant_name);
         let matches = Rc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
@@ -906,13 +969,13 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
         let resolved_raw = if has_structure.clone() {
             type_node.clone()
         } else {
-            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), type_node.clone()) {
+            match crate::v1_compiler_infer_env::lookup_type_for(env, type_node.clone()) {
                 Some(def) => def.clone(),
                 std::option::Option::None => type_node.clone(),
             }
         };
         if scrut_is_optional.clone() {
-            crate::v1_std_core::with_optional_cardinality(resolved_raw.clone())
+            crate::v1_std_core::with_optional_cardinality(resolved_raw)
         } else {
             resolved_raw.clone()
         }
@@ -921,7 +984,7 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
 
 pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<ConstructorRoster> {
     {
-        let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
+        let resolved = resolve_scrutinee_type(type_node, env.clone());
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
@@ -967,7 +1030,7 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
 }
 
 pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+    match crate::v1_compiler_infer_env::lookup_type_for(env, n.clone()) {
         Some(def) => def.clone(),
         std::option::Option::None => match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
@@ -1037,7 +1100,7 @@ pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         {
             false
         } else {
-            node_is_never_declaration(resolved.clone(), env.clone())
+            node_is_never_declaration(resolved.clone(), env)
         }
     }
 }
@@ -1052,10 +1115,10 @@ pub fn constructor_fields(
         let subject =
             pattern_subject_from_node(resolve_scrutinee_type(type_node.clone(), env.clone()));
         let lookup = lookup_variant_in_type(
-            subject.clone(),
-            ctor.clone(),
+            subject,
+            ctor,
             type_node.span.clone(),
-            module_name.clone(),
+            module_name,
             env.clone(),
             0,
         );
@@ -1088,7 +1151,7 @@ pub fn pattern_row_head(row: Rc<Vec<Rc<MatchPattern>>>) -> Rc<MatchPattern> {
 }
 
 pub fn pattern_row_is_irrefutable(row: Rc<Vec<Rc<MatchPattern>>>) -> bool {
-    crate::v1_std_core::match_pattern_is_irrefutable(pattern_row_head(row.clone()))
+    crate::v1_std_core::match_pattern_is_irrefutable(pattern_row_head(row))
 }
 
 pub fn pattern_matches_constructor(p: Rc<MatchPattern>, ctor: String) -> bool {
@@ -1157,7 +1220,7 @@ pub fn specialize_pattern_row(
                 rest.clone(),
             )])
         } else {
-            if pattern_matches_constructor(head.clone(), ctor.clone()) {
+            if pattern_matches_constructor(head.clone(), ctor) {
                 match (*head.clone()).clone() {
                     MatchPattern::VariantPattern {
                         field_bindings: fbs,

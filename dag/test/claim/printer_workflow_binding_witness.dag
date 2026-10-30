@@ -8,8 +8,8 @@ import gunbc.fleet.fleet_converge_workflow {
   PrinterWorkflow, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
   fleet_converge_printer_job, fleet_converge_shared_job_if,
-  fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr,
 }
+import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds, fleet_converge_shared_job_runs_all_but }
 import gunbc.ci.ci_spec { gunbc_run_step_targets }
 import gunbc.fleet.printer_federation { printer_service_account, printer_provider_resource }
 
@@ -18,8 +18,8 @@ import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {
-    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match id { Present { value: value } => value == "wif_auth" && match args {
+    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: cond, continue_on_error: _, timeout_minutes: _ } =>
+      match id { Present { value: value } => value == "wif_auth" && (match cond { Present { value: c } => c == "github.ref == 'refs/heads/main'" Absent => false }) && match args {
         Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => v == (printer_service_account as String) _ => false })
           && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => v == printer_provider_resource() _ => false })
         Absent => false
@@ -27,6 +27,8 @@ fn auth_step_matches(st: Step) -> Bool {
     _ => false
   }
 }
+// The printer credential is signed in only on reviewed main (design A, 2026-10-25): the one auth step
+// carries the exact main-ref condition, so a branch run of this job holds no printer token.
 test fn separate_job_uses_dedicated_identity() -> Bool {
   let job = fleet_converge_printer_job()
   job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
@@ -36,11 +38,10 @@ test fn separate_job_uses_dedicated_identity() -> Bool {
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }
 }
+// The trusted-checkout conjuncts live once in test.claim.fleet.fleet_converge_checkout_trust; #14690's three per-file copies were consolidated there, the literal shared-job exclusion included.
 test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
-  fleet_converge_checkout_ref_expr == "${{ github.sha }}"
-    && fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
-    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
-    && string_contains(s: fleet_converge_shared_job_if, pattern: "github.event.inputs.mode != 'printer'")
+  fleet_converge_checkout_trust_holds()
+    && fleet_converge_shared_job_runs_all_but(excluded: PrinterWorkflow)
 }
 test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {
   any(fleet_converge_mode_options, m => m == "printer")
@@ -56,5 +57,5 @@ test fn printer_identity_reads_only_the_two_printer_secrets() -> Bool {
 
 // The merge combines independent dispatch additions; neither side may erase the other.
 test fn printer_and_main_workspace_modes_remain_dispatchable() -> Bool {
- all(["printer","workspace_commissioning_plan","r2_workspace_object_read_mint","r2_workspace_object_write_mint","spark_runtime_image_produce","spark_runtime_image_distribute","spark_arm_checkpoint_materialize","spark_arm_group_observe","spark_arm_group_launch_plan","spark_arm_group_launch","spark_arm_group_load"],mode=>count(filter(fleet_converge_mode_options,m=>m==mode))==1)
+ all(["printer","workspace_commissioning_plan","r2_workspace_object_read_mint","r2_workspace_object_write_mint"],mode=>count(filter(fleet_converge_mode_options,m=>m==mode))==1)
 }

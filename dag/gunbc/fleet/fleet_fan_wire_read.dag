@@ -1,0 +1,214 @@
+module gunbc.fleet.fleet_fan_wire_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { percent }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacManagerDisabledAdmitted,
+  MegaRacManagerDisabledRefused,
+  megarac_manager_disabled_of_wire,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonValue,
+  parse_json_document,
+}
+import gunbc.machine_intake.megarac_media_attach { images_array_elements, json_number_member }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
+import product.fleet_fan_policy { FirmwareAutomatic, HeldAtDutyFloor }
+import gunbc.fleet.fleet_fan_converge { FleetFanControlObserved, FleetFanControlUnobservable, FleetFanReading }
+
+// THE MEGARAC PURE DECODER OF THE FLEET FAN FOLD: the two SUPPLIED GET bodies (get_manager_status
+// and get_fan_info, extdeps.bmc.megarac megarac_op_fan_get_manager_status / megarac_op_fan_get_fan_info)
+// to a FleetFanReading. It is NOT a mint: nothing here constructs a FleetFanObserved, because a
+// caller-supplied string has no standing as a BMC read. The mint belongs to the future reader that
+// consumes the operations' actual observations (fleet_fan_wire_read_adapter_frontier), which calls
+// this decoder over the bytes it received.
+//
+// EACH READ IS FRAMED SEPARATELY: a per-operation hash of exactly the bytes the reading was derived
+// from on the path that read them (get_fan_info is hashed only in manual mode), and a missing response (no response at all) is distinct from an empty body.
+//
+// manager_disabled 0 is FirmwareAutomatic. manager_disabled 1 is HeldAtDutyFloor at the duty EVERY
+// fan_info row reports; rows that disagree, an empty list, a row with no integer fan_pwm, a wire
+// other than 0 or 1, or an unparseable document is FleetFanControlUnobservable with its cause. The
+// disagreement arm is deliberate: megarac_fan_policy documents that a fan_info row is not a rotor
+// (an absent header still lists at pwm 0), so a mixed list cannot be read as one duty without the
+// SDR join, and an unreadable standing restores automatic rather than being believed.
+
+// NONEMPTINESS IS CONSTRUCTED: an empty row list has no FreeSemigroup, so the caller reads the lead
+// duty from the head and has no empty arm.
+fn megarac_fan_pwm_rows(fan_info_body: String) -> FreeSemigroup<Int>? {
+  match parse_json_document(s: fan_info_body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Absent => none
+        Present { value: rows } => {
+          let pwms = rows |> flat_map(r => match json_number_member(doc: r, key: "fan_pwm") {
+            Present { value: w } => match parse_int(s: w) { Present { value: n } => [n]  Absent => [] }
+            Absent => []
+          })
+          if (pwms |> count) < (rows |> count) {
+            none
+          } else {
+            match pwms {
+              Empty => none
+              Cons { head: h, tail: t } => Present { value: FreeSemigroup { head: h, tail: t } }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn megarac_manager_wire(manager_body: String) -> Int? {
+  match parse_json_document(s: manager_body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match json_number_member(doc: v, key: "manager_disabled") {
+        Absent => none
+        Present { value: w } => parse_int(s: w)
+      }
+  }
+}
+
+// THE ONE DECISION ABOUT THE MANAGER WIRE, made once per body: both the reading and the decode's
+// choice of whether get_fan_info is consulted derive from this value.
+type MegaRacManagerRead
+  = ManagerWireUnreadable
+  | ManagerWireRefused
+  | ManagerAutomatic
+  | ManagerManual
+
+fn megarac_manager_read(manager_body: String) -> MegaRacManagerRead {
+  match megarac_manager_wire(manager_body: manager_body) {
+    Absent => ManagerWireUnreadable
+    Present { value: wire } =>
+      match megarac_manager_disabled_of_wire(manager_disabled: wire) {
+        MegaRacManagerDisabledRefused { wire: _ } => ManagerWireRefused
+        MegaRacManagerDisabledAdmitted { standing: CoolingManagerAutomatic } => ManagerAutomatic
+        MegaRacManagerDisabledAdmitted { standing: CoolingManagerDisabledManual } => ManagerManual
+      }
+  }
+}
+
+fn megarac_manual_duty_reading(fan_info_body: String) -> FleetFanReading {
+  match megarac_fan_pwm_rows(fan_info_body: fan_info_body) {
+    Absent => FleetFanControlUnobservable { cause: "get_fan_info is not a nonempty list of rows with integer fan_pwm" as NonEmptyStr }
+    Present { value: pwms } => {
+      let lead = pwms.head
+      if (non_empty_to_list(xs: pwms) |> filter(p => p != lead) |> count) > 0 {
+        FleetFanControlUnobservable { cause: "manual mode but fan_info rows report different fan_pwm" as NonEmptyStr }
+      } else {
+        match checked_int_to_nat(n: lead) {
+          Absent => FleetFanControlUnobservable { cause: "fan_pwm is negative" as NonEmptyStr }
+          Present { value: n } =>
+            if lead > 100 {
+              FleetFanControlUnobservable { cause: "fan_pwm exceeds 100, the percentage the UI labels it as (megarac_fan_policy contract_note)" as NonEmptyStr }
+            } else {
+              FleetFanControlObserved { control: HeldAtDutyFloor { floor: percent(n) } }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn megarac_reading_of_manager_read(read: MegaRacManagerRead, fan_info_body: String) -> FleetFanReading {
+  match read {
+    ManagerWireUnreadable => FleetFanControlUnobservable { cause: "get_manager_status has no integer manager_disabled" as NonEmptyStr }
+    ManagerWireRefused => FleetFanControlUnobservable { cause: "manager_disabled is neither 0 nor 1" as NonEmptyStr }
+    ManagerAutomatic => FleetFanControlObserved { control: FirmwareAutomatic }
+    ManagerManual => megarac_manual_duty_reading(fan_info_body: fan_info_body)
+  }
+}
+
+fn fleet_fan_reading_of_megarac_wire(manager_body: String, fan_info_body: String) -> FleetFanReading {
+  megarac_reading_of_manager_read(read: megarac_manager_read(manager_body: manager_body), fan_info_body: fan_info_body)
+}
+
+// The *_body_hash fields hash SUPPLIED NONEMPTY body text only. They are not transport or operation
+// receipts: nothing here says the text came from a BMC read.
+type MegaRacFanDecode
+  = MegaRacFanDecoded { manager_body_hash: ContentHash?, fan_info_body_hash: ContentHash?, reading: FleetFanReading }
+  | MegaRacFanWrongFamily { family: BmcFirmwareFamily }
+
+fn supplied_body_hash(response: String?) -> ContentHash? {
+  match response {
+    Absent => none
+    Present { value: b } => if b == "" { none } else { Present { value: content_hash_of_value(value: b as NonEmptyStr) } }
+  }
+}
+
+fn response_text(response: String?) -> String {
+  match response {
+    Absent => ""
+    Present { value: b } => b
+  }
+}
+
+// Absent is no response; "" is a response with an empty body. Both are unobservable, with different causes.
+fn response_gap(response: String?, operation: String) -> NonEmptyStr? {
+  match response {
+    Absent => Present { value: concat(operation, " returned no response") as NonEmptyStr }
+    Present { value: b } => if b == "" { Present { value: concat(operation, " returned an empty body") as NonEmptyStr } } else { none }
+  }
+}
+
+// The manager wire is decoded once. get_fan_info is consulted, and hashed, only on the manual
+// path that reads it; every other path carries no fan_info hash.
+fn megarac_decode_responses(manager_response: String?, fan_info_response: String?) -> MegaRacFanDecode {
+  let manager_body_hash = supplied_body_hash(response: manager_response)
+  match response_gap(response: manager_response, operation: "get_manager_status") {
+    Present { value: cause } =>
+      MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: FleetFanControlUnobservable { cause: cause } }
+    Absent => {
+      let read = megarac_manager_read(manager_body: response_text(response: manager_response))
+      let fan_info_text = response_text(response: fan_info_response)
+      match read {
+        ManagerManual =>
+          match response_gap(response: fan_info_response, operation: "get_fan_info") {
+            Present { value: cause } =>
+              MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: FleetFanControlUnobservable { cause: cause } }
+            Absent =>
+              MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: supplied_body_hash(response: fan_info_response), reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+          }
+        ManagerWireUnreadable =>
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+        ManagerWireRefused =>
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+        ManagerAutomatic =>
+          MegaRacFanDecoded { manager_body_hash: manager_body_hash, fan_info_body_hash: none, reading: megarac_reading_of_manager_read(read: read, fan_info_body: fan_info_text) }
+      }
+    }
+  }
+}
+
+// The family gate: the decoder reads MegaRAC bodies only, so a subject of any other family is a typed
+// refusal before a reading exists (callers pass fleet_fan_family_of the admitted subject).
+fn megarac_fan_decode(family: BmcFirmwareFamily, manager_response: String?, fan_info_response: String?) -> MegaRacFanDecode {
+  match family {
+    AmiMegaRac => megarac_decode_responses(manager_response: manager_response, fan_info_response: fan_info_response)
+    OpenBmc => MegaRacFanWrongFamily { family: family }
+    SupermicroAten => MegaRacFanWrongFamily { family: family }
+  }
+}
+
+// PAIRING OBLIGATION, PENDING: the decoder's bodies in its claims are hand-written. The inhabitance
+// claim is an EXECUTING witness that passes the real read-only capture of mtcollins1's
+// get_manager_status and get_fan_info (dated, with the BMC firmware version) through megarac_fan_decode;
+// it is declared in test.claim.fleet_fan_wire_capture_witness. Until that claim exists the frontier is
+// PENDING, not discharged; the hand fixtures reproduce the field values recorded in
+// gunbc.machine_intake.megarac_fan_mode_observation (2026-10-14: manager_disabled 0 then 1; fan_pwm
+// 0 on fans 1-4 and 20 on fans 5-6).
+data fleet_fan_wire_capture_ref: DeclarationRef = decl_ref(module_path: "test.claim.fleet_fan_wire_capture_witness", decl_name: "witness_real_capture_decodes_through_the_decoder")
+
+data fleet_fan_wire_capture_frontier: DissolutionCondition = bound_dissolution(ref: fleet_fan_wire_capture_ref)

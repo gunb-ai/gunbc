@@ -1,0 +1,127 @@
+module v2.test.claim.emit.semantic_decl_imports
+
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
+import extdeps.languages.rust.emit { rust_struct_derives }
+import v2.extdeps.languages.c { c_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS emit_semantic_type_decl WITH IMPORTS over each target's import-projection row. Goldens are the
+// exact text, so an import printed after the declaration, dropped, or printed under an unwired target reds here.
+
+data swift_import_golden: String = "import Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
+
+data rust_import_golden: String = concat("use serde;\n", concat(rust_struct_derives, "\nstruct Point { x: i32 }"))
+
+fn sdi_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn sdi_point_record(type_name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ binder_edge(name: ^x, type_node: sdi_atom_type(name: type_name)) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdi_text(imports: List<Symbol>, type_name: Symbol, target: TargetModel) -> Outcome<String> {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: type_name), target: target, realization_host: target) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn sdi_equals(o: Outcome<String>, golden: String) -> Bool {
+  match o {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn swift_import_prints_before_the_declaration() -> Bool {
+  sdi_equals(o: sdi_text(imports: [^Foundation], type_name: ^dag_binding_type_int, target: swift_target_model()), golden: swift_import_golden)
+}
+
+test fn rust_use_prints_before_the_declaration() -> Bool {
+  sdi_equals(o: sdi_text(imports: [^serde], type_name: ^dag_binding_type_int, target: rust_semantic_decl_target_model_staging()), golden: rust_import_golden)
+}
+
+test fn two_imports_print_in_order() -> Bool {
+  sdi_equals(
+    o: sdi_text(imports: [^Foundation, ^CryptoKit], type_name: ^dag_binding_type_int, target: swift_target_model()),
+    golden: "import Foundation\nimport CryptoKit\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
+  )
+}
+
+test fn c_with_an_import_refuses_unwired() -> Bool {
+  match sdi_text(imports: [^stdio], type_name: ^Int, target: c_target_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_without_imports_still_emits() -> Bool {
+  sdi_equals(o: sdi_text(imports: [], type_name: ^Int, target: c_target_model()), golden: "typedef struct { int x; } Point;")
+}
+
+// THE HEADER LEADS THE IMPORTS AND ADDS BYTES ONLY: the declaration node is the same value with and without the
+// header (a header is an emit input, not a node field), so its hash, occurrence ids and graph cannot move; the
+// control is that the headed text is exactly the header lines followed by the unheaded text.
+fn sdi_headed(header: List<String>, imports: List<Symbol>, target: TargetModel) -> Outcome<String> {
+  match emit_semantic_type_decl(header: header, documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: ^dag_binding_type_int), target: target, realization_host: target) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+test fn swift_header_leads_the_imports() -> Bool {
+  sdi_equals(
+    o: sdi_headed(header: ["Generated from gunbc.auth.approval_device_wire.", "Do not edit."], imports: [^Foundation], target: swift_target_model()),
+    golden: "// Generated from gunbc.auth.approval_device_wire.\n// Do not edit.\nimport Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
+  )
+}
+
+test fn rust_header_adds_bytes_only() -> Bool {
+  match sdi_headed(header: ["Generated."], imports: [], target: rust_semantic_decl_target_model_staging()) {
+    Accepted { value: with_header, diagnostics: _ } =>
+      match sdi_headed(header: [], imports: [], target: rust_semantic_decl_target_model_staging()) {
+        Accepted { value: bare, diagnostics: _ } => with_header == concat("// Generated.\n", bare)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_with_a_header_refuses_unwired() -> Bool {
+  match sdi_headed(header: ["Generated."], imports: [], target: c_target_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// RED: a header line carrying a line break would end the comment and print the rest as code.
+fn sdi_header_refused(header: List<String>, target: TargetModel) -> Bool {
+  match sdi_headed(header: header, imports: [], target: target) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_line_break
+  }
+}
+
+test fn a_header_line_with_a_newline_refuses_for_rust() -> Bool {
+  sdi_header_refused(header: ["Generated.\nfn evil() {}"], target: rust_semantic_decl_target_model_staging())
+}
+
+test fn a_header_line_with_a_carriage_return_refuses_for_swift() -> Bool {
+  sdi_header_refused(header: ["Generated.\rlet evil = 1"], target: swift_target_model())
+}

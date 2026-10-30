@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data unapplied_generic_accumulator_types_element_as_container: RecurringFailureMode = RecurringFailureMode {
   identity: "unapplied_generic_accumulator_types_element_as_container" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: a value of a generic container reaches an algebra receiver typed as the container's UNAPPLIED declaration -- the `FreeMonoid` expansion (a Disj whose children are its variants, still carrying params [T]) -- although the element type is fixed by authored facts at that site. v1.compiler.infer_types algebra_child_or_placeholder then reads the argument positionally off the expansion, and for a coproduct the position holds a variant, so the ELEMENT IS TYPED AS THE CONTAINER. The advisory AlgebraApplicationEvidenceUnavailable is raised, but the mistyped element flows on.",

@@ -1,0 +1,10 @@
+module gunbc.machine_intake.supermicro_h11ssl_unit_identity
+
+import extdeps.network.mac { Eui48Address, mac_address }
+
+// THE ONE PLACE EACH H11SSL UNIT'S BMC MAC IS WRITTEN. Our two units are keyed by their BMC's MAC
+// (read off the BMC LAN interface), and every receipt about a unit names it through these rows. They
+// live apart from the receipts so the first-contact receipt, the release observations and the unit
+// observations can all read them without an import cycle.
+data supermicro_h11ssl_unit1_bmc_mac: Eui48Address = mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123)
+data supermicro_h11ssl_unit2_bmc_mac: Eui48Address = mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 34)

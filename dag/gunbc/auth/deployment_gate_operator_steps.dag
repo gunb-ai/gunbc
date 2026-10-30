@@ -1,0 +1,641 @@
+module gunbc.auth.deployment_gate_operator_steps
+
+// The OPERATOR'S OWN ACTS for moving the srv1 deployment gate from the GitHub "Review deployments"
+// click onto the existing ntfy tap, modelled as std.human_intervention rows rather than as prose
+// in a runbook. The plan that argues for them is gunbc.plans.ntfy_deployment_gate_approval; this
+// file carries their burden, so that the human cost of this design is countable next to the other
+// human burdens in the provisioning fleet (DESIGN §2: an alternative that quietly keeps a human
+// step is not cheaper, it is uncounted).
+//
+// WHY EVERY ROW HERE IS AN OPERATOR ACT AND NOT AN AUTOMATION. GitHub's own UI is the only place
+// that can create a GitHub App's client ID and private key, install the App on an organization, and
+// tick a custom deployment protection rule onto a protected environment. The agent does not touch
+// GitHub environment settings at all in this design; that is a hard constraint of the work item,
+// not a convenience.
+//
+// WHY NO ROW MAY BE DISCHARGED BY EDITING A FLAG BESIDE IT (DESIGN §5). Each row states the
+// observation that shows the act happened, and the two rows that could silently open the srv1
+// boundary — enabling the rule and removing the human reviewer — state their observation as a
+// READ BACK FROM GITHUB, not as a checkbox. In particular the removal row must not be dischargeable
+// before the enablement row's approve-AND-reject witness exists: the ordering is the thing that
+// keeps the gate shut at every instant.
+//
+// WHY THIS FILE CARRIES NO TESTS. No module under dag/gunbc/auth does, and it is not an accident: a
+// production module that ships fixtures ships values someone can mistake for observations, and a
+// guarded act built from a fixture is the prose guard it replaced wearing a type. Every witness for
+// these rows, and every fixture they mutate, lives in
+// test.claim.deployment_gate_operator_steps_witness. What stays here is the rows and the folds
+// that decide them.
+
+import std.types {
+  String,
+  List,
+  Bool,
+  NonEmptyStr,
+  Timestamp,
+}
+
+import std.optional {
+  Present,
+  Absent,
+  Optional,
+  optional_present,
+  optional_absent,
+}
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionFrequency,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+  human_intervention_frequency_eq,
+}
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.github.app { GitHubAppPermission }
+import gunbc.auth.deployment_gate_authorization {
+  gate_app_permissions,
+  ReviewerRemovalAdmission,
+  RemovalAdmitted,
+  RemovalRefused,
+  RemovalRefusalReason,
+  DeploymentGateTrialEvidence,
+  DeploymentGateBoundary,
+  srv1_deployment_gate_boundary,
+  boundary_repository_label,
+  // THE ONE SUBJECT COMPARISON (round-7 blocker 4). The act's boundary arm now routes through these
+  // instead of three site-local `!=`s and the deleted boundary_mismatch report: subject_of_the_boundary
+  // turns each DeploymentGateBoundary into the shared GateSubject, and subject_comparison answers once.
+  // The refusal arms (SubjectsDiffer/OwnerDiffers/...) are constructor PATTERNS and need no import.
+  subject_of_the_boundary,
+  subject_comparison,
+  standing_max_age,
+  standing_is_within_age_bound,
+  reviewer_removal_admission,
+  // THE CURRENT READ THE ACT CONSUMES (blocker 3). The refusal arms below are matched as constructor
+  // patterns of the scrutinee's sum and need no import; these two are named in TYPE position, so they do.
+  RemovalBoundaryStandingObservation,
+  CurrentRemovalBoundaryStanding,
+  // THE SEALED INSTANT (round-4 ruling). Named in TYPE position by the act's `now` parameter, so it is
+  // imported rather than merely referenced.
+  ObservedInstant,
+  StandingRefused,
+  OwnershipWasNotEstablished,
+  OwnershipRefusalReason,
+  ReadbackCarriedNoRules,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_environment_name,
+  GitHubEnvironmentProtectionSettings,
+  environment_protection_requires_reviewers,
+  environment_protection_restricts_to_main,
+}
+
+// The repository the App is installed on — DERIVED from the sealed boundary, never re-spelled. The
+// boundary carries gunbc.repository.gunbc_repository, the ONE typed row this project owns for the
+// repository fact (§3: each fact lives in exactly one place), and boundary_repository_label assembles
+// owner + name the way the receipts and the REST route already carry it. The prior row was a sixth
+// spelling of one entity wearing a no-drift comment: the review (artifact 84186) caught that the
+// comment described the drift it was creating.
+data deployment_gate_repository: NonEmptyStr = boundary_repository_label(boundary: srv1_deployment_gate_boundary)
+
+// THE OWNER HALF OF THE BOUNDARY, read from the same sealed row. Needed because the App
+// registration instruction must name WHO owns the App, and "gunb-ai" as a literal there was another
+// spelling of the boundary's owner (§3). Field access at a row initializer follows
+// gunbc.runner.runner_lifecycle's runner_lifecycle_ci_org.
+data deployment_gate_owner: NonEmptyStr = srv1_deployment_gate_boundary.repository.owner
+
+// The environment whose gate moves. Reused from the row that already owns the srv1 boundary rather
+// than re-spelled as a literal, so a rename there cannot leave these rows pointing at nothing.
+data deployment_gate_environment: NonEmptyStr = srv1_production_environment_name
+
+// THE PERMISSIONS THE OPERATOR MUST GRANT. Not a description of them: the same typed rows the
+// model says the review call needs, so the instruction, the activation check and the refusal red all
+// read one authority (§3). Verbatim upstream: Actions Read-only, Deployments Read and write. Contents
+// is NOT on that list; an App granted Contents:write here holds something the upstream never asked
+// for, on the identity that releases srv1 root mutation.
+data deployment_gate_app_permissions: List<GitHubAppPermission> = gate_app_permissions
+
+// ---------------------------------------------------------------------------
+// The five operator acts
+// ---------------------------------------------------------------------------
+
+// 1. Register the App. Its private key is the credential that, once a human has tapped, releases
+// srv1 root mutation; its custody is part of the instruction because a key pasted into a workflow
+// secret is a different (and rejected) design.
+data app_registration_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.app.register" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: concat(deployment_gate_repository, " custom deployment protection rule App registration") as NonEmptyStr,
+  instruction: concat("In the GitHub Apps UI, create one new GitHub App owned by ", concat(deployment_gate_owner, " for the sole purpose of answering a custom deployment protection rule. Set repository permissions to exactly Actions: Read-only and Deployments: Read and write and nothing else, and subscribe to the deployment_protection_rule event. Generate and hand its private key to the broker's host-custody path (the same path as the broker's other secrets), never to a workflow secret. Record the App's numeric app id.")) as NonEmptyStr,
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 2. Install it on the one repository. The installation id is what the review call's token is
+// minted against, so an install on the wrong repository would make every review a 404 — a silent
+// failure mode worth naming in the instruction.
+data app_installation_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.app.install" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: concat("App installation on ", deployment_gate_repository) as NonEmptyStr,
+  instruction: "Install the App on exactly the repository named by deployment_gate_repository, with no repository-access widening. Confirm the installation returns an installation id the broker can mint an installation access token against, and that minting it succeeds for that repository.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 3. Configure the webhook URL and enable the webhook. This design does NOT depend on GitHub
+// reaching the broker — discovery is the run's own request plus the broker's outbound poll — so
+// this row exists because GitHub requires a webhook URL for the rule to be publishable at all, and
+// the instruction says so rather than implying the broker listens.
+data webhook_configuration_step: HumanIntervention = HumanIntervention {
+  identity: "github.deployment-rule.webhook.configure" as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: "App webhook configuration",
+  instruction: "Set the App's webhook URL to a DISABLED endpoint (no receiver) and leave the signing secret recorded but unused. The selected route reads NOTHING from a delivery: discovery is an earlier ungated job in the run filing the approval request, and the broker answers GitHub outbound with an installation token. WHAT THAT IMPLIES is stated in the model as an open standing rather than assumed — extdeps.github.deployment_protection_rule.rule_delivery_independence carries the inference that GitHub accepts the App's review without having delivered the webhook, with the read obligation that settles it. If that trial comes back refused, THIS ROW CHANGES: it becomes a real (tailnet-relayed) receiver and the fallback route is selected. The broker is reachable only on the tailnet (ntfy on srv1 behind tailscale serve), so a fallback receiver must be tailnet-relayed and NOT a public listener; do NOT open any inbound path to the tailnet-only approval broker to satisfy this row; a public GitHub exposure of the broker is a rejected alternative.",
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 4. Enable the rule on srv1-production. Witnessed by a read back from GitHub, and the branch
+// policy must still read as one main-only rule afterwards: enabling a rule must not have taken the
+// branch boundary with it.
+data rule_enablement_step: HumanIntervention = HumanIntervention {
+  identity: concat("github.deployment-rule.enable.", deployment_gate_environment) as HumanInterventionIdentity,
+  frequency: FleetOnce,
+  subject: concat("custom deployment protection rule enabled on ", concat(deployment_gate_environment, concat(" of ", deployment_gate_repository))) as NonEmptyStr,
+  instruction: concat("On the environment named by deployment_gate_environment, enable the App's custom deployment protection rule. Then read the environment back: GET /repos/", concat(deployment_gate_repository, concat("/environments/", concat(deployment_gate_environment, " must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main, and the required_reviewers rule must still be present at this stage. Do not remove any reviewer in this step.")))) as NonEmptyStr,
+  completion_evidence: NoDischargeSiteModeled
+}
+
+// 5. Remove the human required-reviewer -- the only row here that WEAKENS a gate, and the only one
+// that is not a plain row.
+//
+// WHY THIS ONE IS NOT A `data` ROW ANY MORE (side chat, blocker 3). It used to be
+// `data reviewer_removal_step: HumanIntervention = HumanIntervention { ... }`, exported, sitting in
+// `deployment_gate_operator_steps.reviewer_removal`. Any consumer could read the act -- the thing an
+// operator performs in the GitHub UI to take srv1's human reviewer out -- without ever calling
+// reviewer_removal_act_for. The `DischargedAt` annotation named the mint that ought to have run; naming
+// it confined nothing (§4b rung honesty: an annotation establishes nothing). A guard that lives beside
+// the act as prose is a guard that can be walked past, and this design has already been caught doing
+// that twice.
+//
+// NOW: the four acts that only TELL the operator to do something safe are ordinary rows, because nothing
+// is gained by sealing an instruction. The act that WEAKENS a boundary is constructed inside the
+// admitted branch of reviewer_removal_act_for, by a helper this module confines to that one caller. A
+// foreign module cannot obtain the removal HumanIntervention except by reading it out of
+// ReviewerRemovalReady, and Ready is reachable only from a RemovalAdmitted admission, which only
+// gunbc.auth.deployment_gate_authorization's sealed mint produces.
+//
+// THE ACT NAMES THE BOUNDARY IT CHANGES, in all three of its reader-facing fields. Before this, `subject`
+// and `instruction` said "srv1-production" as a literal while the admission carried an environment
+// string that was never compared to anything -- so the act a consumer read could describe a boundary
+// that the evidence behind it had nothing to do with. Identity, subject and instruction are now assembled
+// FROM the boundary the pair was admitted against, which is the same value the sealed evidence carries.
+// THE ADMITTED ACT, AS A SEALED RECORD. Why a record and not the sum's own fields (side chat, blocker 1):
+// `ReviewerRemovalReady { intervention: HumanIntervention, evidence: DeploymentGateTrialEvidence }` made
+// the ready decision CONSTRUCTIBLE BY ANYONE WHO COULD SEE IT. Sealing a SUM confines nothing - that is a
+// corpus fact this repository established for itself
+// (test.claim.sole_constructor_completeness_audit_probe, f13_variant_construction_refuses) - so even
+// marking the variant would have left `ReviewerRemovalReady { intervention: <whatever I want>, evidence: e }`
+// writable in any module holding a genuine pair. That is the bypass the side chat named: the boundary
+// comparison in reviewer_removal_act_for and the assembly of the act's words would both have been skipped,
+// not merely disfavoured, and with blocker 2's open proxies the whole chain was reachable end to end.
+//
+// A sealed RECORD with one mint is what confines: the constructor is refused for a foreign module, and the
+// only mint is reviewer_removal_act_for, below, after every check has passed and with the boundary it
+// compared stored INSIDE the value. An act that exists has been through the checks, by construction rather
+// than by convention.
+type AdmittedReviewerRemovalAct sole_constructor {
+  intervention: HumanIntervention,
+  evidence: DeploymentGateTrialEvidence,
+  // THE SUBJECT THE CHECKS WERE RUN AGAINST, carried out of the checks instead of re-spelled by a
+  // consumer. The act IS the record of a completed check, so it attests what was checked.
+  boundary: DeploymentGateBoundary,
+  // THE STANDING THAT AUTHORIZED IT (side chat round 4, blocker 2). Carrying the standing rather than
+  // merely consuming it is what makes a handed-over act auditable: the act says not only which pair was
+  // witnessed and which boundary was checked, but which CURRENT read was current at the time, for which
+  // attempt, and at what instant. Without it, an act on disk is indistinguishable from one that had never
+  // had a fresh read at all.
+  standing: CurrentRemovalBoundaryStanding,
+}
+
+type ReviewerRemovalStepDecision
+  = ReviewerRemovalReady { admitted: AdmittedReviewerRemovalAct }
+  | ReviewerRemovalBlocked { missing: RemovalRefusalReason }
+
+// THE READY ARM IS READ AS `admitted`, and the sealed record's fields are read directly -- sealing
+// confines CONSTRUCTION, not reading, which is the same split the sealed ObservedRuleOwnership already
+// relies on. Deliberately NO accessor trio (intervention()/evidence()/boundary()): a declaration whose
+// only reader is a witness is dangling (§3c), and field reads need no help.
+
+fn reviewer_removal_act_identity(boundary: DeploymentGateBoundary) -> HumanInterventionIdentity {
+  // ONE CAST PER LINE, in `let`s. The chained form `(<expr>\n as NonEmptyStr) as HumanInterventionIdentity`
+  // was measured to fail the parser ("expected RParen, found Ident") when the cast wrapped onto the next
+  // line: the dialect does not continue a parenthesised expression across a line break before `as`.
+  // THE IDENTITY NAMES THE WHOLE SUBJECT, not just its environment half. It used to be
+  // "...reviewer-removal." ++ environment, which is unique per environment NAME -- and environments are
+  // per-repository objects, so this repository's srv1-production and a fork's srv1-production would have
+  // been the SAME intervention identity in whatever ledger keys on it. Two acts that must be separately
+  // discharged cannot share an identity.
+  let repo_text = boundary_repository_label(boundary: boundary) as String
+  let env_text = boundary.environment_name as String
+  let stem = "github.deployment-rule.reviewer-removal."
+  let text = concat(stem, concat(repo_text, concat("/", env_text)))
+  let branded = (text as NonEmptyStr)
+  branded as HumanInterventionIdentity
+}
+
+// THE CONSTRUCTION, CONFINED. `admit_callers` names exactly one caller: reviewer_removal_act_for below.
+// Not the witnesses, not the frontier, not any module in the tree -- and there is no same-module
+// exemption in the compiler (v2.compiler.infer infer_admission_judge_entries matches the caller's
+// (module, name) against the roster and refuses when nothing matches; the seed has no test-module or
+// same-module carve-out), so naming the caller from inside this module is what makes it a fact rather
+// than a wish. A literal `HumanIntervention { ... }` here is legal precisely because the CONSTRUCTOR is
+// not the secret: the secret is who is allowed to produce this act.
+// NO EVIDENCE ARGUMENT. The act's words are a function of the SUBJECT alone; the receipts are carried by
+// the Ready arm beside it, so taking them here would advertise a binding the body does not make — the same
+// defect this design calls out elsewhere ("refuses to answer for a binding it was not given").
+fn build_reviewer_removal_act(boundary: DeploymentGateBoundary) -> HumanIntervention
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.auth.deployment_gate_operator_steps",
+      decl_name: "reviewer_removal_act_for"
+    ),
+  ]
+{
+  // EVERY CAST SITS ON THE LINE OF ITS OWN EXPRESSION. A cast that begins a line
+  // ("expr\n  as NonEmptyStr") was measured to fail the parser with "expected RParen, found Ident": the
+  // dialect does not continue an expression across a line break into `as`, so the whole module failed to
+  // resolve and every witness that imports it ran zero tests. The lets below are the shape that parses.
+  let env_text = boundary.environment_name as String
+  let repo_text = boundary_repository_label(boundary: boundary) as String
+  let subject_text = concat("required reviewer removed from ",
+    concat(env_text, concat(" in ", repo_text)))
+  let subject = (subject_text as NonEmptyStr)
+  // THE READBACK, AS PART OF THE ACT'S OWN WORDS: the operator is told to prove the branch rule survived,
+  // with the real route spelled out. Built as its own let so the URL reads in one piece.
+  // THE ROUTE SAYS WHAT TO READ, spelled once. It was joined with concat("/", readback) while also
+  // starting with "/environments/", which produced "gunbc//environments/srv1-production" -- a route no
+  // GitHub API answers, printed in the instructions an operator follows. One leading slash, one joiner.
+  let readback = concat("environments/",
+    concat(env_text,
+      concat(" must still report deployment_branch_policy \{protected_branches:false, custom_branch_policies:true\} with exactly one branch rule named main. If that readback comes back without the branch rule, the boundary has been weakened twice -- restore it before anything else runs.")))
+  let instruction_text = concat("On the environment ",
+    concat(env_text,
+      concat(" of ",
+        concat(repo_text,
+          concat(" -- the subject the admitted trial pair was witnessed on, which is the ONLY subject this act may be performed against. Re-read the environment and its deployment-branch-policies after the removal and confirm the main-only branch rule is the protection that remains: GET /repos/",
+            concat(repo_text, concat("/", readback)))))))
+  let instruction = (instruction_text as NonEmptyStr)
+  HumanIntervention {
+    identity: reviewer_removal_act_identity(boundary: boundary),
+    frequency: FleetOnce,
+    subject: subject,
+    instruction: instruction,
+    // THE ACT IS NOT EVIDENCE THAT THE HUMAN ACTED (side chat round 4, blocker 3).
+    //
+    // This used to cite DischargedAt { gunbc.auth.deployment_gate_authorization::admit_reviewer_removal },
+    // which read as completion while proving only the PREREQUISITE. std.human_intervention defines
+    // completion evidence as "the human did it", and
+    // gunbc.auth.authorization_pattern_selection::receipt_in_substrate counts DischargedAt as a receipt in
+    // the substrate -- so the model was awarding itself a substrate receipt for its own admission function.
+    // That is the §5 defect exactly: a field satisfiable by editing a declaration while the world is
+    // unchanged. The admission is the act's precondition, not its outcome; the human still has to click in
+    // GitHub's UI afterwards, and nothing here has seen that happen.
+    //
+    // THE OUTCOME IS A DIFFERENT SEALED RECEIPT, not a flag on this one: ReviewerRemovalObserved in
+    // gunbc.auth.deployment_gate_authorization, minted only from a post-removal environment read that
+    // finds the reviewer GONE and the branch policy INTACT. std.human_intervention's own text says this
+    // arm retires when a per-intervention discharge carrier lands with a real inhabitant -- its dissolve-on
+    // condition -- and ReviewerRemovalObserved is that carrier. Until stage 5 wires the readback and its
+    // witness, this row states the gap rather than dressing a placeholder in the shape of evidence.
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED *AND OF THE BOUNDARY BEING ASKED ABOUT*.
+//
+// TWO ARGUMENTS NOW, AND THE SECOND ONE IS THE POINT (side chat, blocker 2). The admission seals a
+// boundary into its evidence, so a pair cannot be re-pointed; what a caller can still do is ask for ONE
+// boundary's removal while holding another boundary's admitted pair -- two calls that each passed their
+// own local check. A pair genuinely witnessed on gcp-iam-bootstrap, or on a fork's srv1-production, used
+// to yield THIS repository's srv1-production removal act, because the old function ignored its evidence
+// and returned a constant row. Now the sealed boundary and the asked-for boundary are compared before any
+// act exists, and a mismatch is a typed Blocked with both sides named -- not a Bool, not a silent
+// fallback to the constant.
+// THE ACT, AS A FUNCTION OF WHAT WAS WITNESSED, WHAT IS BEING ASKED ABOUT, AND WHAT IS TRUE NOW.
+//
+// THREE ARGUMENTS, EACH KILLING A DIFFERENT FORGERY (side chat, blockers 2 and 3):
+//  - `admission` proves two ACCEPTED CALLS happened, on one subject, in one dispatch each. Historical.
+//  - `boundary`  is the subject being asked about, compared against the sealed pair, so a pair
+//                witnessed on gcp-iam-bootstrap cannot issue srv1's act (blocker 2).
+//  - `standing`  is a SEALED FRESH READ taken immediately before this call (blocker 3). Without it,
+//                approve on rule A + reject on rule B, then switch the App rule off in the GitHub UI,
+//                and the old admission still yielded Ready. A trial proves the rule worked THEN; it is
+//                not a licence that outlives the rule it was earned under. The standing is sealed and
+//                its mint requires the rule enabled, the human reviewer present and the branch policy
+//                main-only, so EXISTING AT ALL is the proof and nothing below re-checks those
+//                properties (R1/§4b: no unreachable re-validation of a construction).
+fn reviewer_removal_act_for(
+  boundary: DeploymentGateBoundary,
+  admission: ReviewerRemovalAdmission,
+  standing: RemovalBoundaryStandingObservation,
+  // THE ATTEMPT THE REMOVAL IS BEING ASKED FOR, and the instant it is being asked at (side chat round 4,
+  // blocker 2). Without the first, a standing read for one dispatch is spendable on the next; without the
+  // second, a standing read this morning is spendable this afternoon. Both are arguments rather than
+  // fields a caller could set on the standing itself: the STANDING is sealed and records what was read,
+  // and it is the ACT'S job to ask whether that record is still the one this removal may use.
+  removal_attempt: AttemptIdentity,
+  // THE ACT'S OWN CLOCK READING (round-4 ruling, applied symmetrically). The freshness test has two
+  // instants and the caller supplies the second: as a plain Timestamp it was a dial, and any stale
+  // standing could be made to look fresh by holding `now` back a few minutes. It is therefore the same
+  // sealed value the standing carries -- read from the clock the authority owns, or absent, in which
+  // case the act refuses below rather than guessing a time.
+  now: Optional<ObservedInstant>
+) -> ReviewerRemovalStepDecision {
+  match admission {
+    RemovalRefused { missing: missing } => ReviewerRemovalBlocked { missing: missing }
+    RemovalAdmitted { evidence: evidence } =>
+      if evidence.boundary.environment_name != boundary.environment_name {
+        ReviewerRemovalBlocked {
+          missing: ActAddressedAnotherEnvironment {
+            expected_environment: boundary.environment_name,
+            witnessed_environment: evidence.boundary.environment_name,
+          },
+        }
+      } else if boundary_repository_label(boundary: evidence.boundary)
+        != boundary_repository_label(boundary: boundary) {
+        ReviewerRemovalBlocked {
+          missing: ActAddressedAnotherRepository {
+            expected_repository: boundary_repository_label(boundary: boundary),
+            witnessed_repository: boundary_repository_label(boundary: evidence.boundary),
+          },
+        }
+      } else {
+        // THE CURRENT READ IS CONSUMED HERE, not passed through. Compared against BOTH receipts, not
+        // one: the pair IS the trial, and a standing that matches only the approving arm is a standing
+        // about something else.
+        match standing {
+          StandingRefused { because: because } =>
+            ReviewerRemovalBlocked { missing: StandingWasNotRead { because: because } }
+          StandingRead { standing: read_now } =>
+            if read_now.ownership.rule_id != evidence.approved.rule_id
+              || read_now.ownership.rule_id != evidence.rejected.rule_id {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnRule {
+                  standing_rule_id: read_now.ownership.rule_id,
+                  approved_rule_id: evidence.approved.rule_id,
+                  rejected_rule_id: evidence.rejected.rule_id,
+                },
+              }
+            } else if read_now.ownership.installation_id != evidence.approved.installation_id
+              || read_now.ownership.installation_id != evidence.rejected.installation_id {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnInstallation {
+                  standing_installation_id: read_now.ownership.installation_id,
+                  approved_installation_id: evidence.approved.installation_id,
+                  rejected_installation_id: evidence.rejected.installation_id,
+                },
+              }
+            } else if read_now.boundary.environment_name != evidence.approved.environment_name
+              || read_now.boundary.environment_name != evidence.rejected.environment_name {
+              ReviewerRemovalBlocked {
+                missing: ActStandingDisagreesOnEnvironment {
+                  standing_environment: read_now.boundary.environment_name,
+                  approved_environment: evidence.approved.environment_name,
+                  rejected_environment: evidence.rejected.environment_name,
+                },
+              }
+            } else {
+              // REACHABLE, AND ONLY THIS FORM OF THE QUESTION IS. The mint already compared the READS to
+              // the boundary it was handed, so re-checking the ownership halves against the boundary here
+              // could never fire -- that is the unreachable re-validation §4b removes. What the mint cannot
+              // know is which boundary the ACT is being asked about: a caller may hand a standing sealed for
+              // gcp-iam-bootstrap to a request for srv1-production, and the two boundary values are
+              // independent arguments.
+              //
+              // THE ONE COMPARISON, NOW AT THE FOURTH SITE TOO (round-7 blocker 4, manager + side chat).
+              // This arm was three site-local `!=`s, and the manager's srv2 mutations M6 (drop the owner
+              // term) and M7 (drop the repo term) BOTH SURVIVED at 30/30 -- no witness handed the act a
+              // standing whose boundary differed from the requested one in exactly one field while the rest
+              // agreed. The three arms above compare the STANDING against the two RECEIPTS (rule id,
+              // installation, environment), not against the boundary, so they cannot catch that. Routing
+              // through subject_comparison makes all three fields THIS module's, and the two dropped terms
+              // now have REDs of their own
+              // (the_act_refuses_a_standing_sealed_for_another_account_or_another_repository).
+              //
+              // THE DECISION AND THE REPORT ARE THE SAME CALL (Q2/Q3). It used to collapse to a Bool and
+              // then rebuild the field-by-field report through boundary_mismatch -- the triple consulted by
+              // two authorities. Now subject_comparison is asked ONCE, its SubjectsDiffer arm both decides
+              // the refusal AND carries the axis it named, un-restated; the SubjectsAgree arm falls through
+              // to the attempt and age checks below. BoundaryMismatch and boundary_mismatch are deleted.
+              match subject_comparison(
+                observed: subject_of_the_boundary(boundary: read_now.boundary),
+                other: subject_of_the_boundary(boundary: boundary),
+              ) {
+                SubjectsDiffer { because: difference } =>
+                  ReviewerRemovalBlocked {
+                    missing: ActStandingIsForAnotherBoundary { because: difference },
+                  }
+                SubjectsAgree =>
+                  if read_now.observation_attempt != removal_attempt {
+                    // THE READ IS FOR ANOTHER DISPATCH. The trial pair and the standing can both be genuine
+                    // and still belong to a run that has since been retried: a re-run is a new attempt with a
+                    // new pending deployment, and the read that vouched for the old one says nothing about
+                    // this one.
+                    ReviewerRemovalBlocked {
+                      missing: ActStandingIsForAnotherAttempt {
+                        standing_attempt: read_now.observation_attempt,
+                        removal_attempt: removal_attempt,
+                      },
+                    }
+                  } else if match now {
+                    Absent => true
+                    Present { value: stamp } => !standing_is_within_age_bound(
+                      observed_at: read_now.observed_at,
+                      now: stamp.instant,
+                    )
+                  } {
+                    // EITHER NO CLOCK WAS READ FOR THIS ACT, OR THE READ IS GENUINE BUT AGED. The first is
+                    // refused rather than defaulted: filling in a time the caller never read is exactly the
+                    // dial that made every stale standing spendable. The second is not a forged standing and
+                    // not a wrong subject -- it is a true statement about a world that may have moved, and
+                    // refusing on age is what makes "immediately beforehand" a checked property rather than a
+                    // comment (§5). The two share an arm only in this `if`; each carries its own reason.
+                    ReviewerRemovalBlocked {
+                      missing: match now {
+                        Absent => ActClockWasNotRead
+                        Present { value: stamp } => ActStandingIsStale {
+                          observed_at: read_now.observed_at,
+                          now: stamp.instant,
+                          max_age: standing_max_age,
+                        }
+                      },
+                    }
+                  } else {
+                    // EVERY CHECK HAS PASSED, AND NOTHING BELOW THEM CAN BE REARRANGED INTO A BYPASS: the
+                    // sealed record is minted here and nowhere else, so a Ready decision a consumer reads out
+                    // of the sequence carries inside it the boundary these checks compared.
+                    ReviewerRemovalReady {
+                      admitted: AdmittedReviewerRemovalAct {
+                        intervention: build_reviewer_removal_act(boundary: boundary),
+                        evidence: evidence,
+                        boundary: boundary,
+                        standing: read_now,
+                      },
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE FIVE ACTS, IN THE ONLY ORDER THEY CAN BE PERFORMED, BUILT INTO THE TYPE (review 82535). This was
+// a List<HumanIntervention> whose ordering and cardinality were policed AFTERWARDS by folds: a count that
+// had to stay at five, a uniqueness count per identity, and a walker that found the removal row after the
+// enablement row. All three could be satisfied by EDITING THE DECLARATION — reorder the list literal and
+// the walker reddens only when it runs — which is §5's tell that the type was not carrying the invariant
+// it was claimed to carry.
+//
+// Now the sequence IS the record: five named fields in the order they are performed, and
+// `reviewer_removal` is declared after `rule_enablement`. Reordering means writing a different,
+// non-compiling expression; duplicating an act means naming a sixth field the type does not have; dropping
+// one is a missing field. There is no list to permute, so there is nothing left for a walker to police,
+// and the order reads top-to-bottom off the type rather than off a check.
+type DeploymentGateOperatorSequence {
+  app_registration: HumanIntervention,
+  app_installation: HumanIntervention,
+  webhook_configuration: HumanIntervention,
+  rule_enablement: HumanIntervention,
+  // THE DECISION, NOT THE ACT (side chat, blocker 3). This field used to be a `HumanIntervention`, which
+  // is how the raw removal row stayed reachable from outside: a consumer rendering the sequence read the
+  // act that weakens srv1's boundary straight out of a public row, with nothing between it and the
+  // frontier. It is now the TYPED decision, so at the stage-1 frontier the sequence carries a
+  // ReviewerRemovalBlocked with the reason the mint gave — a typed "not yet", not a ready act whose
+  // prose says blocked.
+  reviewer_removal: ReviewerRemovalStepDecision,
+}
+
+// THE FRONTIER ASKS FOR NO REMOVAL, and these two rows say so in values rather than in a comment.
+// reviewer_removal_act_for now takes an attempt and an instant, because a removal is asked for BY an
+// attempt AT an instant; the frontier row has no dispatch behind it, so it names the attempt and instant
+// the frontier record is filed under. The instant is canonical, so the freshness comparison it could be
+// fed to is one std/measure defines; and the refusal this row records comes from the sealed admission
+// (no trial was witnessed), which the act function consults BEFORE the standing -- a fact the witnesses
+// pin by handing the same function a DIFFERENT attempt and still getting the trial refusal back.
+// THE RESIDUAL THIS DESIGN CANNOT CLOSE, DECLARED RATHER THAN NARRATED.
+//
+// The standing is bounded and attempt-bound, which is what the checks can enforce. What they cannot
+// enforce is the gap between the read and the click: GitHub offers no compare-and-set on environment
+// protection -- there is no "remove the reviewer only if protection_rules still looks like what I just
+// read" -- and the act that follows a Ready decision is performed by a HUMAN in the GitHub UI some
+// minutes later. So the sequence read-now → click-later always has a window in which the world can
+// move, and no field in this model can shut it.
+//
+// Naming it is not decoration: it is the difference between a check whose guarantee is "the state was
+// current within standing_max_age of the ask" and a comment that says "the state is current", which is
+// false the moment a human is in the loop. The bound narrows the window; it does not close it, and the
+// plan carrier says "bounded and attempt-bound" for exactly that reason.
+//
+// WHY NOT A rung_drop row: a RungDrop declares a typed construct that regressed to prose and names
+// what restores the typing. This is not lost typing -- it is an upstream absence this repository cannot
+// fix by writing more model, so it is carried as a limit with an owner, a consequence and a trigger, in
+// the shape gunbc.auth.approval_broker_demand already uses for a measured kernel limit.
+type RemovalObservationWindowLimit {
+  // What was tried, so the next reader does not re-invent it.
+  attempted: NonEmptyStr
+  // The upstream absence that makes it fail, and where it was looked for.
+  upstream_absence: NonEmptyStr
+  // What the model DOES enforce instead, so the residual is not read as "nothing is checked".
+  enforced_instead: NonEmptyStr
+  // What could still go wrong inside the window, stated as a cost rather than hidden.
+  consequence: NonEmptyStr
+  // What would retire the row. A trigger that cannot be observed is a wish, so this names an
+  // observation, not a hope.
+  retirement_trigger: NonEmptyStr
+}
+
+data reviewer_removal_observation_window: RemovalObservationWindowLimit = RemovalObservationWindowLimit {
+  attempted: "compare-and-set on environment protection: mint a standing, then remove the reviewer only if the environment still reads as the standing recorded" as NonEmptyStr,
+  upstream_absence: "GitHub's environment surface has no conditional mutation. GET .../environments/\{environment_name\} reports protection_rules and POST .../environments/\{environment_name\} writes them, with no ETag, no expected-value parameter, and no conflict response, at the pinned OpenAPI description (read 2026-10-17)" as NonEmptyStr,
+  enforced_instead: "the standing is sealed and carries boundary + observation_attempt + observed_at; reviewer_removal_act_for refuses a standing for another boundary, another attempt, or one older than standing_max_age, and the act carries the standing that authorized it, so a handed-over act is auditable to the read behind it" as NonEmptyStr,
+  consequence: "between the read and the human's click, the rule can be disabled or replaced and the branch policy edited, and the click will still land on an environment that no longer matches the standing. The removal itself only ever WEAKENS a gate a human is already scheduled to weaken, and the main-only branch policy is re-read after the removal, which is what bounds the damage rather than the read" as NonEmptyStr,
+  retirement_trigger: "GitHub admitting a conditional mutation on an environment (an ETag/If-Match on PUT .../environments/\{environment_name\}, or an expected protection-rule id on the write), observed on the real endpoint rather than hoped for. Nothing smaller retires this row: a shorter standing_max_age narrows the window and closes none of it." as NonEmptyStr,
+}
+
+data frontier_removal_attempt: AttemptIdentity = "frontier-no-dispatch" as AttemptIdentity
+
+// THE FRONTIER READ NO CLOCK, SO IT HAS NO INSTANT. Not a placeholder timestamp: the row's value is
+// the absence, and the act's own refusal (ActClockWasNotRead) is what the frontier reports. A dated
+// placeholder here would be the model authoring the very thing the seal exists to stop.
+data frontier_filing_instant: Optional<ObservedInstant> = optional_absent()
+
+data deployment_gate_operator_steps: DeploymentGateOperatorSequence = DeploymentGateOperatorSequence {
+  app_registration: app_registration_step,
+  app_installation: app_installation_step,
+  webhook_configuration: webhook_configuration_step,
+  rule_enablement: rule_enablement_step,
+  // The frontier's honest value: nothing has been witnessed, so the act that weakens the boundary is
+  // Blocked by the mint's own reason, on the boundary this design gates.
+  // The frontier's honest value on both axes: nothing has been WITNESSED (the sealed admission refuses)
+  // and nothing has been READ NOW (the standing was never taken). The admission refuses first, so the
+  // standing is not even consulted here -- but passing a standing that did not happen is not an option
+  // either, because a Blocked that hides "nobody read the current state" behind "no trial" would let
+  // stage 2 mistake an unread environment for an untested one.
+  reviewer_removal: reviewer_removal_act_for(
+    boundary: srv1_deployment_gate_boundary,
+    admission: reviewer_removal_admission,
+    standing: StandingRefused {
+      // NOTHING WAS JOINED, because nothing was read: the ownership read that the join consumes returned
+      // no rules at all. Named as the join's own refusal rather than as a standing-shaped guess.
+      because: JoinWasRefused {
+        because: OwnershipWasNotEstablished { because: ReadbackCarriedNoRules },
+      },
+    },
+    removal_attempt: frontier_removal_attempt,
+    now: frontier_filing_instant,
+  ),
+}
+
+// ---------------------------------------------------------------------------
+// Discriminating fns — the ordering and the count are enforced, not narrated
+// ---------------------------------------------------------------------------
+
+// Every act in this design is once-per-fleet. A row that drifted to BreakGlassOnly would drop out of
+// the counted burden while still being performed; a row that drifted to EveryProvision would overstate
+// an act that happens once. Written field by field over the sequence: the earlier shape wrapped
+// std's own equality in `human_frequency_is_fleet_once: Frequency -> Bool`, which was a second name for
+// a comparison std already owns, and walked a list the record no longer is (review 82535).
+fn all_steps_are_fleet_once(steps: DeploymentGateOperatorSequence) -> Bool {
+  human_intervention_frequency_eq(a: steps.app_registration.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.app_installation.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.webhook_configuration.frequency, b: FleetOnce)
+    && human_intervention_frequency_eq(a: steps.rule_enablement.frequency, b: FleetOnce)
+    && removal_act_frequency_is_fleet_once(decision: steps.reviewer_removal)
+}
+
+// THE FIFTH ACT'S FREQUENCY, READ OFF THE DECISION RATHER THAN OFF A ROW THAT NO LONGER EXISTS.
+// Blocked is not a silent pass: it is the ABSENCE of an act, and there is no frequency to overstate. The
+// claim that bites — the one the witness exercises, because the frontier value is Blocked — is the Ready
+// arm, where an act really does exist and must be once-per-fleet.
+fn removal_act_frequency_is_fleet_once(decision: ReviewerRemovalStepDecision) -> Bool {
+  match decision {
+    ReviewerRemovalReady { admitted: a } =>
+      human_intervention_frequency_eq(a: a.intervention.frequency, b: FleetOnce)
+    ReviewerRemovalBlocked { missing: _ } => true
+  }
+}
+
+// THE ORDERING IS THE RECORD, NOT A WALKER OVER IT (review 82535). The reviewer removal is the only act
+// here that WEAKENS a gate, so it must come strictly after the act that turns the App gate on; a sequence
+// that put them in the other order would open an interval in which srv1 root mutation is gated by nothing.
+//
+// That used to be enforced by folding over a List and comparing identities cast to String — a check that
+// could be satisfied by reordering the literal while the realization still lay (§5's tell). Under
+// DeploymentGateOperatorSequence the order IS the field order: `reviewer_removal` is declared after
+// `rule_enablement`. The fold and the `as String` comparisons are gone because there is no list to
+// permute. What a caller can still get wrong is binding a field to the wrong row — `rule_enablement:`
+// pointing at the removal step, say, which no fold over a list would have caught either. That is the
+// remaining falsifiable claim, so it is where the witness aims: each field must hold the row its name
+// promises, and the two boundary rows must be distinct, compared as branded identities rather than as
+// strings cast for comparison.

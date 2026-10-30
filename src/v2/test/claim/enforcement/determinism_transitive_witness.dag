@@ -21,6 +21,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   symbol_intern_lexeme,
+  NotADeclaration
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
@@ -187,7 +188,7 @@ fn shape_gap_callee_atom() -> Node {
 fn shape_gap_transform_shaped_call() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [ Edge { label: Positional, target: shape_gap_callee_atom() } ],
+    children: [ Edge { label: Positional, target: shape_gap_callee_atom(), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -197,7 +198,7 @@ fn shape_gap_transform_shaped_call() -> Node {
 fn shape_gap_conj_shaped_call() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: shape_gap_callee_atom() } ],
+    children: [ Edge { label: Positional, target: shape_gap_callee_atom(), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -227,7 +228,7 @@ fn atom_node(lexeme: String) -> Node {
 fn call_node(callee: String) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -266,7 +267,7 @@ fn body_referencing(callee: String) -> Node {
 fn body_invoking_primitive(primitive: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: call_node(callee: primitive) } ],
+    children: [ Edge { label: Positional, target: call_node(callee: primitive), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -392,7 +393,7 @@ test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
 fn nested_body_referencing(callee: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: call_node(callee: callee) } ],
+    children: [ Edge { label: Positional, target: call_node(callee: callee), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -451,7 +452,7 @@ fn decl_with_param_reference(qualified_name: String, name: String, param: String
     name: name,
     output: Node {
       kind: TypeNode { connective: Conj },
-      children: [ Edge { label: Positional, target: atom_node(lexeme: param) } ],
+      children: [ Edge { label: Positional, target: atom_node(lexeme: param), declaration: NotADeclaration } ],
       occurrence_id: OccurrenceSynthetic
     },
     params: [ FnArrowParam { name: symbol_intern_lexeme(lexeme: param), node: atom_node(lexeme: param) } ]

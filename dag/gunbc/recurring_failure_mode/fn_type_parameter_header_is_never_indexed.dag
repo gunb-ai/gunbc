@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.fn_type_parameter_header_is_never_indexed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, FoundAtAmbiguous }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE GRAMMAR ADMITS IT AND THE INDEX DOES NOT RECORD ITS BINDERS. A `fn` declaration may carry a
@@ -26,6 +26,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // capability the index does not have.
 data fn_type_parameter_header_is_never_indexed: RecurringFailureMode = RecurringFailureMode {
   identity: "fn_type_parameter_header_is_never_indexed" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "RUNG FOUND AT: refused at compile time but by the WRONG reason -- the judgment's own unresolved-link refusal, fired because a required input is missing rather than because the argument fails its kind. That is mitigation, not the guarantee: the position is reached, decided and refused, yet nothing has been established about the parameter's inhabitants. CEILING: attainable, and cheaply -- the index already records the conjunct for every type declaration; an fn header needs the same record read through the item's Arrow. Not structurally impossible, so the rung cannot be claimed as reached and the fn half of the forwarded-parameter guarantee stays unexecuted.",

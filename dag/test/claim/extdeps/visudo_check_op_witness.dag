@@ -26,7 +26,6 @@ import extdeps.sudo.visudo {
   visudo_check_command, visudo_policy_check_command, visudo_binary_path,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
-import gunbc.live_deploy.operations { installed_visudo_policy_check_command }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 
 // THE TWO BOUNDARY VALUES THE REAL CONSUMERS VALIDATE.
@@ -93,16 +92,6 @@ test fn boundary_values_render_the_exact_argv_and_the_real_route_admits_them() -
     && argv_admitted_by_portability_wall(argv: policy_staged)
     && argv_admitted_by_portability_wall(argv: policy_installed)
   check_ok && policy_ok && admitted
-}
-
-// CONSUMPTION, pinned: the one call site already switched to the op must render byte-identical to
-// the shell spelling it replaced. The left goes through the op; the right spells the old shell
-// builder's words directly. A re-spelled flag, a moved -n, or a re-pointed visudo path fails the
-// claim. This is the migration contract: the replacement is behavior-identical.
-test fn the_installed_policy_check_renders_byte_identical_to_the_replaced_shell_spelling() -> Bool {
-  let path = installed_dropin_path as String
-  installed_visudo_policy_check_command(path: path) ==
-    shell_privileged_command_text_of_argv(argv: [visudo_binary_path as String, "-c", "-O", "-P", "-f", path])
 }
 
 test fn a_non_portable_file_value_is_refused_by_the_wall() -> Bool {

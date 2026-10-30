@@ -1,0 +1,276 @@
+module test.claim.generic_arity_n_descent_witness
+
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_total_count, census_blocking_histograms_equal, census_count_at_key }
+import std.types { NonEmptyStr }
+
+// A MULTI-PARAMETER GENERIC BINDS ITS TYPE ARGUMENTS POSITIONALLY. unify_generics descended only
+// when formal and actual each had exactly one child, so Map<K, V>, FinitelySupportedFunction<K, V>
+// and a user ApPair<A, B> bound nothing: map_lookup over Map<String, String> yielded Optional<V>
+// with V unbound, and an unbound V is accepted everywhere (Int formal, .zzz). MECHANISM:
+// unify_generic_child_pairs unifies equal-arity children pairwise.
+//
+// THREE KINDS OF CLAIM, each judged differently:
+//  - arity_n_red_*: five sources accepted without the arm and refused with it (the base revert
+//    shows them failing). They assert only that SOME blocking row exists (> 0), so a typo would
+//    satisfy them; their discrimination is the revert, not the assertion. All five bind String,
+//    String, which cannot show WHICH argument a variable received.
+//  - arity_n_ctl_*: accepted sources, asserting zero blocking rows, except the head-mismatch
+//    controls (> 0) which pin that a real head mismatch is refused by ordinary compatibility.
+//  - arity_n_pos_* / arity_n_else_* / arity_n_ctl_cas_*: keyed. The census counts the WHOLE compile,
+//    import closure included, so each compares a source to a baseline that differs on one axis
+//    using census_blocking_histograms_equal (key and multiplicity, both directions) or
+//    a keyed differential (gan_refused_arg, gan_refused_arg_with_mismatch: the added blocking keys, class AND
+//    subject, with their total), and requires CensusObserved on both sides; CensusNotRunnable never passes.
+//  - arity_n_else_*_open_accepted: two head shapes the compiler ACCEPTS today (Map formal against Optional,
+//    List formal against Map); pinned as open, they flip when a generic still free after binding is refused.
+// POSITION: arity_n_pos_* pass ApPair<Int, String> to ap_second_of / ap_first_of; a position swap in
+// unify_generic_child_pairs makes the accepted-consumer claims (arity_n_pos_*_reaches_*) fail.
+// ap_slot / ap_brand_slot is the #14354 control: a generic bound to a brand must stay that brand.
+// dissolve-on: never -- permanent regression control for arity-N binding.
+
+fn gan_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data gan_red_lookup_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String) -> Int \{\n  match map_lookup(m: m, key: k) \{ Present \{ value: v \} => ap_int(x: v) Absent => 0 \}\n\}\n"
+
+data gan_red_lookup_field_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String) -> Int \{\n  match map_lookup(m: m, key: k) \{ Present \{ value: v \} => v.zzz Absent => 0 \}\n\}\n"
+
+data gan_red_user_map_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>) -> Int \{\n  ap_int(x: ap_mk_map_box(m: m).m)\n\}\n"
+
+data gan_red_user_fsf_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(f: FinitelySupportedFunction<String, String>) -> Int \{\n  match ap_fsf_look(f: f, k: \"a\") \{ Present \{ value: v \} => ap_int(x: v) Absent => 0 \}\n\}\n"
+
+data gan_red_insert_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String, v: String) -> Int \{\n  ap_int(x: map_insert(m: m, key: k, value: v))\n\}\n"
+
+data gan_red_pair_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> Int \{\n  ap_int(x: ap_second_of(p: pr))\n\}\n"
+
+data gan_ctl_lookup_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String) -> String \{\n  match map_lookup(m: m, key: k) \{ Present \{ value: v \} => ap_str(x: v) Absent => \"\" \}\n\}\n"
+
+data gan_ctl_insert_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String, v: String) -> Map<String, String> \{\n  map_insert(m: m, key: k, value: v)\n\}\n"
+
+data gan_ctl_pair_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk_pair(a: i, b: t).first)\n\}\n\nfn ap_g(i: Int, t: String) -> String \{\n  ap_str(x: ap_mk_pair(a: i, b: t).second)\n\}\n"
+
+data gan_ctl_user_map_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>) -> Map<String, String> \{\n  ap_mk_map_box(m: m).m\n\}\n"
+
+data gan_ctl_list_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(xs: List<String>) -> String \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => ap_str(x: c) Absent => \"\" \}\n\}\n"
+
+data gan_ctl_brand_slot_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(b: ApBrand) -> ApBrand \{\n  ap_mk_slot(v: b).value\n\}\n"
+
+data gan_ctl_cas_slot_source: String = "module arity_probe_mod\n\nimport std.content_hash \{ ContentHash \}\nimport std.durable_compare_and_set \{ CasSlotVersion, CasGeneration \}\nimport gunbc.roadmap.roadmap_event_log \{ RoadmapEventId \}\n\nfn ap_f(g: CasGeneration, c: ContentHash, id: RoadmapEventId) -> CasSlotVersion<RoadmapEventId> \{\n  CasSlotVersion \{ generation: g, content: c, value: id \}\n\}\n\nfn ap_h(g: CasGeneration, c: ContentHash, id: RoadmapEventId) -> RoadmapEventId \{\n  CasSlotVersion \{ generation: g, content: c, value: id \}.value\n\}\n"
+data gan_red_box_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> Int \{\n  match ap_box_of(p: pr) \{ ApBoth \{ first: a, second: b \} => ap_int(x: b) ApNone => 0 \}\n\}\n"
+data gan_ctl_user_fsf_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(f: FinitelySupportedFunction<String, String>) -> String \{\n  match ap_fsf_look(f: f, k: \"a\") \{ Present \{ value: v \} => ap_str(x: v) Absent => \"\" \}\n\}\n"
+data gan_ctl_pair_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> String \{\n  ap_str(x: ap_second_of(p: pr))\n\}\n"
+data gan_ctl_box_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> String \{\n  match ap_box_of(p: pr) \{ ApBoth \{ first: a, second: b \} => ap_str(x: b) ApNone => \"\" \}\n\}\n"
+data gan_ctl_declaration_actual_source: String = "module arity_probe_mod\n\nimport std.optional \{ Present, Absent \}\n\ntype ApOutcome<R, C> = ApEstablished \{ receipt: R \} | ApRefused \{ cause: C \}\ntype ApReceipt = ApFirst \{ n: Int \} | ApSecond \{ n: Int \}\n\nfn ap_receipt_of<R, C>(o: ApOutcome<R, C>) -> R? \{\n  match o \{ ApEstablished \{ receipt: r \} => Present \{ value: r \} ApRefused \{ cause: _ \} => none \}\n\}\n\nfn ap_f(xs: List<ApOutcome<ApReceipt, Int>>) -> Bool \{\n  match xs.last() \{\n    Absent => false\n    Present \{ value: o \} =>\n      match ap_receipt_of(o: o) \{\n        Absent => false\n        Present \{ value: r \} => match r \{ ApFirst \{ n: _ \} => true ApSecond \{ n: _ \} => false \}\n      \}\n  \}\n\}\n"
+data gan_cas_closure_source: String = "module arity_probe_mod\n\nimport std.content_hash \{ ContentHash \}\nimport std.durable_compare_and_set \{ CasSlotVersion, CasGeneration \}\nimport gunbc.roadmap.roadmap_event_log \{ RoadmapEventId \}\n\nfn ap_k(x: Int) -> Int \{ x \}\n"
+
+test fn arity_n_red_lookup() -> Bool {
+  gan_blocking_count(source: gan_red_lookup_source) > 0
+}
+
+test fn arity_n_red_lookup_field() -> Bool {
+  gan_blocking_count(source: gan_red_lookup_field_source) > 0
+}
+
+test fn arity_n_ctl_head_mismatch_user_map() -> Bool {
+  gan_blocking_count(source: gan_red_user_map_source) > 0
+}
+
+test fn arity_n_red_user_fsf() -> Bool {
+  gan_blocking_count(source: gan_red_user_fsf_source) > 0
+}
+
+test fn arity_n_ctl_head_mismatch_insert() -> Bool {
+  gan_blocking_count(source: gan_red_insert_source) > 0
+}
+
+test fn arity_n_red_pair_second() -> Bool {
+  gan_blocking_count(source: gan_red_pair_second_source) > 0
+}
+
+test fn arity_n_ctl_lookup() -> Bool {
+  gan_blocking_count(source: gan_ctl_lookup_source) == 0
+}
+
+test fn arity_n_ctl_insert() -> Bool {
+  gan_blocking_count(source: gan_ctl_insert_source) == 0
+}
+
+test fn arity_n_ctl_pair() -> Bool {
+  gan_blocking_count(source: gan_ctl_pair_source) == 0
+}
+
+test fn arity_n_ctl_user_map() -> Bool {
+  gan_blocking_count(source: gan_ctl_user_map_source) == 0
+}
+
+test fn arity_n_ctl_list() -> Bool {
+  gan_blocking_count(source: gan_ctl_list_source) == 0
+}
+
+test fn arity_n_ctl_brand_slot() -> Bool {
+  gan_blocking_count(source: gan_ctl_brand_slot_source) == 0
+}
+
+test fn arity_n_red_box_second() -> Bool {
+  gan_blocking_count(source: gan_red_box_second_source) >0
+}
+
+test fn arity_n_ctl_user_fsf() -> Bool {
+  gan_blocking_count(source: gan_ctl_user_fsf_source) ==0
+}
+
+test fn arity_n_ctl_pair_second() -> Bool {
+  gan_blocking_count(source: gan_ctl_pair_second_source) ==0
+}
+
+test fn arity_n_ctl_box_second() -> Bool {
+  gan_blocking_count(source: gan_ctl_box_second_source) ==0
+}
+
+
+fn gan_census(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn gan_unobserved() -> CompileDiagnosticCensus {
+  CensusNotRunnable { cause: "no census" as NonEmptyStr }
+}
+
+// Both sides observed, then the blocking histograms agree key by key. Anything unobserved is false.
+fn gan_same_blocking(base: CompileDiagnosticCensus, other: CompileDiagnosticCensus) -> Bool {
+  match base {
+    CensusObserved { rows: b } => match other {
+      CensusObserved { rows: o } => census_blocking_histograms_equal(a: b, b: o)
+      CensusNotRunnable { cause: _ } => false
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// Occurrences of one blocking (class, subject) key added by `red` over `green`.
+fn gan_added_at(red: List<CompileDiagnosticCensusRow>, green: List<CompileDiagnosticCensusRow>, class: String, subject: String) -> Int {
+  census_count_at_key(rows: red, diagnostic_class: class, subject_name: subject, blocking: true) - census_count_at_key(rows: green, diagnostic_class: class, subject_name: subject, blocking: true)
+}
+
+fn gan_added_total(red: List<CompileDiagnosticCensusRow>, green: List<CompileDiagnosticCensusRow>) -> Int {
+  census_total_count(rows: census_blocking_rows(rows: red)) - census_total_count(rows: census_blocking_rows(rows: green))
+}
+
+// The argument-compatibility refusal of a call: the located DeclaredTypeNotInhabited at the argument for `param`.
+fn gan_param_subject(param: String) -> String {
+  "direct call argument for parameter '" + param + "'"
+}
+
+// Both sides observed; `red` adds exactly one blocking occurrence over `green`, DeclaredTypeNotInhabited at `param`.
+fn gan_refused_arg(green: CompileDiagnosticCensus, red: CompileDiagnosticCensus, param: String) -> Bool {
+  match green {
+    CensusObserved { rows: g } => match red {
+      CensusObserved { rows: r } =>
+        (gan_added_total(red: r, green: g) == 1)
+          && (gan_added_at(red: r, green: g, class: "DeclaredTypeNotInhabited", subject: gan_param_subject(param: param)) == 1)
+      CensusNotRunnable { cause: _ } => false
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// As gan_refused_arg, plus the TypeMismatch whose subject is the offending type `got`: exactly two added occurrences.
+fn gan_refused_arg_with_mismatch(green: CompileDiagnosticCensus, red: CompileDiagnosticCensus, param: String, got: String) -> Bool {
+  match green {
+    CensusObserved { rows: g } => match red {
+      CensusObserved { rows: r } =>
+        (gan_added_total(red: r, green: g) == 2)
+          && (gan_added_at(red: r, green: g, class: "TypeMismatch", subject: got) == 1)
+          && (gan_added_at(red: r, green: g, class: "DeclaredTypeNotInhabited", subject: gan_param_subject(param: param)) == 1)
+      CensusNotRunnable { cause: _ } => false
+    }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data gan_fx_else_map_opt_red: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<K, V>(m: Map<K, V>) -> Int \{ 0 \}\n\nfn ap_f(o: Optional<Int>) -> Int \{\n  ap_g(m: o)\n}\n"
+data gan_fx_else_map_opt_green: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<K, V>(m: Map<K, V>) -> Int \{ 0 \}\n\nfn ap_f(o: Map<Int, Int>) -> Int \{\n  ap_g(m: o)\n}\n"
+data gan_fx_else_list_map_red: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<T>(xs: List<T>) -> Int \{ 0 \}\n\nfn ap_f(m: Map<String, String>) -> Int \{\n  ap_g(xs: m)\n}\n"
+data gan_fx_else_list_map_green: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<T>(xs: List<T>) -> Int \{ 0 \}\n\nfn ap_f(m: List<String>) -> Int \{\n  ap_g(xs: m)\n}\n"
+data gan_fx_else_map_bare_red: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<K, V>(m: Map<K, V>) -> Int \{ 0 \}\n\nfn ap_f(n: Int) -> Int \{\n  ap_g(m: n)\n}\n"
+data gan_fx_else_map_bare_green: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<K, V>(m: Map<K, V>) -> Int \{ 0 \}\n\nfn ap_f(n: Map<String, String>) -> Int \{\n  ap_g(m: n)\n}\n"
+data gan_fx_else_pair_mapbox_red: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<A, B>(p: ApPair<A, B>) -> Int \{ 0 \}\n\nfn ap_f(b: ApMapBox<String, String>) -> Int \{\n  ap_g(p: b)\n}\n"
+data gan_fx_else_pair_mapbox_green: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<A, B>(p: ApPair<A, B>) -> Int \{ 0 \}\n\nfn ap_f(b: ApPair<String, String>) -> Int \{\n  ap_g(p: b)\n}\n"
+data gan_fx_else_pair_base: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_g<A, B>(p: ApPair<A, B>) -> Int \{ 0 \}\n\nfn ap_f(b: ApPair<String, String>) -> Int \{\n  0\n}\n"
+data gan_fx_pos_base: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_f(pr: ApPair<Int, String>) -> Int \{\n  0\n}\n"
+data gan_fx_pos_string_consumer: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_f(pr: ApPair<Int, String>) -> String \{\n  ap_str(x: ap_second_of(p: pr))\n}\n"
+data gan_fx_pos_int_consumer_refused: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_f(pr: ApPair<Int, String>) -> Int \{\n  ap_int(x: ap_second_of(p: pr))\n}\n"
+data gan_fx_pos_first_int_consumer: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_f(pr: ApPair<Int, String>) -> Int \{\n  ap_int(x: ap_first_of(p: pr))\n}\n"
+data gan_fx_pos_first_string_consumer_refused: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_first_of<A, B>(p: ApPair<A, B>) -> A \{ p.first \}\n\nfn ap_f(pr: ApPair<Int, String>) -> String \{\n  ap_str(x: ap_first_of(p: pr))\n}\n"
+data gan_fx_cas_base: String = "module arity_probe_mod\n\nimport std.content_hash \{ ContentHash \}\nimport std.durable_compare_and_set \{ CasSlotVersion, CasGeneration \}\nimport gunbc.roadmap.roadmap_event_log \{ RoadmapEventId \}\n\nfn ap_k(x: Int) -> Int \{ x \}\n"
+data gan_fx_cas_added_diag: String = "module arity_probe_mod\n\nimport std.content_hash \{ ContentHash \}\nimport std.durable_compare_and_set \{ CasSlotVersion, CasGeneration \}\nimport gunbc.roadmap.roadmap_event_log \{ RoadmapEventId \}\n\nfn ap_k(x: Int) -> Int \{ x \}\n\nfn ap_bad() -> Int \{ \"s\" \}\n"
+
+test fn arity_n_ctl_cas_slot_version_brand() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_cas_base), other: gan_census(source: gan_ctl_cas_slot_source))
+}
+
+test fn arity_n_ctl_cas_unobserved_census_does_not_pass() -> Bool {
+  !gan_same_blocking(base: gan_unobserved(), other: gan_unobserved())
+    && !gan_same_blocking(base: gan_census(source: gan_fx_cas_base), other: gan_unobserved())
+    && !gan_same_blocking(base: gan_unobserved(), other: gan_census(source: gan_fx_cas_base))
+}
+
+test fn arity_n_ctl_cas_added_diagnostic_does_not_pass() -> Bool {
+  !gan_same_blocking(base: gan_census(source: gan_fx_cas_base), other: gan_census(source: gan_fx_cas_added_diag))
+}
+
+test fn arity_n_pos_second_reaches_string_consumer() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_pos_base), other: gan_census(source: gan_fx_pos_string_consumer))
+}
+
+test fn arity_n_pos_second_refused_by_int_consumer() -> Bool {
+  gan_refused_arg_with_mismatch(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_int_consumer_refused), param: "x", got: "Primitive(String)")
+}
+
+test fn arity_n_pos_first_reaches_int_consumer() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_pos_base), other: gan_census(source: gan_fx_pos_first_int_consumer))
+}
+
+test fn arity_n_pos_first_refused_by_string_consumer() -> Bool {
+  gan_refused_arg_with_mismatch(green: gan_census(source: gan_fx_pos_base), red: gan_census(source: gan_fx_pos_first_string_consumer_refused), param: "x", got: "Primitive(Int)")
+}
+
+test fn arity_n_else_pair_matched_head_accepted() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_else_pair_base), other: gan_census(source: gan_fx_else_pair_mapbox_green))
+}
+
+// OPEN, observed accepted: Map<K, V> formal against an Optional<Int> actual, and List<T> formal against a Map actual,
+// compile with no blocking diagnostic beyond the matched-head fixture. These pin the current silent acceptance, not a wall;
+// they flip when the PR-2 refusal of a generic still free after binding lands.
+test fn arity_n_else_map_formal_optional_actual_open_accepted() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_else_map_opt_green), other: gan_census(source: gan_fx_else_map_opt_red))
+}
+
+test fn arity_n_else_list_formal_map_actual_open_accepted() -> Bool {
+  gan_same_blocking(base: gan_census(source: gan_fx_else_list_map_green), other: gan_census(source: gan_fx_else_list_map_red))
+}
+
+test fn arity_n_else_map_formal_bare_actual() -> Bool {
+  gan_refused_arg(green: gan_census(source: gan_fx_else_map_bare_green), red: gan_census(source: gan_fx_else_map_bare_red), param: "m")
+}
+
+test fn arity_n_else_pair_formal_mapbox_actual() -> Bool {
+  gan_refused_arg(green: gan_census(source: gan_fx_else_pair_mapbox_green), red: gan_census(source: gan_fx_else_pair_mapbox_red), param: "p")
+}
+
+// ONE FORM ON BOTH SIDES (gunbc#14594 regression). A list element read through `.last()` arrives as the
+// coproduct's DECLARATION (Disj, one child per variant), while the generic formal ApOutcome<R, C> is an
+// application with one child per type argument. Equal arity alone let unify_generic_child_pairs bind R to
+// the variant ApEstablished, and the match over the receipt's own variants refused `variant not found in
+// type ApOutcome`. This source is correct code; at #14594 through main 476be2f5386d it drew blocking rows
+// (the live specimen: every arm of gunbc.machine_intake.arrival_converge
+// arrival_prefix_outcomes_through_bmc_secure). R stays free on this route, which is the class
+// gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged records; this claim pins only
+// that a form mismatch binds nothing.
+test fn arity_n_ctl_declaration_actual_binds_no_variant() -> Bool {
+  gan_blocking_count(source: gan_ctl_declaration_actual_source) == 0
+}

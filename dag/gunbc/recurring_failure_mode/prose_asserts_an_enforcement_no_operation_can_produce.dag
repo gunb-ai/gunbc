@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.prose_asserts_an_enforcement_no_operation_can_produce
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data prose_asserts_an_enforcement_no_operation_can_produce: RecurringFailureMode = RecurringFailureMode {
   identity: "prose_asserts_an_enforcement_no_operation_can_produce" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an annotation states an enforcement the model has no RESOLVED READ capable of implementing, over a field that is recorded and never read** (INVALID STATE: a carrier records a discriminating field, prose beside it describes the enforcement that field provides, and NO RESOLVED, NON-CONSTRUCTION READ of that field exists in its dependent production closure. This sentence carried the influence criterion until gunbc#10339 -- 'no function accepts the value and can return a different answer because of it' -- which is the residue the paragraphs below assign to live_argument_threaded_past_the_arm_that_decides, so the class definition was absorbing the neighbour the class then disclaimed. A repair further down does not override the definition at the top: this is where a reader learns what the class IS, so this is where the owned rule has to be stated. The declaration typechecks, the witnesses pass, and the sentence is not a lie about intent -- it is a description of a wall that was never built. HARM: the prose is read as the guarantee, because a reader checking whether a class is handled finds a paragraph saying it is. The field's presence corroborates the paragraph and the paragraph explains the field, so each is the other's evidence and neither touches an executed path.",

@@ -1,0 +1,938 @@
+module test.claim.runner.runner_slot_cap_observe_route_witness
+
+// P4 (clever-crane-830's ruling; DESIGN sections 3d, 4d, 5, 6): OBSERVE MODE LOOKS AT THE CGROUP
+// FILES. At the base commit (750c5a01427) the cap phase's ObserveOnly arm answered the two-valued
+// `CapPhaseNotOwed` straight -- no ssh leg, no `systemctl show`, no cgroup file read. A host whose
+// slots were owed or drifted was reported settled by a run that looked at nothing (section 5, a
+// two-valued answer hiding "could not look"). The fix lifted the cap-phase READ legs into observe
+// mode: observe now runs the SAME route apply runs -- observe_runner_host_cap_phase ->
+// read_host_cap_standings_over -> read_slot_cap_live_over -> typed_argv_exec_over_fleet_ssh ->
+// exec_as_fleet_principal -> ssh.Session.ExecPortableWords -- and reports `SlotCapStanding` per
+// slot, writing nothing. One route, no thin wet entry beside it (section 6: a second path to one
+// observation is the defect class). The base pair of these controls is git blob
+// a743cdc8984da250d254464a4192af6495a8f9f4 (branch history of this file, kept out of the tree: it
+// is fold scaffolding, not a fold witness). Reproduce: `git worktree add --detach <dir>
+// 750c5a01427`, drop the blob in as dag/test/claim/runner/runner_slot_cap_observe_base_witness.dag,
+// register its red_context in that tree's typed_remote_file_write_fleet_ssh_fixture admit_callers,
+// and run THIS tree's claim_batch binary with --source-root dag --source-root src/v2 from inside the
+// worktree. Observed matrix at 2026-10-20: base PASS/FAIL/PASS, HEAD FAIL/PASS/PASS (half-1 = no
+// read happened; half-2 = Owed with both read legs on the ledger; half-3 = one route, differs by
+// mode); together they pin the fix to ONE scripted world: the same host, the same bytes, a
+// different verdict only because the code finally LOOKED.
+//
+// THE CONTROLS DRIVE THE REAL ROUTE, end to end, inside one witness frame on a modeled
+// `ssh.Session.ExecPortableWords` (srv1's administrator principal is the executor bootstrap account,
+// which is NOT the fleet login principal, so the subject resolves to the KEY session -- one remote
+// operation, no askpass prerequisites). The scenario answers with REAL-SHAPED CAPTURES: a
+// `systemctl show --value` block carrying the five properties the reader requires, and grep rows as
+// `grep -r -H -E . <root>` prints them (`<mount><cgroup>/<file>:<value>`). The JUDGEMENT is
+// production code throughout: no control here computes a standing or mints an argv -- each names the
+// world's bytes and asserts the arm the fold answered, and every leg the ledger shows was assembled
+// by the PRODUCTION shaper (shape_fleet_ssh_exec inside typed_argv_exec_over_fleet_ssh). The featured
+// slot is read from the real subject's own desired units, so it is genuinely a slot the phase
+// reports. Every arm the fold can reach is controlled from file text: AtDesired, Owed (the fleet's
+// pre-22G shape 8G/4G against the desired 23622320128/0 -- the number the executor pins under
+// GUNBC_BIND_MEMORY_CGROUP_BYTES), Drifted (the unit carries pre-fix values while the live cgroup
+// carries the fleet's -- a hand-edit or a reload that never landed), Unreadable twice over (the
+// cgroup file missing, and a value that is not a comparison), Stopped (empty ControlGroup, and NO
+// cgroup leg fired for that slot), and an unplanned command answered as a spawn refusal, never
+// silently passed.
+//
+// THE LEG LEDGER IS THE DISPATCHER'S, NOT THE SCENARIO'S: WitnessReturned.route is written by the
+// dispatcher per operation actually issued (an honest ledger -- a scenario that never saw a plan
+// cannot inflate it). "Observe READ the cgroup files" is checked against it: the featured slot's show
+// leg is present, its cgroup grep leg present when a cgroup exists and ABSENT when the ControlGroup is
+// empty, and every leg the ledger holds is a read command (systemctl show / grep) -- observe cannot
+// WRITE because it has no write path to issue.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, list_head, skip }
+import std.measure { Second, second }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.operation_argv { InputTextList }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall,
+  ShellObserved, DispatchRecord, virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_file_converge {
+  HostHasNoDeploySlot,
+  RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused,
+  runner_host_file_subject,
+  FleetHostPrivilegeStanding, AdministratorPrivilegeAvailable,
+  RunnerSlotPopulation, SlotPopulationObserved, RunnerSlotUnitResult, SlotTeardownEffective,
+  SlotReloadNotPending,
+  RunnerHostFileRun, FleetHostFileResult, FleetHostFilePlanned, FleetHostFileObservation,
+  HostFileIdentical, PathsRootOnly, HostFileLeaveInPlace,
+  HostFileNotAppliedObserveOnly, ManagerReloadNotOwed, ActuationAdmitted, ResidueAlreadyAbsent,
+  runner_host_file_run_succeeded, runner_host_file_run_text, runner_host_cap_files,
+  RunnerHostCapPhase, CapPhaseWithheld, CapPhaseNotOwed, CapPhaseObserved, CapPhaseRan,
+  runner_host_cap_phase_settled, runner_host_cap_phase_text,
+  run_runner_host_cap_phase,
+  FleetHostFilesObserveOnly, FleetHostFilesApply, FleetHostFileConvergeMode,
+}
+import gunbc.runner.runner_slot_cap_converge {
+  SlotCapStanding, SlotCapsAtDesired, SlotCapsStopped, SlotCapsNeedRestart,
+  SlotCapsReadingsDisagree, SlotCapsUnread, SlotCapUnitStanding,
+  slot_cap_show_properties, slot_cap_cgroup_files,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE FACT DECIDES EVERYTHING BELOW (DESIGN 3d): the desired slot row, read from its home -- never a
+// second copy. memory_max is the 22 GiB the executor binds under GUNBC_BIND_MEMORY_CGROUP_BYTES; the
+// at-desired control names 23622320128 in text, so a silent re-pin disagrees with this witness.
+fn desired_memory_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) }
+fn desired_swap_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) }
+fn desired_high_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) }
+fn desired_tasks_text() -> String { to_string(gunbc_runner_slot_desired().tasks_max) }
+
+// The fleet's PRE-22G shape: what srv1's slots carried before the fleet moved (8G/4G), as real
+// captures print it -- bytes, not "8G". These are the Owed world's cgroup rows and the Drifted
+// world's unit values.
+data pre_fix_memory_text: String = "8589934592"
+data pre_fix_swap_text: String = "4294967296"
+
+fn cap_subject() -> RunnerHostFileSubject? {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectAdmitted { subject: s } => Present { value: s }
+    RunnerHostFileSubjectRefused { cause: _ } => none
+  }
+}
+
+// THE FEATURED SLOT is read from the real subject's own desired units, so it is genuinely a slot the
+// phase reports (the route reads the subject's desired_units ++ extras), and the command the scenario
+// scripts is the one the route will actually issue for it.
+fn cap_featured_unit() -> NonEmptyStr? {
+  match cap_subject() {
+    Absent => none
+    Present { value: s } => match s.desired_units.first() { Present { value: u } => Present { value: u } Absent => none }
+  }
+}
+
+fn cap_privilege() -> FleetHostPrivilegeStanding { AdministratorPrivilegeAvailable }
+
+// THE WHOLE-HOST AT-DESIRED WORLD. `settled` is a HOST-WIDE predicate (every reading must stand),
+// so a control that asks for a settled pass must script EVERY unit the subject declares -- not just
+// the featured one. Scripting only the featured slot leaves the others to the gap arm (Unread) and
+// the host correctly does not settle; that is the fold refusing to call a half-inspected host done,
+// which is the very defect class this PR kills. One show leg + one grep leg per declared unit.
+fn host_at_desired_legs() -> List<ScriptedCommand> {
+  match cap_subject() {
+    Absent => []
+    Present { value: s } => flat_map(s.desired_units, u => [
+      show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    ])
+  }
+}
+
+// The featured slot loaded, teardown effective, no reload pending -- what the extras filter reads to
+// keep the affected set free of phantom units. The other desired slots stay unscripted and answer the
+// spawn refusal (Unread); the controls assert on the featured slot only.
+fn cap_population() -> RunnerSlotPopulation {
+  match cap_featured_unit() {
+    Absent => SlotPopulationObserved { units: [] }
+    Present { value: u } => SlotPopulationObserved {
+      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }],
+    }
+  }
+}
+
+// THE FLEET CONTEXT, read from the ONE shared hermetic witness fixture. This helper is registered in
+// the fixture's `admit_callers` (as every other consumer witness is): there is one way to seal a
+// fleet context and it has a home -- hand-resealing it here would be a second path to one fact. The
+// non-rental anchor is what keeps srv1's administrator principal on the KEY session: the route's legs
+// arrive as ssh.Session.ExecPortableWords.
+fn cap_context() -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_hermetic_witness_fixture()
+}
+
+// ---------- the scenario ----------
+//
+// Keyed by the REMOTE COMMAND of the invocation the production shaper produced -- the final word the
+// shaper joined (the shaper assembles the client args; this reads whatever it issued). An unmatched
+// command is answered as a spawn refusal the controls report, never a silent pass.
+
+type ScriptedCommand {
+  remote_command: String
+  answer: ShellExchangeObservation
+}
+
+type CapRun
+  = CapRunReturned { phase: RunnerHostCapPhase, legs: List<String> }
+  | CapRunEnded { cause: String }
+
+fn cap_identity() -> NonEmptyStr { "cap-route-witness" as NonEmptyStr }
+
+fn shell_ok(stdout: String) -> ShellExchangeObservation {
+  ShellProcessExited { exit_code: 0, stdout: stdout, stderr: "" }
+}
+
+fn shell_failed(exit_code: Int, stderr: String) -> ShellExchangeObservation {
+  ShellProcessExited { exit_code: exit_code, stdout: "", stderr: stderr }
+}
+
+
+// The remote command is everything the ssh transport put AFTER the `--` separator: the portable
+// words enter client_args as INDIVIDUAL argv items (fleet_known_hosts_anchor's shaper appends
+// destination, "--", then the words), so the joined remote side reproduces the production argv
+// exactly. Keying on the last item alone saw only the unit name and matched nothing.
+fn remote_side_of(items: List<String>) -> String {
+  let tail = skip_past(items: items, marker: "--")
+  match any(tail, t => true) {
+    true => join(tail, " ")
+    false => join(items, " ")
+  }
+}
+
+fn skip_past(items: List<String>, marker: String) -> List<String> {
+  match list_head(xs: items) {
+    Absent => []
+    Present { value: h } => if h == marker { skip(xs: items, n: 1) } else { skip_past(items: skip(xs: items, n: 1), marker: marker) }
+  }
+}
+
+fn remote_command_of(call: OperationCall) -> String {
+  match first(filter(call.invocation.bindings, b => (b.name as String) == "client_args")) {
+    Absent => ""
+    Present { value: b } => match b.value {
+      InputTextList { items: i } => remote_side_of(items: i)
+      _ => ""
+    }
+  }
+}
+
+// The remote command of each featured-slot leg, spelled through the PRODUCTION builders the route
+// itself calls, joined the way the shaper joins a remote command (one shell word).
+fn show_command(unit: NonEmptyStr) -> String {
+  join(systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties), " ")
+}
+
+fn grep_command(control_group: String) -> String {
+  join(grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: control_group) as NonEmptyStr), " ")
+}
+
+// The show block: the five properties the reader requires, in its order, trimmed-clean capture form.
+fn show_block(memory_max: String, swap_max: String, high: String, tasks: String, control_group: String) -> String {
+  join([
+    join(["MemoryMax=", memory_max], ""),
+    join(["MemorySwapMax=", swap_max], ""),
+    join(["MemoryHigh=", high], ""),
+    join(["TasksMax=", tasks], ""),
+    join(["ControlGroup=", control_group], ""),
+  ], "\n")
+}
+
+// grep -H prints `<filename>:<value>`, the filename mount point + the unit's cgroup path.
+fn grep_rows(control_group: String, memory_max: String, swap_max: String) -> String {
+  let base = join([cgroup_v2_mount_point as String, control_group], "")
+  join([
+    join([base, "/memory.max:", memory_max], ""),
+    join([base, "/memory.swap.max:", swap_max], ""),
+  ], "\n")
+}
+
+fn show_leg(unit: NonEmptyStr, memory_max: String, swap_max: String, high: String, tasks: String, control_group: String) -> ScriptedCommand {
+  ScriptedCommand { remote_command: show_command(unit: unit), answer: shell_ok(stdout: show_block(memory_max: memory_max, swap_max: swap_max, high: high, tasks: tasks, control_group: control_group)) }
+}
+
+fn grep_leg(unit: NonEmptyStr, control_group: String, memory_max: String, swap_max: String) -> ScriptedCommand {
+  ScriptedCommand { remote_command: grep_command(control_group: control_group), answer: shell_ok(stdout: grep_rows(control_group: control_group, memory_max: memory_max, swap_max: swap_max)) }
+}
+
+// The featured slot's own cgroup path, as systemd prints it for a live runner unit.
+fn cap_cgroup(unit: NonEmptyStr) -> String {
+  join(["/system.slice/", unit as String], "")
+}
+
+// The world where the featured slot agrees with the fleet (unit and cgroup both at the desired row).
+fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
+  [
+    show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+  ]
+}
+
+// OWED: the unit carries the fleet's caps and the live cgroup carries the pre-fix 8G/4G and agrees
+// with itself -- nothing hand-edited; the apply is what is owed.
+fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
+  [
+    show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
+    grep_leg(unit: unit, control_group: control_group, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text),
+  ]
+}
+
+// DRIFTED: the live cgroup carries the fleet's caps while the unit still carries the pre-fix values
+// (a hand-edit or a reload that never landed). The old two-valued phase could not say this at all.
+fn drifted_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
+  [
+    show_leg(unit: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: control_group),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+  ]
+}
+
+fn cap_realization(legs: List<ScriptedCommand>) -> OperationRealization<Int> {
+  OperationRealization {
+    identity: cap_identity(),
+    initial: 0,
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding {
+        at: ssh_session_exec_portable_words_operation,
+        handler: fn(state, call) {
+          let cmd = remote_command_of(call: call)
+          match first(filter(legs, l => l.remote_command == cmd)) {
+            Present { value: m } =>
+              OperationObserved {
+                observation: ShellObserved { observation: m.answer },
+                state: state + 1,
+                elapsed: second(count: 1),
+              }
+            Absent => OperationObserved {
+              observation: ShellObserved {
+                // An unplanned command answers as ssh(1)'s documented CLIENT-ERROR status (session.dag:
+                // ssh_client_error_exit_status = 255), not a spawn refusal: the operation declares
+                // exit_code/success/stdout/stderr outputs and a ShellSpawnRefused observation has no field to
+                // project into. The gap phrase rides in stderr so the reader's refusal cause names it.
+                observation: ShellProcessExited {
+                  exit_code: 255,
+                  stdout: "",
+                  stderr: "the cap-route scenario has no answer for this command",
+                },
+              },
+              state: state + 1,
+              elapsed: second(count: 1),
+            }
+          }
+        },
+      },
+    ],
+    advance: fn(state, _now) { state },
+  }
+}
+
+fn cap_grant(verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb,
+    root: NamespacePosition { tree: ServiceOpTree { service: "ssh.Session" as NonEmptyStr }, path: [] },
+    binding: ModeledRealization { realization: cap_identity() as String },
+    lifecycle: LifecycleByConstruction,
+  }
+}
+
+fn cap_frame(legs: List<ScriptedCommand>) -> WitnessEvaluationFrame<Int> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "cap-route" as NonEmptyStr, kind: SharedStateFrame }
+      grants: [cap_grant(verb: Read), cap_grant(verb: Write)]
+    }
+    rest_fixtures: []
+    realization: Present { value: cap_realization(legs: legs) }
+  }
+}
+
+fn legs_of_route(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => match first(filter(r.invocation.bindings, b => (b.name as String) == "client_args")) {
+    Present { value: b } => match b.value {
+      InputTextList { items: i } => remote_side_of(items: i)
+      _ => ""
+    }
+    Absent => ""
+  })
+}
+
+fn cap_run(mode: FleetHostFileConvergeMode, legs: List<ScriptedCommand>) -> CapRun {
+  match cap_subject() {
+    Absent => CapRunEnded { cause: "srv1 is not an admitted runner host subject" }
+    Present { value: subject } => match cap_context() {
+      Absent => CapRunEnded { cause: "the fleet witness context could not be sealed" }
+      Present { value: context } => match evaluate_in_witness_frame(
+        frame: cap_frame(legs: legs),
+        subject: fn(_scope) {
+          run_runner_host_cap_phase(
+            subject: subject,
+            context: context,
+            mode: mode,
+            privilege: cap_privilege(),
+            population: cap_population(),
+          )
+        },
+      ) {
+        WitnessReturned { value: v, route: route, state: _ } => CapRunReturned { phase: v, legs: legs_of_route(route: route) }
+        WitnessRefused { diagnostic: d, route: _, state: _ } => CapRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => CapRunEnded { cause: "the cap-route worker was interrupted" }
+      }
+    }
+  }
+}
+
+fn observe(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: FleetHostFilesObserveOnly, legs: legs) }
+fn apply_mode(legs: List<ScriptedCommand>) -> CapRun { cap_run(mode: FleetHostFilesApply, legs: legs) }
+
+fn phase_of(r: CapRun) -> RunnerHostCapPhase {
+  match r {
+    CapRunReturned { phase: p, legs: _ } => p
+    CapRunEnded { cause: _ } => CapPhaseWithheld { cause: "cap-route witness ended without a verdict" }
+  }
+}
+
+fn legs_of(r: CapRun) -> List<String> {
+  match r {
+    CapRunReturned { phase: _, legs: l } => l
+    CapRunEnded { cause: _ } => []
+  }
+}
+
+fn standing_of(r: CapRun, unit: NonEmptyStr) -> SlotCapStanding? {
+  match phase_of(r: r) {
+    CapPhaseObserved { readings: rs } =>
+      match first(filter(rs, x => (x.unit as String) == (unit as String))) {
+        Present { value: u } => Present { value: u.standing }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn is_show_leg(c: String) -> Bool { starts_with(s: c, prefix: "systemctl show ") }
+fn is_grep_leg(c: String) -> Bool { starts_with(s: c, prefix: "grep -r -H -E . ") }
+
+fn has_leg_containing(legs: List<String>, needle: String) -> Bool {
+  any(legs, c => string_contains(s: c, pattern: needle))
+}
+
+// Observe cannot WRITE because it has no write path to issue: every leg it dispatches is a read
+// command (systemctl show / grep) -- asserted over the dispatcher's ledger, not the scenario's.
+fn every_leg_is_a_read(legs: List<String>) -> Bool {
+  all(legs, c => is_show_leg(c: c) || is_grep_leg(c: c))
+}
+
+// ---------- the controls ----------
+
+// AT-DESIRED, THROUGH THE REAL ROUTE. What base cannot answer: the featured slot's reading is
+// AtDesired (not the bare two-valued not-owed), and the dispatcher's ledger shows both its read legs
+// -- the show, and the cgroup grep whose rows earned the reading.
+test fn observe_mode_reads_the_cgroup_files_and_reports_at_desired() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: at_desired_legs(unit: unit, control_group: cg))
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } =>
+          s == SlotCapsAtDesired
+            && has_leg_containing(legs: legs_of(r: run), needle: show_command(unit: unit))
+            && has_leg_containing(legs: legs_of(r: run), needle: grep_command(control_group: cg))
+        Absent => false
+      }
+    }
+  }
+}
+
+// THE RECEIPT SPEAKS: the rendered phase names the featured slot and the fleet's desired cap, so a
+// human reading an observe run sees WHAT WAS READ, not just that a check ran.
+test fn observe_mode_receipt_names_the_slot_and_the_desired_cap() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      // The AtDesired wire names the slot but carries no byte count by design; the number a reader
+      // needs lives in the OWED render ("unit view MemoryMax=<desired>"), which is exactly the
+      // receipt an operator audits to see WHAT cap the slot is being brought to. Assert on that
+      // render: the same text names the slot AND the desired cap it works toward. At base the owed
+      // host answered "" (bare not-owed), so this reds there.
+      let text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg))))
+      string_contains(s: text, pattern: unit as String)
+        && string_contains(s: text, pattern: "OBSERVED-OWED")
+        && string_contains(s: text, pattern: desired_memory_text())
+    }
+  }
+}
+
+// OWED FROM REAL SHOW + CGROUP TEXT. The cgroup carries the pre-fix 8G/4G while the unit carries the
+// fleet's caps -- the apply is what is owed. Base answered this host "settled" without looking.
+test fn observe_mode_yields_owed_from_real_show_and_cgroup_text() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: owed_legs(unit: unit, control_group: cg))
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } => match s {
+          SlotCapsNeedRestart { detail: _ } => true
+          _ => false
+        }
+        Absent => false
+      }
+    }
+  }
+}
+
+// DRIFTED, FROM FILE TEXT. The live cgroup carries the fleet's caps while the unit still carries the
+// pre-fix values: the readings disagree, and that is its OWN answer -- distinct words from Owed,
+// which the old two-valued phase could not say at all.
+test fn observe_mode_yields_drifted_when_the_unit_and_the_cgroup_disagree() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: drifted_legs(unit: unit, control_group: cg))
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } => match s {
+          SlotCapsReadingsDisagree { detail: _ } => true
+          _ => false
+        }
+        Absent => false
+      }
+    }
+  }
+}
+
+// UNREADABLE -- THE MISSING-FILE CASE THE BRIEF NAMES. The grep leg runs and the cgroup directory is
+// gone: grep exits 2 naming the missing path. Not owed, not settled -- the cgroup could not be looked
+// at, and the cause is carried through to the receipt.
+test fn observe_mode_yields_unreadable_when_the_cgroup_files_are_missing() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: [
+        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        ScriptedCommand { remote_command: grep_command(control_group: cg), answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup/system.slice/actions-runner@srv1-1.service: No such file or directory\n") },
+      ])
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } => match s {
+          // OWN scripted cause, and NOT the gap arm: this control is green only because the grep
+          // leg was attempted and the FILE text said missing -- never via the 255 fall-through.
+          SlotCapsUnread { cause: c } =>
+            (string_contains(s: c, pattern: "cgroup grep exit=2") || string_contains(s: c, pattern: "No such file or directory"))
+              && !string_contains(s: c, pattern: "cap-route scenario has no answer")
+          _ => false
+        }
+        Absent => false
+      }
+    }
+  }
+}
+
+// UNREADABLE -- THE MALFORMED-FILE CASE. The file exists and was read, and its value is not a
+// comparison the fold can make. A reading that cannot be compared is stated as unread, not owed or
+// settled.
+test fn observe_mode_yields_unreadable_when_the_cgroup_value_is_malformed() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: [
+        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        grep_leg(unit: unit, control_group: cg, memory_max: "not-a-byte-count", swap_max: desired_swap_text()),
+      ])
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } => match s {
+          SlotCapsUnread { cause: c } => string_contains(s: c, pattern: "not-a-byte-count")
+          _ => false
+        }
+        Absent => false
+      }
+    }
+  }
+}
+
+// NOTHING SCRIPTED IS ANSWERED, NEVER SWALLOWED. With no legs scripted, even the featured slot's show
+// leg meets the spawn refusal: the reading is the refusal, the slot is reported Unread rather than
+// dropped or called at-desired.
+test fn observe_mode_answers_an_unplanned_command_with_the_refusal() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let run = observe(legs: [])
+      // (a) THE EXACT UNMATCHED WORDS, not just "refused": the dispatcher's own ledger must show it
+      // carried the production argv for the featured slot, so the refusal is about THIS command --
+      // an unplanned argv drifting in production would change the ledger words and this fails.
+      has_leg_containing(legs: legs_of(r: run), needle: show_command(unit: unit))
+        && match standing_of(r: run, unit: unit) {
+             Present { value: s } => match s {
+               SlotCapsUnread { cause: c } => string_contains(s: c, pattern: "cap-route scenario has no answer")
+               _ => false
+             }
+             Absent => false
+           }
+    }
+  }
+}
+
+// THE GAP ARM CANNOT FORGE A NEGATIVE. Mutation control for the manager's condition: take the
+// MISSING-FILE world and BREAK the grep leg's expected argv (one word off), so production's real
+// argv no longer matches any scripted key and falls to the gap arm. If the strengthened negative
+// controls were forgeable through the 255 arm, the missing-file shape would stay green here. It
+// must instead answer with the GAP phrase, not "No such file or directory": green iff the drifted
+// argv reds the own-cause assertion.
+test fn a_drifted_expected_argv_reds_the_missing_file_control() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let drifted_grep_key = concat(grep_command(control_group: cg), " --drifted")
+      let run = observe(legs: [
+        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        ScriptedCommand { remote_command: drifted_grep_key, answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup: No such file or directory\n") },
+      ])
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } => match s {
+          SlotCapsUnread { cause: c } =>
+            // the gap arm took it (the scripted missing-file answer was NEVER delivered: its key
+            // drifted), so the strengthened missing-file control -- which demands its own cause and
+            // rejects the gap phrase -- is RED here. "No such file or directory" rides only in the
+            // un-delivered scripted answer; the gap arm's stderr carries only the gap phrase.
+            string_contains(s: c, pattern: "cap-route scenario has no answer")
+              && !string_contains(s: c, pattern: "No such file or directory")
+          _ => false
+        }
+        Absent => false
+      }
+    }
+  }
+}
+
+// A STOPPED SLOT IS ITS OWN STANDING, AND NO CGROUP LEG IS FIRED FOR IT. An empty ControlGroup means
+// there is no cgroup directory to attempt: the reader must skip the grep for that slot (its cgroup
+// readings stay absent, never a fabricated value), and the standing must be Stopped -- which the
+// two-valued phase had no word for.
+test fn observe_mode_fires_no_cgroup_leg_for_a_stopped_slot() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let run = observe(legs: [
+        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: ""),
+      ])
+      match standing_of(r: run, unit: unit) {
+        Present { value: s } =>
+          s == SlotCapsStopped
+            && !has_leg_containing(legs: legs_of(r: run), needle: grep_command(control_group: cg))
+        Absent => false
+      }
+    }
+  }
+}
+
+// OBSERVE ISSUES READ LEGS ONLY. Every leg the dispatcher recorded is a read command -- there is no
+// write path an observe run can reach. (The apply arm, asked the same scripted world, reaches a
+// DIFFERENT arm: this mode distinction is the next control.)
+test fn observe_issues_read_legs_only() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let obs_legs = legs_of(r: observe(legs: at_desired_legs(unit: unit, control_group: cg)))
+      every_leg_is_a_read(legs: obs_legs)
+        && has_leg_containing(legs: obs_legs, needle: show_command(unit: unit))
+    }
+  }
+}
+
+// THE ARMS GENUINELY DIFFER BY MODE. The SAME scripted world on the SAME route: observe answers the
+// new CapPhaseObserved arm; apply answers a different arm (it plans the apply, gated on quiescence
+// the witness does not script, so it reaches Withheld -- never CapPhaseObserved, never the old
+// not-owed). One route, two modes, no second path to one observation.
+test fn observe_and_apply_reach_different_arms_through_one_route() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let legs = at_desired_legs(unit: unit, control_group: cg)
+      match phase_of(r: observe(legs: legs)) {
+        // PINNED ARMS, not anonymous negations (manager, optional item): the observe leg is the
+        // observed arm itself; the apply leg is the SPECIFIC arm production answers in this scripted
+        // world -- quiescence is not scripted here, so apply refuses with its own withheld cause.
+        // CapPhaseObserved arriving from apply would mean the write legs were reached without the
+        // gate, and ANY non-observe arm passing would hide which arm it was.
+        CapPhaseObserved { readings: rs } => !is_empty(rs) && match phase_of(r: apply_mode(legs: legs)) {
+          CapPhaseWithheld { cause: _ } => true
+          _ => false
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+// THE OBSERVED ARM IS THE NEW ONE, AND THE OLD TWO-VALUED ANSWER IS GONE FROM OBSERVE. Observe on a
+// world whose featured slot is owed can never return the bare CapPhaseNotOwed (the base defect); and
+// the fold's meaning for the arms that survived (Withheld never settles) did not move.
+test fn observe_never_answers_the_bare_not_owed_and_withheld_never_settles() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let owed_phase = phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg)))
+      owed_phase != CapPhaseNotOwed
+        && runner_host_cap_phase_settled(phase: phase_of(r: observe(legs: host_at_desired_legs())))
+        && !runner_host_cap_phase_settled(phase: CapPhaseWithheld { cause: "x" })
+    }
+  }
+}
+
+// THE RECEIPT SPEAKS OWED AND DRIFTED IN DIFFERENT WORDS, where the base phase had neither: owed says
+// OBSERVED-OWED, drifted says OBSERVED-DISAGREE, and the two are not the same string. (The words come
+// from production `runner_host_cap_phase_text` over the readings.)
+test fn owed_and_drifted_render_distinct_words() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let cg = cap_cgroup(unit: unit)
+      let owed_text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg))))
+      let drifted_text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: drifted_legs(unit: unit, control_group: cg))))
+      string_contains(s: owed_text, pattern: "OBSERVED-OWED")
+        && string_contains(s: drifted_text, pattern: "OBSERVED-DISAGREE")
+        && owed_text != drifted_text
+    }
+  }
+}
+// ── THE RUN-SUCCESS DECISION CONSUMES THE CAP PHASE (review 5588645431 blocker) ─────────────────
+//
+// The base's observe run ignored run.cap_phase entirely: a cgroup grep exit 2 or a malformed
+// memory.max gave SlotCapsUnread, the receipt printed OBSERVED-UNREAD, and terminal=succeeded /
+// ExitSuccess followed. These controls feed the actual runner_host_file_run_succeeded + receipt
+// decision with a cap phase that is the ONLY moving part -- every OTHER observation scripted to
+// succeed -- so the only fact that moves the verdict is the cap phase's read quality. Four of the
+// eight carry a ROUTE-PRODUCED phase (observed_cap_phase over the same observe machinery the read
+// controls drive: fully-read success, missing-file, malformed, owed/drifted); four supply their
+// phase directly (Withheld, hand-fabricated NotOwed, empty readings, apply-shaped) because
+// production's observe arm cannot produce those arms -- they are the refusal shapes. Every negative
+// asserts its OWN scripted cause in the receipt text and rejects the scenario's gap phrase, so none
+// can be green via the unmatched-command arm; and because a missing subject yields the empty text,
+// no control can be green via an absent subject either.
+
+// ONE OBSERVE RUN RECORD, its cap phase the ONLY moving part. Everything else is the fully-successful
+// observe shape: privilege available, every declared file classified identical-and-left-in-place (no
+// planned refusal), nothing withheld, residue already absent, every slot unit read.
+fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
+  match cap_subject() {
+    Absent => none
+    Present { value: subject } => Present {
+      value: RunnerHostFileRun {
+        subject: subject,
+        mode: FleetHostFilesObserveOnly,
+        privilege: AdministratorPrivilegeAvailable,
+        results: map(runner_host_cap_files(), f => FleetHostFileResult {
+          planned: FleetHostFilePlanned {
+            file: f,
+            observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },
+            action: HostFileLeaveInPlace,
+          },
+          outcome: HostFileNotAppliedObserveOnly,
+        }),
+        withheld: [],
+        pre_actuation_reload: ManagerReloadNotOwed,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: cap_population(),
+        cap_phase: phase,
+        deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
+        superseded: [],
+        deploy_readings: [],
+      }
+    }
+  }
+}
+
+fn observe_run_succeeded(phase: RunnerHostCapPhase) -> Bool {
+  match observe_run_of(phase: phase) {
+    Absent => false
+    Present { value: r } => runner_host_file_run_succeeded(run: r)
+  }
+}
+
+fn observe_run_text(phase: RunnerHostCapPhase) -> String {
+  match observe_run_of(phase: phase) {
+    Absent => ""
+    Present { value: r } => runner_host_file_run_text(run: r)
+  }
+}
+
+// THE PHASE COMES FROM THE REAL ROUTE: phase_of() over a scripted observe run, never hand-written for
+// the positives. Only the withheld / not-owed / ran arms -- which production's observe cannot produce
+// and which are the REFUSAL shapes -- are hand-built below.
+fn observed_cap_phase(legs: List<ScriptedCommand>) -> RunnerHostCapPhase {
+  phase_of(r: observe(legs: legs))
+}
+
+// HOST-WIDE LEG SETS. settled() is HOST-WIDE: srv1 declares two units, so every affected unit must
+// read completely or the verdict moves for reasons outside the control. These vary only the FEATURED
+// unit's read; every other declared unit gets the at-desired pair. The second unit's cgroup root is
+// its own (the featured unit's name must not leak into its grep key).
+fn host_legs_varying_featured(featured: NonEmptyStr, featured_grep_answer: ShellExchangeObservation) -> List<ScriptedCommand> {
+  match cap_subject() {
+    Absent => []
+    Present { value: s } => flat_map(s.desired_units, u =>
+      if (u as String) == (featured as String) {
+        [
+          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          ScriptedCommand { remote_command: grep_command(control_group: cap_cgroup(unit: u)), answer: featured_grep_answer },
+        ]
+      } else {
+        [
+          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+        ]
+      })
+  }
+}
+
+fn host_legs_featuring(featured: NonEmptyStr, memory_max: String, swap_max: String) -> List<ScriptedCommand> {
+  match cap_subject() {
+    Absent => []
+    Present { value: s } => flat_map(s.desired_units, u =>
+      if (u as String) == (featured as String) {
+        [
+          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: memory_max, swap_max: swap_max),
+        ]
+      } else {
+        [
+          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+        ]
+      })
+  }
+}
+
+// every declared unit at-desired except the featured unit's UNIT VIEW carries the pre-fix values
+// (drifted) -- host-wide so settled is not moved by the second unit.
+fn host_drifted_legs(featured: NonEmptyStr) -> List<ScriptedCommand> {
+  match cap_subject() {
+    Absent => []
+    Present { value: s } => flat_map(s.desired_units, u =>
+      if (u as String) == (featured as String) {
+        [
+          show_leg(unit: u, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+        ]
+      } else {
+        [
+          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+        ]
+      })
+  }
+}
+
+// THE FULLY-READ POSITIVE SUCCEEDS, and the receipt agrees. Privilege/withheld/residue/slots are all
+// scripted to pass, so this green can only come from a phase that really read everything.
+test fn a_fully_read_observe_run_succeeds_and_the_receipt_agrees() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let phase = observed_cap_phase(legs: host_at_desired_legs())
+      observe_run_succeeded(phase: phase)
+        && string_contains(s: observe_run_text(phase: phase), pattern: "terminal=succeeded")
+    }
+  }
+}
+
+// THE MISSING-FILE PHASE REFUSES THE RUN, THROUGH THE REAL ROUTE, WITH ITS OWN CAUSE. The scripted
+// grep leg returns exit 2 / ENOENT; the route reports the slot Unread from that read failure, the run
+// refuses, and the receipt still prints OBSERVED-UNREAD (visible, not hidden by the refusal) carrying
+// the ENOENT text -- never riding the gap arm.
+test fn a_missing_cgroup_file_refuses_the_observe_run_with_its_own_cause() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let phase = observed_cap_phase(legs: host_legs_varying_featured(
+        featured: unit,
+        featured_grep_answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup/system.slice/actions-runner@srv1-1.service: No such file or directory\n"),
+      ))
+      let text = observe_run_text(phase: phase)
+      observe_run_succeeded(phase: phase) == false
+        && string_contains(s: text, pattern: "terminal=REFUSED")
+        && string_contains(s: text, pattern: "OBSERVED-UNREAD")
+        && string_contains(s: text, pattern: "No such file or directory")
+        && !string_contains(s: text, pattern: "cap-route scenario has no answer")
+    }
+  }
+}
+
+// THE MALFORMED PHASE REFUSES THE RUN, THROUGH THE REAL ROUTE, WITH ITS OWN CAUSE -- same shape; the
+// cgroup row carried a non-numeric memory.max and that is the word the receipt must name.
+test fn a_malformed_memory_max_refuses_the_observe_run_with_its_own_cause() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let phase = observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: "not-a-byte-count", swap_max: desired_swap_text()))
+      let text = observe_run_text(phase: phase)
+      observe_run_succeeded(phase: phase) == false
+        && string_contains(s: text, pattern: "terminal=REFUSED")
+        && string_contains(s: text, pattern: "OBSERVED-UNREAD")
+        && string_contains(s: text, pattern: "not-a-byte-count")
+        && !string_contains(s: text, pattern: "cap-route scenario has no answer")
+    }
+  }
+}
+
+// A FULLY READ OWED OR DRIFTED STAYS A SUCCESS: the reading is what observe came for; owing caps or
+// the two readings disagreeing is a FINDING, not a failed observation (manager ruling, review
+// 5588645431: at-desired is NOT required).
+test fn a_fully_read_owed_or_drifted_observe_run_succeeds() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      observe_run_succeeded(phase: observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text)))
+        && observe_run_succeeded(phase: observed_cap_phase(legs: host_drifted_legs(featured: unit)))
+    }
+  }
+}
+
+// A WITHHELD PHASE REFUSES -- production observe withholds when the population cannot be read; a run
+// that looked at nothing exits REFUSED, and the receipt carries the withheld cause as its own words.
+test fn a_withheld_cap_phase_refuses_the_observe_run_with_its_own_cause() -> Bool {
+  let phase = CapPhaseWithheld { cause: "fixture: the slot population could not be read" as NonEmptyStr }
+  let text = observe_run_text(phase: phase)
+  observe_run_succeeded(phase: phase) == false
+    && string_contains(s: text, pattern: "terminal=REFUSED")
+    && string_contains(s: text, pattern: "fixture: the slot population could not be read")
+    && !string_contains(s: text, pattern: "cap-route scenario has no answer")
+}
+
+// THE HAND-FABRICATED BASE SHAPE REFUSES. CapPhaseNotOwed -- what the base answered without a single
+// read leg -- is not producible by production's observe arm since P4; on an observe run record it is
+// an unobserved claim, and success refuses it. The apply path still accepts it (unchanged, and the
+// sibling witness keeps covering that arm).
+test fn a_hand_fabricated_not_owed_phase_refuses_the_observe_run() -> Bool {
+  observe_run_succeeded(phase: CapPhaseNotOwed) == false
+    && string_contains(s: observe_run_text(phase: CapPhaseNotOwed), pattern: "terminal=REFUSED")
+}
+
+// A PHASE THAT OBSERVED NOTHING REFUSES. An empty CapPhaseObserved is vacuously "all settled"; zero
+// readings is the same hiding as the base's two-valued answer.
+test fn an_empty_observed_phase_refuses_the_observe_run() -> Bool {
+  observe_run_succeeded(phase: CapPhaseObserved { readings: [] }) == false
+}
+
+// A STAMPED-OFF APPLY PHASE ON AN OBSERVE RECORD REFUSES. CapPhaseRan says the write legs ran -- not
+// what this mode did; the mismatch is a second path to one observation and gets no pass.
+test fn an_apply_phase_on_an_observe_record_refuses() -> Bool {
+  observe_run_succeeded(phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [], certified: [] }) == false
+}

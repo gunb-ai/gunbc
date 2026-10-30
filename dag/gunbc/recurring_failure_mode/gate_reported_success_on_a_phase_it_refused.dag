@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.gate_reported_success_on_a_phase_it_refused
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data gate_reported_success_on_a_phase_it_refused: RecurringFailureMode = RecurringFailureMode {
   identity: "gate_reported_success_on_a_phase_it_refused" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**a required lane printed a typed, located refusal for a phase it ran, counted it, and then exited 0, so the job, the aggregating required context and the pull request all reported green while a required observation had been DECLINED** (INVALID STATE: the refusal arm is correct and reaches the log in full -- `required-ci: floor refused: REQUIRED-FLOOR REFUSAL cause=...`, `phases_failed=1`, `required-ci: FAILED PHASE ...` -- and the process still returns SUCCESS. Nothing is silent except the one thing that decides: the exit status. This is DESIGN section 5's forbidden arm inside the gate itself, and section 4b(1) rung inflation at the gate's own grain: the lane reported the rung its clean run would have established for a run that did not hold.",
 

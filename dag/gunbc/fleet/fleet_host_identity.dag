@@ -5,7 +5,7 @@ import product.host_identity { HostIdentity }
 
 // THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet.fleet_intent_network,
 // beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only
-// needs a host's name -- the approval broker composing its ntfy address, gunbc.auth.approval_ntfy_publish --
+// needs a host's name -- the approval ntfy deployment composing its address, gunbc.auth.approval_ntfy_deployment --
 // does not import the topology's assets, segments and endpoints. The notes below were written when
 // the rows lived in gunbc.fleet.fleet_intent_network: where one says "this module" or "here" about NAMING,
 // it now means this leaf; where it speaks of enrollment or `endpoints`, that is still
@@ -79,6 +79,16 @@ data operator_host_srv16: HostIdentity = "srv16"
 data operator_host_183527: HostIdentity = "host-183527"
 data operator_host_3dde7f: HostIdentity = "host-3dde7f"
 
+// ALTRAD8UD-1L2T-6 (operator, 2026-10-16, session royal-seal-46). An ASRock Rack ALTRAD8UD-1L2T
+// (board serial BR80S6102300077). How its BMC credential was recovered is recorded in the evidence
+// (#14169) and modeled in #14168, not here. Its identity is
+// OPAQUE per the rule above -- nothing about the board, its serial, its BMC or its intended role is
+// read off this spelling; those facts have their own authorities. The operator chose the Gen Z
+// naming scheme (gunbc.host_names.gen_z) for it, so its hostname is DRAWN in gunbc.hostname_allocation
+// rather than encoded here. NAMING IS NOT ENROLLMENT: no endpoint, MAC, BMC or hardware row is added
+// here; this row names the slot and licenses nothing.
+data operator_host_94c81d: HostIdentity = "host-94c81d"
+
 // THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
 // by joining this membership; a spelling that is not a row here is not a fleet host.
 data operator_hosts: List<HostIdentity> = [
@@ -98,6 +108,7 @@ data operator_hosts: List<HostIdentity> = [
   operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
+  operator_host_94c81d,
 ]
 
 fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {

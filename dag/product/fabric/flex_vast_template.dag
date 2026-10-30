@@ -4,24 +4,201 @@ import std.types { String, NonEmptyStr, Bool, Int, List, Port, list_length }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.list { first_where }
-import std.measure { ByteSize, Bandwidth, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size }
+import std.measure { ByteSize, Bandwidth, gibibyte_count, gibibyte_ceiling }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, base64_octets, Base64Variant, Standard }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, int_to_decimal_string }
 import extdeps.cloud.vast_ai { VastAiTemplateRow }
 import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_flash_next_vast_filters }
+import product.fabric.flex_serving_image { flex_lil_serving_image }
+
+// ---- THE LAUNCH, TYPED.
+// The mode Vast runs on the rented card. Two spellings have been seen on the wire, and the wire name
+// comes from this type -- never from a string a caller writes:
+//   ssh    the retired shape. Its first boots on fresh hosts did not serve at 55+ min (2026-10-27).
+//   args   the shape that served: instance 57968351, 2026-10-27, serving in about 25 min.
+// The args launch is applied PER RENT, in the create request (flex_vast_rent_launch below), not stored
+// in the template: an args command stored IN a template has never been observed to execute (template
+// 782339: 50 min, empty logs). The template declares the mode so the readback and the create agree.
+//
+// The mode and what it may carry are ONE sum, so a mode cannot hold the other mode's field: an ssh launch
+// carries a stored on-start script and no args; an args launch carries the container command and no stored
+// script (its script travels base64 in the create env). Every wire field is derived from the arm.
+type FlexTemplateLaunch
+  = FlexSshLaunch { onstart: String }
+  | FlexArgsLaunch { args: List<String> }
+
+fn flex_launch_runtype_wire(launch: FlexTemplateLaunch) -> String {
+  match launch {
+    FlexSshLaunch { onstart: _ } => "ssh"
+    FlexArgsLaunch { args: _ } => "args"
+  }
+}
+
+fn flex_launch_args(launch: FlexTemplateLaunch) -> List<String> {
+  match launch {
+    FlexSshLaunch { onstart: _ } => []
+    FlexArgsLaunch { args: a } => a
+  }
+}
+
+fn flex_launch_onstart(launch: FlexTemplateLaunch) -> String {
+  match launch {
+    FlexSshLaunch { onstart: o } => o
+    FlexArgsLaunch { args: _ } => ""
+  }
+}
+
+// The env name the on-start script travels under, base64, in the create request's env.
+data flex_vast_onstart_b64_env_name: NonEmptyStr = "ONSTART_B64" as NonEmptyStr
+
+// The docker flag that carries it. One spelling, used by the launch builder and by the printable plan.
+fn flex_vast_onstart_b64_flag() -> String {
+  join(["-e ", flex_vast_onstart_b64_env_name as String, "="], "")
+}
+
+// The container command of the args launch: decode the script out of the env, run it, then hold the
+// container open so the ask is not reaped while the server starts. ctrl's session-dashboard bidder
+// mirrors this string (gunb-ai/ctrl scripts/session-dashboard/lib/vast_bidder.mjs ARGS_LAUNCH_COMMAND,
+// merged in #2401); its R12 marker names THIS declaration the authority, and that copy retires when the
+// flex pass rents.
+data flex_vast_args_launch_command: String = "echo \"$ONSTART_B64\" | base64 -d > /root/onstart.sh && bash /root/onstart.sh; exec sleep infinity"
+
+data flex_vast_args_launch: List<String> = ["bash", "-c", flex_vast_args_launch_command]
+
+// Vast caps the env string a TEMPLATE stores at 4096 characters. The bound is on the template's own env
+// (flex_template_env), which is what a template create sends; the per-rent create env is a different
+// field and is NOT under it -- the launch that served carried a 5,277-character create env on instance
+// 57968351 (2026-10-27), which is how its on-start script reached the card.
+data flex_vast_template_env_max_chars: Int = 4096
+
+// The per-rent CREATE env's own cap is not known. What is known is one observation: a create with an env
+// of about 5,277 characters was accepted and served. That is a receipt of this repository's observation,
+// not a Vast fact, so it is not stated as a limit. The cap stays unknown until read; if a create is ever
+// refused for size, that refusal becomes the reading.
+type FlexCreateEnvCap
+  = FlexCreateEnvCapUnknown { read_obligation: NonEmptyStr }
+  | FlexCreateEnvCapRead { max_chars: Int }
+
+data flex_vast_create_env_cap: FlexCreateEnvCap = FlexCreateEnvCapUnknown {
+  read_obligation: "read Vast's API docs for the create-instance env limit, or probe PUT /api/v0/asks/<id>/ for its real cap" as NonEmptyStr,
+}
+
+type FlexCreateEnvObservation {
+  instance_id: Int
+  date: NonEmptyStr
+  env_chars: Int
+  outcome: NonEmptyStr
+}
+
+data flex_vast_create_env_observed_accepted: FlexCreateEnvObservation = FlexCreateEnvObservation {
+  instance_id: 57968351,
+  date: "2026-10-27" as NonEmptyStr,
+  env_chars: 5277,
+  outcome: "accepted; served in about 25 min" as NonEmptyStr,
+}
+
+type FlexTemplateEnvStanding
+  = FlexTemplateEnvWithinBound { chars: Int }
+  | FlexTemplateEnvOverBound { chars: Int, max: Int }
+
+fn flex_vast_template_env_standing(env: String) -> FlexTemplateEnvStanding {
+  let chars = string_length(s: env)
+  if chars > flex_vast_template_env_max_chars {
+    FlexTemplateEnvOverBound { chars: chars, max: flex_vast_template_env_max_chars }
+  } else {
+    FlexTemplateEnvWithinBound { chars: chars }
+  }
+}
+
+// ---- THE PER-RENT LAUNCH, carried in the create request (PUT /api/v0/asks/<id>/).
+// The template stays secret-free; the launch belongs to the create. The script is read from the one
+// serving-image fact (product.fabric.flex_serving_image flex_lil_serving_image.onstart), never from the
+// template, so there is one script and one place it is written.
+type FlexRentLaunch {
+  mode: FlexTemplateLaunch
+  env: String
+}
+
+type FlexRentLaunchRefusal
+  = FlexRentLaunchNotArgsMode { runtype: String }
+  | FlexRentLaunchNoOnstartScript
+  | FlexRentLaunchOnstartNotEncodable
+  | FlexRentLaunchEnvAlreadySetsOnstartB64
+  | FlexRentLaunchEnvOverCreateCap { chars: Int, max: Int }
+
+type FlexRentLaunchResult
+  = FlexRentLaunchBuilt { launch: FlexRentLaunch }
+  | FlexRentLaunchRefused { cause: FlexRentLaunchRefusal }
+
+// Why a launch could not be built, in words a wall line can print. The refusal itself stays typed; this
+// is only its rendering.
+fn flex_rent_launch_refusal_cause(cause: FlexRentLaunchRefusal) -> String {
+  match cause {
+    FlexRentLaunchNotArgsMode { runtype: runtype } => join(["the template launch mode is ", runtype, "; the launch observed to serve is args"], "")
+    FlexRentLaunchNoOnstartScript => "the serving image fact carries no on-start script to launch"
+    FlexRentLaunchOnstartNotEncodable => "the on-start script is not base64-encodable"
+    FlexRentLaunchEnvAlreadySetsOnstartB64 => "the template env already sets ONSTART_B64"
+    FlexRentLaunchEnvOverCreateCap { chars: chars, max: max } => join(["the create env would be ", int_to_decimal_string(value: chars), " characters; the read cap is ", int_to_decimal_string(value: max)], "")
+  }
+}
+
+fn flex_vast_onstart_b64(script: String) -> String? {
+  match base64_octets(values: bytes_octets(b: utf8_encode_bytes(s: script))) {
+    QualifiedOctetsRefused { observed: _ } => none
+    QualifiedOctetsReady { value: qualified } => Present { value: base64_encode(octets: qualified, variant: Standard) }
+  }
+}
+
+// The launch a create request carries, or a typed refusal. The template's docker-options string is the
+// base; the script is appended to it as `-e ONSTART_B64=<base64>`, which is the form that served.
+// The create env's cap is read here: unknown refuses nothing (no cap is invented), a read cap refuses an
+// over-cap env. `reserved_chars` is what the write path appends after the launch env (the drawn password flag).
+fn flex_vast_rent_launch(spec: FlexTemplateSpec, cap: FlexCreateEnvCap, reserved_chars: Int) -> FlexRentLaunchResult {
+  match spec.launch {
+    FlexSshLaunch { onstart: _ } => FlexRentLaunchRefused { cause: FlexRentLaunchNotArgsMode { runtype: flex_launch_runtype_wire(launch: spec.launch) } }
+    FlexArgsLaunch { args: args } =>
+      if string_length(s: flex_lil_serving_image.onstart) == 0 {
+        FlexRentLaunchRefused { cause: FlexRentLaunchNoOnstartScript }
+      } else {
+        let base = flex_template_env(spec: spec)
+        let flag = flex_vast_onstart_b64_flag()
+        if base.contains(flag) {
+          FlexRentLaunchRefused { cause: FlexRentLaunchEnvAlreadySetsOnstartB64 }
+        } else {
+          match flex_vast_onstart_b64(script: flex_lil_serving_image.onstart) {
+            Absent => FlexRentLaunchRefused { cause: FlexRentLaunchOnstartNotEncodable }
+            Present { value: b64 } =>
+              let env = join([base, " ", flag, b64], "")
+              let chars = string_length(s: env) + reserved_chars
+              let built = FlexRentLaunchBuilt { launch: FlexRentLaunch { mode: FlexArgsLaunch { args: args }, env: env } }
+              match cap {
+                FlexCreateEnvCapUnknown { read_obligation: _ } => built
+                FlexCreateEnvCapRead { max_chars: max } =>
+                  if chars > max { FlexRentLaunchRefused { cause: FlexRentLaunchEnvOverCreateCap { chars: chars, max: max } } } else { built }
+              }
+          }
+        }
+      }
+  }
+}
 
 // THE FLEX VAST TEMPLATE AS A DECLARED FACT, secret-free by construction. A template is the host's
-// image, disk, runtype and the PORT its server listens on; the spec has no field that can hold any other
-// env, so a credential env is unwritable here. The per-rental server password is not a template fact: it
-// is drawn per create (product.fabric.flex_vast_loop mint_flex_pool_password) and sent in the create
-// request's env, which Vast merges over the template's by key (docs.vast.ai create-instance).
+// image, disk, launch mode and the PORT its server listens on; the spec has no field that can hold any
+// other env, so a credential env is unwritable here. The per-rental server password is not a template
+// fact: it is drawn per create (product.fabric.flex_vast_loop mint_flex_create_env) and sent in the
+// create request's env, which Vast merges over the template's by key (docs.vast.ai create-instance).
 type FlexTemplateSpec {
   name: NonEmptyStr
   image: NonEmptyStr
   tag: NonEmptyStr
-  runtype: NonEmptyStr
+  // The launch mode with what it carries: the args container command is applied per rent
+  // (flex_vast_rent_launch); an args launch stores no on-start script, because an args command stored IN
+  // the template has never been observed to execute and the script travels base64 in the create env.
+  launch: FlexTemplateLaunch
   disk: ByteSize
   port: Port
   shm: ByteSize
-  onstart: String
   ssh_direct: Bool
   jup_direct: Bool
   use_jupyter_lab: Bool
@@ -100,10 +277,6 @@ fn flex_template_judge_row(spec: FlexTemplateSpec, row: VastAiTemplateRow) -> Fl
   }
 }
 
-// THE ONSTART IS THE TEMPLATE'S REALIZATION, carried verbatim as the operator supplied it (read live on
-// srv1 from the retired template, 2026-10-18, relayed by deep-otter-797). It names POOL_API_KEY only to
-// READ it from the container's environment; it carries no credential value.
-data flex_vast_onstart: String = "#!/bin/bash\n# Qwen3.8-Flash-Next on the local-inference-lab vLLM build; the model from Hugging Face.\n# Needs: driver 580+ (CUDA 13.x; tested on 595, 610 and 615), ~400 GB disk, env POOL_API_KEY and PORT.\n# Serves HTTPS with a certificate made on first start; the dashboard pins it on first contact.\n# Logs: /root/serve/events.log (steps) and /root/serve/serve.log (server, including the download)\nD=/root/serve; mkdir -p $D /cache/kv; ev()\{ echo \"$(date -u +%FT%TZ) $*\" >> $D/events.log; }\n# Template env is on PID 1; an on-start shell may not inherit it.\nfor v in POOL_API_KEY PORT CACHE_MODE; do\n  [ -n \"$\{!v}\" ] || export $v=\"$(tr '\\0' '\\n' < /proc/1/environ | sed -n \"s/^$v=//p\")\"\ndone\nfor v in POOL_API_KEY PORT; do [ -n \"$\{!v}\" ] || \{ ev \"REFUSED: $v not set in template env\"; exit 1; }; done\nDRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)\n[ \"$\{DRV%%.*}\" -ge 580 ] || \{ ev \"REFUSED: driver $DRV; this image needs 580+ (CUDA 13.x)\"; exit 1; }\numask 077; printf %s \"$POOL_API_KEY\" > /root/.pool_key\n# TLS: one key per card, kept across restarts so its pin holds. No TLS, no start.\n[ -s $D/tls.key ] && [ -s $D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout $D/tls.key -out $D/tls.crt >> $D/events.log 2>&1\numask 022\n[ -s $D/tls.key ] && [ -s $D/tls.crt ] || \{ ev \"REFUSED: no TLS certificate could be made\"; exit 1; }\nTLS=\"--ssl-keyfile $D/tls.key --ssl-certfile $D/tls.crt\"\n\n# Session caches: ram-disk (default) = LMCache, sessions evicted from the GPU go to RAM, then disk.\n# vram = GPU only; set CACHE_MODE=vram in the template env to use it.\nCACHE_MODE=$\{CACHE_MODE:-ram-disk}\n# RAM tier: half of the RAM this container may use, at most 60 GB. The container's own limit\n# (cgroup memory.max) can be far below the host's RAM (183 of 251 GB seen 2026-10-16).\nAVAIL=$(awk '/MemAvailable/\{print int($2/1048576)}' /proc/meminfo)\nMAX=$(cat /sys/fs/cgroup/memory.max 2>/dev/null); CUR=$(cat /sys/fs/cgroup/memory.current 2>/dev/null)\n[[ \"$MAX\" =~ ^[0-9]+$ ]] && [[ \"$CUR\" =~ ^[0-9]+$ ]] && \{ C=$(( (MAX - CUR) / 1073741824 )); [ $C -lt $AVAIL ] && AVAIL=$C; }\nL1=$(( AVAIL / 2 )); [ $L1 -gt 60 ] && L1=60\n# Disk tier: 80% of the disk left after the model (~110 GB), at most 800 GB.\nL2=$(( ($(df -BG --output=avail /cache | tail -1 | tr -dc 0-9) - 110) * 8 / 10 )); [ $L2 -gt 800 ] && L2=800\nif [ \"$CACHE_MODE\" = ram-disk ] && \{ [ $L1 -lt 8 ] || [ $L2 -lt 20 ]; }; then\n  ev \"too little RAM/disk for ram-disk (L1 $\{L1}G, L2 $\{L2}G); using vram\"; CACHE_MODE=vram\nfi\n\n# The server downloads the pinned model revision from Hugging Face on first start (~103 GB),\n# and tunes its kernels on first start (~9 min); both stay on disk for restarts.\ncat > $D/run.sh <<EOS\n#!/bin/bash\nexport PORT=$PORT\n# Restart on crash; the pool stops routing to it while it is down.\nwhile true; do\n  if [ \"$CACHE_MODE\" = ram-disk ]; then\n    /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\\\n      --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=$L1 --env LMCACHE_L2_GB=$L2 --env LMCACHE_L2_ROOT=/cache/kv \\\\\n      -- --port $PORT $TLS --api-key \"\\$(cat /root/.pool_key)\"\n  else\n    /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\\\n      -- --cache-mode vram --port $PORT $TLS --api-key \"\\$(cat /root/.pool_key)\"\n  fi\n  echo \"\\$(date -u +%FT%TZ) lil-serve exited \\$?; restarting in 10s\" >> $D/events.log; sleep 10\ndone\nEOS\nchmod +x $D/run.sh\nev \"START (driver $DRV, cache $CACHE_MODE, L1 $\{L1}G, L2 $\{L2}G, TLS)\"\nnohup $D/run.sh >> $D/serve.log 2>&1 &\n"
 
 // The disk and the host-filter thresholds are NOT restated here: they derive from the recipe
 // (flex_serving_recipe.disk) and the one filter row (flex_flash_next_vast_filters), so the offer screen
@@ -113,15 +286,19 @@ data flex_vast_onstart: String = "#!/bin/bash\n# Qwen3.8-Flash-Next on the local
 // comes from Hugging Face, so R2 was unused). The image digest is carried in the tag field. The serving
 // port is 18000: 8000 is the image's Caddy portal, so the recipe's published_tcp_port (8000) is not this
 // realization's port (raised with L1, which owns the recipe).
+// THE SUPPLIER-AGNOSTIC HALF (image repository and digest, port, shm, onstart) is read from
+// product.fabric.flex_serving_image flex_lil_serving_image, which the EC2 launch template reads too; Vast
+// stores the digest in its tag field, so the image field here is the repository plus "@sha256".
+// The launch is args mode with an empty stored onstart: the script reaches the card base64 in the create
+// request's env (flex_vast_rent_launch), which is the form observed to serve.
 data flex_vast_template_spec: FlexTemplateSpec = FlexTemplateSpec {
   name: "flex lil v3 (no credential env)" as NonEmptyStr,
-  image: "ghcr.io/local-inference-lab/vllm@sha256" as NonEmptyStr,
-  tag: "751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7" as NonEmptyStr,
-  runtype: "ssh" as NonEmptyStr,
+  image: join([flex_lil_serving_image.repository as String, "@sha256"], "") as NonEmptyStr,
+  tag: flex_lil_serving_image.digest_sha256,
+  launch: FlexArgsLaunch { args: flex_vast_args_launch },
   disk: flex_serving_recipe.disk,
-  port: 18000,
-  shm: gibibyte_to_byte_size(g: gibibyte(count: 80)),
-  onstart: flex_vast_onstart,
+  port: flex_lil_serving_image.port,
+  shm: flex_lil_serving_image.shm,
   ssh_direct: true,
   jup_direct: true,
   use_jupyter_lab: false,

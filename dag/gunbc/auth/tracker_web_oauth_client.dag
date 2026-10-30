@@ -15,7 +15,7 @@ import std.goal_assessment {
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.google_workspace_login {
-  GoogleLoginClientTrackerWeb, GoogleLoginEnvironment, GoogleLoginEnvironmentTest,
+  GoogleLoginClientTrackerWeb, GoogleLoginClientApproveIos, GoogleLoginClient, GoogleLoginEnvironment, GoogleLoginEnvironmentTest,
   GoogleLoginEnvironmentStage, GoogleLoginEnvironmentProd,
   TrackerWebOauthClientBinding, TrackerWebOauthClientStanding,
   TrackerWebOauthClientBound, TrackerWebOauthClientUnbound, gunb_ai_hosted_domain,
@@ -26,7 +26,8 @@ import gunbc.auth.google_workspace_admin_convergence {
   workspace_admin_assess, BasicSignInOnly,
 }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
-import extdeps.google.workspace { AuthPlatformClient, RegisteredWebClient }
+import extdeps.google.workspace { AuthPlatformClient, RegisteredWebClient, RegisteredIosClient, WorkspaceAdminValue }
+import std.human_intervention { HumanIntervention, HumanInterventionIdentity, FleetOnce, NoDischargeSiteModeled }
 import gunbc.auth.oidc_deployment_config {
   oidc_config_schema, oidc_config_env_var, oidc_session_lifetime, oidc_login_transaction_lifetime,
 }
@@ -38,7 +39,7 @@ import extdeps.languages.json.emit {
 }
 import std.optional { Present, Absent }
 import extdeps.units.iso8601_calendar {
-  Iso8601CivilDate, iso8601_days_from_civil, iso8601_seconds_per_day,
+  Iso8601CivilDate, iso8601_unix_seconds_at,
 }
 
 // REDIRECT URIS BELONG TO AN ENVIRONMENT, NOT A HOST (operator 2026-10-11). The binding is
@@ -57,6 +58,50 @@ data tracker_web_test_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEm
 data tracker_web_test_oauth_desired_revision: NonEmptyStr = "tracker-web-test-2026-10-11" as NonEmptyStr
 
 data tracker_web_oauth_callback_path: String = "/auth/google/callback"
+
+// ── THE APPROVE-IOS CLIENT, IN THE SAME AUTH PLATFORM PROJECT ──────────────────────────────────
+// The native approval app signs in with its own iOS-type client (ruling gunbc.design_ruling
+// approval_enrolment_is_google_sign_in). It lives beside the tracker web client because both are
+// registrations in one project, and the project facts above are the ones it shares. The client id is
+// the audience gunbc.auth.approval_google_enrolment admits. An iOS client has no secret: there is no
+// custody row for it, and none may be added.
+data gunbc_tracker_oauth_console_project_id: NonEmptyStr = "gunbc-tracker" as NonEmptyStr
+
+type NativeOauthClientRegistration {
+  client: GoogleLoginClient
+  display_name: NonEmptyStr
+  client_id: NonEmptyStr
+  project_id: NonEmptyStr
+  project_number: NonEmptyStr
+  registration: WorkspaceAdminValue
+}
+
+data approve_ios_oauth_client_id: NonEmptyStr = "433089409875-p2dbfd5ug7f0svkm2dpec1uh9pk09bq6.apps.googleusercontent.com" as NonEmptyStr
+
+data approve_ios_bundle_id: NonEmptyStr = "ai.gunb.approve" as NonEmptyStr
+
+data approve_ios_oauth_client: NativeOauthClientRegistration = NativeOauthClientRegistration {
+  client: GoogleLoginClientApproveIos,
+  display_name: "approvals" as NonEmptyStr,
+  client_id: approve_ios_oauth_client_id,
+  project_id: gunbc_tracker_oauth_console_project_id,
+  project_number: tracker_web_test_oauth_console_project,
+  registration: RegisteredIosClient { bundle_id: approve_ios_bundle_id },
+}
+
+// CREATED BY HAND IN THE CLOUD CONSOLE (operator, 2026-10-23): Auth Platform has no client write
+// API, so registration is a console act, recorded in gunbc.auth.privileged_effect_census.
+data approve_ios_oauth_client_intervention_identity: String = "approve-ios-oauth-client-registration"
+
+fn approve_ios_oauth_client_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: approve_ios_oauth_client_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "the approve-ios OAuth client in the gunbc-tracker Auth Platform project" as NonEmptyStr,
+    instruction: "In the Google Cloud console for project gunbc-tracker, Auth Platform > Clients > Create client: application type iOS, name 'approvals', bundle ID ai.gunb.approve. Record the issued client id as approve_ios_oauth_client_id. There is no secret to custody." as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
 
 // DNS name the TEST environment will use once owned-domain TLS exists. "dev" here is the
 // product hostname (tracker-dev.gunb.ai), not a GoogleLoginEnvironment Dev arm.
@@ -215,10 +260,11 @@ data tracker_web_test_console_readback_valid_until: TrackerWebConsoleUtcInstant 
   since_midnight: second(count: 4 * 60 * 60),
 }
 
-// Unix seconds at a UTC civil date plus a duration since midnight, via the ISO-8601
-// calendar (Hinnant days_from_civil), not a transcribed epoch integer. Inverse: iso8601_utc_text.
+// Unix seconds at a UTC civil date plus a duration since midnight, delegated to the ISO-8601
+// calendar's own combination (DESIGN §6b: the rule is owned there, not re-spelled here).
+// Inverse: iso8601_utc_text.
 fn tracker_web_test_console_readback_unix_int(at: TrackerWebConsoleUtcInstant) -> Int {
-  iso8601_days_from_civil(y: at.date.year, m: at.date.month, d: at.date.day) * iso8601_seconds_per_day() + (second_count(s: at.since_midnight) as Int)
+  iso8601_unix_seconds_at(date: at.date, since_midnight: (second_count(s: at.since_midnight) as Int))
 }
 
 fn tracker_web_test_console_readback_unix_at(at: TrackerWebConsoleUtcInstant) -> Second? {

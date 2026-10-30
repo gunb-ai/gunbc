@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.special_cased_lowering_answers_a_narrower_question_than_its_arms_ask
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data special_cased_lowering_answers_a_narrower_question_than_its_arms_ask: RecurringFailureMode = RecurringFailureMode {
   identity: "special_cased_lowering_answers_a_narrower_question_than_its_arms_ask" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a target-specific lowering is admitted by a predicate that establishes the SHAPE OF THE SCRUTINEE and not the shape of the ARMS, so it runs over arm sets it cannot express and silently answers a narrower question -- selecting a branch the source never selects, and discarding arms it never read. The emitted program compiles, runs, and returns a well-typed wrong value.",

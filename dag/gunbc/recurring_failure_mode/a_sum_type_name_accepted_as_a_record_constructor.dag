@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_sum_type_name_accepted_as_a_record_constructor
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_sum_type_name_accepted_as_a_record_constructor: RecurringFailureMode = RecurringFailureMode {
   identity: "a_sum_type_name_accepted_as_a_record_constructor" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "A sum type's NAME used as a record constructor type-checks: `SystemdRunProperty { property: MemoryMax, value: ... }` where extdeps.systemd.systemd_run declares `type SystemdRunProperty = NamedUnitSetting { property, value } | EmptyCapabilityBoundingSet`. The name is not a variant, so the value inhabits no declared variant and every total match over the sum fails at run time. Invalid state: a value built under a type name that no constructor carries. Harm: a typed-clean production function whose consumers all hit a non-exhaustive match.",

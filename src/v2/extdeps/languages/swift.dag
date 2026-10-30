@@ -55,7 +55,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_map
 }
 
 import std.optional {
@@ -81,10 +81,11 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.compilers.target_model {
+  PrimitiveRealizationsUnwired,
   ProducedDeclWired, ProducedDeclSupport, ProducedDeclRenderRows, ProducedSignatureFixed, ProducedSignatureDeclName,
   ProducedSignatureParams, ProducedSignatureReturnType, ProducedParamName, ProducedParamFixed, ProducedParamType,
   StatementSequenced, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty, ListIntroductionUnwired }
 import v2.std.compilers.target_model {
   DeclarationReferenceForm,
   ModuleScopedPath,
@@ -128,9 +129,10 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
-import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert }
+import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 import std.host_text { chars }
@@ -393,7 +395,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
@@ -717,6 +719,7 @@ fn swift_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^swift_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^swift_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: swift_block_evaluation_mode()
   }
 }
@@ -782,13 +785,14 @@ fn swift_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^swift_token_unwired_arrow_label,
       param_list_separator: ^swift_token_comma
     },
-    occupancy_form: TargetGenericApply {
-      surface: ^swift_decl_type_occupancy,
+    optional_instantiation_form: TargetGenericApply {
+      surface: ^swift_decl_type_optional_instantiation,
       open: ^swift_token_lt,
       separator: ^swift_token_comma,
       field_label_separator: optional_absent(),
       close: ^swift_token_gt
     },
+    optional_head: ^Optional,
     instantiation_form: TargetGenericApply {
       surface: ^swift_decl_type_generic_apply,
       open: ^swift_token_lt,
@@ -924,6 +928,7 @@ fn swift_produced_decl_support() -> ProducedDeclSupport {
 
 fn swift_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: swift_produced_decl_support(),
     bundle: swift_target_model_node(),
     lex: swift_emit_lex(),
@@ -1861,11 +1866,14 @@ fn swift_grammar() -> ParseGrammar {
   ModeledGrammar { root: swift_grammar_root() }
 }
 
+// The token-class membership map for swift_lex_rules(), built ONCE and read by key: the
+// membership of a class is a pure function of this module-literal rule set, so per-query
+// rebuilds of the set and linear scans of it were authored duplication (DESIGN.md §2,
+// gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data swift_lex_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: swift_lex_rules())
+
 fn swift_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
-    rules: swift_lex_rules(),
-    token_class: sym
-  )
+  map_contains_key(m: swift_lex_token_class_membership, key: sym)
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.accumulator_copy_lens_binds_no_carrier
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data accumulator_copy_lens_binds_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "accumulator_copy_lens_binds_no_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**the accumulator-copy lens found the lowered fold Loop but bound a carrier no body reads, so every planted inline-fold copy went clean** (INVALID STATE: a supported positive loses its discriminating classification). `v2.test.claim.long.accumulator_copy_fold_analysis` ran 5 of 24 on main (claim_batch, BuildBuddy, 2026-10-04, swift-bat-688).",

@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_record_accepted_where_a_declared_scalar_slot_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_record_accepted_where_a_declared_scalar_slot_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "a_record_accepted_where_a_declared_scalar_slot_is_declared" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a constructed record is accepted at a position whose declared type is a kernel scalar, with zero diagnostics at acceptance** (the declared-type judgment on the interpreted path runs when the VALUE side is a kernel literal or a collection; a constructor-produced record is not judged against the slot's declared type, so the mismatch enters the program silently).",
@@ -21,9 +23,11 @@ data a_record_accepted_where_a_declared_scalar_slot_is_declared: RecurringFailur
     "DISTINGUISHING FACTS vs `gunbc.recurring_failure_mode.function_typed_argument_mismatch_accepted`: that row's hole is scoped to function types (either side an arrow, through the `type_node_is_callable` exemption). This specimen has no function type on either side: a record into a declared kernel-scalar slot at a constructor field inside a bind lambda. The sibling's correction paragraph records that `declared_type_conformance_diags` judged only ground kernel scalars and element collections -- which is the same boundary this row names from the value side: the judgment keys on the value being a kernel literal or collection, so a constructor-produced record passes unjudged.",
 
     "NEXT-RUNG TRIGGER, named as the capability: construction-time inhabitance judged at constructor-field and bind-parameter positions regardless of the value side's kind, sufficient that a minimal repro (a struct literal binding a constructed record into a declared String field) refuses LOCATED at the construction, with the correctly-typed literal at the same position as its control.",
+    "SPECIMEN AT THE DECLARED-RETURN POSITION, FOR A COPRODUCT (found by bright-pike-492 on gunbc#15022, measured with `gunbc compile --target rust` at main 476be2f5 on BuildBuddy): test.fixture.coproduct_at_declared_scalar_return_fixture coproduct_returned_as_string is declared `-> String` and returns `pick_step(acc: NoPick, row: r)`, a value of the user coproduct `Pick<Tally>`. compile rc=0, and the return draws no diagnostic. It is this class (a constructor-produced value unjudged at a kernel-scalar slot) at a second position and for a second value kind, not a new class. The fixture is the RED the class's wall must refuse.",
   ],
 
   evidence: [
+    DeclarationRef { module_path: "test.fixture.coproduct_at_declared_scalar_return_fixture", decl_name: "coproduct_returned_as_string", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.orchestration_emit", decl_name: "OrchEmitCarried", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.communication.medium", decl_name: "Medium", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.emit_orchestration", decl_name: "orch_emit_exit_step", field: WholeDeclaration },

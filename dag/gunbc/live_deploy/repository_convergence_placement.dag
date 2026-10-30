@@ -1,9 +1,19 @@
 module gunbc.live_deploy.repository_convergence_placement
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFailureKind,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+}
 import extdeps.git.object_store {
   GitObjectFormatSha1,
   GitObjectIdTextRefusal,
@@ -525,11 +535,13 @@ fn decode_placement_receipt(text: String) -> ConvergencePlacementReceiptDecode {
 // never started, or died before its write, the deploy finds no file -- and a reader that treated a
 // missing receipt as "nothing to report" would let the transaction continue over a repository
 // nobody converged. So the read failure is its own refusal, and it is not the same refusal as an
-// unreadable one: nothing wrote versus something wrote badly have different repairs.
-fn placement_receipt_read_refusal(path: String, error: String) -> String {
+// unreadable one: nothing wrote versus something wrote badly have different repairs. The cause
+// text never repeats the host's error string here: absence is concluded ONLY from the host's
+// NotFound for the exact path, so the refusal names the state, not a message.
+fn placement_receipt_read_refusal(path: String) -> String {
   join(["no convergence receipt at ", path,
         " -- the unit did not reach its write, so the transition is UNPERFORMED rather than",
-        " unreported (", error, ")"], "")
+        " unreported (the host reported no such file for this exact path)"], "")
 }
 
 // WHERE THE RECEIPT LIVES, AND WHY NOT INSIDE THE REPOSITORY BEING CONVERGED. The obvious home is
@@ -567,7 +579,7 @@ fn convergence_exec_start(
 ) -> String {
   let src = "$\{GUNBC_TREE_SRC\}"
   join([
-    spec.service.serve_binary as String, " run",
+    fixed_serve_binary_path(binary: spec.service.serve_binary), " run",
     " --source-root ", src, "/dag",
     " --source-root ", src, "/src/v2",
     " --entry ", src, "/", convergence_placement_entry_path,
@@ -958,13 +970,42 @@ fn repository_converge_owner_wet(
 // THE OTHER HALF OF THE READBACK: what the deploy runs after `systemctl start` returns. It is a
 // separate entry point rather than a step inside the apply pipeline because binding it into that
 // pipeline is the integration change this lane does not own.
+// THE READBACK ANSWERS A QUESTION ABOUT ONE RUN, SO IT TAKES THAT RUN AS INPUT. The receipt on
+// disk is a per-run artifact at a per-instance path: `repository-convergence.json` is written by
+// whoever converged LAST, and nothing about its bytes says which plan asked for them. A readback
+// that took only the path was a question with the run removed from it -- reached on any route
+// other than the apply's own restart leg (the installed-binary `run --function
+// repository_convergence_readback_wet` route is exactly such a route), it accepted a PRIOR run's
+// CONVERGED receipt as this plan's success. That is DESIGN section 5's silent wrong answer, and
+// the store migration found it at inventory row S83469995.
+//
+// THE BINDING IS THE CANDIDATE, BECAUSE THE CANDIDATE IS THE RUN'S IDENTITY HERE. The unit's
+// ExecStart already carries `--arg candidate=<revision>`, the receipt serializes the candidate it
+// converged, and the decoder requires the field -- so no new identity had to be minted; the fix
+// hands the readback the identity the write side already stamps (DESIGN section 6b: the earliest
+// unjustified boundary was the missing INPUT, not the receipt's content). The comparison is never
+// a file's age: mtime says when a file was written, not which run wrote it, and a timestamp check
+// would be a heuristic standing where an observation belongs (section 5).
 type ConvergenceReadback
   = ConvergenceReadbackDecoded { receipt: ConvergencePlacementReceipt }
+  | ConvergenceReadbackReceiptAbsent { path: String }
+  | ConvergenceReadbackUnreadable { path: String, kind: FilesystemFailureKind, error: String }
+  | ConvergenceReadbackKindUnrecognized { path: String, observed: String, error: String }
+  | ConvergenceReadbackWrongCandidate { expected: String }
+  | ConvergenceReadbackStale { path: String, expected: String, found: String }
   | ConvergenceReadbackRefused { cause: String }
 
+// THE SUCCESS PREDICATE, NOW BOUND. Decoded is not the same as answering: a receipt that decoded
+// cleanly but names a different candidate refuses, so the only CONVERGED receipt that holds is one
+// whose candidate is the plan's, normalized by the same git identity row that admitted it.
 fn convergence_readback_holds(readback: ConvergenceReadback) -> Bool {
   match readback {
     ConvergenceReadbackDecoded { receipt: r } => placement_converged(receipt: r)
+    ConvergenceReadbackReceiptAbsent { path: _, } => false
+    ConvergenceReadbackUnreadable { path: _, kind: _, error: _ } => false
+    ConvergenceReadbackKindUnrecognized { path: _, observed: _, error: _ } => false
+    ConvergenceReadbackWrongCandidate { expected: _ } => false
+    ConvergenceReadbackStale { path: _, expected: _, found: _ } => false
     ConvergenceReadbackRefused { cause: _ } => false
   }
 }
@@ -972,26 +1013,137 @@ fn convergence_readback_holds(readback: ConvergenceReadback) -> Bool {
 fn convergence_readback_line(readback: ConvergenceReadback) -> String {
   match readback {
     ConvergenceReadbackDecoded { receipt: r } => placement_receipt_line(receipt: r)
+    ConvergenceReadbackReceiptAbsent { path: p } =>
+      join(["repository-convergence UNREPORTED -- ", placement_receipt_read_refusal(path: p)], "")
+    ConvergenceReadbackUnreadable { path: p, kind: k, error: e } =>
+      join(["repository-convergence UNREPORTED -- a receipt EXISTS at ", p, " but this process",
+            " cannot read it (host kind ", filesystem_failure_kind_name(kind: k), ": ", e,
+            "); that is NOT absence -- the write may have happened and its answer is being",
+            " withheld by access, so the deploy refuses rather than concluding the unit never wrote"], "")
+    ConvergenceReadbackKindUnrecognized { path: p, observed: o, error: e } =>
+      join(["repository-convergence UNREPORTED -- the read of ", p, " failed with a host kind",
+            " this module does not recognize (`", o, "`: ", e, "); an unrecognized kind is never",
+            " folded into absence, because the host did not say the file is missing"], "")
+    ConvergenceReadbackWrongCandidate { expected: e } =>
+      join(["repository-convergence REFUSED wrong-candidate -- the expected candidate `", e,
+            "` is not an identity this module can bind the readback to; the plan's candidate must",
+            " be a git object id, and the readback refuses rather than comparing against a",
+            " malformed question"], "")
+    ConvergenceReadbackStale { path: p, expected: e, found: f } =>
+      join(["repository-convergence REFUSED stale-receipt at ", p, " -- the receipt on disk answers",
+            " for candidate ", f, ", not for this plan's ", e,
+            "; a receipt is only evidence of the run it names (never a file's mtime)"], "")
     ConvergenceReadbackRefused { cause: c } =>
       join(["repository-convergence UNREPORTED -- ", c], "")
   }
 }
 
-fn convergence_readback_of_text(text: String) -> ConvergenceReadback {
-  match decode_placement_receipt(text: text) {
-    PlacementReceiptDecoded { receipt: r } => ConvergenceReadbackDecoded { receipt: r }
-    PlacementReceiptUnreadable { cause: c } => ConvergenceReadbackRefused { cause: c }
+// THE BINDING ITSELF, ONE COMPARISON IN ONE PLACE. `expected` goes through git's cited decoder,
+// which is also the row the operand admission used -- so the readback and the admission cannot
+// disagree about what counts as an identity. The decoder's rule is git's CANONICAL spelling: hex,
+// lowercase, exactly forty for sha1. An uppercase spelling is not a case-variant the binding folds
+// away, it is a refusal, for the reason the operand admission already gives: admitting both would let
+// one commit have two names. The two refusals are the comparison read from its two sides, and they
+// name different repairs: WRONG-CANDIDATE means the QUESTION is malformed -- upstream handed the
+// readback something that is not an identity (a non-canonical spelling included), and no file could
+// ever answer it; STALE means the question is well-formed and the artifact on disk does not answer
+// it, because it was written for another run or names no run at all (a candidate field that is
+// empty or malformed fails the comparison and is stale, which is the brief's "names none" case:
+// an unbound receipt is NEVER success).
+fn convergence_readback_of_text_bound(text: String, path: String, expected_candidate: String) -> ConvergenceReadback {
+  match git_decode_object_id_text(format: GitObjectFormatSha1, text: expected_candidate) {
+    GitObjectIdTextRefused { cause: _ } => ConvergenceReadbackWrongCandidate { expected: expected_candidate }
+    GitObjectIdTextDecoded { oid: expected_oid } =>
+      match decode_placement_receipt(text: text) {
+        PlacementReceiptDecoded { receipt: r } =>
+          if placement_candidate_bound(receipt: r, expected: git_object_id_wire_hex(oid: expected_oid) as String) {
+            ConvergenceReadbackDecoded { receipt: r }
+          } else {
+            ConvergenceReadbackStale {
+              path: path,
+              expected: git_object_id_wire_hex(oid: expected_oid) as String,
+              found: placement_receipt_named_candidate(receipt: r),
+            }
+          }
+        PlacementReceiptUnreadable { cause: c } => ConvergenceReadbackRefused { cause: c }
+      }
   }
 }
 
-fn read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
-  let read = Filesystem.Read(path: receipt_path)
-  if !read.success {
-    ConvergenceReadbackRefused {
-      cause: placement_receipt_read_refusal(path: receipt_path, error: read.error),
-    }
+// WHETHER THE RECEIPT'S CANDIDATE IS THE PLAN'S, AND ONLY AFTER NORMALIZATION. Any arm of the
+// receipt can carry a candidate; the comparison is on the normalized identity, never on the raw
+// spelling, and an arm that names no candidate at all is unbound by construction.
+fn placement_candidate_bound(receipt: ConvergencePlacementReceipt, expected: String) -> Bool {
+  match receipt_candidate_normalized(receipt: receipt) {
+    Present { value: normalized } => normalized == expected
+    Absent => false
+  }
+}
+
+// THE RECEIPT'S CANDIDATE, NORMALIZED, IF IT CAN BE NORMALIZED. The absent arm doubles as the
+// unbound arm: an empty or malformed candidate field is reported by placement_receipt_named_candidate
+// as naming no candidate, and refused as stale.
+fn receipt_candidate_normalized(receipt: ConvergencePlacementReceipt) -> Optional<String> {
+  match receipt {
+    PlacementConverged { candidate: c, repo: _ } => normalize_candidate(c)
+    PlacementConvergenceRefused { candidate: c, repo: _, detail: _ } => normalize_candidate(c)
+    PlacementWrongPrincipal { expected: _, observed: _ } => Absent
+    PlacementPrincipalUnobservable { reason: _ } => Absent
+    PlacementOperandsRefused { reason: _ } => Absent
+  }
+}
+
+fn normalize_candidate(candidate: String) -> Optional<String> {
+  match git_decode_object_id_text(format: GitObjectFormatSha1, text: candidate) {
+    GitObjectIdTextDecoded { oid: oid } => Present { value: git_object_id_wire_hex(oid: oid) as String }
+    GitObjectIdTextRefused { cause: _ } => Absent
+  }
+}
+
+fn placement_receipt_named_candidate(receipt: ConvergencePlacementReceipt) -> String {
+  match receipt {
+    PlacementConverged { candidate: c, repo: _ } => candidate_label_or_none(c)
+    PlacementConvergenceRefused { candidate: c, repo: _, detail: _ } => candidate_label_or_none(c)
+    PlacementWrongPrincipal { expected: _, observed: _ } => "(the receipt names no candidate)"
+    PlacementPrincipalUnobservable { reason: _ } => "(the receipt names no candidate)"
+    PlacementOperandsRefused { reason: _ } => "(the receipt names no candidate)"
+  }
+}
+
+fn candidate_label_or_none(candidate: String) -> String {
+  if trim(s: candidate) == "" {
+    "(the receipt names no candidate)"
   } else {
-    convergence_readback_of_text(text: read.content)
+    candidate
+  }
+}
+
+// THE READ LEG CLASSIFIES FAILURE BY THE HOST'S KIND, NEVER BY ITS BOOL. `Filesystem.Read`'s
+// `success` channel conflates ABSENCE with every other failure -- permission denied, an ancestor
+// that is not a directory, an I/O error -- and conflating them is a wrong answer with two shapes:
+// a present-but-unreadable receipt reported as absent sends the operator to hunt a writer that
+// wrote, and an absent receipt reported as unreadable hides the one cause (the unit never reached
+// its write) the deploy repairs differently. So the fold is `filesystem_exact_read`: NotFound for
+// THE EXACT PATH is the only arm that concludes absence; every other kind is its own typed arm
+// carrying the host's kind; and a kind the host reports that this module does not recognize is
+// its own refusal too -- never absence, since "unrecognized" means the host said the file is
+// THERE in some shape.
+fn read_convergence_receipt_bound(receipt_path: String, expected_candidate: String) -> ConvergenceReadback {
+  let read = Filesystem.Read(path: receipt_path)
+  match filesystem_exact_read(
+    path: receipt_path,
+    content: read.content,
+    success: read.success,
+    error: read.error,
+    error_kind: read.error_kind,
+  ) {
+    FilesystemExactPathRead { path: _, content: content } =>
+      convergence_readback_of_text_bound(text: content, path: receipt_path, expected_candidate: expected_candidate)
+    FilesystemExactPathAbsent { path: p } => ConvergenceReadbackReceiptAbsent { path: p }
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      ConvergenceReadbackUnreadable { path: p, kind: k, error: e }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      ConvergenceReadbackKindUnrecognized { path: p, observed: o, error: e }
   }
 }
 
@@ -1001,11 +1153,22 @@ fn read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
 // the cases that matter: a unit that started and then refused for a typed reason exits nonzero here
 // with that reason NAMED, and a unit that appeared to succeed while writing no receipt is refused
 // rather than assumed.
-fn repository_convergence_readback_wet(receipt: String) -> ProcessExit {
+//
+// IT TAKES THE RUN IT ANSWERS FOR AS A SECOND ARGUMENT. `candidate` is the plan's release revision,
+// and it is REQUIRED -- a readback invoked without one has no identity to bind to and refuses,
+// rather than falling back to the old unbound read that let a prior run's CONVERGED receipt exit 0.
+// This is the earliest unjustified boundary (DESIGN section 6b): the entry point is the module's
+// interface, and the interface omitted a fact the verdict depends on.
+fn repository_convergence_readback_wet(receipt: String, candidate: String) -> ProcessExit {
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the readback has no subject without it")
+  } else if trim(s: candidate) == "" {
+    exit_failure(reason: join([
+      "--arg candidate=<release revision> is required -- the readback refuses an unbound read:",
+      " a receipt at the instance path may answer for ANY run, and success is only ever claimed",
+      " for the run the receipt names (S83469995)", ""], ""))
   } else {
-    let readback = read_convergence_receipt(receipt_path: receipt)
+    let readback = read_convergence_receipt_bound(receipt_path: receipt, expected_candidate: candidate)
     if convergence_readback_holds(readback: readback) {
       ExitSuccess
     } else {

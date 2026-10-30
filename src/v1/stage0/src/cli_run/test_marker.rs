@@ -40,17 +40,25 @@ pub(crate) struct TestMarkedDecl {
 fn located_parse_refusal(file: &str, source: &str, diagnostic: Rc<CompilerDiagnostic>) -> String {
     let span = diagnostic_to_span(diagnostic.clone());
     let message = diagnostic_to_message(diagnostic);
+    // THE LOCATION IS THE AUTHORITY'S. This formatted `{file}:{line}:{col}` in host Rust and
+    // invented its own unlocated shape (the bare path) for the one case it thought about -- a span
+    // naming a different file. The authority owns both shapes now, so the arms that site could not
+    // name -- no index for the file, a `<synthetic>` span, an offset outside the indexed text --
+    // come back typed and naming the file, instead of silently looking like a location. The located
+    // text is unchanged (`m.dag:3:7: <message>; the source does not parse, …`).
+    let tail = "; the source does not parse, so its test-marked declarations cannot be read";
+    let mut source_indices: im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>> =
+        im::HashMap::new();
     if span.file == file {
-        let at = byte_to_line_col(pool_acquire::newline_index_for(file, source), span.start);
-        format!(
-            "{file}:{}:{}: {message}; the source does not parse, so its test-marked declarations cannot be read",
-            at.line, at.col
-        )
-    } else {
-        format!(
-            "{file}: {message}; the source does not parse, so its test-marked declarations cannot be read"
-        )
+        source_indices.insert(
+            file.to_string(),
+            pool_acquire::newline_index_for(file, source),
+        );
     }
+    format!(
+        "{}: {message}{tail}",
+        crate::v1_std_core::render_span_location(span, std::rc::Rc::new(source_indices))
+    )
 }
 
 /// Every declaration of `source` (read as `file`) carrying the authored `test` marker, `fn` and

@@ -18,8 +18,8 @@ import extdeps.apple.app_attest {
   AttestKeyId, AttestationExpectation, AssertionExpectation, AttestationDecoded, AttestationDecode, AttestationDecodeOk,
   AttestationDecodeRefused, AppAttestDevelopment, app_attest_app_id, AppIdPrefix, decode_attestation, base64_of,
   verify_attestation, verify_assertion, AttestationVerification, AttestationVerified, AttestationRefused,
-  AttestationValidationCategoryAbsent, AttestationNonceMismatch,
-  AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionValidationCategoryAbsent, AssertionAppIdMismatch,
+  AttestationNonceMismatch,
+  AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch,
   assertion_signature_verifies_for,
 }
 import extdeps.apple.app_attest_sample_ios_14_4 {
@@ -37,7 +37,7 @@ import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, Or
 // THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function).
 // Before the verifier binds a port it executes every obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations on the real folds, mints a
-// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_admission whether that receipt
+// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_receipt_admission whether that receipt
 // covers the whole population. The receipt's exact_revision is the SHA-256 of the running executable's own
 // octets (the host only reads those bytes; extdeps.crypto.sha2 computes the digest here), so a receipt names the
 // binary that produced it and is re-minted at every start. A refusal is a refused start: the process never
@@ -165,17 +165,12 @@ fn signature_obligation_holds() -> Bool {
   signature_verified(v: verifies) && signature_invalid(v: mutated) && signature_invalid(v: other)
 }
 
-// Apple's published iOS 14.4 sample predates apple_validation_category_01, so the owed verdicts are the
-// refusals named below; reaching them on real bytes is the evidence every earlier step passed
-// (gunbc.instruments.native_app_attest states the same standing).
-fn attestation_reaches_category_refusal(v: AttestationVerification) -> Bool {
+// Apple's published iOS 14.4 sample carries no authData extensions map (Apple describes it as optional), so the owed
+// verdicts are the success arms (gunbc.instruments.native_app_attest states the same standing).
+fn attestation_is_verified(v: AttestationVerification) -> Bool {
   match v {
-    AttestationVerified { verified: _ } => false
-    AttestationRefused { cause: c } =>
-      match c {
-        AttestationValidationCategoryAbsent => true
-        _ => false
-      }
+    AttestationVerified { verified: _ } => true
+    AttestationRefused { cause: _ } => false
   }
 }
 
@@ -191,18 +186,14 @@ fn attestation_is_nonce_mismatch(v: AttestationVerification) -> Bool {
 }
 
 fn attestation_obligation_holds() -> Bool {
-  attestation_reaches_category_refusal(v: verify_attestation(object: sample_attestation_octets, e: sample_attestation_expectation(client_data: sample_client_data)))
+  attestation_is_verified(v: verify_attestation(object: sample_attestation_octets, e: sample_attestation_expectation(client_data: sample_client_data)))
     && attestation_is_nonce_mismatch(v: verify_attestation(object: sample_attestation_octets, e: sample_attestation_expectation(client_data: "not-the-sample-client-data" as NonEmptyStr)))
 }
 
-fn assertion_reaches_category_refusal(v: AssertionVerification) -> Bool {
+fn assertion_is_authentic(v: AssertionVerification) -> Bool {
   match v {
-    AssertionAuthentic { authentic: _ } => false
-    AssertionRefused { cause: c } =>
-      match c {
-        AssertionValidationCategoryAbsent => true
-        _ => false
-      }
+    AssertionAuthentic { authentic: _ } => true
+    AssertionRefused { cause: _ } => false
   }
 }
 
@@ -218,7 +209,7 @@ fn assertion_refused_with_app_id_mismatch(v: AssertionVerification) -> Bool {
 }
 
 // gunbc.instruments.native_app_attest's control shape: altered client data must fail the signature (checked through
-// assertion_signature_verifies_for, because verify_assertion refuses on the validation category before the signature) and
+// assertion_signature_verifies_for, which isolates the signature from the structural steps) and
 // a wrong app id must be refused as such, so a constant-answer verify_assertion does not earn the obligation.
 fn assertion_expectation_with(e: AssertionExpectation, client_data: NonEmptyStr, app_id: NonEmptyStr) -> AssertionExpectation {
   AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: client_data, app_id: app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }
@@ -233,7 +224,7 @@ fn signature_check_is(v: Bool?, owed: Bool) -> Bool {
 
 fn assertion_obligation_holds() -> Bool {
   let e = sample_assertion_expectation()
-  assertion_reaches_category_refusal(v: verify_assertion(object: sample_assertion_octets, e: e))
+  assertion_is_authentic(v: verify_assertion(object: sample_assertion_octets, e: e))
     && signature_check_is(v: assertion_signature_verifies_for(object: sample_assertion_octets, e: e), owed: true)
     && signature_check_is(owed: false, v: assertion_signature_verifies_for(object: sample_assertion_octets, e: assertion_expectation_with(e: e, client_data: "not-the-sample-client-data" as NonEmptyStr, app_id: e.app_id)))
     && assertion_refused_with_app_id_mismatch(v: verify_assertion(object: sample_assertion_octets, e: assertion_expectation_with(e: e, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr)))

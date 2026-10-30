@@ -1,0 +1,130 @@
+module v2.test.claim.parse.data_initializer_layout_parse
+
+// THE DATA INITIALIZER'S LINE RULE, DECIDED AND SHARED: after `data NAME : Type =`, the
+// initializer is the expression production with newlines SKIPPED - the rule every sibling
+// `=` position in the host parser already follows (`=` of a type alias, of an expression-bodied
+// `fn`, and of `let` all skip_newlines after the `=`; the data site alone fed the token right
+// after `=` straight into expression parsing, so a Newline there refused at expression start -
+// emergent, declared by nothing). The dag language spec declares NO line condition on the data
+// rule (v2.extdeps.languages.dag dag_grammar_data_decl_expr sequences data, ident, :,
+// type_expr, =, Expect(expression) with no AfterLineBreak anywhere in it, while AfterLineBreak
+// IS the vocabulary the spec uses when it DOES condition a production on line structure - the
+// dual-role `-` guard). So both hosts followed their own defaults and disagreed: the v1 host
+// route refused a continuation-line initializer that the v2 grammar route admitted (gunbc#14608
+// was forced to join such initializers to satisfy the host). The ruling (manager, 2026-10-21):
+// ONE rule, the permissive one, fixed in v1 at the data site; v2 unchanged.
+//
+// THE FOUR CELLS are the rule's whole truth table, run through BOTH parse routes in one binary:
+//   joined        `data t: Int = 2`                        both parsers accept, two items;
+//   continuation  `data t: Int =` / newline / `  2`        THE RED: before the fix v1 refused
+//                                                        while v2 accepted; after it, both
+//                                                        accept with two items;
+//   blank         `data t: Int =` / blank line / `data`    BOTH refuse - fail-closed is shared,
+//                                                        not weakened: an initializer cannot
+//                                                        start at the next declaration;
+//   dangling      `data t: Int =` / newline / `data ...`   BOTH refuse, same mechanism.
+// The controls are the three non-RED cells (they hold before and after the fix, so a fix that
+// broke the fail-closed pair cannot sneak through); the RED is the continuation cell's v1 arm.
+// The acceptance change is declared in the recurring-failure-mode row
+// gunbc.recurring_failure_mode.v2_grammar_admits_a_continuation_line_data_initializer_the_host
+// _route_refuses, which states the corpus census: 32393 joined initializers, ZERO authored
+// continuation sites (the single text-shape match is a headerless fixture whose unparseability
+// is its own test subject), so no accepted text changes and only previously-refused valid text
+// becomes accepted.
+
+import std.types { Bool, Int, String, List }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+import std.optional { Absent, Present }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core { build_newline_index, empty_intern_table }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+
+// The four layouts, as complete modules so each cell parses a whole file the way the tools do.
+fn layout_source(layout: String) -> String {
+  if layout == "joined" {
+    "module probe.data_layout.joined\n\ndata probe_head: Int = 40\ndata probe_tail: Int = 2\n"
+  } else if layout == "continuation" {
+    "module probe.data_layout.continuation\n\ndata probe_head: Int = 40\ndata probe_tail: Int =\n  2\n"
+  } else if layout == "blank" {
+    "module probe.data_layout.blank\n\ndata probe_head: Int = 40\ndata probe_tail: Int =\n\ndata probe_third: Int = 3\n"
+  } else {
+    "module probe.data_layout.dangling\n\ndata probe_head: Int =\ndata probe_tail: Int = 2\n"
+  }
+}
+
+fn layout_file(layout: String) -> String {
+  if layout == "joined" { "probe_data_layout_joined.dag" }
+  else if layout == "continuation" { "probe_data_layout_continuation.dag" }
+  else if layout == "blank" { "probe_data_layout_blank.dag" }
+  else { "probe_data_layout_dangling.dag" }
+}
+
+// The v1 HOST route: the compiled-in parse environment, the same entry the facts tools use.
+fn v1_verdict(layout: String) -> String {
+  let file = layout_file(layout: layout)
+  let src = layout_source(layout: layout)
+  let parsed = parse_with_table(
+    tokens: tokenize(source: src, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: src)),
+    intern_table: empty_intern_table(),
+  )
+  match parsed.result.module {
+    Absent => "v1-REFUSED"
+    Present { value: module } =>
+      concat("v1-OK items=", to_string(value: module.children |> length))
+  }
+}
+
+// The v2 GRAMMAR route: the live prepared grammar over a lexed stream.
+fn v2_verdict(layout: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "grammar-refused"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: layout_source(layout: layout), file: ^probe_data_layout, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "lex-refused"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "v2-REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              concat("v2-OK items=", to_string(value: artifact.tree.children |> length))
+          }
+      }
+  }
+}
+
+// Every cell's agreed verdict: both routes accept a complete initializer - joined or on the
+// continuation line - with both declarations present, and both refuse where no initializer
+// exists (the next token is another declaration). Agreement is the rule; either solo verdict is
+// a defect reported by name.
+fn cell_agrees(layout: String, want_accepted: Bool) -> Bool {
+  let expected_items = if layout == "blank" { 3 } else { 2 }
+  let v1_want = if want_accepted { concat("v1-OK items=", to_string(value: expected_items)) } else { "v1-REFUSED" }
+  let v2_want = if want_accepted { concat("v2-OK items=", to_string(value: expected_items)) } else { "v2-REFUSED" }
+  v1_verdict(layout: layout) == v1_want && v2_verdict(layout: layout) == v2_want
+}
+
+test fn a_continuation_line_data_initializer_parses_on_both_routes() -> ProcessExit {
+  let joined = cell_agrees(layout: "joined", want_accepted: true)
+  let continuation = cell_agrees(layout: "continuation", want_accepted: true)
+  let blank = cell_agrees(layout: "blank", want_accepted: false)
+  let dangling = cell_agrees(layout: "dangling", want_accepted: false)
+  if joined && continuation && blank && dangling {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "data-initializer layout refused: joined=", to_string(value: joined),
+      " continuation=", to_string(value: continuation),
+      " blank=", to_string(value: blank),
+      " dangling=", to_string(value: dangling),
+      " | joined[", v1_verdict(layout: "joined"), " | ", v2_verdict(layout: "joined"), "]",
+      " | continuation[", v1_verdict(layout: "continuation"), " | ", v2_verdict(layout: "continuation"), "]",
+      " | blank[", v1_verdict(layout: "blank"), " | ", v2_verdict(layout: "blank"), "]",
+      " | dangling[", v1_verdict(layout: "dangling"), " | ", v2_verdict(layout: "dangling"), "]",
+    ))
+  }
+}

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bare_value_admitted_where_optional_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data bare_value_admitted_where_optional_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_value_admitted_where_optional_is_declared" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "bare value where an optional is declared: a fn declared `-> T?` whose body produces a bare T, a `data r: T? = <bare T>` row, or a match whose arms mix a bare T with an optional (gunbc.running_release_identity running_release_member_string returned the bare member under `-> String?`). No declared coercion route lifts T into T? (DESIGN section 4, operator ruling 2026-09-26), yet the checker accepted each with zero diagnostics. It is the reverse of optional_admitted_where_a_required_value_is_declared, and a different class from optional_compared_with_required_value, which is the binary-operator seam.",

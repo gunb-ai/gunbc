@@ -1,0 +1,137 @@
+module gunbc.auth.approval_broker_state_directories
+
+// THE BROKER STATE-ROOT CENSUS (DESIGN 6b: root generalization — "adding a state root means adding a
+// case, not editing a branch").
+//
+// THE DEFECT THIS CENSUS CLOSES (srv1, 2026-10-24, broker release a3b8d7df): an enrolled device's PUT
+// push-token route 503'd with "assertion counter slot unreadable: the directory
+// /var/lib/gunbc/approval-assertion-counters could not be listed ... No such file or directory". The
+// refusal was correct — gunbc.auth.approval_assertion_counter's CAS store is deliberately fail-closed
+// and never creates its own root — but NOTHING CREATED IT: `approval_assertion_counter_root` was a bare
+// path with no ManagedDirectory, while its siblings `approval_device_store_directory` and
+// `approval_jwks_cache_directory` (gunbc.auth.approval_device_redemption) were ManagedDirectory values
+// converged at deploy by gunbc.host.host_effect_realize's `dark_state_directories_install`. The serve
+// path read a root the deploy had never provisioned, and the two siblings were provisioned only because
+// `dark_state_directories_install` NAMED them — one nested match per root, a forking fold. A root that
+// needs provisioning joined by being named in a branch; a root whose author forgot the branch stayed
+// silent until a real device hit it. That is the 6b failure this module removes: the census is a List
+// the fold consumes, so a state root joins by being a row.
+//
+// THE CENSUS. Every broker state root the serve path reads or writes, each with its provisioning
+// answer. A fold row is the OWNING module's directory declaration (never re-minted here): the sealed
+// host-singleton stores (the C-auth sealed-store change) each declare their member under the host-state
+// tree (gunbc.host_state_root) and derive both the mint and the ManagedDirectory row from it, so this
+// census consumes those rows as they are; only the decision store, still Blocked: shared, is shaped
+// here over its owner's root. `dark_state_directories_install` folds over
+// `approval_broker_state_directories`, so the deploy emits one converging `install -d` leg per row.
+//
+//   FOLD ROWS — broker-owned roots the serve path reads or writes, converged by the broker's own install:
+//   * /var/lib/gunbc/approval-devices            approval_device_redemption approval_device_store_directory (device enrolment records, push registrations and the APNs provider token; converged before this change)
+//   * /var/lib/gunbc/approval-jwks               approval_device_redemption approval_jwks_cache_directory   (Google signing-key cache; converged before this change)
+//   * /var/lib/gunbc/approval-assertion-counters approval_assertion_counter approval_assertion_counter_directory (THE OBSERVED 503 — the gap this change closes)
+//   * /var/lib/gunbc/approvals                   approval_decision_store_root      (serve WRITES it at redemption commit — approval_request_submission redeem_device_over_store — and READS it on every escalation-status and receipt-answer route; the keyring converge job's store_root_mkdir_argv provisioned it alone, and now PROJECTS this row — broker_state_directory_install_argv — instead of restating owner/mode/path, so the deploy fold and the converge lane install one declaration (DESIGN §3) and the fold Noops against what the converge job already made)
+//
+//   SERVE-PATH READS, PROVISIONED OUTSIDE THE BROKER'S OWN LANE — named by the census, deliberately
+//   NOT fold rows, because a broker row would assert an ownership the broker deploy does not hold:
+//   * /etc/gunbc-roadmap (approval_keyring_config_dir, gunbc.auth.approval_keyring_converge) holds the
+//     MAC key (approval_mac_key_path, gunbc.auth.approval_decision_store) the serve path reads when
+//     verifying a signed device request; the keyring converge job's
+//     keyring_mkdir_argv provisions it ROOT-owned (root:ci_runner, DirectoryOwnerAllGroupTraverse) from
+//     the fleet converge workflow's approval_keyring_converge step. A fold row with the broker's
+//     operator-owned shape would chown a root-owned secret directory — fighting the lane that owns it.
+//   * /etc/gunbc-ntfy (approval_publisher_token_path's parent, gunbc.auth.approval_request_submission)
+//     is provisioned root:gunbc-ntfy 0750 by gunbc.fleet.host_credential_custody_converge
+//     (ApprovalNtfyPublisherToken); same argument, different owner, still not the broker's to assert.
+//
+//   NOT SERVE-PATH (deliberately NOT rows): authorization_claim_store_root
+//   (gunbc.durable_cas_file_store) is the CI claim slot, written by the claim-issuing runner and
+//   converged by the keyring converge job's claim_store_root_mkdir_argv as the ci_runner principal —
+//   folding it in here would have the broker's deploy own a CI runner's directory. The fabric blob
+//   peer, boot-attempts, fleet-converge, microvm-*, printer-starts, revision-job, unit-holds and
+//   workspace-commissioning roots belong to srv3/srv2 subsystems, not the broker serve path, and
+//   their own modules own their provisioning.
+//
+// THE SRV1 CONVERGENCE FACT: /var/lib/gunbc/approval-assertion-counters ALREADY EXISTS on srv1 (created
+// by hand, briansrls:briansrls 0700, to unblock the enrolled operator). Every row therefore converges
+// to exactly that state — owner and group the operator, owner-only derived mode — so `install -d -m 0700
+// -o briansrls -g briansrls` lands as a no-op on the live host rather than fighting it. No wet claim
+// may assert these roots are absent (gunbc.recurring_failure_mode
+// wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+
+import gunbc.auth.approval_device_redemption {
+  approval_device_store_directory,
+  approval_jwks_cache_directory,
+}
+import gunbc.auth.approval_assertion_counter { approval_assertion_counter_directory }
+import gunbc.auth.approval_decision_store { approval_decision_store_root }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged, managed_directory_permissions }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import std.types { NonEmptyStr, String, List, FilePath }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
+import extdeps.access.posix { PosixUser }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv }
+
+// THE BROKER'S OWN WRITE PRINCIPAL: the operator's account, because the routes that read and write
+// these roots (gunbc.auth.approval_device_routes) run as that account and nothing else needs them.
+// Stated once, so every row's shape is identical and a reviewer comparing rows compares paths only.
+fn broker_state_directory_writer() -> PosixUser {
+  fleet_posix_operator_user
+}
+
+// THE ONE ROW SHAPE FOR A BROKER-WRITTEN STATE ROOT — the device store's shape: owner and group the
+// operator, the operator the sole RWX dependent, ownership Ensured (NOT Owned: these directories hold
+// enrolled devices and receipted decisions, which must survive a retract of the deployment that created
+// them), entries unmanaged (a create-once CAS slot, never rewritten, is the writer's business). The
+// mode is DERIVED from the dependents (gunbc.managed_directory managed_directory_permissions), giving
+// 0700 for a single owner-dependent row — exactly the live srv1 state.
+fn broker_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDirectory {
+  let writer = broker_state_directory_writer()
+  ManagedDirectory {
+    member: member,
+    path: path as String as FilePath,
+    owner: writer,
+    group_principal: writer,
+    dependents: [DirectoryDependent { who: writer, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+// THE DECISION STORE ROOT AS A MANAGED DIRECTORY: serve-written at redemption commit, serve-read on
+// every status and receipt route. THE SINGLE SOURCE for this directory's provisioning: the keyring
+// converge job's store_root_mkdir_argv projects THIS row (below) rather than restating
+// owner/mode/path itself — DESIGN §3, one fact one place — so the deploy lane and the converge lane
+// cannot drift, which is what the fold's install -d Noop against the converge job's output depends on.
+fn approval_decision_store_directory() -> ManagedDirectory {
+  broker_state_directory(member: "approval-decision-store", path: approval_decision_store_root)
+}
+
+// THE ONE OWNED-DIRECTORY INSTALL ARGV FOR A CENSUS ROW, spelled through the coreutils builder so the
+// mode operand states the set-id bits: `-m <derived octal> -o <owner> -g <group> <path>`, elevation
+// deliberately NOT baked in (each lane prepends its own sudo). THE SINGLE PROJECTION both consumers
+// share — gunbc.host.host_effect_realize's census fold wraps it in sudo_elevate_command, and
+// gunbc.auth.approval_keyring_converge's store_root_mkdir_argv wraps it in keyring_elevated_argv — so
+// one row's shape cannot be spelled two ways that drift apart.
+fn broker_state_directory_install_argv(d: ManagedDirectory) -> List<String> {
+  coreutils_install_directory_owned_argv(
+    mode: managed_directory_permissions(d: d).mode,
+    owner: d.owner.name,
+    group: d.group_principal.name,
+    path: d.path as String,
+  )
+}
+
+// THE CENSUS, AS THE DEPLOY CONSUMES IT: every broker-owned state root the serve path reads or writes,
+// in provisioning order. gunbc.host.host_effect_realize's `dark_state_directories_install` folds over
+// exactly this list, so the emitted deploy converges one `install -d` leg per row. The positive control
+// for this module is that the fold's legs carry the counter root's argv; deleting a row's enrolment
+// from this list makes that witness fail.
+fn approval_broker_state_directories() -> List<ManagedDirectory> {
+  [
+    approval_device_store_directory(),
+    approval_jwks_cache_directory(),
+    approval_assertion_counter_directory(),
+    approval_decision_store_directory(),
+  ]
+}

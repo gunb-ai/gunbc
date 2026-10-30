@@ -15,7 +15,13 @@ import gunbc.rung_drop_amendment.value_depth_runtime_tests_named_in_the_populati
 import gunbc.rung_drop_amendment.variant_field_native_run_residuals { variant_field_native_run_residuals }
 import gunbc.rung_drop_amendment.instrument_sandbox_reference_left_with_its_witness { instrument_sandbox_reference_left_with_its_witness }
 import gunbc.rung_drop_amendment.v2_native_route_trigger_rebound_to_the_witnesses_job { v2_native_route_trigger_rebound_to_the_witnesses_job }
+import gunbc.rung_drop_amendment.regen_determinism_waived_by_operator_ruling { regen_determinism_waived_by_operator_ruling }
 import gunbc.rung_drop_amendment.manual_required_floor_runner_deleted { manual_required_floor_runner_deleted }
+import gunbc.rung_drop_amendment.heal_green_window_over_a_stale_mirror { heal_green_window_over_a_stale_mirror }
+import gunbc.rung_drop_amendment.claim_witnesses_dead_on_arrival_under_green_gate { claim_witnesses_dead_on_arrival_under_green_gate }
+import gunbc.rung_drop_amendment.regen_agreement_phase_enumeration_and_exclusions { regen_agreement_phase_enumeration_and_exclusions }
+import gunbc.rung_drop_amendment.floor_cost_withhold_threshold_and_population_derivation { floor_cost_withhold_threshold_and_population_derivation }
+import gunbc.rung_drop_amendment.kit_call_shape_drifted_on_first_use { kit_call_shape_drifted_on_first_use }
 
 data rung_drop_amendment_roster: List<RungDropAmendment> = [
   namespace_wave_admission_carrier_redesign,
@@ -28,6 +34,12 @@ data rung_drop_amendment_roster: List<RungDropAmendment> = [
   instrument_sandbox_reference_left_with_its_witness,
   v2_native_route_trigger_rebound_to_the_witnesses_job,
   manual_required_floor_runner_deleted,
+  regen_determinism_waived_by_operator_ruling,
+  heal_green_window_over_a_stale_mirror,
+  claim_witnesses_dead_on_arrival_under_green_gate,
+  floor_cost_withhold_threshold_and_population_derivation,
+  regen_agreement_phase_enumeration_and_exclusions,
+  kit_call_shape_drifted_on_first_use,
 ]
 
 // THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at
