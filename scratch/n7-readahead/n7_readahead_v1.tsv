@@ -1,0 +1,1473 @@
+file	line	callee	declarer	class
+dag/extdeps/communication/fidelity_carriers.dag	23	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	96	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	152	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	153	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	158	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	162	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	183	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/external_authority.dag	184	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/ietf/http_semantics.dag	125	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/extdeps/ietf/http_semantics.dag	125	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/extdeps/ietf/http_semantics.dag	125	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/ietf/http_semantics.dag	125	replace	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	125	to_string	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	132	parse_int	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	145	join	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	145	to_string	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	146	join	none	b primitive contract, NO home
+dag/extdeps/ietf/http_semantics.dag	148	join	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	181	string_length	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	182	starts_with	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	183	substring	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	184	starts_with	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	185	substring	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	197	string_length	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	197	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/languages/dag/syntax.dag	202	split	none	b primitive contract, NO home
+dag/extdeps/languages/dag/syntax.dag	203	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/languages/dag/syntax.dag	204	join	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	55	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	73	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	78	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	88	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	111	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	111	join	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	131	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	131	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	137	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	137	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	137	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	145	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	145	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	155	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	156	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	169	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	169	char_at	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	172	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	172	char_at	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	182	string_length	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	197	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/numeric/base16.dag	198	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	198	code_point	none	b primitive contract, NO home
+dag/extdeps/numeric/base16.dag	208	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/extdeps/numeric/base16.dag	208	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/extdeps/numeric/base16.dag	209	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri.dag	76	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri.dag	98	join	none	b primitive contract, NO home
+dag/extdeps/uri.dag	98	split	none	b primitive contract, NO home
+dag/extdeps/uri.dag	98	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri.dag	99	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	119	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	120	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	121	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	122	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	123	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri.dag	128	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	132	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	132	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	134	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	134	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	136	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	136	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	138	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	138	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	140	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	140	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	142	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	142	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	144	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri.dag	144	starts_with	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	26	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	34	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	55	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	67	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	68	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	69	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	82	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	83	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	89	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	90	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	98	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	102	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	103	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	103	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	110	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	123	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	123	contains	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	126	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	153	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	156	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	173	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	173	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	183	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	192	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	205	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	209	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	209	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	217	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	217	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	227	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	246	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	246	skip	std.algebra	a primitive contract WITH std home
+dag/extdeps/uri_path.dag	260	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	260	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	271	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	280	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	281	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/extdeps/uri_path.dag	282	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	286	split	none	b primitive contract, NO home
+dag/extdeps/uri_path.dag	286	skip	std.algebra	a primitive contract WITH std home
+dag/std/algebra.dag	172	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	278	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	483	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	526	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	829	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	830	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	840	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	841	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	851	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	852	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	862	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	863	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	876	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	877	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	879	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	939	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	941	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	958	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	959	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	996	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1002	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1008	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1016	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1022	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1159	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1159	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1209	flat_map	none	b primitive contract, NO home
+dag/std/algebra.dag	1213	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1257	cons	none	d no declarer, no contract
+dag/std/algebra.dag	1271	combine	none	d no declarer, no contract
+dag/std/algebra.dag	1271	combine	none	d no declarer, no contract
+dag/std/algebra.dag	1280	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/algebra.dag	1288	snoc	none	d no declarer, no contract
+dag/std/algebra.dag	1303	f	v2.test.claim.compiler.declared_alias_imported,v2.test.claim.compiler.declared_alias_instantiation,v2.test.claim.compiler.declared_alias_ok+1	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/algebra.dag	1309	f	v2.test.claim.compiler.declared_alias_imported,v2.test.claim.compiler.declared_alias_instantiation,v2.test.claim.compiler.declared_alias_ok+1	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/algebra.dag	1421	key	test.claim.approval_device_crypto_client_witness,test.claim.compute.work_request_witness,test.claim.emit_subject_identity_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/algebra.dag	1541	predicate	none	d no declarer, no contract
+dag/std/algebra.dag	1548	eq	none	d no declarer, no contract
+dag/std/algebra.dag	1553	predicate	none	d no declarer, no contract
+dag/std/algebra.dag	1561	eq	none	d no declarer, no contract
+dag/std/algebra.dag	1596	predicate	none	d no declarer, no contract
+dag/std/algebra.dag	1618	eq	none	d no declarer, no contract
+dag/std/algebra.dag	1730	eq	none	d no declarer, no contract
+dag/std/algebra.dag	1751	f	v2.test.claim.compiler.declared_alias_imported,v2.test.claim.compiler.declared_alias_instantiation,v2.test.claim.compiler.declared_alias_ok+1	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/algebra.dag	1774	eq	none	d no declarer, no contract
+dag/std/checked_arithmetic.dag	96	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/checked_arithmetic.dag	96	to_string	none	b primitive contract, NO home
+dag/std/checked_arithmetic.dag	97	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/checked_arithmetic.dag	97	to_string	none	b primitive contract, NO home
+dag/std/checked_arithmetic.dag	97	to_string	none	b primitive contract, NO home
+dag/std/coercion.dag	190	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	191	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	300	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	322	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	329	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	335	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	336	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	340	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	475	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	569	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/coercion.dag	571	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/computation.dag	180	get	none	b primitive contract, NO home
+dag/std/content_hash.dag	85	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/content_hash.dag	89	all	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/content_hash.dag	193	atom_identity_hash	none	b primitive contract, NO home
+dag/std/content_hash.dag	202	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/content_hash.dag	202	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/content_hash.dag	332	starts_with	none	b primitive contract, NO home
+dag/std/content_hash.dag	333	get	none	b primitive contract, NO home
+dag/std/content_hash.dag	333	split	none	b primitive contract, NO home
+dag/std/content_hash.dag	341	starts_with	none	b primitive contract, NO home
+dag/std/content_hash.dag	342	get	none	b primitive contract, NO home
+dag/std/content_hash.dag	342	split	none	b primitive contract, NO home
+dag/std/content_hash.dag	377	join	none	b primitive contract, NO home
+dag/std/content_hash.dag	381	join	none	b primitive contract, NO home
+dag/std/decimal.dag	9	upstream	none	d no declarer, no contract
+dag/std/decimal.dag	11	them	none	d no declarer, no contract
+dag/std/decimal.dag	11	scale	none	d no declarer, no contract
+dag/std/decimal.dag	11	scale	none	d no declarer, no contract
+dag/std/decimal.dag	37	to_string	none	b primitive contract, NO home
+dag/std/decimal.dag	39	to_string	none	b primitive contract, NO home
+dag/std/decimal.dag	39	to_string	none	b primitive contract, NO home
+dag/std/decimal.dag	240	string_length	none	b primitive contract, NO home
+dag/std/decimal.dag	244	string_length	none	b primitive contract, NO home
+dag/std/decimal.dag	244	char_at	none	b primitive contract, NO home
+dag/std/decl_ref.dag	121	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	127	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	127	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	129	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	131	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	131	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	131	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	134	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	136	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	136	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	136	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/decl_ref.dag	136	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/effects.dag	137	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/effects.dag	325	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/effects.dag	326	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/fermi.dag	49	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/fermi.dag	71	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/fidelity.dag	23	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/fidelity.dag	25	all	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/fidelity.dag	26	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	36	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	36	empty_map	std.algebra	a primitive contract WITH std home
+dag/std/graph.dag	37	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/graph.dag	44	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	45	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	52	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	53	map_get	none	b primitive contract, NO home
+dag/std/graph.dag	54	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	57	map_get	none	b primitive contract, NO home
+dag/std/graph.dag	58	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	62	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/graph.dag	63	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/graph.dag	77	set_contains	none	d no declarer, no contract
+dag/std/graph.dag	80	set_insert	none	d no declarer, no contract
+dag/std/graph.dag	81	map_get	none	b primitive contract, NO home
+dag/std/graph.dag	85	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	93	set_contains	none	d no declarer, no contract
+dag/std/graph.dag	96	set_insert	none	d no declarer, no contract
+dag/std/graph.dag	98	map_get	none	b primitive contract, NO home
+dag/std/graph.dag	102	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	122	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	122	empty_set	none	d no declarer, no contract
+dag/std/graph.dag	125	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	125	empty_set	none	d no declarer, no contract
+dag/std/graph.dag	126	set_contains	none	d no declarer, no contract
+dag/std/graph.dag	144	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	146	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	154	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	162	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	163	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	164	empty_set	none	d no declarer, no contract
+dag/std/graph.dag	166	set_contains	none	d no declarer, no contract
+dag/std/graph.dag	170	set_insert	none	d no declarer, no contract
+dag/std/graph.dag	177	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	180	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	181	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	204	empty_set	none	d no declarer, no contract
+dag/std/graph.dag	208	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	228	skip	std.algebra	a primitive contract WITH std home
+dag/std/graph.dag	236	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	239	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/graph.dag	242	flat_map	none	b primitive contract, NO home
+dag/std/host_text.dag	53	chars_to_string	none	d no declarer, no contract
+dag/std/induction.dag	544	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	563	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	567	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	576	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	577	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	580	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	591	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	595	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/induction.dag	602	reverse	none	b primitive contract, NO home
+dag/std/integer.dag	176	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/integer.dag	177	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/integer.dag	178	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/integer.dag	179	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/integer.dag	298	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/integer.dag	313	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/interval.dag	37	le	none	d no declarer, no contract
+dag/std/keyed_roster.dag	42	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	43	key_eq	none	d no declarer, no contract
+dag/std/keyed_roster.dag	55	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	68	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	72	key_eq	none	d no declarer, no contract
+dag/std/keyed_roster.dag	78	key_eq	none	d no declarer, no contract
+dag/std/keyed_roster.dag	96	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	100	key_eq	none	d no declarer, no contract
+dag/std/keyed_roster.dag	113	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	183	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	201	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	217	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_roster.dag	238	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_row.dag	21	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/keyed_row.dag	22	key_eq	none	d no declarer, no contract
+dag/std/layout.dag	70	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/layout.dag	70	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/layout.dag	72	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/layout.dag	74	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/layout.dag	76	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/layout.dag	77	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	141	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	164	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	314	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	327	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	333	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	373	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	373	to_string	none	b primitive contract, NO home
+dag/std/literal_elaboration.dag	374	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	375	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	376	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	377	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	429	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	458	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	458	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	459	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	459	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	459	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	460	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	470	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	517	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/literal_elaboration.dag	569	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/nat.dag	30	succ	none	d no declarer, no contract
+dag/std/nat.dag	159	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/nat.dag	295	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_binding.dag	74	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_binding.dag	125	reverse	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	178	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_binding_resolve.dag	182	empty_map	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_binding_resolve.dag	189	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	204	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	220	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	225	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	254	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_binding_resolve.dag	265	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_binding_resolve.dag	303	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	311	map_get	none	b primitive contract, NO home
+dag/std/occurrence_binding_resolve.dag	328	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	561	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	571	reverse	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	571	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	574	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	587	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	657	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	660	empty_map	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	667	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	687	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	720	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	723	empty_map	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	724	empty_map	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	731	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	748	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	762	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	769	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	787	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/occurrence_identity.dag	805	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	817	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	845	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	857	map_get	none	b primitive contract, NO home
+dag/std/occurrence_identity.dag	915	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/occurrence_identity.dag	931	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	38	join	none	b primitive contract, NO home
+dag/std/operation_argv.dag	196	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	197	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	198	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	199	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	200	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	201	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	202	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	207	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	207	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	207	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	207	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	214	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	214	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operation_argv.dag	226	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	118	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	119	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	146	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	290	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	296	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	302	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/operator_realization.dag	304	to_string	none	b primitive contract, NO home
+dag/std/optional.dag	34	eq	none	d no declarer, no contract
+dag/std/power_of_two.dag	15	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/power_of_two.dag	23	get	none	b primitive contract, NO home
+dag/std/primitive_projection.dag	21	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/primitive_projection.dag	29	substring	none	b primitive contract, NO home
+dag/std/primitive_projection.dag	29	string_length	none	b primitive contract, NO home
+dag/std/primitive_projection.dag	29	string_length	none	b primitive contract, NO home
+dag/std/primitive_projection.dag	109	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/primitive_projection.dag	119	written	test.claim.approval_decision_store_wet_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/primitive_projection.dag	119	symbol_lexeme	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/primitive_projection.dag	119	symbol_lexeme	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/primitive_projection.dag	119	seams	none	d no declarer, no contract
+dag/std/primitive_projection.dag	176	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/render_repeat_string_bootstrap.dag	7	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/roster_frontier.dag	80	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/roster_frontier.dag	102	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/roster_frontier.dag	117	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/roster_frontier.dag	128	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/roster_frontier.dag	136	flat_map	none	b primitive contract, NO home
+dag/std/roster_frontier.dag	149	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	80	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	99	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	140	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	186	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	194	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	302	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	302	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	334	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	366	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/source_annotation.dag	370	first	none	b primitive contract, NO home
+dag/std/source_annotation.dag	374	skip	std.algebra	a primitive contract WITH std home
+dag/std/termination.dag	75	map_get	none	b primitive contract, NO home
+dag/std/termination.dag	76	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/termination.dag	77	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	13	map_get	none	b primitive contract, NO home
+dag/std/types.dag	30	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	40	map_get	none	b primitive contract, NO home
+dag/std/types.dag	47	map_get	none	b primitive contract, NO home
+dag/std/types.dag	56	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/types.dag	56	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/types.dag	67	map_contains_key	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	86	map_get	none	b primitive contract, NO home
+dag/std/types.dag	90	map_get	none	b primitive contract, NO home
+dag/std/types.dag	102	sorted_map_keys	none	b primitive contract, NO home
+dag/std/types.dag	102	map_insert	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	169	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	207	replace	none	b primitive contract, NO home
+dag/std/types.dag	300	named	test.claim.machine_intake.smpro_internal_error_witness,test.claim.node_hash_protocol_witness,test.claim.supplier.oracle_oci_always_free_ensure_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/types.dag	302	path_segment	gunbc.auth.approval_device_wire	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/types.dag	302	id	test.claim.approval_device_crypto_client_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+dag/std/types.dag	308	string_contains	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	309	string_contains	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	310	string_contains	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	311	string_contains	std.algebra	a primitive contract WITH std home
+dag/std/types.dag	312	string_contains	std.algebra	a primitive contract WITH std home
+dag/std/unicode/scalar.dag	87	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/unicode/scalar.dag	87	join	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	87	split	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	91	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/unicode/scalar.dag	91	join	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	91	split	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	95	string_length	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	96	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+dag/std/unicode/scalar.dag	96	substring	none	b primitive contract, NO home
+dag/std/unicode/scalar.dag	96	substring	none	b primitive contract, NO home
+src/v2/compiler/body_lowering_fold.dag	274	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	283	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	478	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	509	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	552	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	598	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	652	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	747	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	748	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	749	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	750	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	751	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	773	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	774	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	775	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	776	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	777	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	778	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	779	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	790	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	791	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	792	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	821	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	875	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	876	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	884	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	914	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1059	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1091	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1181	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1204	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1265	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1420	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1437	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1453	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1713	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	1742	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2477	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2535	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2624	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2880	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2908	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2913	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	2975	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	3303	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	3305	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	3609	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	3987	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	4248	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	4324	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	4417	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	4468	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	4979	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	5041	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	5927	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	5931	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	5969	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	5993	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6016	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6041	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6072	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6102	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6348	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6400	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	6711	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7262	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7376	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7602	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7613	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7655	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7765	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	7773	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	8118	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	8450	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	8657	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9035	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9066	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9070	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9097	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9097	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9100	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9102	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9417	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9445	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	9644	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10261	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10281	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10287	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10353	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10567	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10715	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10720	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	10781	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	10932	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/body_lowering_fold.dag	11171	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11321	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11383	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11447	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11456	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11513	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11641	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11689	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11720	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11770	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11819	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11893	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	11914	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12040	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12040	to_string	none	b primitive contract, NO home
+src/v2/compiler/body_lowering_fold.dag	12098	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12182	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12281	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12318	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12604	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	12881	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_lowering_fold.dag	13060	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/body_producer_forward.dag	79	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	452	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	474	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	500	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	514	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	515	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	532	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/fold_lowering.dag	1505	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	592	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	660	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	794	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	796	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	829	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	847	field_projection_optional	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	866	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	875	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	955	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	1119	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	1136	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	1479	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	2042	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2228	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2234	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2257	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2259	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2452	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2463	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2503	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2580	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2583	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2987	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	2989	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3129	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3220	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3220	pattern_wildcard_name	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	3229	pattern_wildcard_name	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	3313	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3393	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3403	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3463	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3495	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3548	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3625	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3648	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3684	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3821	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3863	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	3991	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4142	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	4240	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4357	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4361	sort_by	none	b primitive contract, NO home
+src/v2/compiler/infer.dag	4362	sort_by	none	b primitive contract, NO home
+src/v2/compiler/infer.dag	4394	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4398	sort_by	none	b primitive contract, NO home
+src/v2/compiler/infer.dag	4675	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4675	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4706	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4751	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4766	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4793	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	4969	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5370	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5375	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5419	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5662	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5677	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5716	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5720	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5799	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5824	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	5982	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	6041	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	6103	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	6214	sort_by	none	b primitive contract, NO home
+src/v2/compiler/infer.dag	6735	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	7611	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	7763	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	7814	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	7921	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	7948	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8033	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8273	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8290	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8321	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8328	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8374	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8732	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8743	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8756	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8856	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	8883	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	9005	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	9095	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	9102	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	9126	bind_outcome_accepted	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	9165	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	9381	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	9401	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	9837	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10019	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10021	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10085	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10100	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10141	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10205	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10229	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10317	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10386	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10398	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10399	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10400	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10409	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10428	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10460	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	10607	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	11116	non_empty_diagnostics_append	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	11127	non_empty_diagnostics_append	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	11134	non_empty_diagnostics_append	v2.std.diagnostic	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	11178	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	11328	named_child_lookup	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	11359	named_child_lookup	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/infer.dag	11455	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	11476	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/infer.dag	12184	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/inferred_tree.dag	176	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	96	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	277	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	280	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	281	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	282	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	434	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/lexical_scope.dag	500	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/name_resolve.dag	1397	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/name_resolve.dag	1455	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/name_resolve.dag	1478	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	120	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	123	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	156	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	160	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	168	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	180	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	272	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	273	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	277	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	278	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	433	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	474	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	484	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	498	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	539	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	541	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	544	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	549	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	549	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	584	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	666	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	741	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	745	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	808	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/namespace_graft.dag	815	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/normalize.dag	329	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/normalize.dag	736	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/normalized_tree.dag	162	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	117	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	208	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	1276	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	1278	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	1732	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	2098	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	2666	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3006	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3008	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3016	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3018	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3564	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	3609	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/parse.dag	4394	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/primitive_authority.dag	48	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	288	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	479	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	812	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	877	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	887	list_map	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/resolve.dag	919	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	945	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	985	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	1014	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3023	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3151	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3156	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3163	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3223	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3225	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3230	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3290	list_map	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/resolve.dag	3319	list_map	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/resolve.dag	3425	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3507	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3674	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3730	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3748	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3767	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3793	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3813	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	3908	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4131	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4169	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4200	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4219	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4251	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4280	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4311	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4436	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4436	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4461	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4519	type_param_order	v2.std.type_binder	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/resolve.dag	4532	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4688	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4878	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	4919	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5090	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5104	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5110	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5196	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5218	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5269	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5294	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5368	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5477	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5503	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5564	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5575	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5630	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5639	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5677	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5712	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5887	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5905	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5919	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/resolve.dag	5936	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	151	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	151	to_string	none	b primitive contract, NO home
+src/v2/compiler/service_realization.dag	221	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	236	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	260	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	310	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	312	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	321	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	329	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	338	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	387	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	398	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	426	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	473	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	487	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	497	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	511	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	578	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	597	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	674	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	677	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	759	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	800	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	812	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	848	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	851	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	905	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	924	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	944	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	948	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	961	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/service_realization.dag	967	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	60	transport	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	60	host_source_root_closure_refs	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	62	manifest_inline_list_max	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	62	population	test.claim.namespace_cut_stale_citation_witness,test.claim.printed_chassis_component_mass_witness,test.claim.roadmap.roadmap_belt_base_advance_witness+3	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/source_authority.dag	115	shape	test.claim.fabric.failure_scenario_admission_witness,test.claim.fleet.mtcollins_firmware_converge_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/compiler/source_authority.dag	119	replaced	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	121	decision	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	125	fire	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	201	them	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	203	apart	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	207	it	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	213	violation	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	213	declaration	none	d no declarer, no contract
+src/v2/compiler/source_authority.dag	1437	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1444	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1444	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1482	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1490	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1490	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1523	substring	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1523	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1524	replace	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1525	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1529	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1529	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1569	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1573	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1580	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1589	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1596	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1599	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1599	substring	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1599	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1599	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1619	substring	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1619	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1620	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1624	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1624	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1627	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1639	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1683	sort_by	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1691	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1692	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1694	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1700	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1703	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1703	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1704	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1704	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1705	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1709	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1719	string_length	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1722	substring	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1732	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1767	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	1774	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1861	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1862	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1862	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1997	split	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	1998	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	2018	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2037	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2081	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2139	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2160	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2171	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2172	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2201	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2203	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2205	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2207	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2209	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2210	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2211	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2213	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/source_authority.dag	2213	join	none	b primitive contract, NO home
+src/v2/compiler/source_authority.dag	2220	join	none	b primitive contract, NO home
+src/v2/compiler/symbol_index_fill.dag	257	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	285	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	289	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	294	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	361	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	381	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	405	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	411	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/symbol_index_fill.dag	444	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_carriers.dag	100	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	272	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	374	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	465	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	862	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	862	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	1141	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	1472	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	1508	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/target_serialize.dag	1843	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/test_marker_capture.dag	48	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/test_marker_capture.dag	69	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/test_marker_capture.dag	123	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/tokenize.dag	455	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/compiler/tokenize.dag	1461	string_length	none	b primitive contract, NO home
+src/v2/compiler/tokenize.dag	1461	substring	none	b primitive contract, NO home
+src/v2/compiler/tokenize.dag	1462	substring	none	b primitive contract, NO home
+src/v2/compiler/wrap_decision.dag	94	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	3425	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	4227	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	4561	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5057	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5075	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5148	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5411	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5482	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5562	string_length	none	b primitive contract, NO home
+src/v2/extdeps/languages/dag.dag	5565	char_at	none	b primitive contract, NO home
+src/v2/extdeps/languages/dag.dag	5565	char_at	none	b primitive contract, NO home
+src/v2/extdeps/languages/dag.dag	5566	substring	none	b primitive contract, NO home
+src/v2/extdeps/languages/dag.dag	5616	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5654	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5672	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5677	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5677	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5685	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5692	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5703	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5703	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5739	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5739	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	5978	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	6019	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	7525	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	7729	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	7766	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	7768	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	7839	seg	test.claim.roadmap.roadmap_belt_obligation_witness	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/extdeps/languages/dag.dag	8410	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8422	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8485	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8745	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8745	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8754	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8754	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/dag.dag	8763	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/python.dag	320	row_surface_spelling	none	d no declarer, no contract
+src/v2/extdeps/languages/python.dag	333	row_to_entries	none	d no declarer, no contract
+src/v2/extdeps/languages/python.dag	397	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/python.dag	1121	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/typescript.dag	1486	add	v2.test.claim.manual.fn_as_value,v2.test.fixture.program_assembly.pa_ingest_peer,v2.test.fixture.program_assembly.pa_ingest_subject	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/extdeps/languages/typescript.dag	1495	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/extdeps/languages/typescript.dag	2106	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2109	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2112	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2121	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2124	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2133	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	2136	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	3151	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	3156	discriminant	none	d no declarer, no contract
+src/v2/extdeps/languages/typescript.dag	3326	discriminant	none	d no declarer, no contract
+src/v2/std/algebra_structure_signature.dag	347	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/algebra_structure_signature.dag	348	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/algebra_structure_signature.dag	429	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/algebra_structure_signature.dag	473	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/anonymous_binder.dag	61	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/anonymous_binder.dag	93	starts_with	none	b primitive contract, NO home
+src/v2/std/anonymous_binder.dag	95	starts_with	none	b primitive contract, NO home
+src/v2/std/anonymous_binder.dag	149	starts_with	none	b primitive contract, NO home
+src/v2/std/anonymous_binder.dag	160	starts_with	none	b primitive contract, NO home
+src/v2/std/anonymous_binder.dag	191	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/anti_unification.dag	124	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	83	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	102	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	104	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	112	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	143	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_contract.dag	145	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	45	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	90	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	144	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	207	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	223	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	224	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/arrow_signature.dag	245	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/bounded_lattice_completeness.dag	99	discriminant	none	d no declarer, no contract
+src/v2/std/bounded_lattice_completeness.dag	143	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/bounded_lattice_completeness.dag	163	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	304	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	350	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	351	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	364	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	378	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	397	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/cardinality.dag	663	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/coercion.dag	75	discriminant	none	d no declarer, no contract
+src/v2/std/coercion.dag	105	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	141	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	155	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	244	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	368	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	471	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	483	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	552	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	569	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/body_lowering.dag	610	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/lexing.dag	221	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/sugar.dag	104	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/sugar.dag	248	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	1480	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	1480	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	1480	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	1491	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	1491	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	2092	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	2185	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2196	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2211	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2226	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2241	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2371	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2374	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2513	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2526	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2554	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2589	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2623	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2672	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2683	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2694	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2705	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2716	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2734	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2735	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	2746	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	2780	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	2820	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2826	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2828	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2830	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2832	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	2879	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	3548	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	4780	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	4972	code_point	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	5163	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	5300	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5367	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5383	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5531	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5573	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5633	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5669	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5777	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5810	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	5850	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6052	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6138	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6215	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6324	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6436	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6504	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6605	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6618	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	6861	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7075	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7531	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7570	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7616	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7760	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	7853	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8082	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8124	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8223	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8270	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8362	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8410	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8497	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8889	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8928	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	8973	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	9034	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	9264	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	10059	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	10479	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	10527	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10534	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10541	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10545	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10552	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10610	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	10660	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10668	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10668	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10718	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10720	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	10907	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11099	string_length	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	11102	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11102	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11107	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11109	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11109	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11109	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11197	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11256	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11259	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11262	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11265	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11268	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11271	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11325	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11361	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	11474	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11483	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11492	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11501	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11528	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11843	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	11944	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	12168	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	12191	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	12312	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	12375	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	12648	sorted_map_keys	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	12655	sorted_map_keys	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	12727	sorted_map_keys	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	12737	sorted_map_keys	none	b primitive contract, NO home
+src/v2/std/compilers/target_model.dag	12893	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	12896	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	12899	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13564	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13567	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13570	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13573	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13586	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13589	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13598	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13601	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13604	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	13948	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	13998	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	14071	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	14082	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	14092	discriminant	none	d no declarer, no contract
+src/v2/std/compilers/target_model.dag	14178	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	14211	any	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	14286	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	14342	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	15391	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	15621	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	15852	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	15961	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	16151	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/compilers/target_model.dag	16152	list_map	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/compilers/target_model.dag	16349	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	33	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	135	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/data_initializer_identity.dag	136	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	177	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	178	string_length	none	b primitive contract, NO home
+src/v2/std/data_initializer_identity.dag	179	string_length	none	b primitive contract, NO home
+src/v2/std/data_initializer_identity.dag	181	substring	none	b primitive contract, NO home
+src/v2/std/data_initializer_identity.dag	182	substring	none	b primitive contract, NO home
+src/v2/std/data_initializer_identity.dag	218	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	235	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/data_initializer_identity.dag	286	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/declaration_marker.dag	76	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	66	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	81	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	108	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	175	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	190	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/decl_index.dag	190	node_labeled_child_edges	v2.std.node_query	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/decl_index.dag	191	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/decl_index.dag	195	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/decl_index.dag	205	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/decl_index.dag	209	length	std.algebra	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/diagnostic.dag	82	join	none	b primitive contract, NO home
+src/v2/std/diagnostic.dag	82	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/diagnostic.dag	82	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/diagnostic.dag	381	f	v2.test.claim.compiler.declared_alias_imported,v2.test.claim.compiler.declared_alias_instantiation,v2.test.claim.compiler.declared_alias_ok+1	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/diagnostic.dag	479	payload_eq	none	d no declarer, no contract
+src/v2/std/find_witness.dag	145	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/find_witness.dag	162	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/find_witness.dag	191	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/find_witness.dag	313	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/fold_assembly.dag	164	decode_item	none	d no declarer, no contract
+src/v2/std/grammar.dag	910	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	1045	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	1105	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	1271	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	2350	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	3097	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	3180	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	3268	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	3323	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grammar.dag	3484	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/grounding.dag	128	discriminant	none	d no declarer, no contract
+src/v2/std/inhabitance.dag	80	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	81	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	106	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	227	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	230	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	345	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	427	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	449	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	455	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	477	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	478	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/inhabitance.dag	479	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/integer_value_set.dag	109	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/integer_value_set.dag	126	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/kind.dag	100	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/kind.dag	104	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/kind.dag	112	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/list_introduction.dag	41	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/map_introduction.dag	83	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/map_introduction.dag	118	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/map_introduction.dag	130	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/member_declaration_kind.dag	71	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/member_declaration_kind.dag	72	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/model_core.dag	39	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	43	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	44	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	45	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	46	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	47	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	140	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	142	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	155	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	158	discriminant	none	d no declarer, no contract
+src/v2/std/model_core.dag	203	discriminant	none	d no declarer, no contract
+src/v2/std/node.dag	62	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	233	decl_ref	std.decl_ref	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/node.dag	473	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	504	map	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	522	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	553	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	665	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	675	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	696	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	742	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	762	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	763	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	764	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	769	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	814	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	833	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	959	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	983	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	990	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	996	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1000	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1006	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1012	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1022	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1028	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1074	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1190	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1203	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1241	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1244	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1272	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1283	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1324	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1344	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1344	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1347	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1347	sort_by	none	b primitive contract, NO home
+src/v2/std/node.dag	1347	sort_by	none	b primitive contract, NO home
+src/v2/std/node.dag	1373	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1399	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1461	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1480	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1491	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1516	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1526	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1688	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1689	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1800	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1821	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1938	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1948	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1954	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1961	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	1974	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2000	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2057	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2084	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2088	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2121	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2141	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2167	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2175	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2183	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2204	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2205	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2215	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2216	sort_by	none	b primitive contract, NO home
+src/v2/std/node.dag	2216	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2217	sort_by	none	b primitive contract, NO home
+src/v2/std/node.dag	2217	label_of	none	d no declarer, no contract
+src/v2/std/node.dag	2225	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2226	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2227	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2229	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2234	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2240	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2241	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2242	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2244	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2249	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2272	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2273	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2275	filter	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2296	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	2340	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	3166	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	3167	sort_by	none	b primitive contract, NO home
+src/v2/std/node.dag	3214	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node.dag	3265	item_node	none	d no declarer, no contract
+src/v2/std/node_query.dag	16	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	51	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	51	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	54	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	54	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	54	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	60	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	60	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	66	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	95	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	239	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	309	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	353	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/node_query.dag	357	edge_declared	v2.std.node	c fn declared elsewhere (binds only on lexical chain: import/own module)
+src/v2/std/node_query.dag	435	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	450	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	534	first	none	b primitive contract, NO home
+src/v2/std/node_query.dag	552	first	none	b primitive contract, NO home
+src/v2/std/node_query.dag	725	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	728	first	none	b primitive contract, NO home
+src/v2/std/node_query.dag	765	discriminant_of	none	d no declarer, no contract
+src/v2/std/node_query.dag	849	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	863	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	957	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	968	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	975	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	1072	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	1159	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/node_query.dag	1183	first	none	b primitive contract, NO home
+src/v2/std/primitive_contract_ref.dag	18	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/primitive_contract_ref.dag	32	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/project_to_core_predicate.dag	24	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/provenance.dag	151	map_keys	none	b primitive contract, NO home
+src/v2/std/provenance.dag	165	map_keys	none	b primitive contract, NO home
+src/v2/std/qualified_name.dag	44	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	46	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	56	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	304	string_length	none	b primitive contract, NO home
+src/v2/std/qualified_name.dag	328	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	363	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	364	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	397	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	409	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	436	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/qualified_name.dag	569	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/subject_evidence.dag	98	licenses	none	d no declarer, no contract
+src/v2/std/type_binder.dag	177	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	193	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	199	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	204	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	251	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	261	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	376	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	380	concat	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	386	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	395	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	398	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	399	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	409	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	417	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	433	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	436	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	437	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	448	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	451	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	452	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	479	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	547	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	547	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	548	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	548	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	550	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	633	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	640	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	644	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	674	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	713	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	729	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	767	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	789	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	790	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	820	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	833	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	851	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	857	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	863	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	893	count	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/type_binder.dag	915	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/verdict.dag	104	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/std/verdict.dag	119	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)
+src/v2/test/claim/parse/expression_bodied_fn_decl_parse.dag	59	fold	std.algebra template	R roster head (template visible only via import of std.algebra collection_*_shape)

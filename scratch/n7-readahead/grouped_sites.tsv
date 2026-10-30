@@ -1,0 +1,254 @@
+group	head	file	line	enclosing	owner	evidence
+G1	contains	dag/extdeps/uri.dag	123	href_is_relative_reference	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	contains	dag/extdeps/uri_path.dag	82	parse_segment_tokens	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	contains	dag/extdeps/uri_path.dag	83	parse_segment_tokens	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	contains	dag/extdeps/uri_path.dag	103	parse_segment_tokens	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	contains	dag/extdeps/uri_path.dag	123	parse_segment_tokens	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	contains	dag/extdeps/uri_path.dag	123	parse_segment_tokens	jolly-cat-271 #15447	meaning fork: String test; RenameHead->string_contains, RequiresOccurrences; 6 keyed sites
+G1	empty_map	dag/std/graph.dag	36	seed_adjacency_map	jolly-cat-271 #15447	home std.algebra empty_map; return type Map awaits #14876 (valiant-fox-335)
+G1	empty_map	dag/std/occurrence_binding_resolve.dag	182	binding_candidates_from_supplied_declarations	jolly-cat-271 #15447	home std.algebra empty_map; return type Map awaits #14876 (valiant-fox-335)
+G1	empty_map	dag/std/occurrence_identity.dag	660	occurrence_transport_index_build	jolly-cat-271 #15447	home std.algebra empty_map; return type Map awaits #14876 (valiant-fox-335)
+G1	empty_map	dag/std/occurrence_identity.dag	723	occurrence_transport_role_index_build	jolly-cat-271 #15447	home std.algebra empty_map; return type Map awaits #14876 (valiant-fox-335)
+G1	empty_map	dag/std/occurrence_identity.dag	724	occurrence_transport_role_index_build	jolly-cat-271 #15447	home std.algebra empty_map; return type Map awaits #14876 (valiant-fox-335)
+G1	map_contains_key	dag/std/types.dag	67	is_ordered_element_collection	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/graph.dag	37	seed_adjacency_map	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/graph.dag	62	build_adjacency_views	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/graph.dag	63	build_adjacency_views	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/occurrence_binding_resolve.dag	254	binding_candidates_from_supplied_declarations	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/occurrence_identity.dag	687	occurrence_transport_index_build	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/occurrence_identity.dag	748	occurrence_transport_role_index_build	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/occurrence_identity.dag	787	occurrence_transport_role_index_build	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/termination.dag	76	map_evidence_merge_at	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/termination.dag	77	map_evidence_merge_at	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/types.dag	30	container_type_arity	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	map_insert	dag/std/types.dag	102	canonical_container_names	jolly-cat-271 #15447	home std.algebra, KeepHead row
+G1	skip	dag/extdeps/uri.dag	98	uri_from_wire	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	98	parse_segment_tokens	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	110	parse_segment_tokens	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	156	match_path_segments	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	173	match_path_tokens	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	173	match_path_tokens	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	217	parse_path_template	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	246	uri_query_string	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/extdeps/uri_path.dag	286	uri_query_param	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/std/graph.dag	228	is_lexicographic_descent	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	skip	dag/std/source_annotation.dag	374	keyed_annotation_rows_agree	jolly-cat-271 #15447	home std.algebra skip, KeepHead row
+G1	string_contains	dag/std/types.dag	308	path_segment_is_safe	jolly-cat-271 #15447	home std.algebra string_contains, KeepHead row
+G1	string_contains	dag/std/types.dag	309	path_segment_is_safe	jolly-cat-271 #15447	home std.algebra string_contains, KeepHead row
+G1	string_contains	dag/std/types.dag	310	path_segment_is_safe	jolly-cat-271 #15447	home std.algebra string_contains, KeepHead row
+G1	string_contains	dag/std/types.dag	311	path_segment_is_safe	jolly-cat-271 #15447	home std.algebra string_contains, KeepHead row
+G1	string_contains	dag/std/types.dag	312	path_segment_is_safe	jolly-cat-271 #15447	home std.algebra string_contains, KeepHead row
+G1-inflight	map_keys	src/v2/std/provenance.dag	151	span_index_merge	#15164 owner	home std.algebra map_keys
+G1-inflight	map_keys	src/v2/std/provenance.dag	165	span_index_merge	#15164 owner	home std.algebra map_keys
+G1-inflight	sort_by	src/v2/compiler/infer.dag	4361	infer_formals_in_declared_order	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/compiler/infer.dag	4362	infer_formals_in_declared_order	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/compiler/infer.dag	4398	infer_pairings_in_declared_order	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/compiler/infer.dag	6214	infer_formal_args_by_plan	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/compiler/source_authority.dag	1683	derived_roster_select	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/std/node.dag	1347	symbols_are_one_distinct_set	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/std/node.dag	1347	symbols_are_one_distinct_set	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/std/node.dag	2216	sort_labeled	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/std/node.dag	2217	sort_labeled	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1-inflight	sort_by	src/v2/std/node.dag	3167	bag_hash_digest	S2 #15426 (lively-carp-891)	RenameHead -> list_sort_by_key; home std.algebra
+G1?	first	dag/std/source_annotation.dag	370	keyed_annotation_rows_agree	UNCERTAIN: needs RED	std.algebra collection_first_shape template exists: KeepHead-style row candidate like concat/count
+G1?	first	src/v2/std/node_query.dag	534	construct_tag_reading	UNCERTAIN: needs RED	std.algebra collection_first_shape template exists: KeepHead-style row candidate like concat/count
+G1?	first	src/v2/std/node_query.dag	552	construct_tag_reading_of_target	UNCERTAIN: needs RED	std.algebra collection_first_shape template exists: KeepHead-style row candidate like concat/count
+G1?	first	src/v2/std/node_query.dag	728	variant_declaration_edge_optional	UNCERTAIN: needs RED	std.algebra collection_first_shape template exists: KeepHead-style row candidate like concat/count
+G1?	first	src/v2/std/node_query.dag	1183	repeated_authored_name_optional	UNCERTAIN: needs RED	std.algebra collection_first_shape template exists: KeepHead-style row candidate like concat/count
+G1?	flat_map	dag/std/algebra.dag	1209	all_algebra_field_templates	UNCERTAIN: needs RED	std.algebra list_flat_map exists (different name): rename row candidate
+G1?	flat_map	dag/std/graph.dag	242	is_valid_proof	UNCERTAIN: needs RED	std.algebra list_flat_map exists (different name): rename row candidate
+G1?	flat_map	dag/std/roster_frontier.dag	136	concat_frontier_row_groups	UNCERTAIN: needs RED	std.algebra list_flat_map exists (different name): rename row candidate
+G1?	reverse	dag/std/induction.dag	602	cost_bound_params	UNCERTAIN: needs RED	std.algebra list_reverse exists (different name): rename row candidate
+G1?	reverse	dag/std/occurrence_binding.dag	125	occurrence_binding_from_candidates	UNCERTAIN: needs RED	std.algebra list_reverse exists (different name): rename row candidate
+G1?	reverse	dag/std/occurrence_identity.dag	571	occurrence_containment_ancestors_as_list	UNCERTAIN: needs RED	std.algebra list_reverse exists (different name): rename row candidate
+G1r	join	dag/extdeps/ietf/http_semantics.dag	145	http_retry_after_wire	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/extdeps/ietf/http_semantics.dag	146	http_retry_after_wire	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/extdeps/ietf/http_semantics.dag	148	http_retry_after_wire	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/extdeps/languages/dag/syntax.dag	204	render_annotation_block	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/extdeps/numeric/base16.dag	111	base16_encode_lower	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/extdeps/uri.dag	98	uri_from_wire	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/std/content_hash.dag	377	sha256_digest_wire_form	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/std/content_hash.dag	381	sha512_digest_wire_form	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/std/operation_argv.dag	38	operation_ref_label	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/std/unicode/scalar.dag	87	ascii_lowercase	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	dag/std/unicode/scalar.dag	91	ascii_uppercase	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1444	module_file_relative_path	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1624	derived_roster_line_row	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1691	derived_roster_text	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1703	derived_roster_text	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1704	derived_roster_text	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1732	ascii_case_fold	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1862	reference_member	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	1998	module_namespace	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	2213	layout_refusal_text	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/compiler/source_authority.dag	2220	layout_verdict_text	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	join	src/v2/std/diagnostic.dag	82	diagnostics_reason_lexemes	unassigned (propose jolly-cat-271)	row on main: KeepHead collection_join_shape; sweep not run
+G1r	map_get	dag/std/graph.dag	53	build_adjacency_views	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/graph.dag	57	build_adjacency_views	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/graph.dag	81	dfs_finish_order	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/graph.dag	98	dfs_collect_component	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	189	binding_candidates_from_supplied_declarations	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	204	binding_candidates_from_supplied_declarations	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	220	binding_candidates_from_supplied_declarations	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	225	binding_candidates_from_supplied_declarations	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	303	reference_occurrence_by_id	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	311	resolve_reference_occurrence_binding_validated	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_binding_resolve.dag	328	resolve_reference_occurrence_binding_validated	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	667	occurrence_transport_index_build	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	731	occurrence_transport_role_index_build	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	769	occurrence_transport_role_index_build	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	805	declaration_occurrence_refusal	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	817	declaration_occurrence_refusal	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	845	reference_occurrence_refusal	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/occurrence_identity.dag	857	reference_occurrence_refusal	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/termination.dag	75	map_evidence_merge_at	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/types.dag	13	is_kernel_type	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/types.dag	40	container_expected_arity	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/types.dag	47	container_param_names_for	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/types.dag	86	container_template_algebra	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G1r	map_get	dag/std/types.dag	90	container_template_alias_algebra	unassigned (propose jolly-cat-271)	row on main: RenameHead->map_lookup (ruled A); sweep not run
+G2	char_at	dag/extdeps/numeric/base16.dag	169	base16_decode_lower_from	unassigned: model PR	only primitive contract; no home
+G2	char_at	dag/extdeps/numeric/base16.dag	172	base16_decode_lower_from	unassigned: model PR	only primitive contract; no home
+G2	char_at	dag/std/decimal.dag	244	decimal_digits_from	unassigned: model PR	only primitive contract; no home
+G2	char_at	src/v2/extdeps/languages/dag.dag	5565	dag_string_framed_body_optional	unassigned: model PR	only primitive contract; no home
+G2	char_at	src/v2/extdeps/languages/dag.dag	5565	dag_string_framed_body_optional	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	131	base16_is_lower_digit_code_point	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	137	base16_is_digit_code_point	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	137	base16_is_digit_code_point	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	145	base16_is_upper_digit_code_point	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	156	base16_lower_digit_value_at	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	169	base16_decode_lower_from	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	172	base16_decode_lower_from	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	198	base16_digit_value_at	unassigned: model PR	only primitive contract; no home
+G2	code_point	dag/extdeps/numeric/base16.dag	198	base16_digit_value_at	unassigned: model PR	only primitive contract; no home
+G2	code_point	src/v2/std/compilers/target_model.dag	4972	source_atom_char_projection_from_node	unassigned: model PR	only primitive contract; no home
+G2	parse_int	dag/extdeps/ietf/http_semantics.dag	132	http_retry_after_from_text	std.integer model PR (RULED)	no declaration yet
+G2	replace	dag/extdeps/ietf/http_semantics.dag	125	http_is_ascii_digits	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	dag/std/types.dag	207	commit_sha_text_holds	host_text model PR (RULED)	no declaration yet
+G2	replace	src/v2/compiler/source_authority.dag	1524	module_name_for_file	host_text model PR (RULED)	no declaration yet
+G2	split	dag/extdeps/languages/dag/syntax.dag	202	render_annotation_block	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri.dag	98	uri_from_wire	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	89	parse_segment_tokens	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	102	parse_segment_tokens	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	153	match_path_segments	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	192	match_path_template	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	205	parse_path_template	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	209	parse_path_template	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	246	uri_query_string	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	260	parse_query_template	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	280	uri_query_param	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	282	uri_query_param	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/extdeps/uri_path.dag	286	uri_query_param	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/std/content_hash.dag	333	parse_content_hash_candidate	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/std/content_hash.dag	342	parse_content_hash_candidate	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/std/unicode/scalar.dag	87	ascii_lowercase	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	dag/std/unicode/scalar.dag	91	ascii_uppercase	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1482	module_file	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1573	derived_roster_namespace_leaf	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1599	derived_roster_sibling_of	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1620	derived_roster_line_row	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1624	derived_roster_line_row	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1639	derived_roster_sibling_rows	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1774	reference_prefixes	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1861	reference_member	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1862	reference_member	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	split	src/v2/compiler/source_authority.dag	1997	module_namespace	host_text model PR (RULED home std.host_text)	no declaration yet
+G2	starts_with	dag/extdeps/languages/dag/syntax.dag	182	strip_line_comment_delimiter	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/languages/dag/syntax.dag	184	strip_line_comment_delimiter	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	99	uri_from_wire	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	119	href_is_relative_reference	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	120	href_is_relative_reference	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	121	href_is_relative_reference	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	122	href_is_relative_reference	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	128	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	132	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	132	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	134	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	134	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	136	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	136	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	138	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	138	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	140	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	140	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	142	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	142	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	144	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/extdeps/uri.dag	144	parse_href_scheme	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/std/content_hash.dag	332	parse_content_hash_candidate	host_text model PR (RULED)	no declaration yet
+G2	starts_with	dag/std/content_hash.dag	341	parse_content_hash_candidate	host_text model PR (RULED)	no declaration yet
+G2	starts_with	src/v2/std/anonymous_binder.dag	93	type_variable_origin	host_text model PR (RULED)	no declaration yet
+G2	starts_with	src/v2/std/anonymous_binder.dag	95	type_variable_origin	host_text model PR (RULED)	no declaration yet
+G2	starts_with	src/v2/std/anonymous_binder.dag	149	is_fold_carrier_binder	host_text model PR (RULED)	no declaration yet
+G2	starts_with	src/v2/std/anonymous_binder.dag	160	is_anonymous_param_label	host_text model PR (RULED)	no declaration yet
+G2	substring	dag/extdeps/languages/dag/syntax.dag	183	strip_line_comment_delimiter	unassigned: model PR	only primitive contract; no home
+G2	substring	dag/extdeps/languages/dag/syntax.dag	185	strip_line_comment_delimiter	unassigned: model PR	only primitive contract; no home
+G2	substring	dag/std/primitive_projection.dag	29	primitive_identity_runtime_name	unassigned: model PR	only primitive contract; no home
+G2	substring	dag/std/unicode/scalar.dag	96	ascii_uppercase_first	unassigned: model PR	only primitive contract; no home
+G2	substring	dag/std/unicode/scalar.dag	96	ascii_uppercase_first	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/source_authority.dag	1523	module_name_for_file	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/source_authority.dag	1599	derived_roster_sibling_of	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/source_authority.dag	1619	derived_roster_line_row	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/source_authority.dag	1722	ascii_case_fold_from	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/tokenize.dag	1461	lex_window	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/compiler/tokenize.dag	1462	lex_window	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/extdeps/languages/dag.dag	5566	dag_string_framed_body_optional	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/std/data_initializer_identity.dag	181	decl_fact_module_path_from_qualified_name	unassigned: model PR	only primitive contract; no home
+G2	substring	src/v2/std/data_initializer_identity.dag	182	decl_fact_module_path_from_qualified_name	unassigned: model PR	only primitive contract; no home
+G2	to_string	dag/extdeps/ietf/http_semantics.dag	125	http_is_ascii_digits	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/extdeps/ietf/http_semantics.dag	145	http_retry_after_wire	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/checked_arithmetic.dag	96	integer_overflow_text	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/checked_arithmetic.dag	97	integer_overflow_text	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/checked_arithmetic.dag	97	integer_overflow_text	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/decimal.dag	37	fixed_point_wire	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/decimal.dag	39	fixed_point_wire	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/decimal.dag	39	fixed_point_wire	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/literal_elaboration.dag	373	signed_view_disagreement_message	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	dag/std/operator_realization.dag	304	operator_realization_refusal_message	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	src/v2/compiler/body_lowering_fold.dag	12040	body_lower_status_class_atom_optional	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2	to_string	src/v2/compiler/service_realization.dag	151	http_status_class_label	zesty-badger-599 Int/Nat to_string wave (RULED)	std.integer int_to_decimal_string exists
+G2?	atom_identity_hash	dag/std/content_hash.dag	193	content_hash_atom	UNCERTAIN	only primitive contract
+G3?	get	dag/std/computation.dag	180	type_iteration_dimension	UNCERTAIN: needs RED	std.algebra has get-like decl? unverified; 4 sites
+G3?	get	dag/std/content_hash.dag	333	parse_content_hash_candidate	UNCERTAIN: needs RED	std.algebra has get-like decl? unverified; 4 sites
+G3?	get	dag/std/content_hash.dag	342	parse_content_hash_candidate	UNCERTAIN: needs RED	std.algebra has get-like decl? unverified; 4 sites
+G3?	get	dag/std/power_of_two.dag	23	bitwise_pow2	UNCERTAIN: needs RED	std.algebra has get-like decl? unverified; 4 sites
+G3?	sorted_map_keys	dag/std/types.dag	102	canonical_container_names	UNCERTAIN: needs RED	map_support_keys exists in std.algebra; ordering contract unverified
+G3?	sorted_map_keys	src/v2/std/compilers/target_model.dag	12648	target_derive_supplemental_generic_bound_requirement_nodes_for_contract	UNCERTAIN: needs RED	map_support_keys exists in std.algebra; ordering contract unverified
+G3?	sorted_map_keys	src/v2/std/compilers/target_model.dag	12655	target_derive_supplemental_generic_bound_requirement_nodes_for_contract	UNCERTAIN: needs RED	map_support_keys exists in std.algebra; ordering contract unverified
+G3?	sorted_map_keys	src/v2/std/compilers/target_model.dag	12727	target_representation_choice_parameters_bundle_node	UNCERTAIN: needs RED	map_support_keys exists in std.algebra; ordering contract unverified
+G3?	sorted_map_keys	src/v2/std/compilers/target_model.dag	12737	target_representation_choice_supplemental_generic_bound_contracts_bundle_node	UNCERTAIN: needs RED	map_support_keys exists in std.algebra; ordering contract unverified
+G3?	string_length	dag/extdeps/languages/dag/syntax.dag	181	strip_line_comment_delimiter	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/extdeps/languages/dag/syntax.dag	197	render_line_comment_delimiter	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/extdeps/numeric/base16.dag	182	base16_decode_lower	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/std/decimal.dag	240	decimal_digit_char	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/std/decimal.dag	244	decimal_digits_from	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/std/primitive_projection.dag	29	primitive_identity_runtime_name	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/std/primitive_projection.dag	29	primitive_identity_runtime_name	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	dag/std/unicode/scalar.dag	95	ascii_uppercase_first	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1523	module_name_for_file	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1599	derived_roster_sibling_of	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1599	derived_roster_sibling_of	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1619	derived_roster_line_row	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1627	derived_roster_line_row	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/source_authority.dag	1719	ascii_case_fold_from	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/compiler/tokenize.dag	1461	lex_window	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/extdeps/languages/dag.dag	5562	dag_string_framed_body_optional	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/std/compilers/target_model.dag	11099	declaration_reference_spelling	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/std/data_initializer_identity.dag	178	decl_fact_module_path_from_qualified_name	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/std/data_initializer_identity.dag	179	decl_fact_module_path_from_qualified_name	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
+G3?	string_length	src/v2/std/qualified_name.dag	304	qualified_name_from_dotted_string	UNCERTAIN: needs RED	std.algebra length<T>(FreeMonoid<T>) exists; String is FreeMonoid<Char> in v2.std.text vs kernel String: a text-crossing question
