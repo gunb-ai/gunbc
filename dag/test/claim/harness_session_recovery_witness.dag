@@ -11,7 +11,7 @@ import gunbc.harness.harness_session_recovery {
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
-  session_recovery_is_request_pending_resumable,
+  session_recovery_resumability, ResumabilityResumable, ResumabilityRequestPendingInterrupted, ResumabilityRequestPendingNotResumable, ResumabilityNotRequestPending, ResumabilityMalformed,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -446,10 +446,11 @@ test fn the_restore_gate_is_true_only_for_a_resumable_request_pending_lineage() 
   let pending = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: true, interrupted_calls: [], resume_round: 7 }
   let interrupted = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: true, interrupted_calls: ["c1"], resume_round: 7 }
   let non_resumable = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: false, interrupted_calls: [], resume_round: 7 }
-  session_recovery_is_request_pending_resumable(recovery: pending)
-    && !session_recovery_is_request_pending_resumable(recovery: interrupted)
-    && !session_recovery_is_request_pending_resumable(recovery: non_resumable)
-    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryNone)
-    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryPending { causes: ["x"], resumes_made: 0, wakes_made: 0, interrupted_calls: [], resume_round: 1 })
-    && !session_recovery_is_request_pending_resumable(recovery: SessionRecoveryMalformed { mismatch: "duplicate member" })
+  let ok = match session_recovery_resumability(recovery: pending) { ResumabilityResumable => true _ => false }
+  let int_ok = match session_recovery_resumability(recovery: interrupted) { ResumabilityRequestPendingInterrupted { interrupted_calls: c } => list_length(items: c) == 1 _ => false }
+  let nr_ok = match session_recovery_resumability(recovery: non_resumable) { ResumabilityRequestPendingNotResumable => true _ => false }
+  let none_ok = match session_recovery_resumability(recovery: SessionRecoveryNone) { ResumabilityNotRequestPending => true _ => false }
+  let pend_ok = match session_recovery_resumability(recovery: SessionRecoveryPending { causes: ["x"], resumes_made: 0, wakes_made: 0, interrupted_calls: [], resume_round: 1 }) { ResumabilityNotRequestPending => true _ => false }
+  let mal_ok = match session_recovery_resumability(recovery: SessionRecoveryMalformed { mismatch: "duplicate member" }) { ResumabilityMalformed { mismatch: m } => m == "duplicate member" _ => false }
+  ok && int_ok && nr_ok && none_ok && pend_ok && mal_ok
 }

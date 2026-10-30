@@ -40,7 +40,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 }
 import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
-import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_is_request_pending_resumable }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_resumability, ResumabilityResumable }
 
 fn fresh_instance(tag: String) -> HostDashboardInstance {
   let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_wt_restore_wet_", tag, ".XXXXXX"], "")).path
@@ -165,7 +165,7 @@ test fn the_gate_reads_the_seeded_lineage_as_resumable() -> Bool {
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
   let pk = ledger_first_key(instance: instance)
-  let gate = session_recovery_is_request_pending_resumable(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk))
+  let gate = match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk)) { ResumabilityResumable => true _ => false }
   cleaned(instance: instance, verdict: laid && gate)
 }
 

@@ -673,7 +673,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 // runs systemd-run --user --on-calendar --collect execing belt_dispatch_node_cli for the same node+key.
 import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_command, attempt_redelivery_wake_unit_name, attempt_redelivery_wake_unit_stem }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, session_recovery_of_events, session_recovery_is_request_pending_resumable,
+  SessionRecovery, SessionRecoveryNone, session_recovery_of_events, session_recovery_resumability,
+  SessionResumability, ResumabilityResumable, ResumabilityRequestPendingNotResumable, ResumabilityRequestPendingInterrupted, ResumabilityMalformed, ResumabilityNotRequestPending,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, ProviderRequestPending, provider_execution_activity, ProviderAwaitingAcceptance }
@@ -1820,6 +1821,13 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
 // delete). The branch is the durable record (§3b), so this RESTORES state rather than guessing; a gone branch
 // fails closed (BranchAbsent) rather than spawning on an unknown tree. With D1/D2 no longer releasing a pending
 // claim, this step only ever sees the legacy reaped state -- it is recovery, not a second release path.
+// BOUNDED POPULATION AND DISSOLUTION (review 88393): the population is the claims already settled
+// terminal:recovered while their lineage is request-pending, written by the pre-D1/D2 release. No new such claim
+// can be produced. The step and this type delete when `belt_actuate_spawn_for_instance` has run with this step
+// returning AttemptWorktreeNotNeeded for every node on every host's ledger (the trigger is that census, not a
+// date). Keeping it on the spawn route, rather than a one-off repair, is deliberate: the ledger and recovery
+// stream it needs are read only there. Operator approval of the temporary step is requested on the PR, outside
+// this diff (DESIGN §5).
 type AttemptWorktreeRestore
   = AttemptWorktreeRestored { worktree_path: String, branch: String }
   | AttemptWorktreeNotNeeded
@@ -1913,9 +1921,8 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
       match (attempts |> filter(a => a.node_id as String == node_id as String)).first() {
         Absent => AttemptWorktreeNotNeeded
         Present { value: p } =>
-          if session_recovery_is_request_pending_resumable(
-            belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key),
-          ) {
+          match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key)) {
+          ResumabilityResumable => {
             let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key)
             let branch = dispatch_branch_name(node_id: node_id, attempt_key: p.attempt_key)
             match belt_claim_tree_at(instance: instance, path: path) {
@@ -1948,12 +1955,14 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
                   ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["the branch existence check was refused: ", program, " -- ", reason], "") }
                 }
             }
-          } else {
-            // Not a request-pending resumable lineage (no stream / not resumable / malformed / non-pending): there is
-            // nothing for the restore to re-materialize. This is not a silent widen -- the continuation decision itself
-            // refuses on a malformed stream or ends on a non-pending one, each with a typed reason; the restore simply
-            // does not act on a lineage that is not a pending request waiting to be resumed.
-            AttemptWorktreeNotNeeded
+          }
+          // Each non-resumable standing is its own arm (review 88393): none of them is a restore candidate, but
+          // the malformed stream refuses here, at the one reading, instead of leaning on the continuation.
+          ResumabilityMalformed { mismatch } =>
+            AttemptWorktreeRestoreRefused { detail: join(["the attempt-state stream is malformed, so the prior attempt cannot be classified for restore: ", mismatch], "") }
+          ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => AttemptWorktreeNotNeeded
+          ResumabilityRequestPendingNotResumable => AttemptWorktreeNotNeeded
+          ResumabilityNotRequestPending => AttemptWorktreeNotNeeded
           }
       }
   }
