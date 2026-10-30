@@ -70,17 +70,6 @@ fn login_transaction_store_failure_detail(cause: CasStoreFailure) -> String {
   }
 }
 
-fn login_transaction_consume_election_of(outcome: FileHoldAcquireOutcome) -> LoginTransactionConsumeElection {
-  match outcome {
-    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => LoginTransactionConsumeWon
-    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => LoginTransactionConsumeAlreadyWon
-    FileHoldAcquireLost { slot_key: _ } => LoginTransactionConsumeAlreadyWon
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => LoginTransactionConsumeRefused { detail: login_transaction_store_failure_detail(cause: c) }
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LoginTransactionConsumeRefused { detail: join(["the consume hold does not decode: ", d as String], "") }
-    FileHoldKeyNotSlotAddressable { slot_key: _ } => LoginTransactionConsumeRefused { detail: "the transaction state does not address a hold slot" }
-  }
-}
-
 // THE LOGIN TRANSACTION STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.auth.session_store_root
 // SessionStore is: data only (the instance and the derived root), its operations the functions below, and the
 // records the bytes the store wrote before it was sealed. sole_constructor, non-generic and never a variant arm
@@ -212,7 +201,14 @@ fn login_transaction_store_delete_record(store: LoginTransactionStore, key: Auth
 }
 
 fn login_transaction_store_consume(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionConsumeElection {
-  login_transaction_consume_election_of(outcome: file_hold_acquire(root: store.root, slot_key: key.value, requested_owner: login_transaction_consume_owner))
+  match file_hold_acquire(root: store.root, slot_key: key.value, requested_owner: login_transaction_consume_owner) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => LoginTransactionConsumeWon
+    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => LoginTransactionConsumeAlreadyWon
+    FileHoldAcquireLost { slot_key: _ } => LoginTransactionConsumeAlreadyWon
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => LoginTransactionConsumeRefused { detail: login_transaction_store_failure_detail(cause: c) }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LoginTransactionConsumeRefused { detail: join(["the consume hold does not decode: ", d as String], "") }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => LoginTransactionConsumeRefused { detail: "the transaction state does not address a hold slot" }
+  }
 }
 
 // THE CALLBACK'S TOKEN-REQUEST SCRATCH: one owner-only file per state, written, posted and removed in one

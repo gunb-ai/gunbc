@@ -31,6 +31,11 @@ fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> Cens
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
 }
 
+// A deleted callable is attributed by name: exactly one blocking MissingExport keyed on it, never a delta.
+fn deleted_callable_is_gone(source: String, deleted_callable: String) -> CensusVerdict {
+  census_verdict(census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable), holds: fn(n) { n == 1 })
+}
+
 // Every probe imports the same closure, so a delta counts only what its body adds.
 fn probe(name: String, body: String) -> String {
   join([
@@ -70,7 +75,7 @@ fn session_literal_path_source() -> String {
 }
 
 fn session_path_route_source() -> String {
-  probe(name: "probe_session_store_path_route", body: "fn f(id: NonEmptyStr) -> SessionStoreLookup {\n  session_store_lookup(layout: SessionStoreLayout { root: \"/tmp/forged-auth-sessions\" as FilePath }, session_id: id)\n}\n")
+  probe(name: "probe_session_store_path_route", body: "import gunbc.auth.session_store { session_store_layout_for_instance }\nfn f(i: HostDashboardInstance, id: NonEmptyStr) -> SessionStoreLookup {\n  session_store_lookup(layout: session_store_layout_for_instance(instance: i), session_id: id)\n}\n")
 }
 
 fn session_foreign_store_source() -> String {
@@ -94,7 +99,7 @@ test fn a_session_store_over_a_literal_path_is_refused_at_compile() -> ProcessEx
 }
 
 test fn no_path_taking_session_store_route_resolves() -> ProcessExit {
-  census_exit(blocking_delta(hostile: session_path_route_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+  census_exit(deleted_callable_is_gone(source: session_path_route_source(), deleted_callable: "session_store_layout_for_instance"))
 }
 
 test fn a_profile_store_is_not_a_session_store() -> ProcessExit {
@@ -123,7 +128,7 @@ fn profile_literal_path_source() -> String {
 }
 
 fn profile_path_route_source() -> String {
-  probe(name: "probe_profile_store_path_route", body: "fn f() -> ProfileStoreReadAll {\n  profile_store_read_all(layout: ProfileStoreLayout { root: \"/tmp/forged-auth-profiles\" as FilePath })\n}\n")
+  probe(name: "probe_profile_store_path_route", body: "import gunbc.auth.profile_projection { profile_store_layout_for_instance }\nfn f(i: HostDashboardInstance) -> ProfileStoreReadAll {\n  profile_store_read_all(layout: profile_store_layout_for_instance(instance: i))\n}\n")
 }
 
 fn profile_foreign_store_source() -> String {
@@ -147,7 +152,7 @@ test fn a_profile_store_over_a_literal_path_is_refused_at_compile() -> ProcessEx
 }
 
 test fn no_path_taking_profile_store_route_resolves() -> ProcessExit {
-  census_exit(blocking_delta(hostile: profile_path_route_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+  census_exit(deleted_callable_is_gone(source: profile_path_route_source(), deleted_callable: "profile_store_layout_for_instance"))
 }
 
 test fn a_session_store_is_not_a_profile_store() -> ProcessExit {
@@ -176,7 +181,7 @@ fn login_literal_path_source() -> String {
 }
 
 fn login_path_route_source() -> String {
-  probe(name: "probe_login_store_path_route", body: "fn f(t: OidcLoginTransaction) -> LoginTransactionStoreSave {\n  login_transaction_store_save(layout: LoginTransactionStoreLayout { root: \"/tmp/forged-auth-login-transactions\" as FilePath }, transaction: t)\n}\n")
+  probe(name: "probe_login_store_path_route", body: "import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance }\nfn f(i: HostDashboardInstance, t: OidcLoginTransaction) -> LoginTransactionStoreSave {\n  login_transaction_store_save(layout: login_transaction_store_layout_for_instance(instance: i), transaction: t)\n}\n")
 }
 
 fn login_foreign_store_source() -> String {
@@ -200,7 +205,7 @@ test fn a_login_transaction_store_over_a_literal_path_is_refused_at_compile() ->
 }
 
 test fn no_path_taking_login_transaction_store_route_resolves() -> ProcessExit {
-  census_exit(blocking_delta(hostile: login_path_route_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+  census_exit(deleted_callable_is_gone(source: login_path_route_source(), deleted_callable: "login_transaction_store_layout_for_instance"))
 }
 
 test fn a_session_store_is_not_a_login_transaction_store() -> ProcessExit {
@@ -313,5 +318,34 @@ test fn the_lawful_broker_jwks_cache_mint_is_admitted() -> ProcessExit {
   census_verdict_all(verdicts: [
     blocking_delta(hostile: lawful, safe: broker_baseline_source(), holds: fn(n) { n <= 0 }),
     census_verdict(census: seal_violations(source: lawful, subject: "BrokerJwksCache"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ── no authored hold outcome buys a consume ────────────────────────────────────────────────────
+// The fold login_transaction_consume_election_of (FileHoldAcquireOutcome -> LoginTransactionConsumeElection) is
+// deleted: its match lives inside login_transaction_store_consume beside its own file_hold_acquire, so a foreign
+// module holding an authored FileHoldAcquired has no export that turns it into LoginTransactionConsumeWon.
+fn consume_laundering_source() -> String {
+  join([
+    "module probe_login_consume_laundering\n",
+    "import std.types { String, NonEmptyStr }\n",
+    "import gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, FileHoldAcquired }\n",
+    "import gunbc.auth.login_transaction_store_root { LoginTransactionConsumeElection, login_transaction_consume_election_of }\n",
+    "fn f(o: FileHoldAcquireOutcome) -> LoginTransactionConsumeElection {\n  login_transaction_consume_election_of(outcome: o)\n}\n",
+  ], "")
+}
+
+fn consume_lawful_source() -> String {
+  probe(name: "probe_login_consume_lawful", body: "import gunbc.auth.login_transaction_store_root { LoginTransactionConsumeElection, LoginTransactionConsumeRefused, login_transaction_store_consume }\nimport gunbc.auth.auth_store_key { AuthStoreKey }\nfn f(i: HostDashboardInstance, k: AuthStoreKey) -> LoginTransactionConsumeElection {\n  match login_transaction_store(instance: i) {\n    LoginTransactionStoreReady { store } => login_transaction_store_consume(store: store, key: k)\n    LoginTransactionStoreUnready { detail } => LoginTransactionConsumeRefused { detail: detail }\n  }\n}\n")
+}
+
+test fn no_authored_hold_outcome_can_win_a_login_transaction_consume() -> ProcessExit {
+  census_exit(deleted_callable_is_gone(source: consume_laundering_source(), deleted_callable: "login_transaction_consume_election_of"))
+}
+
+test fn the_lawful_login_transaction_consume_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: consume_lawful_source(), safe: baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: consume_lawful_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 0 }),
   ])
 }
