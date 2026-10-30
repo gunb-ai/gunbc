@@ -4420,36 +4420,6 @@ impl TypeCensusVerdictWord {
     }
 }
 
-/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-infer` verb
-/// over the given roots (census part 2: front-end, resolve and infer refusals in one carrier, one
-/// walk shared with the type-declaration census). The child's stdout -- one `file_refusal`,
-/// `accepted_file_advisories`, `census_residual`, `cause_group` and `census_root` line per row, the
-/// type census's own lines, then the terminal -- is relayed whole, because those rows ARE the
-/// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
-/// The child's exit status is the TYPE census's verdict, a different fact, so it is carried in the
-/// terminal's `type_census` field and never read as this census's standing.
-pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
-    eprintln!(
-        "{}",
-        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
-    );
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["census-infer".to_string()];
-    args.extend(source_roots.iter().cloned());
-    let mut command = Command::new(&preparation.binary_path);
-    command.args(&args);
-    let output = run_relaying_as_it_runs(command).map_err(|e| {
-        format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-            preparation.binary_path.display()
-        )
-    })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
-    })?;
-    decode_native_census_output(&stdout, output.status.code())
-}
-
 /// WHERE THE RUN'S MEMORY BUDGET CAME FROM, IN THE RECEIPT. A whole-tree census is admitted against a
 /// declared demand (`gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
 /// the budget this process actually runs under is a separate fact. A receipt that does not say
@@ -4648,98 +4618,6 @@ pub struct NativeCensusScopedRun {
     pub infer_refused: u64,
     /// The terminal's comparison word: `compared` against the baseline, or `none` when there was none.
     pub diff: String,
-}
-
-/// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
-/// verb over the bound subject's acquired closure. The rows are
-/// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
-/// `subject_label` must be the label this instrument bound, so a run is never reported as another
-/// subject's.
-///
-/// COLD AND WARM COST ARE NOT YET REPORTED APART -- A DECLARED FRONTIER (DESIGN §4b). Current
-/// ceiling: a scoped run can be timed by hand, and native-product reuse records hit/miss standing
-/// separately (`native_product_cache::record_outcome`), but no one receipt binds this run's
-/// preparation disposition to its whole-command wall time, so a measured wall mixes the driver
-/// build in. Next rung: each scoped-run receipt names cold build versus verified hit, restored or
-/// refused preparation, and carries whole-command wall time, enough to compare an eligible
-/// same-input warm run against a cold one. Trigger: the next planning decision that needs a warm
-/// census figure.
-pub fn run_v2_native_census_scoped(
-    subject_label: &str,
-    source_roots: &[String],
-) -> Result<NativeCensusScopedRun, String> {
-    eprintln!(
-        "{}",
-        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
-    );
-    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED: every way this run can end short of a decoded terminal -- a refused preparation,
-    // a killed driver, a malformed terminal -- leaves this run's own file reading incomplete.
-    // THE BASELINE IS THE SUBJECT'S MOST RECENT COMPLETED RECORD, chosen before this run's own record
-    // exists so it can never be this run; the driver compares against it (census_run_diff) and the
-    // record names it. No completed record means no comparison, never an empty one.
-    let root = census_run_record_root();
-    let baseline = latest_complete_census_record(&root, subject_label)?;
-    for unreadable in &baseline.unreadable {
-        eprintln!(
-            "v2-native-census-scoped: baseline candidate unreadable, not compared: {unreadable}"
-        );
-    }
-    let against = baseline.chosen.clone();
-    let record = CensusRunRecordFile::open(
-        &root,
-        subject_label,
-        source_roots,
-        std::env::var("GITHUB_SHA").ok(),
-        against.as_deref(),
-        &baseline.unreadable,
-    )?;
-    eprintln!(
-        "v2-native-census-scoped: run record {} (incomplete until the terminal is decoded)",
-        record.path.display()
-    );
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
-    if let Some(baseline) = &against {
-        args.push("--against".to_string());
-        args.push(baseline.display().to_string());
-    }
-    args.extend(source_roots.iter().cloned());
-    let mut command = Command::new(&preparation.binary_path);
-    command.args(&args);
-    let output = run_relaying_as_it_runs(command).map_err(|e| {
-        format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-            preparation.binary_path.display()
-        )
-    })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
-    })?;
-    let run = decode_native_census_scoped_output(
-        &stdout,
-        output.status.code(),
-        subject_label,
-        &record.path,
-        against.is_some(),
-    )?;
-    record.complete(
-        serde_json::json!({
-            "binary_identity": preparation.binary_identity,
-            "closure_identity": preparation.closure_identity,
-            "seed_identity": preparation.seed_identity,
-            "rustc_identity": preparation.build.rustc_identity,
-        }),
-        &stdout,
-    )?;
-    Ok(run)
-}
-
-/// WHERE SCOPED RUN RECORDS ARE PUBLISHED: one directory under the workspace's build output, named
-/// once here. Each run writes its own file, so a reader never takes an older run's record for this one.
-fn census_run_record_root() -> PathBuf {
-    super::process_workspace_root()
-        .join("target")
-        .join("census-runs")
 }
 
 /// ONE SCOPED RUN'S RECORD FILE. It is opened incomplete,
@@ -5009,143 +4887,6 @@ pub struct CensusInferRun {
     pub status: Option<i32>,
 }
 
-/// The three runs `gunbc test //gunbc/instruments:type-declaration-use-census` reads, over ONE
-/// prepared binary: the fixture root, the unindexed root, and the whole tree. The two control
-/// roots are written by the caller from the reader's own fixture rows, so their contents have one
-/// authority.
-pub struct TypeDeclarationUseRuns {
-    pub fixture: CensusInferRun,
-    pub unindexed: CensusInferRun,
-    pub tree: CensusInferRun,
-}
-
-fn run_census_infer_with(
-    binary: &std::path::Path,
-    roots: &[String],
-) -> Result<CensusInferRun, String> {
-    let mut args = vec!["census-infer".to_string()];
-    args.extend(roots.iter().cloned());
-    let output = Command::new(binary).args(&args).output().map_err(|e| {
-        format!(
-            "TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-            binary.display()
-        )
-    })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
-    })?;
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    Ok(CensusInferRun {
-        stdout,
-        status: output.status.code(),
-    })
-}
-
-pub fn run_type_declaration_use_census_runs(
-    source_roots: &[String],
-    fixture_root: &str,
-    unindexed_root: &str,
-) -> Result<TypeDeclarationUseRuns, String> {
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let fixture = run_census_infer_with(&preparation.binary_path, &[fixture_root.to_string()])?;
-    let unindexed = run_census_infer_with(&preparation.binary_path, &[unindexed_root.to_string()])?;
-    let tree = run_census_infer_with(&preparation.binary_path, source_roots)?;
-    Ok(TypeDeclarationUseRuns {
-        fixture,
-        unindexed,
-        tree,
-    })
-}
-
-/// `census-infer` over each of `root_sets`, in order, over ONE prepared binary (built from
-/// `source_roots`). `gunbc test //gunbc/instruments:namespace-wave-binding-diff` reads the runs; the
-/// host decides nothing about them.
-pub fn run_census_infer_root_sets(
-    source_roots: &[String],
-    root_sets: &[Vec<String>],
-) -> Result<Vec<CensusInferRun>, String> {
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    root_sets
-        .iter()
-        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
-        .collect()
-}
-
-/// `census-scoped <subject>` over `source_roots` with an already-prepared binary: its stdout and
-/// status, its stderr relayed. Nothing about the run is decided here.
-fn run_census_scoped_with(
-    binary: &std::path::Path,
-    subject_labels: &[String],
-    source_roots: &[String],
-) -> Result<CensusInferRun, String> {
-    let mut args = vec!["census-scoped".to_string()];
-    args.extend(subject_labels.iter().cloned());
-    args.extend(source_roots.iter().cloned());
-    let output = Command::new(binary).args(&args).output().map_err(|e| {
-        format!(
-            "AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-            binary.display()
-        )
-    })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
-    })?;
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    Ok(CensusInferRun {
-        stdout,
-        status: output.status.code(),
-    })
-}
-
-/// The runs `gunbc test //gunbc/instruments:ambient-name-census` reads, over ONE prepared binary:
-/// `census-infer` over each control root set, then ONE `census-scoped` over every subject module at
-/// once. The emitted compiler acquires the union of the subjects' closures and resolves each member
-/// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
-/// say which subjects reach each member. One run per subject re-resolved every shared member once per
-/// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
-///
-/// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
-/// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
-/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the `dag` root replaced by
-/// the corpus-plus-kit overlay (`kit_overlay_roots`) and the kit's fixture modules as its subjects
-/// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
-/// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
-/// declares no kit (`None`) gets no kit run.
-pub fn run_census_controls_and_subjects(
-    source_roots: &[String],
-    control_root_sets: &[Vec<String>],
-    subjects: &[String],
-    population_roots: &[String],
-    kit: Option<(&str, &[String])>,
-) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let controls = control_root_sets
-        .iter()
-        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
-        .collect::<Result<Vec<_>, _>>()?;
-    let labels: Vec<String> = subjects
-        .iter()
-        .map(|subject| format!("//{}:all", subject.replace('.', "/")))
-        .collect();
-    let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
-    let kit = match kit {
-        Some((kit_root, kit_subjects)) => {
-            let kit_labels: Vec<String> = kit_subjects
-                .iter()
-                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
-                .collect();
-            let kit_roots = kit_overlay_roots(source_roots, Path::new(kit_root))?;
-            Some(run_census_scoped_with(
-                &preparation.binary_path,
-                &kit_labels,
-                &kit_roots,
-            )?)
-        }
-        None => None,
-    };
-    Ok((controls, union, kit))
-}
-
 /// THE KIT'S SOURCE ROOTS: `source_roots` with the `dag` root replaced by ONE overlay of the corpus `dag`
 /// tree and the kit fixtures. A native source root binds exactly one governed tree
 /// (`v2.cli.source_root_bindings` `source_root_bindings`), so the kit tree passed as a second `dag` root
@@ -5242,15 +4983,6 @@ pub struct NativeChildMeasured {
     pub exit_code: i32,
     /// 0 when the child exited; else the terminating signal.
     pub signal: i32,
-}
-
-/// The runs `gunbc test //gunbc/instruments:native-process-memory-census` reads, over ONE prepared
-/// binary: the one-module control root first, then the source roots.
-pub struct NativeProcessMemoryRuns {
-    pub binary_identity: String,
-    pub envelope: String,
-    pub control: NativeChildMeasured,
-    pub workload: NativeChildMeasured,
 }
 
 /// The environment variable that turns the seed executable into the measured-spawn trampoline: its
@@ -5470,38 +5202,6 @@ pub fn measured_spawn_run_dir(
 
 fn measured_spawn_receipt_in(run_dir: &std::path::Path) -> std::path::PathBuf {
     run_dir.join("child.rusage")
-}
-
-/// `write_control` receives this run's private directory and returns the control root it wrote there.
-pub fn run_native_process_memory_runs(
-    source_roots: &[String],
-    verb: &str,
-    write_control: impl FnOnce(&std::path::Path) -> Result<std::path::PathBuf, String>,
-) -> Result<NativeProcessMemoryRuns, String> {
-    let envelope =
-        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let run_dir = measured_spawn_run_dir()?;
-    let control_root = write_control(run_dir.path())?;
-    let receipt = measured_spawn_receipt_in(run_dir.path());
-    let control = run_native_child_measured(
-        &preparation.binary_path,
-        &[
-            verb.to_string(),
-            control_root.to_string_lossy().into_owned(),
-        ],
-        &receipt,
-    )?;
-    let mut args = vec![verb.to_string()];
-    args.extend(source_roots.iter().cloned());
-    let workload = run_native_child_measured(&preparation.binary_path, &args, &receipt)?;
-    drop(run_dir);
-    Ok(NativeProcessMemoryRuns {
-        binary_identity: preparation.binary_identity.clone(),
-        envelope,
-        control,
-        workload,
-    })
 }
 
 /// What the adjudicating run decided, carried out of the body as a value.
@@ -7481,42 +7181,4 @@ pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, St
             "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
         )
     })
-}
-
-/// THE SPELLED-MODULE SELECTION, RUN BY THE EMITTED COMPILER (`select-spelled-modules` verb): built from the
-/// head's `build_roots`, run over `population_roots`. The child prints one module name per line and decides its own
-/// exit; the seed relays both unjudged.
-pub fn run_v2_select_spelled_modules(
-    build_roots: &[String],
-    population_roots: &[String],
-) -> Result<(i32, String), String> {
-    let preparation = prepare_emitted_compiler_for_entry(build_roots, V2_NATIVE_CLI_ENTRY)?;
-    let mut args = vec!["select-spelled-modules".to_string()];
-    for root in population_roots {
-        args.push("--source-root".to_string());
-        args.push(root.clone());
-    }
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — select-spelled-modules stdout: {cause}")
-    })?;
-    let code = output.status.code().ok_or_else(|| {
-        "V2-NATIVE REFUSAL cause=NativeRunKilled — the select-spelled-modules child exited without a status"
-            .to_string()
-    })?;
-    if code != 0 {
-        return Ok((
-            code,
-            format!("{stdout}{}", String::from_utf8_lossy(&output.stderr)),
-        ));
-    }
-    Ok((code, stdout))
 }
