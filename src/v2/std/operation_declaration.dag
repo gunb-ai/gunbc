@@ -9,7 +9,7 @@ import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
-import v2.compiler.dependency_demand { RequirementClass, RequiresResources, RequiresOpaque, RequiresUndeclared }
+import v2.compiler.dependency_demand { RequirementClass, RequiresNone, RequiresResources, RequiresOpaque, RequiresUndeclared }
 import std.primitive_projection { primitive_projection_roster, primitive_projection_row_for_declaration, HostRealizedSeam, ModeledProjection, DivergentProjection }
 
 // ONE DECLARATION PER HOST-BOUNDARY OPERATION, keyed by its declaration path.
