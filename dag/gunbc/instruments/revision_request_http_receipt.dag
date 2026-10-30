@@ -67,13 +67,14 @@ fn request_http_result_visible(rows: List<JsonValue>) -> Bool {
 }
 fn request_http_holds(document: JsonValue) -> Bool {
   let rows = request_http_rows(document: document)
-  if (count(rows) != 16 || json_field_bool(obj: document, key: "credential_exposed") != FieldRead { value: false }) { return false }
+  if (count(rows) != 17 || json_field_bool(obj: document, key: "credential_exposed") != FieldRead { value: false }) { return false }
   let a = request_http_status(rows: rows, name: "race-a")
   let b = request_http_status(rows: rows, name: "race-b")
   if !((a == 202 && b == 409) || (a == 409 && b == 202)) { return false }
   let winner = if a == 202 { "race-a" } else { "race-b" }
   let loser = if winner == "race-a" { "race-b" } else { "race-a" }
   request_http_result_visible(rows: rows)
+    && request_http_busy(rows: rows, name: "result-still-busy", existing: "lost")
     && request_http_busy(rows: rows, name: loser, existing: winner)
     && all(["second-key-busy", "proxy-cannot-override-key", "restart-busy"], name => request_http_busy(rows: rows, name: name, existing: winner))
     && all(["same-id-retry", "lost-response-retry", "restart-retry"], name => request_http_status(rows: rows, name: name) == 202)
@@ -94,6 +95,7 @@ fn request_http_controls(document: JsonValue) -> Bool {
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "lost-response-before-retry", status: 404))
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "lost-response-retry", status: 409))
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "second-key-busy", status: 202))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "result-still-busy", status: 202))
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "cross-read", status: 200))
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "restart-read", status: 404))
     && !request_http_holds(document: request_http_mutate_status(document: document, name: "restart-busy", status: 202))
