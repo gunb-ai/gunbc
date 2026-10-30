@@ -5,7 +5,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that realizes the two compiler queries the primitive
-// egress census (gunbc.primitive_egress.census_live, gunbc#11642) consumes. Same shape and same
+// egress census (gunbc#11642; its labels and live binding are since retired) consumes. Same shape and same
 // owner as gunbc.evaluation_store_address_census_seed_growth, whose builtins are this change's
 // precedent: a .dag-only re-derivation of the resolver's callee identity or of the compiled
 // registry's key set would be a SECOND resolver beside the compiler (DESIGN section 3), so the
@@ -24,10 +24,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // WHAT IS NOT NETTED. Generated dispatch rows in v1_interpreter_dispatch_generated.rs are
 // projections of gunbc.v1.v1_interpreter_primitive_surface and exempt by generation authority;
 // BuiltinSignature inserts in v1_compiler_infer_method extend an existing map
-// (ExistingSeedItemModified), as do the four TargetProducer variants and their dispatch arms in
-// target_invocation_host; the one NEW item there, the shared runner run_primitive_egress_census
-// (one fn for the four census labels, parameterized by the .dag entry it evaluates), is enrolled
-// below beside the builtins it exists to reach. The census classifies BOTH builtins as CompilerQueryFrontier rows in
+// (ExistingSeedItemModified). The census classifies BOTH builtins as CompilerQueryFrontier rows in
 // its own denominator (gunbc.primitive_egress.dispositions_seed_query), so the instrument does not
 // exempt itself from the join it performs.
 data primitive_egress_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
@@ -44,8 +41,7 @@ data primitive_egress_census_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "primitive_call_edges_from_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_primitive_call_edges", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "primitive_callee_identity_value", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "primitive_call_edge_census_value", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_primitive_egress_census", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "primitive_call_edge_census_value", field: WholeDeclaration }
   ],
   reason: "The primitive egress census asks the compiler which call sites it resolved to a runtime primitive, an algebra method template, a service operation, or nothing, and asks the compiled registry for its key set. Both are seed pipeline products with no substrate representation a .dag fold could read: the typed tree's CallTargetIdentity lives in the resolver's output and the registry's values carry Node. compile_dag_primitive_call_edges takes the primary-root closure of each pool root through a private MultiEntryIndex, resolves the union ONCE under the compile-clean admission (the route gunbc compile takes for a primary root), and walks every module of that one graph whose path starts with a requested entry prefix (all when none are given); a module with a blocking diagnostic is a typed refusal row, refuses nothing silently (a blocking entry is a typed refusal row the consumer must decide on), walks each entry's own module once, and projects the callee identity with the caller's declaration identity and span. builtin_function_registry_keys returns the sorted key set. The two v1_interpreter projections lift the carriers into interpreter values; run_primitive_egress_census is the target_invocation_host runner behind the four labels, resolving the census_live entry and mapping its CliWireResponse to a Termination. The enrolled instrument is gunbc.primitive_egress.census_live primitive_egress_census_exit, reached as gunbc test //gunbc/instruments:primitive-egress-census.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

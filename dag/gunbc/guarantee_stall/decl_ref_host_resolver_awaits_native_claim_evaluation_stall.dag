@@ -39,7 +39,6 @@ data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall
       "dag/gunbc/generated_artifact_producer_coverage",
       "dag/gunbc/namespace_cut/namespace_cut_subject_observation",
       "dag/gunbc/primitive_egress/census",
-      "dag/gunbc/primitive_egress/census_live",
       "dag/gunbc/primitive_egress/qualification (reads kind)",
       "dag/test/claim/decl_ref_keyed_read_agreement_witness",
       "dag/test/claim/documentary_refs_witness",
@@ -49,7 +48,6 @@ data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall
       "dag/test/claim/long/v1_complexity_capability_census_resolution (reads rel_path)",
       "dag/test/claim/namespace_cut_subject_observation_witness",
       "dag/test/claim/never_eliminator_witness",
-      "dag/test/claim/primitive_egress_census_witness",
       "src/v2/lens/common/outside_modeled_guarantee_join",
     ]
   },

@@ -49,10 +49,6 @@ type TargetProducer
   | V2NativeCensusProducer { reading: V2NativeCensusReading }
   | EmittedCrateWorkspaceProducer
   | EvaluationStoreAddressExactHeadProducer
-  | PrimitiveEgressCensusProducer
-  | PrimitiveEgressCensusV2Producer
-  | PrimitiveEgressCensusDagProducer
-  | PrimitiveEgressCensusSeedProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
   | RequiredLaneResolutionCensusProducer
@@ -92,10 +88,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     V2NativeCensusProducer { reading: _ } => optional_absent()
     EmittedCrateWorkspaceProducer {} => optional_absent()
     EvaluationStoreAddressExactHeadProducer {} => optional_absent()
-    PrimitiveEgressCensusProducer {} => optional_absent()
-    PrimitiveEgressCensusV2Producer {} => optional_absent()
-    PrimitiveEgressCensusDagProducer {} => optional_absent()
-    PrimitiveEgressCensusSeedProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
     RequiredLaneResolutionCensusProducer {} => optional_absent()

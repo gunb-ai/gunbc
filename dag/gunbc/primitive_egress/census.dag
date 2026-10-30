@@ -30,8 +30,8 @@ import gunbc.primitive_egress.category { category_label }
 // ---------------------------------------------------------------------------------------------
 // INPUT CARRIERS. Every fold below takes its population as a PARAMETER, so a witness can supply a
 // planted surface fact, edge or disposition row and watch one finding go red (DESIGN section 3:
-// a witness discriminates at one interface). The production binding is in
-// gunbc.primitive_egress.census_live, which is the only module that reads the live tree.
+// a witness discriminates at one interface). Its live binding (census_live) was retired with the
+// primitive-egress census labels.
 // ---------------------------------------------------------------------------------------------
 
 // One spelling on one realization surface, before the join. `form` is the call form the surface
