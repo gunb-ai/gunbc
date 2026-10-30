@@ -3,7 +3,7 @@ module v2.std.operation_declaration
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { Bool, List, Map }
 import std.optional { Absent, Optional, Present, optional_absent }
-import std.algebra { empty_map, fold_list, list_snoc_item, map_insert, map_lookup }
+import std.algebra { Cons, Empty, empty_map, fold_list, length, list_snoc_item, map_insert, map_lookup }
 import std.effects { EffectShape, KeySource, ReadEffect, ExecuteEffect }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -395,32 +395,42 @@ data operation_declaration_roster: List<OperationDeclaration> = [
   ),
     ]
 
+// THE INDEX, built once per module: rows grouped under their declaration path. Every lookup below is
+// a keyed read of this one value, so a reader asked about N operations does N keyed reads, never N
+// scans of the roster. The seed is a variable feeding a fold accumulator (the form the emitter
+// types), never `empty_map()` as a direct `map_lookup` argument.
+data operation_declaration_index: Map<QualifiedName, List<OperationDeclaration>> = fold_list(
+  xs: operation_declaration_roster,
+  empty: empty_map(),
+  cons: fn(m, row) {
+    map_insert(
+      m: m,
+      key: operation_declaration_path(declaration: row.declaration),
+      value: list_snoc_item(
+        xs: operation_declaration_rows_at(index: m, declaration: row.declaration),
+        item: row
+      )
+    )
+  }
+)
+
+fn operation_declaration_rows_at(
+  index: Map<QualifiedName, List<OperationDeclaration>>,
+  declaration: DeclarationRef
+) -> List<OperationDeclaration> {
+  match map_lookup(m: index, key: operation_declaration_path(declaration: declaration)) {
+    Present { value: rows } => rows
+    Absent => Empty
+  }
+}
+
 fn operation_declaration_for(
   declaration: DeclarationRef
 ) -> Optional<OperationDeclaration> {
-  // THE JOIN IS THE SIBLING AUTHORITY'S OWN: std.primitive_projection -- the roster this roster is a
-  // 1:1 image of -- finds a row by folding to the first key match, and uses no map index at all. The
-  // map-index version here was the instrument's refusal: `lookup(fold_list(roster, empty_map(), ...))`
-  // emits as v1_rt::rc_empty_map::<_, _>(), whose accumulator element type is left as an inference
-  // variable, and rustc resolves the value to Rc<HashMap<..>> against the map's expected
-  // HashMap<.., Rc<OperationDeclaration>> -- error[E0308] mismatched types at
-  // v2_std_operation_declaration.rs:268:78, which is why the bounded std-closure B0 run refused. An
-  // annotated let seed does not help: the emitter drops the annotation on empty_map() (corpus
-  // instances of the pattern all feed a variable or a field, never a direct map_lookup argument).
-  //
-  // First-match and last-match agree while the key universe stays unique, which is what
-  // no_declaration_key_is_declared_twice_holds guards, so this is the same function with the emitted
-  // coercion removed.
-  fold_list(
-    xs: operation_declaration_roster,
-    empty: optional_absent(),
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => if declaration_ref_eq(a: row.declaration, b: declaration) { Present { value: row } } else { acc }
-      }
-    }
-  )
+  match operation_declaration_rows_at(index: operation_declaration_index, declaration: declaration) {
+    Cons { head: row, tail: _ } => Present { value: row }
+    Empty => Absent
+  }
 }
 
 fn operation_declaration_resolves(
@@ -439,34 +449,15 @@ fn operation_declaration_resolves(
 fn operation_declaration_row_count_for(
   declaration: DeclarationRef
 ) -> Int {
-  fold_list(
-    xs: operation_declaration_roster,
-    empty: 0,
-    cons: fn(k, other) {
-      if declaration_ref_eq(a: other.declaration, b: declaration) { k + 1 } else { k }
-    }
-  )
+  length(xs: operation_declaration_rows_at(index: operation_declaration_index, declaration: declaration))
 }
 
 fn operation_declaration_ambiguous_row_count() -> Int {
-  let counts: Map<QualifiedName, Int> = fold_list(
-    xs: operation_declaration_roster,
-    empty: empty_map(),
-    cons: fn(m, row) {
-      match map_lookup(m: m, key: operation_declaration_path(declaration: row.declaration)) {
-        Present { value: c } => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: c + 1)
-        Absent => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: 1)
-      }
-    }
-  )
   fold_list(
     xs: operation_declaration_roster,
     empty: 0,
     cons: fn(n, row) {
-      match map_lookup(m: counts, key: operation_declaration_path(declaration: row.declaration)) {
-        Present { value: c } => if c > 1 { n + 1 } else { n }
-        Absent => n
-      }
+      if operation_declaration_row_count_for(declaration: row.declaration) > 1 { n + 1 } else { n }
     }
   )
 }
