@@ -1,0 +1,88 @@
+module test.claim.filesystem_handle_seal_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Absent, Present }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+import std.filesystem.types { TargetFile }
+import extdeps.filesystem.posix { PosixFileIdentity }
+import extdeps.filesystem.filesystem_io {
+  FilesystemOpened, FilesystemOpenRefused, FilesystemOpenKindUnrecognized, FilesystemOpenIdentityUnrepresentable,
+  FilesystemSymlinkObserved, FilesystemNotASymlink, FilesystemHandleSymlinkRefused,
+  filesystem_handle_open, filesystem_handle_symlink, filesystem_handle_identity
+}
+
+// A FilesystemHandle CANNOT BE SPELLED OR CAST OUTSIDE extdeps.filesystem.filesystem_io. Each RED hands
+// the compiler a module that is not the declaring file and asserts EXACTLY ONE SoleConstructorViolation
+// keyed on FilesystemHandle; the seal-stripped twin (test.fixture.filesystem_handle_seal.unsealed) takes
+// the same literal with no violation, so the refusal is the keyword. The positive controls run the one
+// mint and the symlink fold on supplied channels. Claimed: construction is sealed and the folds keep the
+// arms apart. NOT claimed: that the host produces those channels -- that is the realization change.
+
+fn seal_violations(source: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "FilesystemHandle")
+}
+
+data forged_handle_source: String = "module probe_forged_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport extdeps.filesystem.filesystem_io { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  FilesystemHandle { fd: 3, identity: i }\n}\n"
+
+data cast_handle_source: String = "module probe_cast_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport extdeps.filesystem.filesystem_io { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  i as FilesystemHandle\n}\n"
+
+data twin_handle_source: String = "module probe_twin_filesystem_handle\nimport std.types { Int }\nimport extdeps.filesystem.posix { PosixFileIdentity }\nimport test.fixture.filesystem_handle_seal.unsealed { FilesystemHandle }\nfn forged(i: PosixFileIdentity) -> FilesystemHandle {\n  FilesystemHandle { fd: 3, identity: i }\n}\n"
+
+test fn a_forged_filesystem_handle_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_handle_source), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_filesystem_handle_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_handle_source), holds: fn(n) { n == 1 }))
+}
+
+test fn the_seal_stripped_twin_draws_no_violation() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: twin_handle_source), holds: fn(n) { n == 0 }))
+}
+
+data an_identity: PosixFileIdentity = PosixFileIdentity { st_dev: 64769, st_ino: 1234 }
+
+test fn a_successful_open_mints_a_handle_carrying_the_descriptors_identity() -> Bool {
+  match filesystem_handle_open(path: "/x", success: true, fd: 5, identity: an_identity, error: "", error_kind: "") {
+    FilesystemOpened(h) => filesystem_handle_identity(handle: h) == an_identity
+    FilesystemOpenRefused { path: _, kind: _, error: _ } => false
+    FilesystemOpenKindUnrecognized { path: _, observed: _, error: _ } => false
+    FilesystemOpenIdentityUnrepresentable { path: _, st_dev: _, st_ino: _ } => false
+  }
+}
+
+test fn a_refused_open_mints_nothing_and_keeps_the_host_kind() -> Bool {
+  match filesystem_handle_open(path: "/x", success: false, fd: 0 - 1, identity: an_identity, error: "ELOOP", error_kind: "other") {
+    FilesystemOpened(_) => false
+    FilesystemOpenRefused { path: _, kind: _, error: e } => e == "ELOOP"
+    FilesystemOpenKindUnrecognized { path: _, observed: _, error: _ } => false
+    FilesystemOpenIdentityUnrepresentable { path: _, st_dev: _, st_ino: _ } => false
+  }
+}
+
+test fn a_symlink_reads_as_observed_and_a_non_link_as_not_a_symlink() -> Bool {
+  let link = filesystem_handle_symlink(identity: an_identity, success: true, is_symlink: true, text: "t", target: TargetFile, error: "", error_kind: "")
+  let plain = filesystem_handle_symlink(identity: an_identity, success: true, is_symlink: false, text: "", target: TargetFile, error: "", error_kind: "")
+  let linked = match link {
+    FilesystemSymlinkObserved { identity: _, target: _, text: t } => t == "t"
+    FilesystemNotASymlink { identity: _ } => false
+    FilesystemHandleSymlinkRefused { identity: _, kind: _, error: _ } => false
+  }
+  let unlinked = match plain {
+    FilesystemSymlinkObserved { identity: _, target: _, text: _ } => false
+    FilesystemNotASymlink { identity: _ } => true
+    FilesystemHandleSymlinkRefused { identity: _, kind: _, error: _ } => false
+  }
+  linked && unlinked
+}
+
+test fn an_unsigned_identity_above_i64_arrives_negative_and_mints_nothing() -> Bool {
+  match filesystem_handle_open(path: "/x", success: true, fd: 5, identity: PosixFileIdentity { st_dev: 1, st_ino: 0 - 7 }, error: "", error_kind: "") {
+    FilesystemOpenIdentityUnrepresentable { path: _, st_dev: _, st_ino: i } => i == 0 - 7
+    FilesystemOpened(_) => false
+    FilesystemOpenRefused { path: _, kind: _, error: _ } => false
+    FilesystemOpenKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+}

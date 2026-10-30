@@ -4,6 +4,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
 import std.algebra { collection_join_shape }
+import std.filesystem.types { SymlinkTarget }
+import extdeps.filesystem.posix { PosixFileIdentity, PosixFileStat }
+import std.content_hash { Sha256Digest }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -253,6 +256,110 @@ fn filesystem_link_create_new(
           FilesystemNotDirectory => FilesystemLinkRefused { path: path, kind: k, error: error }
           FilesystemOtherFailure => FilesystemLinkRefused { path: path, kind: k, error: error }
         }
+    }
+  }
+}
+
+// ── THE OPENED-FILE HANDLE: A NAME IS RESOLVED ONCE, AND EVERY LATER OPERATION IS ON WHAT IT RESOLVED TO ──
+//
+// gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls: a check on a path is
+// itself a resolution, so check-then-open and open-then-reopen both leave a window in which the name is
+// repointed. The repair is construction, not a better check: `FilesystemHandle` is sole_constructor and
+// its one mint, `filesystem_handle_open`, folds the host's open(path, O_NOFOLLOW) observation, so a
+// handle exists only for a descriptor the host actually returned. Every handle operation below takes the
+// HANDLE and never a path, so validate-then-reopen has no spelling: there is no path parameter to pass.
+//
+// The final component is never followed (O_NOFOLLOW; O_PATH where the file itself must not be read), so
+// a symlink is opened AS a symlink and is observed through `FilesystemHandleSymlink` rather than
+// silently becoming its target.
+//
+// REALIZATION IS A DECLARED FRONTIER (DESIGN 3c). This module owns the interface and the folds. The
+// host operations that produce their scalar channels (open, fstat, readlinkat, copy to a new file, hash
+// on the copy's descriptor) are realized by extdeps.filesystem.rust_realization in the change that
+// follows this one; its consumers are std.fabric_blob read_staged_fabric_blob (via
+// extdeps.realization.materialization_store_local), the capacity-recovery symlink reader and the
+// executor's staged-file intake. Until then the folds are exercised by their witness only.
+type FilesystemHandle sole_constructor {
+  fd: Int
+  identity: PosixFileIdentity
+}
+
+fn filesystem_handle_identity(handle: FilesystemHandle) -> PosixFileIdentity {
+  handle.identity
+}
+
+type FilesystemOpen
+  = FilesystemOpened(FilesystemHandle)
+  | FilesystemOpenRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemOpenKindUnrecognized { path: String, observed: String, error: String }
+  | FilesystemOpenIdentityUnrepresentable { path: String, st_dev: Int, st_ino: Int }
+
+// THE SOLE MINT. `st_dev`/`st_ino` are those of the descriptor just returned, read in the same host
+// call as the open, so a handle never carries an identity the descriptor does not have.
+fn filesystem_handle_open(
+  path: String,
+  success: Bool,
+  fd: Int,
+  identity: PosixFileIdentity,
+  error: String,
+  error_kind: String,
+) -> FilesystemOpen {
+  if success && (identity.st_dev < 0 || identity.st_ino < 0 || fd < 0) {
+    FilesystemOpenIdentityUnrepresentable { path: path, st_dev: identity.st_dev, st_ino: identity.st_ino }
+  } else if success {
+    FilesystemOpened(FilesystemHandle { fd: fd, identity: identity })
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemOpenKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        FilesystemOpenRefused { path: path, kind: k, error: error }
+    }
+  }
+}
+
+// fstat ON THE HANDLE: owner, mode, type and identity of the inode the handle holds.
+type FilesystemHandleStat
+  = FilesystemHandleStatted { identity: PosixFileIdentity, stat: PosixFileStat }
+  | FilesystemHandleStatRefused { identity: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
+
+// readlinkat(fd, "") ON THE HANDLE. A handle that is not a symlink is its own arm, never an empty
+// target: the absence of a link is a fact about the inode, not a default text.
+type FilesystemHandleSymlink
+  = FilesystemSymlinkObserved { identity: PosixFileIdentity, target: SymlinkTarget, text: String }
+  | FilesystemNotASymlink { identity: PosixFileIdentity }
+  | FilesystemHandleSymlinkRefused { identity: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
+
+// A COPY OF THE HANDLE'S BYTES INTO A DESTINATION THIS PROCESS CREATED, with the identity of the COPY
+// and the SHA-256 computed on the copy's own descriptor. The digest describes the destination the
+// caller will use, not a path the staging principal can still rewrite; the source handle's identity is
+// carried so a caller can show the copy came from the inode it checked.
+type FilesystemHandleCopy
+  = FilesystemCopied { dest: String, source: PosixFileIdentity, identity: PosixFileIdentity, digest: Sha256Digest }
+  | FilesystemCopyDestinationOccupied { dest: String, source: PosixFileIdentity }
+  | FilesystemCopyRefused { dest: String, source: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
+
+fn filesystem_handle_symlink(
+  identity: PosixFileIdentity,
+  success: Bool,
+  is_symlink: Bool,
+  text: String,
+  target: SymlinkTarget,
+  error: String,
+  error_kind: String,
+) -> FilesystemHandleSymlink {
+  if success {
+    if is_symlink {
+      FilesystemSymlinkObserved { identity: identity, target: target, text: text }
+    } else {
+      FilesystemNotASymlink { identity: identity }
+    }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemHandleSymlinkRefused { identity: identity, kind: FilesystemOtherFailure, error: join(["unrecognized kind ", o, ": ", error], "") }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        FilesystemHandleSymlinkRefused { identity: identity, kind: k, error: error }
     }
   }
 }
