@@ -1,6 +1,15 @@
 module test.claim.live_deploy.capacity_root_helper_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.algebra { skip }
+import std.measure { second }
+import extdeps.shell
+import gunbc.live_deploy.capacity_helper_invocation { capacity_helper_invocation }
+import gunbc.live_deploy.capacity_helper_snapshot { capacity_helper_function }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
+import gunbc.typed_remote_file_write { FleetHostLock, RemoteFileAsSessionPrincipal, typed_remote_file_locked_step_argv }
 import std.decl_ref { declaration_ref_eq }
 import gunbc.auth.authorization_pattern_selection { PatternSelectionRefused, PatternSelected, ApprovedConvergenceGrant }
 import gunbc.auth.privileged_effect_census {
@@ -129,4 +138,41 @@ test fn caller_selections_cannot_override_a_cutover_digest_binding() -> Bool {
     Err { value: _ } => true
     _ => false
   }
+}
+
+// The production construction puts the whole fixed helper after one flock. No
+// journal read or leg command is an argv sibling outside that process lifetime.
+test fn the_fleet_lock_wraps_the_whole_fixed_helper_invocation() -> Bool {
+  let digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  match capacity_helper_invocation(revision: RevisionBoundAtEmission { revision: "1111111111111111111111111111111111111111" },
+    approved_helper: digest, observed_helper: Ok { value: digest }, request_path: "/fixture/request.json",
+    approval_path: "/fixture/approval.json", plan_path: "/fixture/plan.json") {
+    Err { value: _ } => false
+    Ok { value: invocation } => take(invocation.words, n: 9) == ["/usr/bin/sudo", "-n", "/usr/bin/flock", "--exclusive", "--wait", "120", "--conflict-exit-code", "75", fleet_generation_lock]
+      && count(filter(invocation.words, word => word == "/usr/bin/flock")) == 1
+      && count(filter(invocation.words, word => word == capacity_helper_function)) == 1
+  }
+}
+
+fn capacity_lock_control_exit(words: List<String>) -> Int {
+  match first(words) {
+    Absent => -1
+    Present { value: program } => shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: skip(words, n: 1)).exit_code
+  }
+}
+
+// A real second flock actor runs INSIDE the first actor's command lifetime.
+// It must conflict there and succeed after the first actor exits. The private
+// fixture path isolates the control from the host's production generation lock.
+test fn a_second_actor_cannot_enter_during_the_locked_program() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if !dir.success { return false }
+  let path = concat(dir.path, "/fleet.lock") as NonEmptyStr
+  let lock = FleetHostLock { lock_path: path, wait: second(count: 0), conflict_exit_code: 75 }
+  let second = typed_remote_file_locked_step_argv(lock: lock, privilege: RemoteFileAsSessionPrincipal, argv: ["/usr/bin/true"])
+  let first = typed_remote_file_locked_step_argv(lock: lock, privilege: RemoteFileAsSessionPrincipal, argv: second)
+  let mid_program = capacity_lock_control_exit(words: first)
+  let after_program = capacity_lock_control_exit(words: second)
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  mid_program == 75 && after_program == 0 && cleanup.success
 }
