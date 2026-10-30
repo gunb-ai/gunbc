@@ -99,7 +99,7 @@ import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
-import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunPageStep, RunPageSelected, RunPageEndsSearch, RunPageContinues, RunPageCapReached, runner_user_session_run_page_step }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, runner_user_session_run_scan_step }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
@@ -848,47 +848,53 @@ test fn the_read_route_refuses_a_rostered_host_without_a_credential_and_skips_an
     }
 }
 
-// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM ONE PAGE (DESIGN 5; stern, PR 15431). The runs are supplied values at the
-// page-step boundary; the real step fold judges them. A FULL page of non-qualifying runs inside the freshness horizon
-// continues (never ends the search as absence); at the page cap it is RunPageCapReached, which the read maps to
-// ReceiptUnreadable, so the readback is Unjudged and the connectivity plan yields NO replace action. An underfull page
-// and a page holding a run beyond the horizon each establish absence; a qualifying run on the page is selected.
-// RED control: treat a full page as absence (drop the continue/cap arms) and the first two arms go red.
+// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5; the side chat, PR 15431). The runs are
+// supplied values at the scan-step boundary; the real fold judges them. No age or page-local fact ends the scan:
+// a FULL page holding an OLD run continues, and the FRESH qualifying run on the next (underfull) page is selected;
+// the newest qualifying run is chosen across all pages scanned; a still-full page at the cap is RunScanCapReached
+// even when a qualifying run was already seen, which the read maps to ReceiptUnreadable (readback Unjudged, no
+// replace action); an underfull page with no qualifying run is the only RunScanNone.
+// RED control: end the scan on an old run or on the first page and the cross-page arms go red.
 test fn a_full_page_without_a_qualifying_run_does_not_establish_absence() -> Bool {
-  let read_at = "2026-10-28T12:00:00Z"
   let recent = producer_run(id: 1, title: "unrelated", completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")
   let old = producer_run(id: 2, title: "unrelated", completed: true, conclusion: Present { value: true }, created_at: "2026-09-01T00:00:00Z")
-  let qualifying = producer_run(id: 3, title: user_session_title(host: "srv4", nonce: "n9"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z")
-  let full_recent = [recent, recent, recent]
-  match runner_user_session_run_page_step(runs: full_recent, host: "srv4", read_at: read_at, page: 1, max_pages: 2, page_size: 3) {
-    RunPageContinues => true
-    RunPageSelected { run: _, created_at: _ } => false
-    RunPageEndsSearch { cause: _ } => false
-    RunPageCapReached { cause: _ } => false
+  let fresh_qualifying = producer_run(id: 3, title: user_session_title(host: "srv4", nonce: "n9"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z")
+  let older_qualifying = producer_run(id: 4, title: user_session_title(host: "srv4", nonce: "n8"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-27T01:00:00Z")
+  match runner_user_session_run_scan_step(scanned: [], page_runs: [recent, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
+    RunScanContinues { scanned: seen } =>
+      match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+        RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
+        RunScanNone { cause: _ } => false
+        RunScanContinues { scanned: _ } => false
+        RunScanCapReached { cause: _ } => false
+      }
+    RunScanSelected { run: _, created_at: _ } => false
+    RunScanNone { cause: _ } => false
+    RunScanCapReached { cause: _ } => false
   }
-    && match runner_user_session_run_page_step(runs: full_recent, host: "srv4", read_at: read_at, page: 2, max_pages: 2, page_size: 3) {
-      RunPageCapReached { cause: c } => capped_is_unjudged_with_no_replace(cause: c)
-      RunPageContinues => false
-      RunPageSelected { run: _, created_at: _ } => false
-      RunPageEndsSearch { cause: _ } => false
+    && match runner_user_session_run_scan_step(scanned: [], page_runs: [older_qualifying, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
+      RunScanContinues { scanned: seen } =>
+        match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+          RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
+          RunScanNone { cause: _ } => false
+          RunScanContinues { scanned: _ } => false
+          RunScanCapReached { cause: _ } => false
+        }
+      RunScanSelected { run: _, created_at: _ } => false
+      RunScanNone { cause: _ } => false
+      RunScanCapReached { cause: _ } => false
     }
-    && match runner_user_session_run_page_step(runs: [recent, recent], host: "srv4", read_at: read_at, page: 1, max_pages: 2, page_size: 3) {
-      RunPageEndsSearch { cause: _ } => true
-      RunPageContinues => false
-      RunPageSelected { run: _, created_at: _ } => false
-      RunPageCapReached { cause: _ } => false
+    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [fresh_qualifying, recent, recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+      RunScanCapReached { cause: c } => capped_is_unjudged_with_no_replace(cause: c)
+      RunScanSelected { run: _, created_at: _ } => false
+      RunScanNone { cause: _ } => false
+      RunScanContinues { scanned: _ } => false
     }
-    && match runner_user_session_run_page_step(runs: [recent, recent, old], host: "srv4", read_at: read_at, page: 1, max_pages: 2, page_size: 3) {
-      RunPageEndsSearch { cause: _ } => true
-      RunPageContinues => false
-      RunPageSelected { run: _, created_at: _ } => false
-      RunPageCapReached { cause: _ } => false
-    }
-    && match runner_user_session_run_page_step(runs: [recent, qualifying, recent], host: "srv4", read_at: read_at, page: 1, max_pages: 2, page_size: 3) {
-      RunPageSelected { run: _, created_at: _ } => true
-      RunPageContinues => false
-      RunPageEndsSearch { cause: _ } => false
-      RunPageCapReached { cause: _ } => false
+    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+      RunScanNone { cause: _ } => true
+      RunScanSelected { run: _, created_at: _ } => false
+      RunScanContinues { scanned: _ } => false
+      RunScanCapReached { cause: _ } => false
     }
 }
 

@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, Secret, Timestamp }
 import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.github.workflow_runs
-import extdeps.github.workflow_runs { WorkflowRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.github.github { max_per_page }
 import extdeps.transports.rest { RestAnswered, RestRefused }
 import extdeps.shell.credentials { env_credential }
@@ -21,8 +21,8 @@ import gunbc.superseded_run_starvation_census { census_read_refusal_cause }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
   RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent,
-  RunnerUserSessionRunPageStep, RunPageSelected, RunPageEndsSearch, RunPageContinues, RunPageCapReached,
-  runner_user_session_run_page_step, runner_user_session_run_search_max_pages, runner_user_session_converge_receipt_read_command,
+  RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached,
+  runner_user_session_run_scan_step, runner_user_session_run_search_max_pages, runner_user_session_converge_receipt_read_command,
   runner_user_session_converge_receipt_file_name, runner_user_session_receipt_input_of_text,
 }
 
@@ -43,15 +43,16 @@ import gunbc.runner.runner_user_session_receipt {
 // qualifying run are ReceiptAbsent (nothing to read: the label stays off for the typed reason the grant
 // states); every failure along the route -- no token, a refused listing, a failed download, an unreadable
 // file, an unreadable clock -- is ReceiptUnreadable with the step and the cause located in its words.
-// The listing is PAGED newest first until absence is established (an underfull page, or a run older than the
-// receipt's max age: nothing beyond it can be fresh) or the page cap is hit, which is ReceiptUnreadable --
-// a full first page of other runs is never read as no qualifying run.
+// The listing is PAGED until an underfull page (no ordering across pages is assumed, so no age cutoff ends the
+// scan) and the newest qualifying run is chosen across all pages; hitting the page cap is ReceiptUnreadable --
+// a full page of other runs is never read as no qualifying run.
 
 data runner_user_session_receipt_token_env: String = "GITHUB_TOKEN"
 
-// A DOWNLOAD DIRECTORY PER READ (run id plus the read instant): a file left by an earlier read can never be
-// mistaken for this read's, and a second leg reading the same run in one checkout cannot collide with the
-// first (gh run download refuses to write into files that already exist -- review 88966).
+// A DOWNLOAD DIRECTORY PER READ (run id plus the read instant): reads at different instants do not share a
+// directory, so a file an earlier read left is not met by a later one (gh run download refuses to write into
+// files that already exist -- review 88966). It is NOT collision-free: two reads of one run in the same second
+// share a directory, and the second download then fails as a located ReceiptUnreadable -- never a grant.
 data runner_user_session_receipt_download_root: String = "target/runner-user-session-receipt-read"
 
 fn runner_user_session_receipt_download_dir(run: GitHubWorkflowRunId, read_at: Timestamp) -> String {
@@ -76,15 +77,15 @@ fn runner_user_session_receipt_observed_with(host: HostIdentity, token: Secret?)
       Absent => runner_user_session_receipt_unreadable(step: "token", cause: join([runner_user_session_receipt_token_env, " is not set in this process"], ""))
       Present { value: token } => match clock_now_probed_at() {
         Absent => runner_user_session_receipt_unreadable(step: "clock", cause: "the observer clock gave no instant, so the run search horizon cannot be judged")
-        Present { value: now } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: 1, read_at: now as String)
+        Present { value: now } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: 1, scanned: [], read_at: now as String)
       }
     }
   }
 }
 
-// THE BOUNDED PAGE LOOP: one ListWorkflowRuns page per step, the pure step fold deciding select / stop / continue
-// / cap (gunbc.runner.runner_user_session_receipt runner_user_session_run_page_step).
-fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, page: Int, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
+// THE BOUNDED PAGE LOOP: one ListWorkflowRuns page per step, accumulating every page scanned; the pure scan fold decides
+// select / none / continue / cap (gunbc.runner.runner_user_session_receipt runner_user_session_run_scan_step).
+fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, page: Int, scanned: List<WorkflowRun>, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
   match github.WorkflowRuns.ListWorkflowRuns(
     auth_token: token,
     owner: gunbc_repository.owner,
@@ -96,11 +97,11 @@ fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, p
     page: page,
   ) {
     RestRefused { refusal } => runner_user_session_receipt_unreadable(step: "run listing", cause: census_read_refusal_cause(operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page)], ""), refusal: refusal) as String)
-    RestAnswered { answer } => match runner_user_session_run_page_step(runs: answer.result.workflow_runs, host: host as String, read_at: read_at, page: page, max_pages: runner_user_session_run_search_max_pages, page_size: max_per_page) {
-      RunPageSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run, read_at: read_at)
-      RunPageEndsSearch { cause: _ } => ReceiptAbsent
-      RunPageContinues => runner_user_session_receipt_of_run_pages(host: host, token: token, page: page + 1, read_at: read_at)
-      RunPageCapReached { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
+    RestAnswered { answer } => match runner_user_session_run_scan_step(scanned: scanned, page_runs: answer.result.workflow_runs, host: host as String, page: page, max_pages: runner_user_session_run_search_max_pages, page_size: max_per_page) {
+      RunScanSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run, read_at: read_at)
+      RunScanNone { cause: _ } => ReceiptAbsent
+      RunScanContinues { scanned: all } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: page + 1, scanned: all, read_at: read_at)
+      RunScanCapReached { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
     }
   }
 }
