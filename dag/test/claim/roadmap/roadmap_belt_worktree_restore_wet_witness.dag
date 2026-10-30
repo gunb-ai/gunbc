@@ -269,34 +269,56 @@ test fn a_lineage_without_a_request_pending_stream_is_not_needed() -> Bool {
   cleaned(instance: instance, verdict: laid && is_not_needed(step))
 }
 
-// (review 88393) A MALFORMED STREAM REFUSES AND CREATES NOTHING: a lone re-delivery marker with no pending request
-// beneath it reads as SessionRecoveryMalformed, the tree is genuinely missing and the dispatch branch exists, so
-// the ONLY thing standing between this lineage and a `git worktree add` is the typed refusal. Asserts the reading
-// is Malformed (the route), the step is the Refused arm (not NotNeeded), and the tree is still Absent after it.
-test fn a_malformed_stream_on_a_missing_tree_refuses_and_creates_no_worktree() -> Bool {
-  let instance = fresh_instance(tag: "restore-malformed")
-  let node = "n-wt-malformed"
-  let key = "8192132435465768"
+// (review 88393) A MALFORMED STREAM REFUSES AND CREATES NOTHING. The stream is malformed by construction: an event
+// line whose `type` member is a number, which session_member_text reads as SessionTextMalformed. (A lone
+// re-delivery marker is NOT malformed; it reads as a stream with no pending request.) The tree is genuinely
+// missing and the dispatch branch exists, so only the typed refusal stands between this lineage and a
+// `git worktree add`. Split so one run localizes: reading / step / tree.
+fn lay_malformed_stream_on_a_missing_tree(instance: HostDashboardInstance, node: RoadmapNodeId, key: String) -> Bool {
   let events_path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node, attempt_key: key)
-  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+  lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && mkdir_p(path_parent_directory(path: events_path))
-    && Filesystem.Write(path: events_path, content: join([session_event_request_redelivered(ordinal: 1, round: 7, at: 1000), "\n"], "")).success
+    && Filesystem.Write(path: events_path, content: "{\"type\": 5}\n").success
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+}
+
+test fn a_number_typed_event_line_reads_as_a_malformed_resumability() -> Bool {
+  let instance = fresh_instance(tag: "restore-mal-read")
+  let node = "n-wt-mal-read"
+  let key = "8192132435465768"
+  let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
   let pk = ledger_first_key(instance: instance)
   let malformed = match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk)) { ResumabilityMalformed { mismatch: _ } => true _ => false }
-  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
-  let refused = match step {
+  cleaned(instance: instance, verdict: laid && pk == key && malformed)
+}
+
+test fn a_malformed_stream_on_a_missing_tree_is_a_refused_restore() -> Bool {
+  let instance = fresh_instance(tag: "restore-mal-step")
+  let node = "n-wt-mal-step"
+  let key = "8192132435465768"
+  let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
+  let refused = match belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node) {
     AttemptWorktreeRestoreRefused { detail: _ } => true
     AttemptWorktreeRestored { worktree_path: _, branch: _ } => false
     AttemptWorktreeNotNeeded => false
     AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
   }
+  cleaned(instance: instance, verdict: laid && refused)
+}
+
+test fn a_refused_malformed_restore_creates_no_worktree() -> Bool {
+  let instance = fresh_instance(tag: "restore-mal-tree")
+  let node = "n-wt-mal-tree"
+  let key = "8192132435465768"
+  let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
+  let pk = ledger_first_key(instance: instance)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
   let still_absent = match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: pk)) {
     ClaimTreeAbsent => true
     ClaimTreePresent => false
     ClaimTreeUnobserved { detail: _ } => false
   }
-  cleaned(instance: instance, verdict: laid && pk == key && malformed && refused && still_absent)
+  cleaned(instance: instance, verdict: laid && pk == key && still_absent)
 }
 
 // (review 88499) A REFUSED REOPEN LEAVES THE CLAIM CLOSED => REFUSED: a terminal claim that still names this exact
