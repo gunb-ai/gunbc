@@ -255,6 +255,8 @@ type ConversationSnapshotCost {
   fixed: ByteSize
   per_token: ByteSize
   provenance: NonEmptyStr
+  // The longest conversation a parked snapshot was actually read at: beyond it the cost is extrapolated.
+  observed_up_to: TokenCount
 }
 
 fn conversation_snapshot_bytes(cost: ConversationSnapshotCost, context: TokenCount) -> ByteSize {
@@ -287,6 +289,7 @@ data strata_iq3_s_snapshot_cost: ConversationSnapshotCost = ConversationSnapshot
   fixed: mebibyte_to_byte_size(m: mebibyte(count: 750)),
   per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
   provenance: "h11-a16 Strata 0.1.48 conversation-cache park lines, engine-87.log and engine-88.log, read 2026-10-30" as NonEmptyStr,
+  observed_up_to: token_count(count: 176183),
 }
 
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being

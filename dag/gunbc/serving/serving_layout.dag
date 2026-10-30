@@ -59,6 +59,9 @@ type ServingSharedArtifact {
   owner: NonEmptyStr
 }
 
+// charging: what the per-replica caps assume about which cgroup pays for shared pages. Linux charges a page to
+// the cgroup that first touches it, so a shared artifact counted once in the host budget is only absent from
+// each replica's cap if its owner faulted it in first; a stated, unverified ordering is an assumption.
 type ServingResourceGrant {
   host: HostIdentity
   usable_ram: HostUsableRam
@@ -66,6 +69,7 @@ type ServingResourceGrant {
   shared: List<ServingSharedArtifact>
   swap_bound: ByteSize
   devices: List<ServingDevice>
+  charging: List<NonEmptyStr>
 }
 
 // ---- THE TOPOLOGY: one replica per group; a group of two or more devices is one replica across them.
@@ -191,6 +195,14 @@ fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> 
   concat(ram, concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_missing(r: d.vram)))))
 }
 
+// What a configuration rests on that no reading has shown at the requirement: allowances, and a retention cost
+// extrapolated past the longest conversation actually parked.
+fn serving_retention_extrapolated(b: ServingBackendProfile, r: ServingRequirement) -> List<NonEmptyStr> {
+  if token_count_value(t: r.max_context) > token_count_value(t: b.retention.observed_up_to) {
+    ["retention cost at the context ceiling is extrapolated: no conversation that long has been parked and read" as NonEmptyStr]
+  } else { [] as List<NonEmptyStr> }
+}
+
 fn serving_layout_assumptions(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
   let overhead = match g.overhead {
     HostFixedOverheadAllowance { bytes: _, reason: r } => [r]
@@ -299,7 +311,7 @@ fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b
       unallocated_ram: byte_size(count: pool_total - committed),
       evidence: ServingLayoutEvidence {
         budget: serving_host_memory_verdict(h: serving_layout_host_memory(g: g, b: b, configs: configs)),
-        assumptions: serving_layout_assumptions(g: g, b: b),
+        assumptions: concat(serving_layout_assumptions(g: g, b: b), concat(serving_retention_extrapolated(b: b, r: r), g.charging)),
         backend: ServingBackendSupportsTopology,
         live: ServingLiveStandingUnqualified { obligation: "unqualified: no live receipt has been taken on this configuration" as NonEmptyStr },
       },
@@ -412,6 +424,7 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
     owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
   }],
   swap_bound: serving_engine_swap_bound,
+  charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
   devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c7"), host_6ce85c_a16_device(bus: "c8")],
 }
 

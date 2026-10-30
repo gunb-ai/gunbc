@@ -32,7 +32,7 @@ fn sl_grant_with(g: ServingResourceGrant, ram: ByteSize, devices: List<ServingDe
   ServingResourceGrant {
     host: g.host,
     usable_ram: HostUsableRamMeasured { bytes: ram, provenance: "witness fixture" as NonEmptyStr },
-    overhead: g.overhead, shared: g.shared, swap_bound: g.swap_bound, devices: devices,
+    overhead: g.overhead, shared: g.shared, swap_bound: g.swap_bound, devices: devices, charging: g.charging,
   }
 }
 
@@ -79,7 +79,7 @@ fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
 }
 
 // h11 AS GRANTED: six independent replicas, eight conversations guaranteed to the ceiling (2,2,1,1,1,1), the
-// budget verdict Fits with its three assumptions named, the backend supports the topology, and nothing is
+// budget verdict Fits with its five assumptions named (three allowances, the extrapolated ceiling snapshot, the page charging), the backend supports the topology, and nothing is
 // qualified live yet.
 test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool {
   match host_6ce85c_layout {
@@ -88,7 +88,7 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
         && rs.all(c => c.admitted_conversations >= 1 && c.active_slots == 1)
         && sl_admitted_total(r: host_6ce85c_layout) == 8
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
-        && e.assumptions.length() == 3
+        && e.assumptions.length() == 5
         && (match e.backend { ServingBackendSupportsTopology => true  _ => false })
         && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
         && sl_all_grow_to_ceiling(r: host_6ce85c_layout)
