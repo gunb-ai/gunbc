@@ -44,7 +44,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
-import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 // THE HOLDER IDENTIFICATION'S LOCAL READ: the job's own cgroup membership (/proc/self/cgroup), read with
 // the sanctioned effect (the same production idiom as the dispatch belt's producer identity,
@@ -204,13 +204,29 @@ type HostCapDrainPolicy {
 // second literal can disagree with the bracket.
 data runner_host_cap_drain_poll_interval: Second = second(count: 15)
 
+// THE STARTUP OF A RUNNER-HOST STEP IS THE RESOLVE OF ITS CLOSURE, and that closure is not the generic one.
+// Every runner-host step (the converge, the withdraw, and this bracket's release) is a `gunbc run` of an entry
+// whose closure is the runner-host-file-converge closure (about 2870 files, effectively the corpus), resolved
+// in full before the first effect. The generic gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_gunbc_run_resolve_step_timeout_minutes (15) is below what that resolve measures on the fleet, so a
+// release step was killed before its first effect on every run, and a converge step whose bracket used its full
+// drain bound would have been killed after masking (gunbc.recurring_failure_mode
+// runner_host_cap_release_lost_to_cancellation).
+// MEASURED by the instrument the step already runs: its own `[pre-entry] phase=resolve_entry_graph_inclusive`
+// line, on srv4 (contended: process CPU about half of wall): 1544252 ms in run 40882448080 and 1780404 ms in
+// run 40922121143. POLICY: 1.5x the larger reading, rounded up to whole minutes (2671s -> 45 min). The
+// withdraw entry imports the converge module, so its closure contains this one; its own resolve is not
+// separately measured. A step that reads its resolve above this budget is the trigger to re-measure, not
+// to raise the generic figure.
+data runner_host_closure_resolve_budget: Second = second(count: 2700)
+
 data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
   wait_bound: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_poll_interval),
   poll_interval: runner_host_cap_drain_poll_interval,
   operations_allowance: second(count: 600),
   release_allowance: second(count: 240),
   cancellation_envelope: cancelled_job_always_step_timeout,
-  release_startup_allowance: second(count: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60),
+  release_startup_allowance: runner_host_closure_resolve_budget,
 }
 
 // THE ENVIRONMENT VARIABLE THROUGH WHICH THE ENCLOSING STEP TELLS THE BRACKET ITS OWN DECLARED BUDGET, in
@@ -231,8 +247,8 @@ type BracketBudgetVerdict
 // THE RELEASE IS NOT GUARANTEED TO FIT THE CANCELLATION ENVELOPE, AND SAYS SO. GitHub gives a cancelled job's
 // always() steps a 5-minute cancellation timeout and then force-cancels (docs.github.com/en/actions/reference/
 // workflows-and-actions/expressions, status check functions; the figure is extdeps.github.actions cancelled_job_always_step_timeout). The release
-// step is a gunbc run step: its startup is the workflow's declared resolve budget (one authority,
-// gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of this closure is minutes, so
+// step is a gunbc run step: its startup is its closure's declared resolve budget (one authority,
+// runner_host_closure_resolve_budget), and the measured resolve of this closure is tens of minutes, so
 // the declared release does not fit. The standing is a typed residual, not a refusal and not a claim:
 // refusing every bracket would make the cap unconvergeable, and claiming coverage would be false. The harm
 // and the climb are the recurring_failure_mode row runner_host_cap_release_lost_to_cancellation.

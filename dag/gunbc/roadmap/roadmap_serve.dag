@@ -27,8 +27,9 @@ import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, Form
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
 import gunbc.roadmap.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
+import gunbc.auth.profile_store_root { profile_store }
 import gunbc.auth.profile_projection {
-  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
+  profile_store_roster, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
@@ -94,7 +95,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
+  ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -806,8 +807,6 @@ fn serve_publish_handler_response_for_instance(
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
     ApprovalSiteFaviconHandler => false
-    ApprovalConfirmPageHandler => true
-    ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
     ApprovalStoreReceiptHandler => false
@@ -913,7 +912,7 @@ fn serve_issue_detail_response_over(
 // (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
 // exactly as before, never a failed page on a profile read.
 fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
-  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+  match profile_store_roster(reading: profile_store(instance: instance)) {
     ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
@@ -2168,7 +2167,7 @@ fn auth_session_response(request: ServeHttpRequest<RequestAccessPath, RequestAut
 // the session's. The roster's degradation standing (unreadable store, skipped records) is
 // reported as data -- a missing-looking avatar must not read as 'nobody published'.
 fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  let roster = profile_store_roster(reading: profile_store(instance: instance))
   serve_text_response(
     status: 200,
     content_type: application_json_utf8,

@@ -1,8 +1,9 @@
 module gunbc.machine_intake.mtcollins1_platform_observation
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.optional { Absent, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import std.measure { rpm, watt }
+import std.measure { minute, rpm, watt }
 import gunbc.machine_intake.power_supply { PowerSupplyStanding, both_supplies_have_ac }
 import gunbc.machine_intake.ethernet {
   AttachmentUnobserved,
@@ -10,18 +11,42 @@ import gunbc.machine_intake.ethernet {
   BmcDedicated,
   ConfiguredLink,
   EthernetPortUnit,
+  FunctionObserved,
   FunctionUnobserved,
+  LanAddressUnobserved,
+  LanAddressesDistinct,
+  LanAddressesSame,
   ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
   PortOnUnit,
   PortUnitUnobserved,
   ethernet_ports_are_distinct,
+  lan_configured_address,
   observed_lans_have_distinct_addresses,
+  InterfaceReadingProvenance,
+  BootstrapFactoryCredentialUnrotated,
+  BootpChaddr,
+  BootpClientEthernetAddress,
+  BootpPacketCapture,
+  InBandSegmentSniff,
+  IpmiLanPrint,
+  IpmiMacAddressField,
+  OutOfBandController,
+  ReadAtMinute,
+  ReadingMoment,
+  WorkspaceCaptureFile,
 }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+// THE HOST NIC'S ADDRESS IS NOT RESTATED HERE. The one interface this module adds that is not a
+// controller is the host's own NIC, and its address belongs to the netboot lane that measured it:
+// this import is the seam that keeps six octets from being typed a second time, which is what S1's
+// straggler sweep is for.
+import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.machine_intake.subject { UnitKeyBound, UnitKeyRefused }
-import extdeps.network.ipv4 { ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
 import extdeps.network.mac { mac_address }
 
 // PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
@@ -112,7 +137,16 @@ fn supply_ac_loss_cause_text(cause: SupplyAcLossCause) -> NonEmptyStr {
   }
 }
 
-data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
+// THE MINUTE THE CONTROLLER READINGS BELOW WERE TAKEN. Minute-grained because the source reading is.
+data mtcollins1_controller_readings_taken: ReadingMoment = ReadAtMinute {
+  date: Iso8601CivilDate { year: 2026, month: 9, day: 6 },
+  since_midnight: minute(count: 150),
+}
+
+// THE ADDRESSES THIS MODULE OBSERVES, each written once: the interface rows and the provenance rows
+// that name the path a reading was taken over both read these.
+data mtcollins1_dedicated_bmc_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228)
+data mtcollins1_srv2_sniffer_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188)
 
 // A SUPPLY THAT IS PRESENT BUT UNPOWERED IS THE INTERESTING CASE, and it is why presence and AC
 // input are separate fields rather than one health flag. An absent supply is a visible gap in a
@@ -166,12 +200,13 @@ data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
 data mtcollins1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
   binding: EthernetFunctionBinding {
     port: mtcollins1_dedicated_mgmt_port,
-    function: BmcDedicated,
+    function: FunctionObserved { function: BmcDedicated },
   },
-  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228),
+  network_address: Present { value: mtcollins1_dedicated_bmc_address },
   link: ConfiguredLink {
     configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 76),
   },
+  provenance: mtcollins1_dedicated_bmc_lan_reading,
 }
 
 data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
@@ -181,10 +216,89 @@ data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
       discriminator: "Second BMC IP on the same controller. Not classified as dedicated management. NCSI versus a second PHY is unobserved.",
     },
   },
-  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231),
+  network_address: Present { value: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231) },
   link: ConfiguredLink {
     configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 77),
   },
+  provenance: mtcollins1_second_bmc_lan_reading,
+}
+
+// THE CAPTURE EACH ADDRESS IS READ OUT OF, stated by the rows that hold it.
+data mtcollins1_dedicated_bmc_lan_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: IpmiLanPrint { channel: 1 as IpmiChannelNumber, output_field: IpmiMacAddressField },
+  channel: OutOfBandController {
+    controller_address: mtcollins1_dedicated_bmc_address,
+    credential: BootstrapFactoryCredentialUnrotated,
+  },
+  artifact: WorkspaceCaptureFile { path: "artifacts/bmc/mtcollins1-intake-ipmi.json" as FilePath, field: "endpoint_mac" },
+  moment: mtcollins1_controller_readings_taken,
+  reading: "ipmi lan print 1 on the dedicated management port",
+}
+
+// THE SECOND CONTROLLER ADDRESS WAS NOT ASKED OF THE CONTROLLER: it was read off the DHCP exchange its
+// BusyBox client sent, so the instrument is a BOOTP capture of chaddr and the path is in-band. The
+// capture's own sniffer is not named by the source reading, hence no sniffer address is claimed.
+data mtcollins1_second_bmc_lan_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: BootpPacketCapture { fields: [BootpChaddr] },
+  channel: InBandSegmentSniff { sniffer_address: none },
+  artifact: WorkspaceCaptureFile { path: "artifacts/bmc/mtcollins1-intake-write-exercise.json" as FilePath, field: "second_controller_nic.mac" },
+  moment: mtcollins1_controller_readings_taken,
+  reading: "DHCP lease observed at the second controller address, vendor class udhcp 1.21.1; identity of the answering device established by mc info at both addresses",
+}
+
+// THE HOST'S OWN INTERFACE, AS AN OBSERVED LAN, WHICH IS WHAT THE INVENTORY NEEDS AND WHAT THIS
+// MODULE DID NOT HAVE UNTIL S1. The host NIC was already an Eui48Address and already had a witness,
+// but it lived only in the netboot client observation as an address plus a vendor class -- no port,
+// no binding, no physical interface -- so a per-host inventory could not place it among the unit's
+// interfaces. It is bound to the host's own data port (HostData) rather than to a controller port,
+// and the binding is justified by the capture the address came from: a firmware PXE exchange that
+// names the vendor class. The physical port itself is unobserved (nobody has traced which RJ45 the
+// host NIC is on), so the port carries its identity as a label rather than as a unit key.
+data mtcollins1_host_data_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: mtcollins1_observed_port_unit(),
+  panel_label: "host on-board NIC (which RJ45 is unobserved)",
+  connector_label: "RJ45",
+  attachment: BaseboardOnboard,
+}
+
+data mtcollins1_host_nic_interface: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding {
+    port: mtcollins1_host_data_port,
+    function: FunctionObserved { function: HostData },
+  },
+  network_address: Present { value: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 230) },
+  link: ConfiguredLink { configured: mtcollins1_host_nic_mac },
+  provenance: mtcollins1_host_nic_reading,
+}
+
+// WHERE THE HOST NIC ADDRESS WAS READ, in the same words the client capture already uses for itself:
+// it came off the wire as a BOOTP/DHCP Discover, from the Client-Ethernet-Address and chaddr fields,
+// captured on srv2's sniffing interface. The address is the capture's own field, which is why this
+// row references the client observation rather than restating six octets.
+data mtcollins1_host_nic_reading: InterfaceReadingProvenance = InterfaceReadingProvenance {
+  instrument: BootpPacketCapture { fields: [BootpClientEthernetAddress, BootpChaddr] },
+  channel: InBandSegmentSniff { sniffer_address: Present { value: mtcollins1_srv2_sniffer_address } },
+  artifact: WorkspaceCaptureFile { path: "artifacts/bmc/mtcollins1-host-pxe-client.json" as FilePath, field: "observed.client_mac, observed.chaddr" },
+  moment: ReadAtMinute {
+    date: Iso8601CivilDate { year: 2026, month: 9, day: 5 },
+    since_midnight: minute(count: 894),
+  },
+  reading: "the PXE Discover whose vendor class is PXEClient:Arch:00002:UNDI:003016",
+}
+
+// THE HOST ROW IS THE ONE THAT MATTERS FOR THE TRAP, so it is asserted rather than left to be read
+// off the shape: the address the plan nearly bound a BMC anchor to is NOT this row's address, and this
+// row's function is the host's own. A reader who swaps the two addresses changes the answer.
+fn mtcollins1_host_nic_is_host_data_port() -> Bool {
+  mtcollins1_host_nic_interface.binding.function == FunctionObserved { function: HostData }
+    && mac_addresses_are_equal(
+      left: lan_configured_address(lan: mtcollins1_host_nic_interface),
+      right: lan_configured_address(lan: mtcollins1_dedicated_bmc_lan),
+    ) == false
+    && mac_addresses_are_equal(
+      left: lan_configured_address(lan: mtcollins1_host_nic_interface),
+      right: lan_configured_address(lan: mtcollins1_second_bmc_lan),
+    ) == false
 }
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
@@ -192,14 +306,15 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
     a: mtcollins1_dedicated_bmc_lan.binding.port,
     b: mtcollins1_second_bmc_lan.binding.port,
   )
-    && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
-    && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
+    && match observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan) {
+      LanAddressesDistinct => true
+      LanAddressesSame => false
+      LanAddressUnobserved { discriminator: _ } => false
+    }
+    && mtcollins1_dedicated_bmc_lan.binding.function == FunctionObserved { function: BmcDedicated }
     && match mtcollins1_second_bmc_lan.binding.function {
       FunctionUnobserved { discriminator: _ } => true
-      BmcDedicated => false
-      BmcNcsi => false
-      HostData => false
-      PrebootNetwork => false
+      FunctionObserved { function: _ } => false
     }
 }
 

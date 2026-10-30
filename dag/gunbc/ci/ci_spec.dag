@@ -883,6 +883,13 @@ data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "export_host_reader_converge_wet",
 }
 
+// THE LIVE READER PROBE'S ENTRY (gunbc.host.boot_medium_reader_probe): one wet entry, one receipt path, the
+// seven stages and both open facts read inside the run.
+data gunbc_ci_boot_medium_reader_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/boot_medium_reader_probe.dag",
+  function: "boot_medium_reader_probe_wet",
+}
+
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
 // (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
 // would defeat it: the row a step was built from could disagree with the module that actually ran, which is
@@ -1502,6 +1509,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
     gunbc_ci_export_host_reader_converge_target,
+    gunbc_ci_boot_medium_reader_probe_target,
     gunbc_ci_flex_pass_target,
     gunbc_ci_flex_template_ensure_target,
     gunbc_ci_branch_run_grant_request_target,
@@ -3029,6 +3037,16 @@ fn gunbc_ci_export_host_reader_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_export_host_reader_converge_target.entry,
     function: gunbc_ci_export_host_reader_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_boot_medium_reader_probe_target.entry,
+    function: gunbc_ci_boot_medium_reader_probe_target.function,
     claim_run: false,
     receipt_rel: none
   )
