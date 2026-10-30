@@ -10,16 +10,16 @@ import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
-import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, QWEN3_8_FLASH_NEXT_REVISION }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pinned_revision }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
-  srv1_serving_image, srv1_serving_pinned_checkpoint, srv1_router_upstream_launch_facts, srv1_serving_route,
+  srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
 }
 
-// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed on 2026-10-25, with the two
+// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed on 2026-10-29 (the LMCache tier relaunch), with the two
 // shell substitutions left as the wrapper writes them and the output redirect cut at its boundary (the
 // wrapper's `>> $D/serve.log 2>&1` is shell, not argv). A LITERAL, deliberately: this is the reading the
 // derivation is checked against, and restating it from the rows would make the check circular.
@@ -28,9 +28,13 @@ data observed_cmd_tail: List<String> = [
   "--profile", "qwen38-flash-next",
   "--hardware", "rtx-pro-6000-pcie",
   "--env", "LMCACHE_MODE=ram-disk",
-  "--env", "LMCACHE_L1_GB=24",
-  "--env", "LMCACHE_L2_GB=200",
+  "--env", "LMCACHE_L1_GB=100",
+  "--env", "LMCACHE_L2_GB=160",
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
+  "--env", "LMCACHE_L2_WORKERS=16",
+  "--env", "LMCACHE_L2_ODIRECT=1",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+  "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
   "--",
   "--port", "18000",
   "--ssl-keyfile", "/root/serve/tls.key",
@@ -79,9 +83,13 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "24" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "200" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "100" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "160" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr, value: "0.5" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr, value: "1800" as NonEmptyStr),
     ]
     && (lil_serve_environment_wire(e: lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr)) as String) == "LMCACHE_MODE=ram-disk"
 }
@@ -94,8 +102,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
   let b = srv1_serving_wrapper.body
   string_contains(s: b, pattern: "#!/bin/bash")
     && string_contains(s: b, pattern: "lil-flash-next")
-    && string_contains(s: b, pattern: "ghcr.io/local-inference-lab/vllm")
-    && string_contains(s: b, pattern: "af14f1a90e141ad7a1b4951f0fd37d695101ebd5887fcddb499f2f427eff5319")
+    && string_contains(s: b, pattern: "IMG=sha256:58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0")
     && string_contains(s: b, pattern: "srv1-inference.slice")
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
@@ -108,10 +115,22 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
 // receipt read off the live container — the Hub row and the receipt cannot disagree silently.
 test fn the_launch_exports_the_observed_authorities() -> Bool {
   (srv1_serving_pinned_checkpoint().revision as String) == (qwen3_8_flash_next_manifest.revision as String)
-    && (srv1_serving_pinned_checkpoint().revision as String) == (QWEN3_8_FLASH_NEXT_REVISION as String)
+    && (srv1_serving_pinned_checkpoint().revision as String) == (qwen3_8_flash_next_pinned_revision as String)
     && (srv1_serving_pinned_checkpoint().revision as String) == (srv1_serving_startup_reading.checkpoint_revision as String)
     && (srv1_serving_image().digest_sha256 as String) == (srv1_serving_startup_reading.image_digest_sha256 as String)
-    && (srv1_serving_image().digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
+    // srv1 runs the DERIVED image, not the upstream base: the two digests differ, the base is the
+    // upstream row itself, and every change is a real one: twenty-one files, nineteen replaced (each digest
+    // differs from the base's) and two added (checkpoint_loss.py and checkpoint_policy.py, absent from the base).
+    && (srv1_serving_image_derivation.base.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
+    && (srv1_serving_image().digest_sha256 as String) != (local_inference_lab_vllm_image.digest_sha256 as String)
+    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 21
+    && concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)
+      .all(c => match c {
+        Srv1ImageFileReplaced { path: _, base_file_sha256_hex: b, replaced_file_sha256_hex: r } => (b as String) != (r as String)
+        Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => true
+      })
+    && fold(concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail), init: 0,
+      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 2
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
@@ -133,7 +152,7 @@ test fn the_enrollment_route_is_the_launch_address_with_the_operators_declared_c
       (e.port == srv1_serving_launch.listen_port)
         && (e.replica.node as String) == "srv1"
         && (e.replica.served_name as String) == (srv1_router_upstream_launch_facts.name as String)
-        && (e.address as String) == (srv1_router_upstream_launch_facts.host as String)
+        && (e.address as String) == (render_ipv4_address(addr: srv1_router_upstream_launch_facts.host) as String)
         && (match c {
           CeilingByDeclaredPolicy { count: n, decider: d, decided_on: dd, basis: _ } =>
             n == 4 && (d as String) == "operator" && (dd as String) == "2026-10-24"
@@ -152,9 +171,13 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=24",
-      "--env", "LMCACHE_L2_GB=200",
+      "--env", "LMCACHE_L1_GB=100",
+      "--env", "LMCACHE_L2_GB=160",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
+      "--env", "LMCACHE_L2_WORKERS=16",
+      "--env", "LMCACHE_L2_ODIRECT=1",
+      "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
+      "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
       "--",
       "--port", "18001",
       "--ssl-keyfile", "/root/serve/tls.key",

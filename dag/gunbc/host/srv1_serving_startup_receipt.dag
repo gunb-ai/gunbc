@@ -75,6 +75,10 @@ type Srv1ServingStartupReading {
   // a value the interface cannot (review 86807, DESIGN 5: unwritable, not validated).
   speculative_num_draft_tokens: Nat
   speculative_acceptance_length: NonEmptyStr
+  // The acceptance length is a per-interval average (the 2026-10-29 log reads 2.68 and 3.16 ten seconds
+  // apart), so it is NOT re-read with each relaunch; it carries the date of the reading it is, and
+  // observed_on below does not cover it (DESIGN 4d).
+  speculative_acceptance_length_observed_on: NonEmptyStr
   // ── the host the engine saw ──────────────────────────────────────────────────────────────────
   nvidia_driver: NonEmptyStr
   // ── the launcher wrapper the container was started from ──────────────────────────────────────
@@ -96,7 +100,15 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
   // to, not the mutable tag. The tag the operator's launcher pulls is
   // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
-  image_digest_sha256: "af14f1a90e141ad7a1b4951f0fd37d695101ebd5887fcddb499f2f427eff5319" as NonEmptyStr,
+  // 2026-10-29 20:08: the complete-checkpoint generation retention build with background reconciliation
+  // (gunbc-private#266 at 5360cb4), share 0.5 and window 1800 s; ready 20:19:02, catalog reconciled 20:23:08
+  // (65536 manifests, 65507 retired, 835 s).
+  // 2026-10-29 19:28: relaunched on the same image with LMCACHE_L2_GB 200 -> 160 (root-filesystem headroom; the
+  // gunbc-private#266 retention candidate failed startup at 19:26 and was rolled back with its directory snapshot).
+  // 2026-10-29 16:23: the page-loss attribution build (observation only) over the lost-retry build
+  // (gunbc.serving.srv1_serving_launch srv1_serving_image_derivation). 14:22-16:23 it ran 236aa2f2 (lost
+  // retry); 12:55-14:22 da08aaf9 (delete repair only); 10:58-12:55 the unpatched base af14f1a9, by mistake.
+  image_digest_sha256: "58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0" as NonEmptyStr,
   host: "srv1 (100.69.18.126)" as NonEmptyStr,
   // The engine's own version banner in its startup log.
   engine_version: "0.1.dev22105+g5009fa56b" as NonEmptyStr,
@@ -123,10 +135,17 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   speculative_method: "mtp" as NonEmptyStr,
   speculative_num_draft_tokens: 3,
   speculative_acceptance_length: "2.778" as NonEmptyStr,
+  speculative_acceptance_length_observed_on: "2026-10-25" as NonEmptyStr,
   nvidia_driver: "580.178.04" as NonEmptyStr,
   wrapper_path: "/home/briansrls/strata-test/srv1_lil_serve.sh" as NonEmptyStr,
-  wrapper_sha256_hex: "90f5c43d826e0d98f229360f7ebc46e00a96a245829a18003919e49b94967959" as NonEmptyStr,
-  observed_on: "2026-10-25" as NonEmptyStr,
+  // RE-READ 2026-10-29 after the LMCache tier relaunch (L1 100 GiB, L2 16 workers with O_DIRECT,
+  // 130g memory, 110g shm; L1 150 GiB ran 10:58-11:55 and left srv1 1.4 GiB MemAvailable under session
+  // load, so it was stepped down): the wrapper hash is the new host file's; the image digest, engine version,
+  // (the engine version is the base's: one Python file differs), checkpoint revision, max_model_len, max_num_seqs, max_num_batched_tokens, gpu_memory_utilization,
+  // block_size, kv_cache_dtype and kv_connector were re-read from the new startup log and are unchanged.
+  // speculative_acceptance_length was NOT re-read; its own date field says so.
+  wrapper_sha256_hex: "a5fc51f2ce4ac0e1f7c3c440443dc4c2cb3f3fd69287c9bb5f3d1b185947e2ce" as NonEmptyStr,
+  observed_on: "2026-10-29" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
     "docker inspect --format {{.Config.Cmd}} lil-flash-next",

@@ -737,7 +737,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         results: map(runner_host_cap_files(), f => FleetHostFileResult {
           planned: FleetHostFilePlanned {
             file: f,
-            observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+            observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly, absent_ancestors: [] },
             action: HostFileLeaveInPlace,
           },
           outcome: HostFileNotAppliedObserveOnly,
@@ -752,6 +752,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         cap_phase: phase,
         deploy_account: HostHasNoDeploySlot,
         deploy_trees: [],
+        superseded: [],
       }
     }
   }

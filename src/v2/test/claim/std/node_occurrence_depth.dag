@@ -1,0 +1,108 @@
+module v2.test.claim.std.node_occurrence_depth
+
+import v2.std.node { ComputationNode, Edge, Node, NotADeclaration, Positional, Value, node_same_occurrence, node_synthetic }
+import std.algebra { fold_list, is_empty, length, list_append }
+import std.types { Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEEP-VALUE RELEASE, measured on the wet lane. Two arms, both executed on the base and on the head.
+//
+// 1. THE CONTROL — eight levels. The shape must answer, and cheaply, and it does before the fix too.
+//    This is the arm that keeps the RED honest: the RED is not "any deep chain fails".
+// 2. THE RED — the release of a 65,536-level chain. NOTHING from the occurrence-comparison family runs
+//    per level; the assertion is over plain Ints, so the only work is building two chains and letting
+//    them go out of scope. Before the detach_owned_children fallback in
+//    src/v1/stage0/src/v1_interpreter.rs, the process died by `thread 'main' has overflowed its stack`
+//    AFTER this claim's own PASS line had printed: a release abort, not a refusal, and not call depth —
+//    this claim runs no interpreted recursion per level, so it is not a subject for the interpreter's
+//    call-depth limit or for any stacker::maybe_grow segment.
+//
+// PRODUCER (§6: name the instrument, never transcribe its output) — the claim-batch binary,
+// src/v1/stage0/src/bin/claim_batch.rs:
+//   ./target/release/claim_batch --wet --source-root dag --source-root src/v2 \
+//     --entry src/v2/test/claim/std/node_occurrence_depth.dag --functions <this claim> --claim-run
+// built on the revision being measured and run with `ulimit -s 8192`, as every run in this line of
+// work has used. The depth at which the CALL axis starts refusing (the interpreter's own typed
+// call-depth refusal naming v2.std.node's node_edge_same_occurrence) is a separate matter, recorded in
+// the PR that owns it and not claimed here.
+//
+// PRECONDITION, learned when a re-run returned this refusal in place of a verdict: the run must sit
+// under an ENFORCEABLE cgroup memory limit, e.g.
+//   systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 -- <the command above>
+// Launched from a bare shell it prints `OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed ...
+// HostBudgetUnreadable: no modeled host memory source answered` and exits 1 WITHOUT evaluating either
+// arm: gunbc.output_policy refuses to plan against the machine's memory, because the old unbounded
+// default was OOM-killed at rc=137 and a MemAvailable reading would substitute the machine for the slot
+// (gunbc.host.host_budget_source, host_budget_source_seed_mirror_disposition). GUNBC_MEMORY_BUDGET_BYTES
+// cannot substitute for it — it may only request a ceiling LOWER than an enforceable one. A refusal is
+// not a verdict, so a re-run that does not find the arm's PASS line has measured nothing.
+
+test fn node_chain_releases_at_eight_levels() -> Bool {
+  let deep = node_deep_chain(doublings: 3)
+  length(xs: node_depth_levels(doublings: 3)) == 8
+    && !(length(xs: node_depth_levels(doublings: 3)) == 9)
+    && node_same_occurrence(a: deep, b: node_deep_chain(doublings: 3))
+    && !node_same_occurrence(a: deep, b: node_chain_leaf())
+}
+
+test fn node_chain_releases_at_65536_levels() -> Bool {
+  let deep = node_deep_chain(doublings: 16)
+  let also = node_deep_chain(doublings: 16)
+  let held = holds_both_chains(doublings: 16, deep: deep, also: also)
+  held == 1 && !is_empty(xs: node_depth_levels(doublings: 16))
+}
+
+// NEITHER ARM MAY BE THE THING THAT RECURSES. The level list is assembled by DOUBLING — log2(n)
+// appends, and list_append is a native arm — and the chain is folded with fold_list, which the
+// interpreter intercepts natively and the emitter lowers to a cursor loop. So the builder's own call
+// depth is logarithmic in the depth it reaches, then constant: at 16 doublings it is the same few
+// frames as at 3, which is what makes a failure there a fact about the VALUE rather than about this
+// file. Both chains stay alive until the assertion has been evaluated, so the release happens where
+// the arm says it does and not earlier.
+fn node_depth_levels(doublings: Int) -> List<Int> {
+  if doublings <= 0 {
+    [0]
+  } else {
+    node_depth_levels_doubled(doublings: doublings, levels: [0])
+  }
+}
+
+fn node_depth_levels_doubled(doublings: Int, levels: List<Int>) -> List<Int> {
+  if doublings <= 0 {
+    levels
+  } else {
+    node_depth_levels_doubled(doublings: doublings - 1, levels: list_append(left: levels, right: levels))
+  }
+}
+
+// One level of the left-deep chain: a value node carrying exactly one positional child, with the
+// synthetic provenance the substrate mints for a folded spine.
+fn node_chain_level(child: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Value },
+    children: [Edge { label: Positional, target: child, declaration: NotADeclaration }]
+  )
+}
+
+fn node_chain_leaf() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn node_deep_chain(doublings: Int) -> Node {
+  fold_list(
+    xs: node_depth_levels(doublings: doublings),
+    empty: node_chain_leaf(),
+    cons: fn(acc, item) { node_chain_level(child: acc) }
+  )
+}
+
+// Keeps both chains alive through the arm's own evaluation, and answers about the level list only.
+fn holds_both_chains(doublings: Int, deep: Node, also: Node) -> Int {
+  if is_empty(xs: node_depth_levels(doublings: doublings)) {
+    0
+  } else {
+    1
+  }
+}
