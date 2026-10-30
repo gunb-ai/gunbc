@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 
 // THE PER-ATTEMPT DISPATCH STATE STORE (inventory row Seeadecb2). One attempt's state is one directory
@@ -38,6 +39,7 @@ data attempt_state_slots: AttemptStateSlotsDeclaration = AttemptStateSlotsDeclar
 type AttemptStateDirectory
   = AttemptDirectoryRoot
   | AttemptDirectoryWorker
+  | AttemptDirectoryWire
   | AttemptDirectoryPublication
   | AttemptDirectoryVerification
   | AttemptDirectoryReview
@@ -48,6 +50,7 @@ fn attempt_state_directory_segment(directory: AttemptStateDirectory) -> String {
   match directory {
     AttemptDirectoryRoot => ""
     AttemptDirectoryWorker => "worker"
+    AttemptDirectoryWire => "worker/provider-events.jsonl.wire/"
     AttemptDirectoryPublication => "publication"
     AttemptDirectoryVerification => verification_directory_segment
     AttemptDirectoryReview => "review"
@@ -232,6 +235,7 @@ fn attempt_state_directory_within(root: String, directory: AttemptStateDirectory
   match directory {
     AttemptDirectoryRoot => root
     AttemptDirectoryWorker => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectoryWire => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
     AttemptDirectoryPublication => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
     AttemptDirectoryVerification => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
     AttemptDirectoryReview => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
@@ -311,4 +315,23 @@ fn attempt_state_provision_directory(provision: AttemptStateProvision, directory
 
 fn attempt_state_provision_path(provision: AttemptStateProvision, member: AttemptStateMember) -> String {
   join([attempt_state_provision_directory(provision: provision, directory: attempt_state_member_directory(member: member)), "/", attempt_state_member_name(member: member)], "")
+}
+
+// THE PLAN-TIME TEXT ROUTES, one function per addressing and no path function per file: the planner names the
+// attempt by its business key and the entry by a closed member, and gets the text the unit argv, the
+// state-prepare argv and the worker's --arg lines carry. Each mints the provision, the one derivation.
+fn attempt_state_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: AttemptStateMember) -> String {
+  attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), member: member)
+}
+
+fn attempt_state_directory_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, directory: AttemptStateDirectory) -> String {
+  attempt_state_provision_directory(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), directory: directory)
+}
+
+fn attempt_state_current_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, member: AttemptStateMember) -> String {
+  attempt_state_provision_path(provision: attempt_state_provision_current(instance: instance, node: node_id as String), member: member)
+}
+
+fn attempt_state_current_directory_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, directory: AttemptStateDirectory) -> String {
+  attempt_state_provision_directory(provision: attempt_state_provision_current(instance: instance, node: node_id as String), directory: directory)
 }

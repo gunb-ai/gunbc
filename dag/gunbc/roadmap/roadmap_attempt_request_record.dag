@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_request_record
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
@@ -38,7 +39,7 @@ data attempt_request_binding_schema: String = "roadmap-attempt-request-binding/v
 data attempt_request_binding_basename: String = "request-binding.json"
 
 fn attempt_request_binding_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_request_binding_basename], "")
+  join([attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot), "/", attempt_request_binding_basename], "")
 }
 
 fn attempt_request_binding_json(binding: AttemptRequestBinding) -> String {

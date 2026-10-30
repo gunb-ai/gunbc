@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_current_text, attempt_state_directory_segment, attempt_state_directory_text, attempt_state_member_name, attempt_state_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
@@ -34,7 +35,7 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
   CredentialSnapshotTombstoned,
@@ -69,19 +70,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_launch_alternative,
   prepared_attempt_process_fingerprint,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
-  DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused,
-  dispatch_harness_attempt_selection, prepared_attempt_provider,
-  RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
-  filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
-  dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_command,
-  dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
-  dispatch_audit_unit_name, dispatch_audit_unit_command,
-  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
-  dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command, dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -160,7 +149,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -544,14 +533,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  host_exec_argv,
-  dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
-  dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
-  dispatch_attempt_process_fingerprint_path_for_instance, dispatch_current_attempt_process_fingerprint_path_for_instance,
-  dispatch_actuator_selection_process_fingerprint,
-  dispatch_worker_attempt_identity,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
@@ -867,27 +849,15 @@ fn belt_attempt_state_initialize_for_instance(
   process_fingerprint: NonEmptyStr,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
-    path: dispatch_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptKeyRecord),
     content: attempt_key,
   )
   let turn_write = Filesystem.Write(
-    path: dispatch_attempt_continuation_turn_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptContinuationTurn),
     content: to_string(value: turn),
   )
   let binding_write = Filesystem.Write(
-    path: dispatch_attempt_alignment_binding_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptAlignmentBinding),
     content: alignment_binding_text(binding: binding),
   )
   if !key_write.success {
@@ -906,11 +876,7 @@ fn belt_attempt_state_initialize_for_instance(
       detail: binding_write.error,
     }
   } else if !Filesystem.Write(
-    path: dispatch_attempt_process_fingerprint_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptProcessFingerprint),
     content: process_fingerprint as String,
   ).success {
     AttemptStateInitializationFailed {
@@ -919,11 +885,7 @@ fn belt_attempt_state_initialize_for_instance(
     }
   } else {
     let admission_write = Filesystem.Write(
-      path: dispatch_attempt_admission_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-      ),
+      path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptEnvironmentAdmission),
       content: admission_receipt,
     )
     if !admission_write.success {
@@ -933,11 +895,7 @@ fn belt_attempt_state_initialize_for_instance(
       }
     } else {
     let launch_write = Filesystem.Write(
-      path: dispatch_attempt_launch_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-      ),
+      path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptLaunchIdentity),
       content: serialize_json(v: attempt_launch_record_json(id: launch, attempt_key: attempt_key as NonEmptyStr)),
     )
     if !launch_write.success {
@@ -958,11 +916,7 @@ fn belt_attempt_state_initialize_for_instance(
         }
       DispatchAttemptEventsInitialized => {
         let receipt_initialized = Filesystem.Write(
-          path: dispatch_attempt_validation_receipt_path_for_instance(
-            instance: instance,
-            node_id: node.node,
-            attempt_key: attempt_key,
-          ),
+          path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptValidationReceipt),
           content: validation_receipt_json(
             verdict: ValidationNotRun,
             observations: belt_oracle_observations_in_worktree(
@@ -1062,11 +1016,7 @@ fn belt_persist_spawn_origin_for_instance(
             base_sha: revision as NonEmptyStr,
           }
           let write = Filesystem.Write(
-            path: dispatch_attempt_spawn_origin_path_for_instance(
-              instance: instance,
-              node_id: node.node,
-              attempt_key: attempt_key,
-            ),
+            path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptSpawnOrigin),
             content: dispatch_spawn_origin_json(origin: origin),
           )
           if write.success {
@@ -1389,11 +1339,7 @@ fn belt_persist_oracle_pin_for_instance(
   match capture {
     OraclePinNotRecorded { reason } => {
       let wrote = Filesystem.Write(
-        path: dispatch_attempt_oracle_pin_refusal_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
+        path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptOraclePinRefused),
         content: reason,
       )
       if !wrote.success {
@@ -1406,19 +1352,11 @@ fn belt_persist_oracle_pin_for_instance(
     }
     OraclePinRecorded { identity, revision } => {
       let identity_write = Filesystem.Write(
-        path: dispatch_attempt_oracle_identity_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
+        path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptOracleIdentity),
         content: serialize_content_hash(hash: identity) as String,
       )
       let revision_write = Filesystem.Write(
-        path: dispatch_attempt_oracle_revision_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
+        path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptOracleRevision),
         content: revision,
       )
       if identity_write.success && revision_write.success {
@@ -1871,11 +1809,7 @@ fn belt_persist_spawn_failure_for_instance(
 ) -> String {
   let evidence = join([step, ": ", detail], "")
   let write = Filesystem.Write(
-    path: dispatch_attempt_spawn_failure_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptSpawnFailure),
     content: evidence,
   )
   if write.success {
@@ -2703,7 +2637,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
 // successful listing) instead of refused (an unlistable directory that is simply absent) -- the
 // first live escalate run (2026-09-22, the cron-entry lineage) refused on exactly that.
 fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SupervisorVerdictObservation {
-  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectorySupervisor)
   let path = join([dir, "/", supervisor_verdict_basename as String], "")
   match belt_attempt_submission_dir_ensure(
     instance: instance,
@@ -2824,7 +2758,7 @@ fn belt_supervisor_checkpoint_lines(capture: SubmissionCaptureObservation, head_
 // lineage), never the belt's memory: the file is the receipt, and an absent or unreadable one is
 // named rather than reconstructed.
 fn belt_supervisor_history_line(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
   let path = join([dir, "/", belt_commit_outcome_last_basename as String], "")
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
@@ -3107,13 +3041,13 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
 }
 
 fn belt_continuation_turn_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ContinuationTurnRead {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_continuation_turn_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptContinuationTurn)
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_continuation_turn_basename,
+    name: attempt_state_member_name(member: AttemptContinuationTurn),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ) {
@@ -3149,13 +3083,13 @@ type BeltAlignmentBindingText
   | BeltAlignmentBindingUnreadable { reason: String }
 
 fn belt_alignment_binding_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltAlignmentBindingText {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_alignment_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAlignmentBinding)
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_alignment_binding_basename,
+    name: attempt_state_member_name(member: AttemptAlignmentBinding),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ) {
@@ -3736,10 +3670,7 @@ type BeltCurrentAttemptKey
 
 fn belt_current_attempt_key_read(instance: HostDashboardInstance, node_id: String) -> BeltCurrentAttemptKey {
   let read = Filesystem.Read(
-    path: dispatch_current_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: node_id as RoadmapNodeId,
-    ),
+    path: attempt_state_current_text(instance: instance, node_id: node_id as RoadmapNodeId, member: AttemptKeyRecord),
   )
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error } =>
@@ -5503,7 +5434,7 @@ fn belt_recorded_fingerprint_for_node(
     FilesystemEntryPresenceIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
     FilesystemEntryListed { directory: _, name: _ } => {
-      let path = dispatch_current_attempt_process_fingerprint_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId)
+      let path = attempt_state_current_text(instance: instance, node_id: node_id as RoadmapNodeId, member: AttemptProcessFingerprint)
       let dir = join([root, "/", current_name], "")
       let listing = Filesystem.List(path: dir)
       let read = Filesystem.Read(path: path)
@@ -5799,7 +5730,7 @@ fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, l
 fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
   let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let directory = filesystem_entry_presence_of_path(
-    path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
+    path: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key, directory: AttemptDirectoryRoot),
   )
   match belt_occurrence_attempt_directory_standing(attempt: attempt, directory: directory) {
     AttemptDirectoryDecided { read } => read
@@ -5807,7 +5738,7 @@ fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: 
       belt_occurrence_record_from_launch_observation(
         attempt: attempt,
         launch: filesystem_file_observation_of_path(
-          path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
+          path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key, member: AttemptLaunchIdentity),
         ),
       )
   }
@@ -5973,7 +5904,7 @@ fn belt_provider_event_projection_observe_for_instance(
 ) -> ProviderEventProjectionObservation {
   belt_provider_event_projection_observe_at(
     instance: instance,
-    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
+    events_path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptWorkerEvents),
   )
 }
 
@@ -6067,11 +5998,7 @@ fn belt_publication_receipt_source(
   match subject {
     PublicationSubjectUnobserved { reason: _ } => ReceiptSourceAbsent
     PublicationSubjectObserved { subject: observed } => {
-      let attempt_dir = dispatch_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      )
+      let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
       let attempt_listing = Filesystem.List(path: attempt_dir)
       match filesystem_entry_presence(
         listing: filesystem_listing_observation(
@@ -6080,7 +6007,7 @@ fn belt_publication_receipt_source(
           entries: attempt_listing.entries,
           error: attempt_listing.error,
         ),
-        name: publication_receipt_directory_segment,
+        name: attempt_state_directory_segment(directory: AttemptDirectoryPublication),
       ) {
         FilesystemEntryPresenceIndeterminate { cause: c } =>
           ReceiptSourceUnreadable { detail: c }
@@ -6093,18 +6020,9 @@ fn belt_publication_receipt_source(
           }
         FilesystemEntryAbsent(_) => ReceiptSourceAbsent
         FilesystemEntryListed { directory: _, name: _ } => {
-          let publication_dir = dispatch_attempt_publication_dir_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: attempt_key,
-          )
+          let publication_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryPublication)
           let receipt_basename = join([observed.expected_head as String, ".json"], "")
-          let path = dispatch_attempt_publication_receipt_path_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: attempt_key,
-            head_sha: observed.expected_head as String,
-          )
+          let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptPublicationReceipt { head_sha: observed.expected_head as String })
           let publication_listing = Filesystem.List(path: publication_dir)
           let read = Filesystem.Read(path: path)
           match filesystem_file_observation(
@@ -6149,12 +6067,7 @@ fn belt_publish_current_verification_selection(
   attempt_key: String,
   subject: VerificationSubject,
 ) -> VerificationSelectionPublishOutcome {
-  let path = dispatch_attempt_verification_current_selection_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-    head_sha: subject.head_sha as String,
-  )
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptVerificationSelection { head_sha: subject.head_sha as String })
   let write = Filesystem.Write(
     path: path,
     content: current_verification_selection_json(
@@ -6184,16 +6097,8 @@ fn belt_verification_selection_observe(
   head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
   current_verification_selection_observe(
-    attempt_dir: dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    verification_dir: dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
+    attempt_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
+    verification_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryVerification),
     head_sha: head_sha,
   )
 }
@@ -6225,8 +6130,8 @@ fn shared_computation_observe_for_attempt(
   head_sha: String,
 ) -> SharedComputationObservation {
   let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
-  let verification_dir = dispatch_attempt_verification_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
+  let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key, directory: AttemptDirectoryRoot)
+  let verification_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key, directory: AttemptDirectoryVerification)
   match current_verification_selection_observe(attempt_dir: attempt_dir, verification_dir: verification_dir, head_sha: head_sha) {
     SelectionAbsent => SharedComputationAbsent { absence: NoVerificationSelectionPublished }
     SelectionUnaddressable { cause } => SharedComputationRefused { cause: cause }
@@ -6317,16 +6222,8 @@ fn belt_verification_receipt_source_for_selection(
   window_identity_hex: String,
 ) -> VerificationReceiptFileSource {
   let address = exact_verification_address_for(
-    attempt_dir: dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    verification_dir: dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
+    attempt_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
+    verification_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryVerification),
     head_sha: head_sha,
     window_identity_hex: window_identity_hex,
   )
@@ -6512,10 +6409,7 @@ fn belt_workflow_attempt_evidence_for_ref(
   attempt: DispatchAttemptRef,
 ) -> WorkflowAttemptEvidence {
   let key_read = Filesystem.Read(
-    path: dispatch_current_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-    ),
+    path: attempt_state_current_text(instance: instance, node_id: attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, member: AttemptKeyRecord),
   )
   match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
     FilesystemReadRefused { error } =>
@@ -6547,9 +6441,9 @@ type BeltAttemptRecordPaths {
 
 fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: String) -> BeltAttemptRecordPaths {
   BeltAttemptRecordPaths {
-    admission: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    events: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    spawn_failure: dispatch_attempt_spawn_failure_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    admission: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptEnvironmentAdmission),
+    events: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents),
+    spawn_failure: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSpawnFailure),
   }
 }
 
@@ -6977,7 +6871,7 @@ fn belt_attempt_submission_dir_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
     "/submissions",
   ], "")
 }
@@ -7316,11 +7210,7 @@ type BeltBaseSha
   | BaseShaUnobserved { reason: String }
 
 fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltBaseSha {
-  let path = dispatch_attempt_spawn_origin_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSpawnOrigin)
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error } =>
@@ -8808,7 +8698,7 @@ fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt
 // observed listing-first, so an unlistable directory is never read as a missing record.
 fn belt_capture_absence_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
   let path = join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
     "/", belt_commit_outcome_last_basename as String,
   ], "")
   match filesystem_file_observation_of_path(path: path) {
@@ -8836,11 +8726,7 @@ fn belt_commit_outcome_persist(
   } else {
     let write = Filesystem.Write(
       path: join([
-        dispatch_attempt_state_path_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
+        attempt_state_directory_text(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
         "/", belt_commit_outcome_last_basename as String,
       ], ""),
       content: serialize_json(v: belt_commit_outcome_receipt_json(
@@ -9305,13 +9191,7 @@ fn belt_prepare_diff_window_for_verification(
               let identity_hex = git_diff_window_identity_hex(
                 identity: window.window_identity,
               )
-              let path = dispatch_attempt_diff_window_path_for_instance(
-                instance: instance,
-                node_id: node_id,
-                attempt_key: attempt_key,
-                head_sha: head_sha,
-                window_identity_hex: identity_hex,
-              )
+              let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptDiffWindow { head_sha: head_sha, window_identity_hex: identity_hex })
               let write = Filesystem.Write(
                 path: path,
                 content: git_diff_window_json(window: window),
@@ -9840,16 +9720,8 @@ fn belt_verify_attempt_for_instance(
                       identity: subject.change_window_identity,
                     )
                     let address = exact_verification_address_for(
-                      attempt_dir: dispatch_attempt_state_path_for_instance(
-                        instance: instance,
-                        node_id: node_id,
-                        attempt_key: progress.attempt_key,
-                      ),
-                      verification_dir: dispatch_attempt_verification_dir_for_instance(
-                        instance: instance,
-                        node_id: node_id,
-                        attempt_key: progress.attempt_key,
-                      ),
+                      attempt_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, directory: AttemptDirectoryRoot),
+                      verification_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, directory: AttemptDirectoryVerification),
                       head_sha: head_sha,
                       window_identity_hex: identity_hex,
                     )
@@ -9902,13 +9774,7 @@ fn belt_verify_attempt_for_instance(
                                 contract: node.execution,
                               ) {
                                 Present {
-                                  value: dispatch_attempt_diff_window_path_for_instance(
-                                    instance: instance,
-                                    node_id: node_id,
-                                    attempt_key: progress.attempt_key,
-                                    head_sha: head_sha,
-                                    window_identity_hex: identity_hex,
-                                  ),
+                                  value: attempt_state_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, member: AttemptDiffWindow { head_sha: head_sha, window_identity_hex: identity_hex }),
                                 }
                               } else {
                                 none
@@ -10019,13 +9885,7 @@ fn belt_verify_run_and_persist(
   let identity_hex = git_diff_window_identity_hex(
     identity: subject.change_window_identity,
   )
-  let receipt_path = dispatch_attempt_verification_receipt_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: progress.attempt_key,
-    head_sha: subject.head_sha as String,
-    window_identity_hex: identity_hex,
-  )
+  let receipt_path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex })
   let worktree = belt_verify_detached_worktree(
     instance: instance,
     node_id: node_id,
@@ -10033,16 +9893,10 @@ fn belt_verify_run_and_persist(
     head_sha: subject.head_sha as String,
   )
   let pinned_identity_wire = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_identity_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptOracleIdentity),
   )
   let pinned_revision_wire = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_revision_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptOracleRevision),
   )
   let pinned_identity = validation_oracle_parse_pinned_identity_wire(
     text: pinned_identity_wire,
@@ -10051,10 +9905,7 @@ fn belt_verify_run_and_persist(
     text: pinned_revision_wire,
   )
   let pin_refusal = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptOraclePinRefused),
   )
   let pin_recorded = validation_oracle_pin_recorded(
     identity: pinned_identity,
@@ -12000,13 +11851,13 @@ fn belt_audit_evidence(
   attempt_key: String,
   head_sha: String,
 ) -> List<CriterionReviewEvidence> {
-  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryAudit)
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditVerdict { head_sha: head_sha })
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   let source = match filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_audit_verdict_basename(head_sha: head_sha),
+    name: attempt_state_member_name(member: AttemptAuditVerdict { head_sha: head_sha }),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ) {
@@ -12103,7 +11954,7 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 review_detail: review_detail,
                 base_sha: trim(base),
                 head_sha: head,
-                verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
+                verdict_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, member: AttemptAuditVerdict { head_sha: head }),
               )
               let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
               match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
@@ -12222,13 +12073,13 @@ fn belt_review_receipt_source(
   head_sha: String,
   criterion_key: String,
 ) -> ReviewReceiptSource {
-  let dir = dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview)
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewVerdict { head_sha: head_sha, criterion_key: criterion_key })
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+    name: attempt_state_member_name(member: AttemptReviewVerdict { head_sha: head_sha, criterion_key: criterion_key }),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ) {
@@ -12364,7 +12215,7 @@ fn belt_review_supersession(
   head: String,
   plan: ReviewPlan,
 ) -> List<BeltReviewOutcome> {
-  let listing = Filesystem.List(path: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key))
+  let listing = Filesystem.List(path: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview))
   if !listing.success {
     []
   } else {
@@ -12403,7 +12254,7 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
   match instance.toolchain.systemd_run {
     Absent => ReviewDeferred { node_id: node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
     Present { value: systemd_run } => {
-      let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
+      let verdict_path = attempt_state_text(instance: instance, node_id: nid, attempt_key: attempt_key, member: AttemptReviewVerdict { head_sha: head, criterion_key: key })
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
       match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
@@ -12458,7 +12309,7 @@ fn belt_attempt_integration_dir_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
     "/integration",
   ], "")
 }
@@ -14515,12 +14366,7 @@ fn belt_publish_attempt_adjudicate(
             ], ""),
           }
         WorktreeBoundToRepository => {
-          let path = dispatch_attempt_publication_receipt_path_for_instance(
-            instance: instance,
-            node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-            attempt_key: attempt_key,
-            head_sha: subject.expected_head as String,
-          )
+          let path = attempt_state_text(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key, member: AttemptPublicationReceipt { head_sha: subject.expected_head as String })
           match belt_publish_admission_for(
             instance: instance,
             node_id: node_id,
@@ -14793,10 +14639,7 @@ fn belt_publish_node_for_instance(
           }
         ActuationAdmitted => {
       let key_read = Filesystem.Read(
-        path: dispatch_current_attempt_key_path_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-        ),
+        path: attempt_state_current_text(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, member: AttemptKeyRecord),
       )
       match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
         FilesystemReadRefused { error } =>

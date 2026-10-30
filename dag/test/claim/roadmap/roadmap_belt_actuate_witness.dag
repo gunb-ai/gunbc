@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_belt_actuate_witness
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
@@ -3500,7 +3501,7 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
             )
             && string_contains(
               s: join(fold(commands.attempt_state_prepare, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0"),
-              pattern: join(["\0", dispatch_attempt_state_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
+              pattern: join(["\0", attempt_state_directory_text(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key, directory: AttemptDirectoryRoot)], ""),
             )
       }
     }

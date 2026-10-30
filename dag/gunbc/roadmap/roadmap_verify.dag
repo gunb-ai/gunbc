@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_verify
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_text }
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
@@ -45,9 +46,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   NodeMissing,
   belt_lookup_node,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_verification_path_for_instance,
-}
+
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit {
@@ -587,11 +586,7 @@ fn persist_verification_receipt(
         ], ""),
       }
     DashboardLocalProvision => {
-      let path = dispatch_attempt_verification_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: receipt.attempt_key,
-      )
+      let path = attempt_state_text(instance: instance, node_id: node.node, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord)
       let write = Filesystem.Write(
         path: path,
         content: legacy_single_validation_verification_receipt_json(receipt: receipt),

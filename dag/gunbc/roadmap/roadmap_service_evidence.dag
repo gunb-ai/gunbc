@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_service_evidence
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_text }
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
@@ -12,7 +13,7 @@ import std.content_hash { content_hash_of_value, lower_hex_40 }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+
 import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, second, second_count, TokenCount, token_count, token_count_value }
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
@@ -727,7 +728,7 @@ fn service_evidence_binding_for_attempt(instance: HostDashboardInstance, node_id
     instance_id: instance.instance_id as String,
     node_id: node_id as String,
     attempt_key: attempt_key,
-    launch: filesystem_file_observation_of_path(path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
+    launch: filesystem_file_observation_of_path(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptLaunchIdentity)),
   )
 }
 

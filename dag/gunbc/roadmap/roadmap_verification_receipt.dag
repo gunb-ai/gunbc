@@ -895,7 +895,7 @@ fn verification_subject_match(
 
 // DECLARED LEGACY STATE — DISSOLVE-ON: belt verification writes and reads
 // gunbc.roadmap.roadmap_verification_receipt VerificationReceipt at
-// dispatch_attempt_verification_receipt_path_for_instance. Before exact-head receipts,
+// the verification-receipt member (roadmap_attempt_state_store AttemptVerificationReceipt). Before exact-head receipts,
 // gunbc.roadmap.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict
 // key from validation-receipt.json. That document carries no node identity, criteria digest,
 // attempt key, branch or head, so it cannot be upgraded or guessed into a VerificationSubject. Such
