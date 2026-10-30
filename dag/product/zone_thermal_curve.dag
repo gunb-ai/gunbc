@@ -4,7 +4,7 @@ import std.types { Int, List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Absent, Present }
-import std.measure { Celsius, Percent, celsius, celsius_count, percent, percent_count }
+import std.measure { Celsius, Percent, Second, second_count, celsius, celsius_count, percent, percent_count }
 
 // POLICY: A COOLING ZONE FOLLOWS THE HOTTEST OF A NAMED SENSOR SET THROUGH A CURVE, AND A MISSING
 // READING DRIVES FULL DUTY. It names no host, header, BMC family or sensor spelling (DESIGN 3: those
@@ -81,21 +81,21 @@ fn zone_duty_percent(d: ZoneDuty) -> Percent {
 }
 
 // A ZONE WITH A LOADED AND AN IDLE CURVE (the accelerator zone). Loaded applies while the last
-// loaded sample is younger than hold_secs, so the zone steps down only hold_secs after the last
+// loaded sample is younger than hold, so the zone steps down only after hold from the last
 // loaded sample and there is no temperature hysteresis: a16-fan.sh sets busy_until = now + 60 on a loaded
 // sample and applies the loaded curve while now < busy_until. What counts as loaded (power or
 // utilisation thresholds) is a reading's meaning, supplied by the realization, not this policy.
 type ZoneLoadCurves {
   loaded: ZoneCurve
   idle: ZoneCurve
-  hold_secs: Int
+  hold: Second
 }
 
 // `secs_since_loaded` is absent when no loaded sample has been seen, which is idle.
-fn zone_curve_for_load(curves: ZoneLoadCurves, secs_since_loaded: Int?) -> ZoneCurve {
-  match secs_since_loaded {
+fn zone_curve_for_load(curves: ZoneLoadCurves, since_loaded: Second?) -> ZoneCurve {
+  match since_loaded {
     Absent => curves.idle
-    Present { value: s } => if s < curves.hold_secs { curves.loaded } else { curves.idle }
+    Present { value: s } => if second_count(s) < second_count(curves.hold) { curves.loaded } else { curves.idle }
   }
 }
 

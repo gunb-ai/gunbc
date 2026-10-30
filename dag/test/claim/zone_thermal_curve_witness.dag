@@ -1,7 +1,7 @@
 module test.claim.zone_thermal_curve_witness
 
 import std.types { Bool, Int, List }
-import std.measure { celsius, percent, percent_count }
+import std.measure { Second, celsius, percent, percent_count, second }
 import std.optional { Absent, Present }
 import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, zone_curve_for_load, zone_duty, zone_duty_percent }
 
@@ -50,17 +50,17 @@ fn gpu_curves() -> ZoneLoadCurves {
   ZoneLoadCurves {
     loaded: ZoneCurve { floor: percent(25), flat_until: celsius(70), full_at: celsius(88) }
     idle: gpu_idle_curve()
-    hold_secs: 60
+    hold: second(60)
   }
 }
 
-fn load_duty(since: Int?, t: Int) -> Int {
-  duty_at(curve: zone_curve_for_load(curves: gpu_curves(), secs_since_loaded: since), temps: [t])
+fn load_duty(since: Second?, t: Int) -> Int {
+  duty_at(curve: zone_curve_for_load(curves: gpu_curves(), since_loaded: since), temps: [t])
 }
 
 // STEPS DOWN ONLY AFTER 60 s: at 72 C loaded answers 25+2*75/18 = 33, idle 20; 59 s is still loaded,
 // 60 s is idle (now < busy_until is strict), and no loaded sample is idle.
 test fn witness_loaded_steps_down_only_after_the_hold() -> Bool {
-  load_duty(since: Present { value: 0 }, t: 72) == 33 && load_duty(since: Present { value: 59 }, t: 72) == 33
-    && load_duty(since: Present { value: 60 }, t: 72) == 20 && load_duty(since: Absent, t: 72) == 20
+  load_duty(since: Present { value: second(0) }, t: 72) == 33 && load_duty(since: Present { value: second(59) }, t: 72) == 33
+    && load_duty(since: Present { value: second(60) }, t: 72) == 20 && load_duty(since: Absent, t: 72) == 20
 }
