@@ -6,6 +6,8 @@ import std.compiler_entry {
   CompilerEntryDriver,
   SourceRootEvalDriver,
 }
+// THE FRONTIER RATCHET JOINS THIS CLOSURE HERE: the emitted driver main renders a call to it, and the emitted crate carries a module only when this closure reaches it.
+import v2.workflow.native_frontier_ratchet { native_frontier_verdict }
 import v2.workflow.v2_native_route {
   NativeRouteEmittedBuild,
   NativeRouteMalformedControl,
