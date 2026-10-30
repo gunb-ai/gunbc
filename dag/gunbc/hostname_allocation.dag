@@ -197,17 +197,11 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv14,
-    name: DrawnHumanName {
-      name: FirstOnly { first: "butch" as DnsLabel },
-      draw: HumanNameDraw { entropy: 155184575423 },
-    },
+    name: LegacyHostname { label: "srv14" as DnsLabel },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv15,
-    name: DrawnHumanName {
-      name: FirstOnly { first: "bobo" as DnsLabel },
-      draw: HumanNameDraw { entropy: 454684151172 },
-    },
+    name: LegacyHostname { label: "srv15" as DnsLabel },
   },
   HostnameAllocation {
     fleet_slot: operator_host_srv16,
