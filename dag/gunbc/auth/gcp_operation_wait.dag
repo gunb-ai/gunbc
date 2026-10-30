@@ -4,7 +4,7 @@ import std.types { Int, Bool, String, Secret, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.cloud.gcp.gcp {
-  GcpProjectId, GoogleRpcStatus, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
+  GcpProjectId, GoogleRpcStatus, gcp_access_change_propagation_documented_max, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
   WifOperationSubject, WifPoolOperation, WifProviderOperation, WifOperationName, WifOperationNamed, WifOperationNameMismatch, wif_operation_name_parse,
 }
 import extdeps.cloud.gcp.iam_admin
@@ -49,6 +49,14 @@ fn gcp_operation_poll_ticks() -> Int {
 
 fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
   second_count(s: gcp_operation_poll_budget) <= second_count(s: iam_converge_token_lifetime)
+}
+
+// A 403 AFTER AN ACCESS CHANGE is retried by observing again at the operation cadence until Google's
+// documented propagation figure (gcp_access_change_propagation_documented_max) has elapsed; the tick
+// count is that figure over the cadence, not a count chosen at each site. The retry admission takes
+// ticks + 1 (it admits while remaining > 1).
+fn gcp_access_change_propagation_attempts() -> Int {
+  second_count(s: gcp_access_change_propagation_documented_max) / second_count(s: gcp_operation_poll_cadence) + 1
 }
 
 // A DERIVED QUOTA WAIT is still bounded by the same allowance as the operation wait: a daily window
