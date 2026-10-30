@@ -20,6 +20,7 @@ import gunbc.fabric.fabric_writer_roster {
 // The operator-issued API key resolves to a stable rostered user, never a JSON
 // field or a fabricated proxy/kernel identity. Deployment owes HTTPS termination
 // and a private native listener; this handler confers no execution authority.
+// Tailscale-User-Login is deliberately ignored: only the API key selects the user.
 fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
   match decode_revision_job_spec(text: text) {
     RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }

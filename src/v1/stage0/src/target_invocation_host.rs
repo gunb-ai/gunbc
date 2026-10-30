@@ -557,6 +557,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("revision-request-native"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/revision_request_fixture.dag",
+            },
+        ),
+        (
             instrument_label("native-serve"),
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_fixture.dag",

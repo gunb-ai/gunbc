@@ -179,3 +179,20 @@ test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool 
   let removed = shell.Remove.RecursiveForce(path: root as String)
   first.success && second.success && same && revoked.success && refused && kept && removed.success
 }
+
+// Qualification-only publication from a separate process. It observes the sealed
+// accepted token from disk; no HTTP endpoint can publish a result.
+fn request_fixture_publish_named(principal: NonEmptyStr, request_id: NonEmptyStr) -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => match host_request_observe(root: root,
+      identity: FabricIdentity { principal: principal, key: request_id as DemandKey }) {
+      HostRequestPresent { request: request } => match host_request_publish_reply(request: request,
+        result: json_string(s: "fixture-result")) {
+        HostRequestReplyPublished => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
