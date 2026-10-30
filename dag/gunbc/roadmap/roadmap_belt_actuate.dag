@@ -8881,21 +8881,6 @@ type BeltVerifyOutcome
   | VerifyEvidenceUnreadable { node_id: String, detail: String }
   | VerifyRefused { node_id: String, cause: String }
 
-// review 45271; the scope of this collapse is now deliberate. Reducing a read to `""` conflates
-// absent with unreadable, safe only where BOTH branches take the same action. That holds for the
-// PIN reads below — absent and unreadable identity both leave pin_recorded false, the gate refuses
-// either way, nothing actuates — so the distinction changes the message, not the behaviour. It did
-// NOT hold for the receipt-presence read, which gated whether to RUN the validation and OVERWRITE
-// the evidence: absent means run, unreadable means stop, so the collapse let an I/O fault
-// regenerate a verdict against a worktree that may have moved. That seam no longer uses this
-// function; it reads with status preserved and decodes.
-fn belt_current_member_or_empty(instance: HostDashboardInstance, node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId, member: AttemptStateMember) -> String {
-  match attempt_state_read_current(instance: instance, node: node_id as String, member: member) {
-    FilesystemReadSucceeded { content: c } => trim(c)
-    FilesystemReadRefused { error: _ } => ""
-  }
-}
-
 type BeltValidationRun {
   executions: List<ValidationExecution>
   verdict: ValidationVerdict
@@ -9740,15 +9725,17 @@ fn belt_verify_run_and_persist(
     attempt_key: progress.attempt_key,
     head_sha: subject.head_sha as String,
   )
-  let pinned_identity_wire = belt_current_member_or_empty(instance: instance, node_id: node_id, member: AttemptOracleIdentity)
-  let pinned_revision_wire = belt_current_member_or_empty(instance: instance, node_id: node_id, member: AttemptOracleRevision)
-  let pinned_identity = validation_oracle_parse_pinned_identity_wire(
-    text: pinned_identity_wire,
-  )
-  let pinned_revision = validation_oracle_parse_pinned_revision_wire(
-    text: pinned_revision_wire,
-  )
-  let pin_refusal = belt_current_member_or_empty(instance: instance, node_id: node_id, member: AttemptOraclePinRefused)
+  // A pin record that is absent or unreadable leaves the pin unrecorded (Absent) and the oracle gate refuses on it;
+  // the refusal is carried in the pin-read detail below, never projected to an empty string.
+  let pinned_identity = match attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOracleIdentity) {
+    FilesystemReadSucceeded { content: c } => validation_oracle_parse_pinned_identity_wire(text: trim(c))
+    FilesystemReadRefused { error: _ } => Absent
+  }
+  let pinned_revision = match attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOracleRevision) {
+    FilesystemReadSucceeded { content: c } => validation_oracle_parse_pinned_revision_wire(text: trim(c))
+    FilesystemReadRefused { error: _ } => Absent
+  }
+  let pin_refusal = attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOraclePinRefused)
   let pin_recorded = validation_oracle_pin_recorded(
     identity: pinned_identity,
     revision: pinned_revision,
@@ -9862,10 +9849,14 @@ fn belt_verify_run_and_persist(
         Present { value: revision } => revision
         Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
       },
-      pin_read_detail: if pin_refusal == "" {
-        "no oracle identity was recorded for this attempt at dispatch"
-      } else {
-        pin_refusal
+      pin_read_detail: match pin_refusal {
+        FilesystemReadSucceeded { content: c } =>
+          if trim(c) == "" {
+            "no oracle identity was recorded for this attempt at dispatch"
+          } else {
+            trim(c)
+          }
+        FilesystemReadRefused { error: e } => join(["the oracle pin refusal record could not be read: ", e], "")
       },
     ) {
       ValidationOracleGateRefused { cause } =>
@@ -11591,27 +11582,41 @@ fn belt_publish_gate(
   }
 }
 
-fn belt_publish_write_outcome(
+// A JUDGMENT REACHED AND THEN LOST: the text of a write that did not land. It mints no success; PublishRecorded is
+// spelled only in the match arm of the write it reports on, never from a flag a caller supplies.
+fn belt_publish_lost(node_id: String, error: String) -> BeltPublishOutcome {
+  PublishWriteFailed {
+    node_id: node_id,
+    detail: join([
+      "the publication receipt could not be written, so the judgment was reached and then lost: ",
+      error,
+    ], ""),
+  }
+}
+
+// The attempt-state publication receipt write and the outcome it reports, one entry: the write is performed here
+// and PublishRecorded is minted only from the store's FilesystemWritten.
+fn belt_publish_attempt_receipt(
+  instance: HostDashboardInstance,
   node_id: String,
+  attempt_key: String,
   subject: RoadmapPublicationSubject,
   receipt: PublicationReceipt,
-  write_success: Bool,
-  write_error: String,
 ) -> BeltPublishOutcome {
-  if write_success {
-    PublishRecorded {
-      node_id: node_id,
-      head_sha: subject.expected_head as String,
-      outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
-    }
-  } else {
-    PublishWriteFailed {
-      node_id: node_id,
-      detail: join([
-        "the publication receipt could not be written, so the judgment was reached and then lost: ",
-        write_error,
-      ], ""),
-    }
+  match attempt_state_write_at(
+    instance: instance,
+    node: node_id,
+    attempt_key: attempt_key,
+    member: AttemptPublicationReceipt { head_sha: subject.expected_head as String },
+    content: publication_receipt_json(receipt: receipt),
+  ) {
+    FilesystemWritten { path: _ } =>
+      PublishRecorded {
+        node_id: node_id,
+        head_sha: subject.expected_head as String,
+        outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+      }
+    FilesystemWriteRefused { path: _, error: e } => belt_publish_lost(node_id: node_id, error: e)
   }
 }
 
@@ -14061,13 +14066,7 @@ fn belt_publish_project_for_instance(
                                                         AnswerReady { receipt } => {
                                                           match belt_publication_receipt_store(instance: instance) {
                                                             BeltPublicationReceiptStoreUnready { detail } =>
-                                                              belt_publish_write_outcome(
-                                                                node_id: project_key,
-                                                                subject: project_subject,
-                                                                receipt: receipt,
-                                                                write_success: false,
-                                                                write_error: detail,
-                                                              )
+                                                              belt_publish_lost(node_id: project_key, error: detail)
                                                             BeltPublicationReceiptStoreReady { store } =>
                                                               match belt_publication_receipt_put(
                                                                 store: store,
@@ -14075,21 +14074,13 @@ fn belt_publish_project_for_instance(
                                                                 content: publication_receipt_json(receipt: receipt),
                                                               ) {
                                                                 BeltReceiptWritten =>
-                                                                  belt_publish_write_outcome(
+                                                                  PublishRecorded {
                                                                     node_id: project_key,
-                                                                    subject: project_subject,
-                                                                    receipt: receipt,
-                                                                    write_success: true,
-                                                                    write_error: "",
-                                                                  )
+                                                                    head_sha: project_subject.expected_head as String,
+                                                                    outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+                                                                  }
                                                                 BeltReceiptWriteRefused { error } =>
-                                                                  belt_publish_write_outcome(
-                                                                    node_id: project_key,
-                                                                    subject: project_subject,
-                                                                    receipt: receipt,
-                                                                    write_success: false,
-                                                                    write_error: error,
-                                                                  )
+                                                                  belt_publish_lost(node_id: project_key, error: error)
                                                               }
                                                           }
                                                         }
@@ -14209,19 +14200,7 @@ fn belt_publish_attempt_adjudicate(
                       request_path: request_path,
                     }
                   AnswerReady { receipt } => {
-                    let write = attempt_state_write_at(
-                      instance: instance,
-                      node: node_id,
-                      attempt_key: attempt_key,
-                      member: AttemptPublicationReceipt { head_sha: subject.expected_head as String },
-                      content: publication_receipt_json(receipt: receipt),
-                    )
-                    match write {
-                      FilesystemWritten { path: _ } =>
-                        belt_publish_write_outcome(node_id: node_id, subject: subject, receipt: receipt, write_success: true, write_error: "")
-                      FilesystemWriteRefused { path: _, error: e } =>
-                        belt_publish_write_outcome(node_id: node_id, subject: subject, receipt: receipt, write_success: false, write_error: e)
-                    }
+                    belt_publish_attempt_receipt(instance: instance, node_id: node_id, attempt_key: attempt_key, subject: subject, receipt: receipt)
                   }
                 }
             }

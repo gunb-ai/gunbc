@@ -1,6 +1,10 @@
 module test.claim.roadmap.roadmap_belt_actuate_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
@@ -175,7 +179,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_publication_subject_for,
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
-  belt_publish_write_outcome,
+  belt_publish_attempt_receipt,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
@@ -1988,19 +1992,20 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
       expected_head: belt_pub_head,
     ),
   )
-  let ok = belt_publish_write_outcome(
+  let made = with_publish_attempt_directory(instance: belt_pub_fresh_instance(tag: "pubok"))
+  let ok = belt_publish_attempt_receipt(
+    instance: made,
     node_id: "belt-pub-node",
+    attempt_key: "k1",
     subject: subject,
     receipt: receipt,
-    write_success: true,
-    write_error: "",
   )
-  let lost = belt_publish_write_outcome(
+  let lost = belt_publish_attempt_receipt(
+    instance: belt_pub_fresh_instance(tag: "publost"),
     node_id: "belt-pub-node",
+    attempt_key: "k1",
     subject: subject,
     receipt: receipt,
-    write_success: false,
-    write_error: "read-only file system",
   )
   match ok {
     PublishRecorded { node_id: _, head_sha, outcome_key } =>
@@ -2008,8 +2013,7 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
         && outcome_key == "branch-not-published"
         && match lost {
           PublishWriteFailed { node_id: _, detail } =>
-            string_contains(s: detail, pattern: "read-only file system")
-              && string_contains(s: detail, pattern: "reached and then lost")
+            string_contains(s: detail, pattern: "reached and then lost")
           PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
           PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
           PublishEvidenceUnreadable { node_id: _, detail: _ } => false
@@ -2022,6 +2026,26 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
     PublishDeferred { node_id: _, reason: _ } => false
     PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
   }
+}
+
+fn belt_pub_fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_pub_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "belt-pub" as NonEmptyStr),
+    instance_id: "belt-pub" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn with_publish_attempt_directory(instance: HostDashboardInstance) -> HostDashboardInstance {
+  let _made = shell.Mkdir.Parents(path: attempt_state_directory_text(instance: instance, node_id: "belt-pub-node" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", directory: AttemptDirectoryPublication) as FilePath)
+  instance
 }
 
 fn subject_key(observation: PublicationSubjectObservation) -> String {
