@@ -11,15 +11,16 @@ import std.process { ProcessExit }
 //   - gunbc.durable_cas_file_store cas_outcome_from_create(attempt, target, created: FilesystemCreateNew, post)
 //     answered CasCommitted for an authored FilesystemCreated;
 //   - gunbc.deploy_transition_lease_store transition_lease_release_committed(location, outcome:
-//     FileHoldReleaseOutcome) answered TransitionLeaseReleased for an authored FileHoldReleased.
+//     FileHoldReleaseOutcome) answered TransitionLeaseReleased for an authored FileHoldReleased;
 //   - gunbc.host.managed_host_unit_hold probe_hold_release_committed(outcome: FileHoldReleaseOutcome) answered
 //     ProbeHoldReleased for an authored FileHoldReleased (found by sunny-swift-495, outside the first sweep);
 // All three are deleted; each success arm is inline beside the effect that earns it (cas_commit_at beside
-// Filesystem.WriteCreateNew*, transition_lease_release beside file_hold_release_commit). A foreign module cannot
+// Filesystem.WriteCreateNew*; transition_lease_release and kvm_observer_release_on_store_host beside
+// file_hold_release_commit). A foreign module cannot
 // import a function that does not exist, so each RED imports the deleted name in its import list and asserts
-// EXACTLY ONE blocking MissingExport keyed on that name, with the same-closure delta on top. Restore either fold
+// EXACTLY ONE blocking MissingExport keyed on that name, with the same-closure delta on top. Restore any fold
 // and its keyed row goes to zero and its claim reds, whatever else the closure carries. Each control imports
-// the lawful callable that stays (the refusal-only fold, the effectful release) and draws no MissingExport.
+// the lawful callable that stays (the refusal-only folds, the effectful release) and draws no MissingExport.
 // The RED and control helpers are shared: gunbc.compile_census_probe deleted_callable_route_is_gone.
 
 fn cas_probe(name: String, callable: String, body: String) -> String {
@@ -39,7 +40,6 @@ fn release_probe(name: String, callable: String, body: String) -> String {
     "import std.types { NonEmptyStr, String }\n",
     "import std.durable_compare_and_set { CasGeneration }\n",
     "import gunbc.durable_exclusive_hold_file_store { FileHoldReleaseOutcome, FileHoldReleased }\n",
-    "import std.durable_exclusive_hold { DurableHoldReleaseRefusal }\n",
     "import gunbc.deploy_transition_lease_store { TransitionLeaseHeld, TransitionLeaseRelease, ", callable, " }\n",
     body,
   ], "")
@@ -62,6 +62,7 @@ fn host_probe(name: String, callable: String, body: String) -> String {
     "module ", name, "\n",
     "import std.types { Int, NonEmptyStr }\n",
     "import gunbc.durable_exclusive_hold_file_store { FileHoldReleaseOutcome, FileHoldReleased }\n",
+    "import std.durable_exclusive_hold { DurableHoldReleaseRefusal }\n",
     "import gunbc.host.managed_host_unit_hold { ProbeHoldReleaseOutcome, ", callable, " }\n",
     body,
   ], "")
