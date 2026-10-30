@@ -1,0 +1,314 @@
+module gunbc.roadmap.roadmap_attempt_state_store
+
+import std.types { String, NonEmptyStr, FilePath, Int, List }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome, filesystem_read_outcome,
+  FilesystemWriteOutcome, filesystem_write_outcome,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
+import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename }
+import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+
+// THE PER-ATTEMPT DISPATCH STATE STORE (inventory row Seeadecb2). One attempt's state is one directory
+// `<node>-a<attempt_key>` directly under the instance's dispatch attempt-state root, plus the node's
+// `<node>-current` pointer directory. SEALED IN PLACE, NO FORMAT CHANGE: every file keeps the name and the
+// bytes the unsealed path functions gave it. What changes is who may name a file: the closed
+// AttemptStateMember and AttemptStateDirectory below are the only way to address an entry, and the store is
+// the only value the operations take.
+//
+// THE DECLARATION IS DATA: the file names and the directory segments below are rows read by
+// attempt_state_member_name and attempt_state_directory_name, the only places a basename is written. Adding
+// a file is a variant and a row, never a path at a call site.
+// THE ONE DECLARATION OF THE STORE (the `<store>_slots` row): how an attempt's and a node's-current directory
+// entries are named under the dispatch attempt-state root. The directories' modes stay in
+// attempt_state_prepare_argvs_for_instance, which creates them per attempt (they cannot be listed in the
+// instance directory list: there is one per attempt), and read the entry names from this row.
+type AttemptStateSlotsDeclaration { attempt_infix: String, current_suffix: String }
+
+data attempt_state_slots: AttemptStateSlotsDeclaration = AttemptStateSlotsDeclaration {
+  attempt_infix: "-a",
+  current_suffix: "-current",
+}
+
+type AttemptStateDirectory
+  = AttemptDirectoryRoot
+  | AttemptDirectoryWorker
+  | AttemptDirectoryPublication
+  | AttemptDirectoryVerification
+  | AttemptDirectoryReview
+  | AttemptDirectoryAudit
+  | AttemptDirectorySupervisor
+
+fn attempt_state_directory_segment(directory: AttemptStateDirectory) -> String {
+  match directory {
+    AttemptDirectoryRoot => ""
+    AttemptDirectoryWorker => "worker"
+    AttemptDirectoryPublication => "publication"
+    AttemptDirectoryVerification => verification_directory_segment
+    AttemptDirectoryReview => "review"
+    AttemptDirectoryAudit => "audit"
+    AttemptDirectorySupervisor => "supervisor"
+  }
+}
+
+type AttemptStateMember
+  = AttemptKeyRecord
+  | AttemptProcessFingerprint
+  | AttemptContinuationTurn
+  | AttemptAlignmentBinding
+  | AttemptEnvironmentAdmission
+  | AttemptLaunchIdentity
+  | AttemptSpawnOrigin
+  | AttemptVerificationRecord
+  | AttemptSpawnFailure
+  | AttemptOracleIdentity
+  | AttemptOracleRevision
+  | AttemptOraclePinRefused
+  | AttemptValidationReceipt
+  | AttemptWorkerLog
+  | AttemptWorkerRequestScratch
+  | AttemptWorkerEvents
+  | AttemptPublicationReceipt { head_sha: String }
+  | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
+  | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
+  | AttemptVerificationSelection { head_sha: String }
+  | AttemptReviewVerdict { head_sha: String, criterion_key: String }
+  | AttemptReviewEvents { criterion_key: String, head_sha: String }
+  | AttemptReviewRequestScratch { criterion_key: String }
+  | AttemptReviewLog { criterion_key: String }
+  | AttemptAuditVerdict { head_sha: String }
+  | AttemptAuditEvents { head_sha: String }
+  | AttemptAuditRequestScratch
+  | AttemptAuditLog
+  | AttemptSupervisorEvents { turn: Int }
+  | AttemptSupervisorRequestScratch
+  | AttemptSupervisorLog
+  | AttemptSupervisorVerdict
+
+// The directory each member lives in and the file name it carries: ONE row each, read by every operation.
+fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
+  match member {
+    AttemptWorkerLog => AttemptDirectoryWorker
+    AttemptWorkerRequestScratch => AttemptDirectoryWorker
+    AttemptWorkerEvents => AttemptDirectoryWorker
+    AttemptPublicationReceipt { head_sha: _ } => AttemptDirectoryPublication
+    AttemptVerificationReceipt { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
+    AttemptDiffWindow { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
+    AttemptVerificationSelection { head_sha: _ } => AttemptDirectoryVerification
+    AttemptReviewVerdict { head_sha: _, criterion_key: _ } => AttemptDirectoryReview
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => AttemptDirectoryReview
+    AttemptReviewRequestScratch { criterion_key: _ } => AttemptDirectoryReview
+    AttemptReviewLog { criterion_key: _ } => AttemptDirectoryReview
+    AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
+    AttemptAuditEvents { head_sha: _ } => AttemptDirectoryAudit
+    AttemptAuditRequestScratch => AttemptDirectoryAudit
+    AttemptAuditLog => AttemptDirectoryAudit
+    AttemptSupervisorEvents { turn: _ } => AttemptDirectorySupervisor
+    AttemptSupervisorRequestScratch => AttemptDirectorySupervisor
+    AttemptSupervisorLog => AttemptDirectorySupervisor
+    AttemptSupervisorVerdict => AttemptDirectorySupervisor
+    AttemptKeyRecord => AttemptDirectoryRoot
+    AttemptProcessFingerprint => AttemptDirectoryRoot
+    AttemptContinuationTurn => AttemptDirectoryRoot
+    AttemptAlignmentBinding => AttemptDirectoryRoot
+    AttemptEnvironmentAdmission => AttemptDirectoryRoot
+    AttemptLaunchIdentity => AttemptDirectoryRoot
+    AttemptSpawnOrigin => AttemptDirectoryRoot
+    AttemptVerificationRecord => AttemptDirectoryRoot
+    AttemptSpawnFailure => AttemptDirectoryRoot
+    AttemptOracleIdentity => AttemptDirectoryRoot
+    AttemptOracleRevision => AttemptDirectoryRoot
+    AttemptOraclePinRefused => AttemptDirectoryRoot
+    AttemptValidationReceipt => AttemptDirectoryRoot
+  }
+}
+
+fn attempt_state_member_name(member: AttemptStateMember) -> String {
+  match member {
+    AttemptKeyRecord => "attempt-key"
+    AttemptProcessFingerprint => "process-fingerprint"
+    AttemptContinuationTurn => "continuation-turn"
+    AttemptAlignmentBinding => "alignment-binding.json"
+    AttemptEnvironmentAdmission => "environment-admission.json"
+    AttemptLaunchIdentity => "launch-identity.json"
+    AttemptSpawnOrigin => dispatch_spawn_origin_basename
+    AttemptVerificationRecord => "verification.json"
+    AttemptSpawnFailure => "spawn-failure.txt"
+    AttemptOracleIdentity => "validation-oracle-identity"
+    AttemptOracleRevision => "validation-oracle-revision"
+    AttemptOraclePinRefused => "validation-oracle-pin-refused"
+    AttemptValidationReceipt => "validation-receipt.json"
+    AttemptWorkerLog => "worker-stdout.log"
+    AttemptWorkerRequestScratch => "harness-request.json"
+    AttemptWorkerEvents => "provider-events.jsonl"
+    AttemptPublicationReceipt { head_sha: h } => join([h, ".json"], "")
+    AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => exact_verification_receipt_basename(head_sha: h, window_identity_hex: w)
+    AttemptDiffWindow { head_sha: h, window_identity_hex: w } => join([h, ".", w, ".diff-window.json"], "")
+    AttemptVerificationSelection { head_sha: h } => current_verification_selection_basename(head_sha: h)
+    AttemptReviewVerdict { head_sha: h, criterion_key: c } => join([h, ".", c, ".json"], "")
+    AttemptReviewEvents { criterion_key: c, head_sha: h } => join([c, "@", h, ".provider-events.jsonl"], "")
+    AttemptReviewRequestScratch { criterion_key: c } => join([c, ".harness-request.json"], "")
+    AttemptReviewLog { criterion_key: c } => join([c, ".reviewer-stdout.log"], "")
+    AttemptAuditVerdict { head_sha: h } => join([h, ".json"], "")
+    AttemptAuditEvents { head_sha: h } => join([h, ".provider-events.jsonl"], "")
+    AttemptAuditRequestScratch => "harness-request.json"
+    AttemptAuditLog => "auditor-stdout.log"
+    AttemptSupervisorEvents { turn: t } => join(["t", to_string(value: t), ".provider-events.jsonl"], "")
+    AttemptSupervisorRequestScratch => "harness-request.json"
+    AttemptSupervisorLog => "supervisor-stdout.log"
+    AttemptSupervisorVerdict => supervisor_verdict_basename as String
+  }
+}
+
+// THE SEALED RECORD. Data only, non-generic, never a variant arm. `directory` is the attempt (or current
+// pointer) directory this store addresses; only the mints below build it, from the instance, the node and the
+// attempt key, and never from a path. A holder CAN read `directory` (field reads are not module-private: the
+// declared residual gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module),
+// which is what the external-consumer accessors below name for the tmux, systemd and worker argv routes.
+type AttemptState sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  directory: NonEmptyStr
+}
+
+type AttemptStateReading
+  = AttemptStateReady { store: AttemptState }
+  | AttemptStateUnready { detail: String }
+
+// The directory name the attempt's state lives under, the one place the `<node>-a<key>` and `<node>-current`
+// shapes are written.
+fn attempt_state_entry_name(node: String, attempt_key: String) -> String {
+  join([node, attempt_state_slots.attempt_infix, attempt_key], "")
+}
+
+fn attempt_state_current_entry_name(node: String) -> String {
+  join([node, attempt_state_slots.current_suffix], "")
+}
+
+fn attempt_state_entry_path(instance: HostDashboardInstance, entry: String) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", entry], "") as NonEmptyStr
+}
+
+type AttemptStateListing
+  = AttemptStateListingRead { entries: String }
+  | AttemptStateListingUnreadable { detail: String }
+
+fn attempt_state_listing(path: String, what: String) -> AttemptStateListing {
+  let listed = Filesystem.List(path: path)
+  match filesystem_listing_observation(directory: path, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => AttemptStateListingUnreadable { detail: join([what, " is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptStateListingUnreadable { detail: join([what, " could not be listed: ", path, " (", e, ")"], "") }
+    FilesystemDirectoryListed(l) => AttemptStateListingRead { entries: l.entries }
+  }
+}
+
+// THE MINTS. Each takes the instance and the business key (node, attempt key) and never a path; the
+// directory is derived from the dispatch attempt-state root declaration, and only a directory that lists
+// yields a store. An attempt whose directory has not been provisioned yet (attempt_state_prepare_argvs_for_instance
+// creates it) is Unready, which callers surface as their own typed refusal and never project to an empty value.
+fn attempt_state_open(instance: HostDashboardInstance, node: String, attempt_key: String) -> AttemptStateReading {
+  attempt_state_listed(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), what: "the attempt state directory")
+}
+
+fn attempt_state_open_current(instance: HostDashboardInstance, node: String) -> AttemptStateReading {
+  attempt_state_listed(provision: attempt_state_provision_current(instance: instance, node: node), what: "the node's current attempt state directory")
+}
+
+// The listing mint derives nothing itself: it observes the directory the provision (the one derivation of
+// instance + node + key -> path, below) names.
+fn attempt_state_listed(provision: AttemptStateProvision, what: String) -> AttemptStateReading {
+  match attempt_state_listing(path: provision.directory as String, what: what) {
+    AttemptStateListingUnreadable { detail } => AttemptStateUnready { detail: detail }
+    AttemptStateListingRead { entries: _ } => AttemptStateReady { store: AttemptState { instance: provision.instance, node: provision.node, directory: provision.directory } }
+  }
+}
+
+fn attempt_state_directory_within(root: String, directory: AttemptStateDirectory) -> String {
+  match directory {
+    AttemptDirectoryRoot => root
+    AttemptDirectoryWorker => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectoryPublication => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectoryVerification => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectoryReview => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectoryAudit => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+    AttemptDirectorySupervisor => join([root, "/", attempt_state_directory_segment(directory: directory)], "")
+  }
+}
+
+fn attempt_state_directory_path(store: AttemptState, directory: AttemptStateDirectory) -> String {
+  attempt_state_directory_within(root: store.directory as String, directory: directory)
+}
+
+fn attempt_state_member_path(store: AttemptState, member: AttemptStateMember) -> String {
+  join([attempt_state_directory_path(store: store, directory: attempt_state_member_directory(member: member)), "/", attempt_state_member_name(member: member)], "")
+}
+
+// THE STORE'S OPERATIONS: ordinary functions over the sealed record.
+fn attempt_state_read(store: AttemptState, member: AttemptStateMember) -> FilesystemReadOutcome {
+  let read = Filesystem.Read(path: attempt_state_member_path(store: store, member: member))
+  filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+}
+
+fn attempt_state_write(store: AttemptState, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
+  let path = attempt_state_member_path(store: store, member: member)
+  let write = Filesystem.Write(path: path, content: content)
+  filesystem_write_outcome(path: path, success: write.success, error: write.error)
+}
+
+fn attempt_state_list(store: AttemptState, directory: AttemptStateDirectory) -> AttemptStateListing {
+  attempt_state_listing(path: attempt_state_directory_path(store: store, directory: directory), what: "an attempt state directory")
+}
+
+// THE EXTERNAL-CONSUMER ROUTE. The tmux pane cwd, the systemd ReadWritePaths and ExecStart argv, the worker's
+// --arg events_path / verdict_dir, the sandbox allowlists and the shell steps that run outside this
+// process's filesystem handle the attempt's paths as text. These two accessors are the only text producers;
+// they take the sealed record, so a path for an attempt whose directory was never listed does not exist.
+// Field reads stay unsealed (the declared residual), recorded under that specimen and not claimed as a rung.
+fn attempt_state_external_path(store: AttemptState, member: AttemptStateMember) -> String {
+  attempt_state_member_path(store: store, member: member)
+}
+
+fn attempt_state_external_directory(store: AttemptState, directory: AttemptStateDirectory) -> String {
+  attempt_state_directory_path(store: store, directory: directory)
+}
+
+// THE PLAN-TIME RECORD. The belt plans a spawn as one pure value (the state-prepare argvs and the unit argv
+// are built together, gunbc.roadmap.roadmap_dispatch_actuator), before the attempt directory exists, so a
+// mint that lists the directory cannot serve it. AttemptStateProvision is the second sealed record over the
+// same declaration: minted from the instance, the node and the attempt key with no path and no observation,
+// it yields only the text of the directories to create and of the entries the units are confined to. It has
+// no read or write operation, so provisioning cannot be mistaken for an observed store.
+type AttemptStateProvision sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  directory: NonEmptyStr
+}
+
+fn attempt_state_provision(instance: HostDashboardInstance, node: String, attempt_key: String) -> AttemptStateProvision {
+  AttemptStateProvision {
+    instance: instance.instance_id,
+    node: node,
+    directory: attempt_state_entry_path(instance: instance, entry: attempt_state_entry_name(node: node, attempt_key: attempt_key)),
+  }
+}
+
+fn attempt_state_provision_current(instance: HostDashboardInstance, node: String) -> AttemptStateProvision {
+  AttemptStateProvision {
+    instance: instance.instance_id,
+    node: node,
+    directory: attempt_state_entry_path(instance: instance, entry: attempt_state_current_entry_name(node: node)),
+  }
+}
+
+fn attempt_state_provision_directory(provision: AttemptStateProvision, directory: AttemptStateDirectory) -> String {
+  attempt_state_directory_within(root: provision.directory as String, directory: directory)
+}
+
+fn attempt_state_provision_path(provision: AttemptStateProvision, member: AttemptStateMember) -> String {
+  join([attempt_state_provision_directory(provision: provision, directory: attempt_state_member_directory(member: member)), "/", attempt_state_member_name(member: member)], "")
+}
