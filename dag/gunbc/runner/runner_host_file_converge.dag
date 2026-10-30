@@ -380,7 +380,12 @@ fn runner_host_file_result_guarded(subject: RunnerHostFileSubject, context: Flee
 // THE ROLE DROP-IN'S SUPERSEDED NAME (gunbc.runner.runner_unit_file
 // runner_unit_slot_role_superseded_dropin_file_name) is a file this converge placed and now removes, so a host
 // never keeps a second copy of a role that loses to the template. Absent is the converged state; present is
-// removed as root and read again, and only a re-read that finds it gone settles.
+// removed as root and read again, and only a re-read that finds it gone settles. The observation and the
+// removal are the retired-path rule the unit residue uses (retired_path_standing_over,
+// retired_file_removal_leg). It is not a RetiredHostResidue row because that shape retires a UNIT -- it stops
+// and disables it -- and the unit here is the live deploy slot whose old drop-in alone is retired.
+// DISSOLUTION: srv1 is the only host that ever carried the old name; once a converge of every host with a
+// deploy slot reads it absent, runner_unit_slot_role_superseded_dropin_file_name and this step are deleted.
 type SupersededDropinResult
   = SupersededDropinAbsent { path: String }
   | SupersededDropinRemoved { path: String }
@@ -391,16 +396,8 @@ fn runner_host_superseded_dropin_paths(host: HostIdentity) -> List<String> {
   map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => runner_unit_slot_role_superseded_dropin_path(slot: s) as String)
 }
 
-fn superseded_dropin_standing_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> FleetHostFilePathStanding {
-  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: path }) {
-    TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
-    TypedArgvExecConverged { result: m } =>
-      observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: path, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
-  }
-}
-
 fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, path: String) -> SupersededDropinResult {
-  match superseded_dropin_standing_over(subject: subject, context: context, path: path) {
+  match retired_path_standing_over(subject: subject, context: context, path: path) {
     HostFilePathAbsent => SupersededDropinAbsent { path: path }
     HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: c }
     HostFilePathPresent =>
@@ -410,10 +407,10 @@ fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetS
           match privilege {
             AdministratorPrivilegeRefused { reason: why } => SupersededDropinRefused { path: path, reason: concat("administrator privilege refused: ", why) }
             AdministratorPrivilegeAvailable =>
-              match retire_leg(subject: subject, context: context, step: concat("remove ", path), argv: ["rm", "-f", "--", path]) {
+              match retire_leg(subject: subject, context: context, step: retired_file_removal_leg(path: path).step, argv: retired_file_removal_leg(path: path).argv) {
                 Present { value: why } => SupersededDropinRefused { path: path, reason: why }
                 Absent =>
-                  match superseded_dropin_standing_over(subject: subject, context: context, path: path) {
+                  match retired_path_standing_over(subject: subject, context: context, path: path) {
                     HostFilePathAbsent => SupersededDropinRemoved { path: path }
                     HostFilePathPresent => SupersededDropinRefused { path: path, reason: "still present after removal" }
                     HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: concat("unread after removal: ", c) }
@@ -1551,7 +1548,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
               RunnerHostDeployUnmodeled { host: _ } => []
             },
             if runner_host_has_deploy_slot(host: subject.host) {
-              list_flat_map(runner_host_superseded_dropin_paths(host: subject.host), p => [LegMetadataProbe { path: p }, LegElevated { command: ["rm", "-f", "--", p] }]) + [
+              list_flat_map(runner_host_superseded_dropin_paths(host: subject.host), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]) + [
                 LegJobUserPasswd { job_user: deploy_slot_job_user },
                 LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
               ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: runner_slot_dir_path(slot: d) as String) })
@@ -2393,14 +2390,7 @@ fn classify_retired_residue(load_state_exit: Int, load_state: String, readings: 
 fn observe_retired_residue(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, residue: RetiredHostResidue) -> RetiredResidueObservation
 {
   let names = concat(residue.files, residue.directories)
-  let readings = map(names, n => ResiduePathReading {
-    path: n,
-    standing: match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: n }) {
-      TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
-      TypedArgvExecConverged { result: m } =>
-        observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: n, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
-    },
-  })
+  let readings = map(names, n => ResiduePathReading { path: n, standing: retired_path_standing_over(subject: subject, context: context, path: n) })
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegResidueLoadState { unit: residue.unit }) {
     TypedArgvExecRefused { reason: why } => ResidueUnobservable { cause: why }
     TypedArgvExecConverged { result: r } => classify_retired_residue(load_state_exit: r.exit_code, load_state: r.stdout, readings: readings)
@@ -2433,7 +2423,7 @@ fn retire_legs_for(residue: RetiredHostResidue, observation: RetiredResidueObser
       concat(
         if k { [RetireLeg { step: "stop", argv: systemctl_stop_argv(unit: residue.unit) }, RetireLeg { step: "disable", argv: systemctl_disable_now_argv(unit: residue.unit) }] } else { [] },
         concat(
-          map(filter(ps, p => any(residue.files, f => f == p)), p => RetireLeg { step: concat("remove ", p), argv: ["rm", "-f", "--", p] }),
+          map(filter(ps, p => any(residue.files, f => f == p)), p => retired_file_removal_leg(path: p)),
           concat(
             map(filter(ps, p => any(residue.directories, d => d == p)), p => RetireLeg { step: concat("remove-tree ", p), argv: ["rm", "-r", "-f", "--one-file-system", "--", p] }),
             [RetireLeg { step: "daemon-reload", argv: systemctl_daemon_reload_argv() }],
@@ -2446,6 +2436,21 @@ fn retire_legs_for(residue: RetiredHostResidue, observation: RetiredResidueObser
 type RetireLeg {
   step: String
   argv: List<String>
+}
+
+// ONE RULE FOR A RETIRED PATH, shared by the unit residue above and a superseded managed drop-in
+// (retire_superseded_dropin_over): how it is observed -- the metadata probe settled by the
+// metadata-then-parent rule, so "could not look" never reads as absent -- and how a retired file is removed.
+fn retired_path_standing_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> FleetHostFilePathStanding {
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: path }) {
+    TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
+    TypedArgvExecConverged { result: m } =>
+      observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: path, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
+  }
+}
+
+fn retired_file_removal_leg(path: String) -> RetireLeg {
+  RetireLeg { step: concat("remove ", path), argv: ["rm", "-f", "--", path] }
 }
 
 fn run_retire_legs(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, legs: List<RetireLeg>) -> String?
