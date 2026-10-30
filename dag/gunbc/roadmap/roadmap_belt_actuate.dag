@@ -1821,13 +1821,17 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
 // delete). The branch is the durable record (§3b), so this RESTORES state rather than guessing; a gone branch
 // fails closed (BranchAbsent) rather than spawning on an unknown tree. With D1/D2 no longer releasing a pending
 // claim, this step only ever sees the legacy reaped state -- it is recovery, not a second release path.
-// BOUNDED POPULATION AND DISSOLUTION (review 88393): the population is the claims already settled
-// terminal:recovered while their lineage is request-pending, written by the pre-D1/D2 release. No new such claim
-// can be produced. The step and this type delete when `belt_actuate_spawn_for_instance` has run with this step
-// returning AttemptWorktreeNotNeeded for every node on every host's ledger (the trigger is that census, not a
-// date). Keeping it on the spawn route, rather than a one-off repair, is deliberate: the ledger and recovery
-// stream it needs are read only there. Operator approval of the temporary step is requested on the PR, outside
-// this diff (DESIGN §5).
+// BOUNDED POPULATION AND DISSOLUTION (review 88393). The population is CLOSED and NAMED at merge: the attempts on
+// lab instance srv1-lab-codex-feedback-v0 whose worktree claim reads terminal:recovered while their recovery
+// stream is request-pending. These were written by the pre-D1/D2 release, which no longer exists, so no member can
+// be added. The member list is read from the instance's existing worktree-claim and attempt records and recorded
+// on the PR at merge (expected: e5a42384c6a5e13d alone). DISSOLUTION: delete this step and this type in the first
+// lab-dev change after every listed attempt's own recovery stream has left request-pending (answered, ended or
+// spawned fresh), as read from that attempt's existing record. No census, no new instrument. An attempt whose
+// reading is unknown does not hold the deletion open: once the step is deleted, the ordinary route refuses such an
+// attempt with a typed refusal rather than restoring it. Operator approval of this temporary step is requested
+// outside the diff (DESIGN section 5). Reason: the old trigger was a census over every host's ledger, and the
+// #15415 operator ruling retires census prerequisites.
 type AttemptWorktreeRestore
   = AttemptWorktreeRestored { worktree_path: String, branch: String }
   | AttemptWorktreeNotNeeded
