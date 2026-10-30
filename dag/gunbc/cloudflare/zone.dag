@@ -573,7 +573,7 @@ fn zone_route_gap() -> BootOriginBindEffectGap {
 fn record_list_gap() -> BootOriginBindEffectGap {
   CloudflareRecordListUnread {
     missing: non_empty_singleton(
-      item: "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern"
+      item: "the GET /client/v4/dns/records of the zone and its readback, performed under the already-realized federated route (the accessor cell on the zone token has landed); no run has performed or recorded it"
     ),
     basis: dns_record_api_citation,
   }
