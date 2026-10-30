@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, Memory, One,
-  TokenCount, token_count_value,
+  TokenCount, token_count, token_count_value,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -24,9 +24,11 @@ import gunbc.host.host_memory_observation {
 // was 8-25 minutes per turn on 2026-10-30, with 810 parks skipped for lack of physical RAM. So the RAM
 // budget is not a tuning detail; it is the number of sessions the host can keep warm.
 //
-// THE RULE: an engine is never allowed to swap. The operator's intent is that cold sessions may later move
-// to disk as a deliberate tier, and that is a declared frontier below, not swap. Swap is the overflow of a
-// budget nobody made, so a layout whose engine may swap is refused before anything else is weighed.
+// THE RULE: swap is an overflow guard with a declared bound, never a cache. The operator (2026-10-30): "we
+// can give a bit of swap, its just that, we should be parking sessions to disk, not swap". So each engine may
+// swap at most the host's swap_bound, which keeps a brief overrun from being an OOM kill; parked sessions
+// belong in the engine's cache and, later, a deliberate disk tier (a declared frontier below). A layout whose
+// engine may swap more than the bound is refused before anything else is weighed.
 //
 // THE CARRIER IS product.budget_tree, the same one gunbc.fleet.fleet_host_budget and gunbc.ci.ci_budget_tree
 // use for the CI hosts. This module adds only what a serving host has that those do not: weights resident
@@ -62,11 +64,13 @@ type ServingDedicatedHostMemory {
   // Weights resident once and mapped by every engine (h11's routed-expert GGUF, locked in page cache by
   // strata-expert-lock.service).
   shared_resident: ByteSize
+  // The most any one engine may swap (MemorySwapMax): an overrun guard, never where sessions park.
+  swap_bound: ByteSize
   engines: List<ServingEngineMemory>
 }
 
 type ServingMemoryVerdict
-  = ServingMemoryEngineMaySwap { engine: NonEmptyStr, swap_cap: ByteSize }
+  = ServingMemoryEngineSwapOverBound { engine: NonEmptyStr, swap_cap: ByteSize, bound: ByteSize }
   | ServingMemoryOversubscribed { committed_at_least: ByteSize, usable_ram: ByteSize }
   | ServingMemoryEngineOverCap { engine: NonEmptyStr }
   | ServingMemoryUndetermined { missing: List<NonEmptyStr> }
@@ -139,14 +143,14 @@ fn serving_host_budget_tree(h: ServingDedicatedHostMemory) -> BudgetNode {
   }
 }
 
-fn serving_engine_swap_violation(engines: List<ServingEngineMemory>) -> ServingMemoryVerdict? {
+fn serving_engine_swap_violation(engines: List<ServingEngineMemory>, bound: ByteSize) -> ServingMemoryVerdict? {
   fold(engines, init: Absent, f: (acc, e) =>
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
         match e.swap_cap {
           ServingMemoryRead { bytes: b, provenance: _ } =>
-            if byte_size_count(b: b) > 0 { Present { value: ServingMemoryEngineMaySwap { engine: e.name, swap_cap: b } } } else { Absent }
+            if byte_size_count(b: b) > byte_size_count(b: bound) { Present { value: ServingMemoryEngineSwapOverBound { engine: e.name, swap_cap: b, bound: bound } } } else { Absent }
           ServingMemoryUnread { reason: _ } => Absent
         }
     })
@@ -166,7 +170,7 @@ fn serving_engine_over_cap(engines: List<ServingEngineMemory>) -> ServingMemoryV
 }
 
 // EVERY FIGURE A FITS VERDICT WOULD STAND ON, named when it is missing. An unread swap cap is missing too:
-// the rule is that no engine may swap, and an engine whose swap cap nobody read has not been shown to obey it.
+// an engine whose swap cap nobody read has not been shown to stay within the bound.
 fn serving_engine_missing(e: ServingEngineMemory) -> List<NonEmptyStr> {
   concat(serving_reading_missing(r: e.memory_cap), concat(serving_reading_missing(r: e.swap_cap),
     concat(serving_reading_missing(r: e.base), serving_reading_missing(r: e.conversation_cache))))
@@ -186,7 +190,7 @@ fn serving_host_missing(h: ServingDedicatedHostMemory) -> List<NonEmptyStr> {
   concat(ram, concat(overhead, flat_map(h.engines, e => serving_engine_missing(e: e))))
 }
 
-// THE ARM ORDER IS THE POLICY. A swappable engine refuses first: it is the rule. Then the host: what is
+// THE ARM ORDER IS THE POLICY. An engine that may swap past the bound refuses first: it is the rule. Then the host: what is
 // committed (overhead, shared weights, every engine's cap) against usable RAM, which can be shown over
 // budget from a lower bound even while some figures are unread. Then each engine against its own cap.
 // Only a layout with every figure read reaches Fits.
@@ -200,7 +204,7 @@ fn serving_host_memory_verdict(h: ServingDedicatedHostMemory) -> ServingMemoryVe
     HostUsableRamUnmeasured { reason: _ } => false
     _ => true
   }
-  match serving_engine_swap_violation(engines: h.engines) {
+  match serving_engine_swap_violation(engines: h.engines, bound: h.swap_bound) {
     Present { value: v } => v
     Absent =>
       if ram_read && !node_conserves_local(node: tree) {
@@ -274,6 +278,92 @@ data strata_iq3_s_snapshot_cost: ConversationSnapshotCost = ConversationSnapshot
   provenance: "h11-a16 Strata 0.1.48 conversation-cache park lines, engine-87.log and engine-88.log, read 2026-10-30" as NonEmptyStr,
 }
 
+// THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
+// killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
+data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
+
+// ---- THE LAYOUT, DERIVED. Every figure a serving unit is launched with (MemoryMax, MemorySwapMax, the
+// parked-session cache and its slot count) comes out of serving_layout_derive from what was measured and what
+// policy declares; none is written by hand. Equal engines split what the host overhead and the shared weights
+// leave; each engine's cap pays its measured base and a request margin, and the rest is its cache; the slot
+// count is the number of design-context sessions that cache holds. Figures round DOWN to whole MiB, because a
+// systemd or Strata MiB figure rounded up would promise memory the budget did not grant.
+//
+// request_margin is the working memory a turn needs above the idle base. It is an allowance until a loaded
+// engine's memory.peak is read through real turns; design_context is the session size the slots are sized for.
+type ServingLayoutInputs {
+  host: HostIdentity
+  usable_ram: HostUsableRam
+  overhead: HostFixedOverhead
+  shared_resident: ByteSize
+  engine_names: List<NonEmptyStr>
+  engine_base: ServingMemoryReading
+  request_margin: ByteSize
+  swap_bound: ByteSize
+  snapshot: ConversationSnapshotCost
+  design_context: TokenCount
+}
+
+type ServingLayoutDerivation
+  = ServingLayoutDerived { layout: ServingDedicatedHostMemory, per_engine_cap: ByteSize, cache_per_engine: ByteSize, warm_per_engine: Nat }
+  | ServingLayoutNoRoom { engines: Nat }
+  | ServingLayoutInputsUnread { missing: List<NonEmptyStr> }
+
+fn serving_mib_floor(n: Nat) -> ByteSize {
+  byte_size(count: (n / 1048576) * 1048576)
+}
+
+fn serving_layout_inputs_missing(i: ServingLayoutInputs) -> List<NonEmptyStr> {
+  let ram = match i.usable_ram {
+    HostUsableRamUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let overhead = match i.overhead {
+    HostFixedOverheadUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  concat(ram, concat(overhead, serving_reading_missing(r: i.engine_base)))
+}
+
+fn serving_layout_engine(name: NonEmptyStr, i: ServingLayoutInputs, cap: ByteSize, cache: ByteSize, slots: Nat) -> ServingEngineMemory {
+  ServingEngineMemory {
+    name: name,
+    memory_cap: ServingMemoryRead { bytes: cap, provenance: "derived by gunbc.serving.serving_host_memory serving_layout_derive" as NonEmptyStr },
+    swap_cap: ServingMemoryRead { bytes: i.swap_bound, provenance: "the host's declared swap bound" as NonEmptyStr },
+    base: i.engine_base,
+    conversation_cache: ServingMemoryRead { bytes: cache, provenance: "derived by gunbc.serving.serving_host_memory serving_layout_derive" as NonEmptyStr },
+    conversation_slots: Present { value: slots },
+  }
+}
+
+// Given the raw per-engine allowance (what each engine gets once overhead and shared weights are paid,
+// minus its reserve), the whole-MiB cap, cache and slot count.
+fn serving_layout_from_allowance(i: ServingLayoutInputs, n: Nat, raw: ByteSize, reserve: ByteSize) -> ServingLayoutDerivation {
+  let cap = serving_mib_floor(n: byte_size_count(b: raw) + byte_size_count(b: reserve))
+  let cache = serving_mib_floor(n: byte_size_count(b: cap) - byte_size_count(b: reserve))
+  let warm = serving_warm_sessions_within(cache: cache, slots: Absent, snapshot: conversation_snapshot_bytes(cost: i.snapshot, context: i.design_context))
+  let layout = ServingDedicatedHostMemory {
+    host: i.host, usable_ram: i.usable_ram, overhead: i.overhead, shared_resident: i.shared_resident, swap_bound: i.swap_bound,
+    engines: map(i.engine_names, nm => serving_layout_engine(name: nm, i: i, cap: cap, cache: cache, slots: warm)),
+  }
+  if warm == 0 { ServingLayoutNoRoom { engines: n } } else { ServingLayoutDerived { layout: layout, per_engine_cap: cap, cache_per_engine: cache, warm_per_engine: warm } }
+}
+
+fn serving_layout_derive(i: ServingLayoutInputs) -> ServingLayoutDerivation {
+  let n = i.engine_names.length()
+  let reserve = byte_size(count: byte_size_count(b: serving_reading_bytes_or_zero(r: i.engine_base)) + byte_size_count(b: i.request_margin))
+  let ram = serving_usable_ram_bytes_or_zero(r: i.usable_ram)
+  let overhead = serving_overhead_bytes_or_zero(o: i.overhead)
+  if serving_layout_inputs_missing(i: i).length() > 0 {
+    ServingLayoutInputsUnread { missing: serving_layout_inputs_missing(i: i) }
+  } else {
+    match serving_engine_cache_allowance(usable_ram: ram, overhead: overhead, shared_resident: i.shared_resident, engines: n, base: reserve) {
+      Absent => ServingLayoutNoRoom { engines: n }
+      Present { value: raw } => serving_layout_from_allowance(i: i, n: n, raw: raw, reserve: reserve)
+    }
+  }
+}
+
 fn host_6ce85c_engine_as_launched(bus: String) -> ServingEngineMemory {
   ServingEngineMemory {
     name: ("h11-strata@" + bus) as NonEmptyStr,
@@ -295,11 +385,32 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
   usable_ram: HostUsableRamMeasured { bytes: kibibyte_to_byte_size(k: kibibyte(count: 115192288)), provenance: "h11-a16 /proc/meminfo MemTotal 115192288 kB, read 2026-10-30T16:18Z" as NonEmptyStr },
   overhead: HostFixedOverheadUnmeasured { reason: "h11 host overhead: the OS, sshd and the six server.py front ends, read with every engine stopped" as NonEmptyStr },
   shared_resident: kibibyte_to_byte_size(k: kibibyte(count: 49560204)),
+  swap_bound: serving_engine_swap_bound,
   engines: [
     host_6ce85c_engine_as_launched(bus: "85"), host_6ce85c_engine_as_launched(bus: "87"), host_6ce85c_engine_as_launched(bus: "88"),
     host_6ce85c_engine_as_launched(bus: "c5"), host_6ce85c_engine_as_launched(bus: "c7"), host_6ce85c_engine_as_launched(bus: "c8"),
   ],
 }
+
+// THE h11 LAYOUT INPUTS, and the layout derived from them (host_6ce85c_layout). The usable RAM and the
+// shared weights are the observed row's; the engine base is engine c8 loaded, idle and with nothing parked
+// (systemctl show h11-strata@c8 MemoryCurrent=4703334400, 0 requests, 2026-10-30T17:10Z). The host overhead
+// and the request margin are ALLOWANCES, named as such: neither has been read yet, and a reading replaces
+// each. Six engines because six GPUs are in service; the design context is an 80k-token session.
+data host_6ce85c_layout_inputs: ServingLayoutInputs = ServingLayoutInputs {
+  host: operator_host_6ce85c,
+  usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
+  overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "allowance for the OS, sshd and the six server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
+  shared_resident: host_6ce85c_serving_memory_observed.shared_resident,
+  engine_names: ["h11-strata@85", "h11-strata@87", "h11-strata@88", "h11-strata@c5", "h11-strata@c7", "h11-strata@c8"],
+  engine_base: ServingMemoryRead { bytes: byte_size(count: 4703334400), provenance: "systemctl show h11-strata@c8 MemoryCurrent=4703334400, loaded, idle, 0 requests, nothing parked, 2026-10-30T17:10Z" as NonEmptyStr },
+  request_margin: mebibyte_to_byte_size(m: mebibyte(count: 512)),
+  swap_bound: serving_engine_swap_bound,
+  snapshot: strata_iq3_s_snapshot_cost,
+  design_context: token_count(count: 80000),
+}
+
+data host_6ce85c_layout: ServingLayoutDerivation = serving_layout_derive(i: host_6ce85c_layout_inputs)
 
 // ENGINES ON SHARED HOSTS, at engine grain only (the host trees are the frontier below).
 //
