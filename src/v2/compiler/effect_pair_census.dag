@@ -14,7 +14,7 @@ import v2.compiler.value_use_dependency {
   NotDerivedReason, NotDerivedStanding, RecordAbsent, ValuedBinderNotLocated, ValuedBinderSiteUnkeyed,
   ValuedUseNotLocated, ValueUseDependencies, ValueUseNotDerived, ValueUseRelation
 }
-import v2.std.operation_declaration { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, operation_declaration_for_path, declaration_ref_of_qualified_name, operation_declaration_row_count_for, operation_declaration_ambiguous_row_count }
+import v2.std.operation_declaration { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, operation_declaration_for_path, operation_declaration_row_count_for, operation_declaration_ambiguous_row_count }
 import v2.compiler.activation_dependency { ActivationNotDerivedReason, BranchNotConditionThenElse, MatchScrutineeAbsent, MatchArmMalformed }
 import v2.compiler.dependency_demand_census { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
 import v2.compiler.dependency_demand {
@@ -629,7 +629,7 @@ fn reach_operation_semantics(op: OperationFact) -> Optional<PrimitiveExecutionSe
   match operation_declaration_for_path(path: op.path) {
     Absent => Absent
     Present { value: row } =>
-      if operation_declaration_row_count_for(declaration: declaration_ref_of_qualified_name(path: op.path)) > 1 {
+      if operation_declaration_row_count_for(declaration: row.declaration) > 1 {
         Absent
       } else {
         Present { value: row.semantics }

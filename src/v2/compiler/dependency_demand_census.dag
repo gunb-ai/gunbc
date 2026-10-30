@@ -708,14 +708,18 @@ fn demand_fact_with_operation(w: DemandFactWalk, op: OperationFact) -> DemandFac
 // slug string that never matched a walked operation. Both halves are the SAME std.decl_ref key the
 // projection roster and v2.std.operation_declaration are keyed by.
 fn demand_census_declaration_is_host_seam(path: QualifiedName) -> Bool {
-  match primitive_projection_row_for_declaration(declaration: declaration_ref_of_qualified_name(path: path)) {
-    Present { value: row } =>
-      match row.fidelity {
-        HostRealizedSeam => true
-        ModeledProjection => false
-        DivergentProjection { divergence: _ } => false
-      }
+  match declaration_ref_of_qualified_name(path: path) {
     Absent => false
+    Present { value: declaration } =>
+      match primitive_projection_row_for_declaration(declaration: declaration) {
+        Present { value: row } =>
+          match row.fidelity {
+            HostRealizedSeam => true
+            ModeledProjection => false
+            DivergentProjection { divergence: _ } => false
+          }
+        Absent => false
+      }
   }
 }
 
@@ -727,7 +731,10 @@ fn demand_census_declaration_is_host_seam(path: QualifiedName) -> Bool {
 fn demand_census_seam_operation_fact(path: QualifiedName) -> OperationFact {
   OperationFact {
     path: path,
-    requirement: demand_census_seam_requirement(declaration: declaration_ref_of_qualified_name(path: path))
+    requirement: match declaration_ref_of_qualified_name(path: path) {
+      Present { value: declaration } => demand_census_seam_requirement(declaration: declaration)
+      Absent => RequiresUndeclared
+    }
   }
 }
 

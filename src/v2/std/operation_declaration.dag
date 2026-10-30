@@ -284,18 +284,18 @@ data operation_declaration_roster: List<OperationDeclaration> = [
   operation_declaration_row(
     module_path: "std.operation_argv",
     decl_name: "shell_materialize_operation_argv",
-    requirement: RequiresNone,
-    semantics: Pure,
-    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "argv_materialization") },
-    shape: NoResourceAccess
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "read_extdeps_operation_declaration") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_argv_materialization_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "extdeps_module_read_has_no_effect_shape_arm_d16_part_3") }
   ),
   operation_declaration_row(
     module_path: "gunbc.compile_diagnostic_census",
     decl_name: "compile_dag_diagnostic_census",
-    requirement: RequiresNone,
-    semantics: Pure,
-    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "source_diagnostic_census") },
-    shape: NoResourceAccess
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "compile_source_against_corpus_index") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_diagnostic_census_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "corpus_index_read_has_no_effect_shape_arm_d16_part_3") }
   ),
   operation_declaration_row(
     module_path: "std.algebra",
@@ -472,46 +472,45 @@ fn operation_declaration_path(
 // is read by that key. This is the single join between the walked corpus and the declarations; the
 // deleted slug index did the same job by stringified path compared to a primitive slug, and matched
 // nothing a module walk produced.
+// An empty path names no declaration: the answer is Absent, never an invented key that could
+// collide with a row.
 fn declaration_ref_of_qualified_name(
   path: QualifiedName
-) -> DeclarationRef {
+) -> Optional<DeclarationRef> {
   match qualified_name_last_segment(qn: path) {
     Present { value: decl_sym } =>
-      decl_ref(
-        module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
-        decl_name: symbol_lexeme(sym: decl_sym)
-      )
-    Absent => decl_ref(module_path: "", decl_name: "")
+      Present {
+        value: decl_ref(
+          module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
+          decl_name: symbol_lexeme(sym: decl_sym)
+        )
+      }
+    Absent => Absent
   }
 }
 
 fn operation_declaration_for_path(
   path: QualifiedName
 ) -> Optional<OperationDeclaration> {
-  operation_declaration_for(declaration: declaration_ref_of_qualified_name(path: path))
+  match declaration_ref_of_qualified_name(path: path) {
+    Present { value: declaration } => operation_declaration_for(declaration: declaration)
+    Absent => Absent
+  }
 }
 
-// THE M2V POPULATION, as a view over the roster: the seven operations the M2V census counts (the
-// read authority and the six corpus-fact seams). The census rosters derive from DISPOSITIONS on
-// these rows, exactly as they derived from the deleted classification roster's dispositions -- the
-// view exists so the census keeps counting the population it always counted, while the full roster
+// THE M2V POPULATION, as a view over the roster: every declaration whose semantics OBSERVES or
+// ACTUATES the host. Membership is the row's own semantics, not a list of names: declaring a new
+// host-touching seam puts it in the population, and a Pure row cannot be in it. The full roster
 // (every projected seam) is what D13 opacity reads.
 fn operation_declaration_m2v_population() -> List<OperationDeclaration> {
   fold_list(
     xs: operation_declaration_roster,
     empty: [],
     cons: fn(acc, row) {
-      if (row.declaration.module_path == "v2.std.live_read" && row.declaration.decl_name == "filesystem_read")
-        || (row.declaration.module_path == "v2.std.decl_index" && row.declaration.decl_name == "decl_facts")
-        || (row.declaration.module_path == "v2.std.layer_import_scan" && row.declaration.decl_name == "layer_import_facts")
-        || (row.declaration.module_path == "v2.lens.module_graph"
-          && (row.declaration.decl_name == "module_declaration_facts"
-            || row.declaration.decl_name == "import_resolution_facts"
-            || row.declaration.decl_name == "reference_resolution_facts"
-            || row.declaration.decl_name == "dependency_resolution_facts")) {
-        list_snoc_item(xs: acc, item: row)
-      } else {
-        acc
+      match row.semantics {
+        ObservesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
+        ActuatesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
+        _ => acc
       }
     }
   )
