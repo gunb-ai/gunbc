@@ -1,0 +1,127 @@
+module gunbc.site_segment_anchor
+
+// THE PRODUCTION CONSUMER OF THE PER-HOST INTERFACE INVENTORY: it anchors each host's interfaces, the
+// operating system's and the controller's, to the site network segment their address falls in. This is S2
+// of gunbc.plans.site_segment_anchor_bmc_reach ("bind one host interface to a segment"); S1 declared the
+// inventory, and this is the first fold that asks it for an interface BY FUNCTION.
+//
+// NOTHING NEW IS COINED. The segment is product.network_topology NetworkSegment, the address is the
+// ObservedEthernetLan's own Ipv4Address, and the containment test is extdeps.network.ipv4
+// ipv4_same_network. The only thing parsed here is NetworkSegment.cidr, which is still the CIDR TEXT
+// that product type carries (gunbc.fleet.fleet_intent_network records the dissolution of that field).
+//
+// EVERY REFUSAL IS A TYPED CAUSE, AND NONE IS A DEFAULT. An interface the inventory has no reading of
+// comes back as the inventory's own HostInterfaceGap (mtjade1's host operating system is one today),
+// not as the controller's segment and not as a guess. An interface read without an address (srv1's
+// controller NIC is admin-down) is refused as such: a link address places nothing on a segment. A
+// segment whose CIDR this fold cannot judge is reported, and it is never read as "does not contain".
+// Which segments exist is the caller's argument, not a list owned here.
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.network.ipv4 { Ipv4Address, Ipv4Parsed, Ipv4ParseFailed, ipv4_same_network, parse_ipv4_address }
+import product.network_topology { NetworkSegment }
+import product.host_identity { HostIdentity }
+import gunbc.machine_intake.ethernet { BmcDedicated, HostData, ObservedEthernetFunction, ObservedEthernetLan }
+import gunbc.machine_intake.host_interface_inventory {
+  FunctionInterfaceRead,
+  FunctionInterfaceUnread,
+  HostFunctionInterface,
+  HostInterfaceGap,
+  host_controller_dedicated_interface,
+  host_operating_system_interface,
+}
+
+type SegmentJudgment
+  = AddressInSegment
+  | AddressOutsideSegment
+  | SegmentUnjudged { cidr: NonEmptyStr, cause: NonEmptyStr }
+
+type SegmentAnchorRefusal
+  = InterfaceNotRead { gap: HostInterfaceGap }
+  | InterfaceHasNoNetworkAddress { host: HostIdentity, function: ObservedEthernetFunction }
+  | NoSegmentContainsAddress { host: HostIdentity, function: ObservedEthernetFunction }
+  | AddressOnSeveralSegments { host: HostIdentity, function: ObservedEthernetFunction, segments: List<NetworkSegment> }
+  | SegmentsUnjudged { host: HostIdentity, function: ObservedEthernetFunction, segments: List<NetworkSegment> }
+
+type InterfaceSegmentAnchor
+  = InterfaceAnchored { host: HostIdentity, function: ObservedEthernetFunction, lan: ObservedEthernetLan, segment: NetworkSegment }
+  | InterfaceUnanchored { refusal: SegmentAnchorRefusal }
+
+// BOTH FUNCTIONS OF ONE HOST, side by side, so a caller cannot take the controller's anchor for the host's.
+type HostSegmentAnchors {
+  operating_system: InterfaceSegmentAnchor
+  controller: InterfaceSegmentAnchor
+}
+
+fn judge_address_in_segment(address: Ipv4Address, segment: NetworkSegment) -> SegmentJudgment {
+  let parts = split(s: segment.cidr as String, delimiter: "/")
+  if list_length(items: parts) != 2 {
+    SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr is not one network and one prefix length separated by a slash" }
+  } else {
+    match parts |> get(0) {
+      Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr has no network part" }
+      Present { value: network_text } => match parts |> get(1) {
+        Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr has no prefix length" }
+        Present { value: length_text } => match parse_ipv4_address(text: network_text) {
+          Ipv4ParseFailed { error: _ } => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr network part is not a dotted-decimal IPv4 address" }
+          Ipv4Parsed { address: segment_network } => match parse_int(s: length_text) {
+            Absent => SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr prefix length is not an integer" }
+            Present { value: length } =>
+              if length < 0 || length > 32 {
+                SegmentUnjudged { cidr: segment.cidr, cause: "the segment cidr prefix length is outside 0 to 32" }
+              } else {
+                match ipv4_same_network(a: address, b: segment_network, prefix: length) {
+                  Absent => SegmentUnjudged { cidr: segment.cidr, cause: "ipv4_same_network answers only the prefixes 8, 16, 24, 30 and 32, and refuses the rest" }
+                  Present { value: same } => if same { AddressInSegment } else { AddressOutsideSegment }
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn anchor_lan_to_segment(host: HostIdentity, function: ObservedEthernetFunction, lan: ObservedEthernetLan, segments: List<NetworkSegment>) -> InterfaceSegmentAnchor {
+  match lan.network_address {
+    Absent => InterfaceUnanchored { refusal: InterfaceHasNoNetworkAddress { host: host, function: function } }
+    Present { value: address } => {
+      let inside = filter(xs: segments, predicate: s => judge_address_in_segment(address: address, segment: s) == AddressInSegment)
+      let unjudged = filter(xs: segments, predicate: s => match judge_address_in_segment(address: address, segment: s) {
+        SegmentUnjudged { cidr: _, cause: _ } => true
+        AddressInSegment => false
+        AddressOutsideSegment => false
+      })
+      if list_length(items: inside) > 1 {
+        InterfaceUnanchored { refusal: AddressOnSeveralSegments { host: host, function: function, segments: inside } }
+      } else if list_length(items: inside) == 1 {
+        match first(inside) {
+          Present { value: segment } => InterfaceAnchored { host: host, function: function, lan: lan, segment: segment }
+          Absent => InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: host, function: function } }
+        }
+      } else if list_length(items: unjudged) > 0 {
+        InterfaceUnanchored { refusal: SegmentsUnjudged { host: host, function: function, segments: unjudged } }
+      } else {
+        InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: host, function: function } }
+      }
+    }
+  }
+}
+
+fn anchor_function_interface(host: HostIdentity, function: ObservedEthernetFunction, interface: HostFunctionInterface, segments: List<NetworkSegment>) -> InterfaceSegmentAnchor {
+  match interface {
+    FunctionInterfaceUnread { gap: gap } => InterfaceUnanchored { refusal: InterfaceNotRead { gap: gap } }
+    FunctionInterfaceRead { lan: lan } => anchor_lan_to_segment(host: host, function: function, lan: lan, segments: segments)
+  }
+}
+
+// THE CONSUMER: ask the inventory for the host's operating-system interface and for its DEDICATED
+// controller interface, and place each on a segment. The controller is never answered by the host's
+// interface (host_controller_dedicated_interface has no such fallback), so a shared segment cannot make
+// the two anchors the same row.
+fn host_interface_segment_anchor(host: HostIdentity, segments: List<NetworkSegment>) -> HostSegmentAnchors {
+  HostSegmentAnchors {
+    operating_system: anchor_function_interface(host: host, function: HostData, interface: host_operating_system_interface(host: host), segments: segments),
+    controller: anchor_function_interface(host: host, function: BmcDedicated, interface: host_controller_dedicated_interface(host: host), segments: segments),
+  }
+}
