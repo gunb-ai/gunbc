@@ -2,19 +2,15 @@ module gunbc.roadmap.roadmap_dashboard_target_write
 
 import std.optional { Present }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
-import extdeps.shell
 import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { dd_create_new_path_command }
-import gunbc.typed_argv_exec {
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-  typed_argv_exec_over_ssh_with_stdin,
+import gunbc.roadmap.roadmap_dashboard_instance_observe {
+  dashboard_target_run,
+  TargetExecWithStdin,
+  TargetRan,
+  TargetNotRun,
 }
-import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance,
-  DashboardLocalProvision,
-  DashboardSshProvision,
-}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 
 // THE CREATE-ONLY WRITE OF GIVEN BYTES ON A DASHBOARD INSTANCE'S TARGET HOST. This is the CommandHost
 // realization of the Filesystem.WriteCreateNew effect contract (create-only, never overwrites, refuses
@@ -23,10 +19,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // extdeps.tools.gnu_coreutils dd_create_new_path_command -- with the payload on stdin, so no byte of it
 // is ever shell-parsed or an argv element. It takes the place of an inline `sh -c 'set -C; printf ...'`.
 //
-// The stdin leg has the same two arms as dashboard_target_exec (local controller exec | typed argv over
-// ssh) and the same shell-safe argv wall (typed_argv_exec_over_ssh_with_stdin). It lives in this module
-// rather than beside dashboard_target_exec only so as not to edit gunbc.roadmap.roadmap_dashboard_instance_apply
-// under an in-flight change to it; the dispatch is the same two-arm match on provision_transport.
+// The transport dispatch is gunbc.roadmap.roadmap_dashboard_instance_observe dashboard_target_run, the one
+// dispatch shared with dashboard_target_exec and dashboard_target_probe; this module adds only the
+// create-only argv and the outcome.
 //
 // THE REFUSAL IS UNCLASSIFIED ON PURPOSE. dd's exit status cannot separate "already exists" from
 // "permission denied", and matching stderr text or probing after the fact would be a heuristic in place
@@ -61,21 +56,15 @@ fn dashboard_target_write_create_new(
   match first(argv) {
     Absent => CreateNewNotDispatched { reason: "the create-new command projected to no argv" }
     Present { value: program } =>
-      match instance.provision_transport {
-        DashboardLocalProvision => {
-          let ran = shell.Exec.RunArgvStdin(
-            program: program as NonEmptyStr,
-            arguments: argv |> skip(n: 1),
-            stdin_payload: content,
-          )
-          dashboard_create_new_outcome(exit_code: ran.exit_code, stderr: ran.stderr)
-        }
-        DashboardSshProvision { host } =>
-          match typed_argv_exec_over_ssh_with_stdin(host: host, argv: argv, stdin_payload: content) {
-            TypedArgvExecConverged { result } =>
-              dashboard_create_new_outcome(exit_code: result.exit_code, stderr: result.stderr)
-            TypedArgvExecRefused { reason } => CreateNewNotDispatched { reason: reason }
-          }
+      match dashboard_target_run(
+        instance: instance,
+        program: program as FilePath,
+        args: argv |> skip(n: 1),
+        mode: TargetExecWithStdin { payload: content },
+      ) {
+        TargetRan { exit_code, success: _, stdout: _, stderr } =>
+          dashboard_create_new_outcome(exit_code: exit_code, stderr: stderr)
+        TargetNotRun { reason } => CreateNewNotDispatched { reason: reason }
       }
   }
 }
