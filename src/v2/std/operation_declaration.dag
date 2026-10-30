@@ -420,23 +420,20 @@ data operation_declaration_index: Map<QualifiedName, List<OperationDeclaration>>
 // THE HOST-SEAM POPULATION, indexed once by declaration path: the paths std.primitive_projection
 // projects at HostRealizedSeam. D13's seam test is a keyed read of this value, so asking N walked
 // declarations costs N keyed reads, never N folds of the projection roster (DESIGN.md section 6).
-data host_seam_projection_index: Map<QualifiedName, Bool> = fold_list(
+data host_seam_projection_index: Map<QualifiedName, DeclarationRef> = fold_list(
   xs: primitive_projection_roster(),
   empty: empty_map(),
   cons: fn(m, row) {
     match row.fidelity {
-      HostRealizedSeam => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: true)
+      HostRealizedSeam => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: row.declaration)
       ModeledProjection => m
       DivergentProjection { divergence: _ } => m
     }
   }
 )
 
-fn operation_declaration_is_projected_host_seam(declaration: DeclarationRef) -> Bool {
-  match map_lookup(m: host_seam_projection_index, key: operation_declaration_path(declaration: declaration)) {
-    Present { value: _ } => true
-    Absent => false
-  }
+fn operation_declaration_projected_host_seam_at(declaration: DeclarationRef) -> Optional<DeclarationRef> {
+  map_lookup(m: host_seam_projection_index, key: operation_declaration_path(declaration: declaration))
 }
 
 fn operation_declaration_rows_at(
@@ -530,7 +527,9 @@ fn operation_declaration_m2v_population() -> List<OperationDeclaration> {
       match row.semantics {
         ObservesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
         ActuatesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
-        _ => acc
+        Pure => acc
+        ReadsBoundInput { input_identity: _ } => acc
+        ExecutionSemanticsUnknown => acc
       }
     }
   )
