@@ -1,11 +1,23 @@
 module gunbc.instruments.revision_request_http_receipt
 
-import std.types { String, List, Int, Bool }
+import std.types { String, NonEmptyStr, List, Int, Bool }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, JsonArray, json_object, json_kv, json_string, json_int, json_bool, json_array }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field, json_field_string, json_field_int, json_field_bool, FieldRead }
+
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+
+data revision_request_http_driver_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.revision_request_http_receipt", decl_name: "revision_request_http_judge"),
+    reason: "The native serve probe accepts only serial requests and fixed peer/refused/stuck-exit phases. The two-process concurrent submission, discarded response, result publication and restart sequence is currently a local Python I/O observer, published verbatim in PR 15310; this reader judges its observations. The native fixture test label is authentication smoke only, not full acceptance qualification.",
+    dissolution: unbound_dissolution(description: "TRIGGER: a committed gunbc test instrument drives concurrent exchanges, discarded response, fixture result publication and stop/restart against the native request entry, with private shared roots and modeled sequencing, and reproduces this receipt and every red control. SUFFICIENT FOR: removing the interim observer and this row. NOT satisfied by serial auth smoke, a passing receipt without its producer, or documentation alone." as NonEmptyStr)
+  )
+]
 
 // The Python host performs process/HTTP I/O and records observations only. This
 // reader owns the five acceptance verdicts and their planted falsifiers. Two
