@@ -292,6 +292,16 @@ data strata_iq3_s_snapshot_cost: ConversationSnapshotCost = ConversationSnapshot
   observed_up_to: token_count(count: 176183),
 }
 
+// srv4's Strata release 406c9de18cef (q4_0 KV, 65,536 resident cells), as the upper envelope of its 63 parks
+// (19 to 203,349 tokens) in the engine logs under /opt/gunbc-serving/srv4-daily/state: no park lies above
+// 800 MiB plus 10 KiB per token. A different release and KV setting than h11's, so its own row.
+data srv4_strata_snapshot_cost: ConversationSnapshotCost = ConversationSnapshotCost {
+  fixed: mebibyte_to_byte_size(m: mebibyte(count: 800)),
+  per_token: kibibyte_to_byte_size(k: kibibyte(count: 10)),
+  provenance: "srv4 Strata 406c9de18cef conversation-cache park lines, state/*.log, read 2026-10-30" as NonEmptyStr,
+  observed_up_to: token_count(count: 203349),
+}
+
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being
 // killed; 2 GiB is a small fraction of a 9-10 GiB engine and far below the 32 GiB each h11 engine had.
 data serving_engine_swap_bound: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
@@ -353,14 +363,18 @@ data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   conversation_slots: Present { value: 24 },
 }
 
-// srv4's engine (the checkpoint-persistence work in gunbc#15344) is not read at all yet.
+// srv4's daily-workspace engine, read 2026-10-30T20:5xZ over the fleet credential. The engine service itself has
+// no cap; its slice gunbc-srv4-daily.slice does (MemoryHigh 96 GiB, MemoryMax 120 GiB, MemorySwapMax 0), so the
+// cap read here is the slice's. Its base is the service's memory.current loaded and idle, with one 5,361-token
+// qualification turn served since its 2026-10-29T01:45Z start; the routed experts sit in the engine's own
+// anonymous memory (anon 52,731,273,216 B), since srv4 has no shared expert-lock service.
 data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
-  name: "srv4-strata" as NonEmptyStr,
-  memory_cap: ServingMemoryUnread { reason: "srv4 engine memory cap: not read" as NonEmptyStr },
-  swap_cap: ServingMemoryUnread { reason: "srv4 engine swap cap: not read" as NonEmptyStr },
-  base: ServingMemoryUnread { reason: "srv4 engine base: not read" as NonEmptyStr },
-  conversation_cache: ServingMemoryUnread { reason: "srv4 engine conversation cache: not read" as NonEmptyStr },
-  conversation_slots: Absent,
+  name: "gunbc-srv4-daily-engine" as NonEmptyStr,
+  memory_cap: ServingMemoryRead { bytes: byte_size(count: 128849018880), provenance: "systemctl show gunbc-srv4-daily.slice MemoryMax=128849018880, 2026-10-30" as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30" as NonEmptyStr },
+  base: ServingMemoryRead { bytes: byte_size(count: 56139382784), provenance: "gunbc-srv4-daily-engine.service memory.current, loaded and idle, one qualification turn since start, 2026-10-30" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 32768)), provenance: "srv4 Strata /metrics conversation_cache_mib 32768, 2026-10-30" as NonEmptyStr },
+  conversation_slots: Present { value: 8 },
 }
 
 // DECLARED FRONTIERS (DESIGN section 3c).

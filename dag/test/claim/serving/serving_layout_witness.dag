@@ -8,7 +8,7 @@ import std.decl_ref { decl_ref }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import gunbc.host.host_memory_observation { HostUsableRamMeasured }
 import gunbc.serving.serving_host_memory {
-  ServingMemoryRead, ServingMemoryFits, conversation_snapshot_bytes,
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryFits, conversation_snapshot_bytes,
 }
 import gunbc.serving.serving_layout {
   ServingResourceGrant, ServingDevice, ServingDeviceGroup, ServingBackendProfile, ServingRequirement, ServingReplicaConfig,
@@ -19,7 +19,8 @@ import gunbc.serving.serving_layout {
   ServingLiveStandingUnqualified, ServingLiveStandingQualified, ServingLiveRequalificationRequired,
   ServingAdmitted, ServingAdmissionRefused, ServingAdmission,
   serving_layout_derive, serving_layout_with_qualification, serving_configuration_identity, serving_replica_admit,
-  host_6ce85c_grant, host_6ce85c_independent_groups, strata_iq3_s_a16_profile, h11_serving_requirement, host_6ce85c_layout,
+  host_6ce85c_grant, host_6ce85c_independent_groups, strata_iq3_s_a16_profile, serving_context_ceiling_requirement, host_6ce85c_layout,
+  srv4_grant, srv4_layer_split_groups, strata_srv4_layer_split_profile, srv4_layout,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -44,12 +45,16 @@ fn sl_device(name: String, vram: ByteSize) -> ServingDevice {
   }
 }
 
-fn sl_profile_retaining_across(b: ServingBackendProfile, most: Nat) -> ServingBackendProfile {
+fn sl_profile_with(b: ServingBackendProfile, most: Nat, floor: ServingMemoryReading) -> ServingBackendProfile {
   ServingBackendProfile {
     backend: b.backend, device_fixed_vram: b.device_fixed_vram, device_min_elastic_vram: b.device_min_elastic_vram,
     replica_base_ram: b.replica_base_ram, active_slots: b.active_slots, active_slot_ram: b.active_slot_ram,
-    retention: b.retention, max_devices_with_retention: most, max_context: b.max_context,
+    retention: b.retention, park_free_floor: floor, max_devices_with_retention: most, max_context: b.max_context,
   }
+}
+
+fn sl_profile_retaining_across(b: ServingBackendProfile, most: Nat) -> ServingBackendProfile {
+  sl_profile_with(b: b, most: most, floor: b.park_free_floor)
 }
 
 fn sl_replicas(r: ServingLayoutResult) -> List<ServingReplicaConfig> {
@@ -70,15 +75,21 @@ fn sl_refusal(r: ServingLayoutResult) -> ServingLayoutRefusal? {
   }
 }
 
-// EVERY ADMITTED CONVERSATION CAN GROW TO THE CEILING: each replica's retention budget holds its admitted
-// count of maximum-context snapshots, and its cap holds that budget beside its base and active slot.
-fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
-  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: strata_iq3_s_a16_profile.retention, context: h11_serving_requirement.max_context))
+// EVERY ADMITTED CONVERSATION CAN GROW TO THE CEILING, AND THE ENGINE WILL STILL PARK IT: each replica's
+// retention budget holds its admitted count of maximum-context snapshots, and its cap holds that budget plus
+// the park headroom the engine demands inside its own cgroup.
+fn sl_all_grow_to_ceiling_under(r: ServingLayoutResult, b: ServingBackendProfile) -> Bool {
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: serving_context_ceiling_requirement.max_context))
+  let floor = match b.park_free_floor { ServingMemoryRead { bytes: f, provenance: _ } => byte_size_count(b: f)  _ => 0 }
   sl_replicas(r: r).all(c => c.admitted_conversations * snapshot <= byte_size_count(b: c.retention_budget)
-    && byte_size_count(b: c.retention_budget) < byte_size_count(b: c.memory_max))
+    && byte_size_count(b: c.retention_budget) + floor < byte_size_count(b: c.memory_max))
 }
 
-// h11 AS GRANTED: six independent replicas, eight conversations guaranteed to the ceiling (2,2,1,1,1,1), the
+fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
+  sl_all_grow_to_ceiling_under(r: r, b: strata_iq3_s_a16_profile)
+}
+
+// h11 AS GRANTED: six independent replicas, seven conversations guaranteed to the ceiling (2,1,1,1,1,1), the
 // budget verdict Fits with its five assumptions named (three allowances, the extrapolated ceiling snapshot, the page charging), the backend supports the topology, and nothing is
 // qualified live yet.
 test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool {
@@ -86,7 +97,7 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
       rs.length() == 6
         && rs.all(c => c.admitted_conversations >= 1 && c.active_slots == 1)
-        && sl_admitted_total(r: host_6ce85c_layout) == 8
+        && sl_admitted_total(r: host_6ce85c_layout) == 7
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && e.assumptions.length() == 5
         && (match e.backend { ServingBackendSupportsTopology => true  _ => false })
@@ -99,8 +110,8 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
 // SMALLER AND LARGER GRANTS: 80 GiB cannot give six replicas one ceiling conversation each and refuses; 125 GiB
 // (all eight DIMMs) admits more than today's 110.
 test fn witness_grant_size_moves_admission_and_refuses_when_short() -> Bool {
-  let small = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 80), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
-  let large = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
+  let small = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 80), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
+  let large = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   (match sl_refusal(r: small) { Present { value: ServingLayoutRamShort { needed: _, available: _ } } => true  _ => false })
     && sl_admitted_total(r: large) > sl_admitted_total(r: host_6ce85c_layout)
     && sl_all_grow_to_ceiling(r: large)
@@ -114,10 +125,10 @@ test fn witness_heterogeneous_devices_and_a_device_too_small() -> Bool {
   let tiny = sl_device(name: "tiny-0", vram: sl_gib(n: 6))
   let mixed = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 110), devices: [a16, big]),
     groups: [ServingDeviceGroup { name: "g-a16" as NonEmptyStr, devices: ["a16-85"] }, ServingDeviceGroup { name: "g-pro" as NonEmptyStr, devices: ["pro6000-0"] }],
-    b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
+    b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   let small = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 110), devices: [a16, tiny]),
     groups: [ServingDeviceGroup { name: "g-a16" as NonEmptyStr, devices: ["a16-85"] }, ServingDeviceGroup { name: "g-tiny" as NonEmptyStr, devices: ["tiny-0"] }],
-    b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
+    b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   sl_replicas(r: mixed).length() == 2
     && (match sl_refusal(r: small) { Present { value: ServingLayoutDeviceTooSmall { device: d, needed: _, has: _ } } => d == "tiny-0"  _ => false })
 }
@@ -126,8 +137,8 @@ test fn witness_heterogeneous_devices_and_a_device_too_small() -> Bool {
 // a backend that can retain across two runs it as one replica holding both devices.
 test fn witness_two_device_group_is_modeled_and_backend_decides() -> Bool {
   let pair = [ServingDeviceGroup { name: "pair" as NonEmptyStr, devices: ["a16-85", "a16-87"] }]
-  let strata = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
-  let spanning = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: sl_profile_retaining_across(b: strata_iq3_s_a16_profile, most: 2), r: h11_serving_requirement)
+  let strata = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
+  let spanning = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: sl_profile_retaining_across(b: strata_iq3_s_a16_profile, most: 2), r: serving_context_ceiling_requirement)
   (match sl_refusal(r: strata) { Present { value: ServingLayoutBackendCannotRetain { group: gr, devices: n, most: m } } => gr == "pair" && n == 2 && m == 1  _ => false })
     && sl_replicas(r: spanning).length() == 1
     && sl_replicas(r: spanning).all(c => c.devices.length() == 2)
@@ -135,8 +146,8 @@ test fn witness_two_device_group_is_modeled_and_backend_decides() -> Bool {
 
 // THE TOPOLOGY MUST PARTITION GRANTED DEVICES, AND THE REQUIREMENT MAY NOT EXCEED THE BACKEND'S CEILING.
 test fn witness_topology_and_ceiling_faults_refuse() -> Bool {
-  let unknown = serving_layout_derive(g: host_6ce85c_grant, groups: [ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-86"] }], b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
-  let twice = serving_layout_derive(g: host_6ce85c_grant, groups: [ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-85"] }, ServingDeviceGroup { name: "y" as NonEmptyStr, devices: ["a16-85"] }], b: strata_iq3_s_a16_profile, r: h11_serving_requirement)
+  let unknown = serving_layout_derive(g: host_6ce85c_grant, groups: [ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-86"] }], b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
+  let twice = serving_layout_derive(g: host_6ce85c_grant, groups: [ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-85"] }, ServingDeviceGroup { name: "y" as NonEmptyStr, devices: ["a16-85"] }], b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   let over = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: ServingRequirement { max_context: token_count(count: 300000), min_retained_per_replica: 1 })
   (match sl_refusal(r: unknown) { Present { value: ServingLayoutUnknownDevice { group: _, device: d } } => d == "a16-86"  _ => false })
     && (match sl_refusal(r: twice) { Present { value: ServingLayoutDeviceInTwoGroups { device: d } } => d == "a16-85"  _ => false })
@@ -168,8 +179,37 @@ test fn witness_one_more_admission_is_refused_without_eviction() -> Bool {
 test fn witness_changed_grant_requires_requalification() -> Bool {
   let today = sl_replicas(r: host_6ce85c_layout)
   let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: serving_configuration_identity(replicas: today) }
-  let same = serving_layout_with_qualification(result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement), q: receipt)
-  let grown = serving_layout_with_qualification(result: serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement), q: receipt)
+  let same = serving_layout_with_qualification(result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
+  let grown = serving_layout_with_qualification(result: serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
   (match same { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveStandingQualified { receipt: _ } => true  _ => false }  _ => false })
     && (match grown { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+}
+
+// THE PARK HEADROOM IS PART OF THE CAP: the same h11 grant with the engine's 512 MiB park floor read as zero
+// admits more conversations than with it, so a layout that omitted the floor would promise retention the
+// engine then refuses to park.
+test fn witness_park_floor_is_charged_to_each_replica() -> Bool {
+  let unfloored = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups,
+    b: sl_profile_with(b: strata_iq3_s_a16_profile, most: 1, floor: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "witness: no floor" as NonEmptyStr }),
+    r: serving_context_ceiling_requirement)
+  sl_admitted_total(r: unfloored) > sl_admitted_total(r: host_6ce85c_layout)
+}
+
+// srv4 AS GRANTED: one replica holding both GPUs, thirteen maximum-context conversations inside the slice's
+// 96 GiB throttle point, the budget Fits, and nothing qualified live yet. The same two-device group under h11's
+// release, which cannot park across a split, refuses by name: spanning two GPUs is a backend fact, not a
+// topology the layout grants on its own.
+test fn witness_srv4_is_one_replica_across_two_gpus() -> Bool {
+  let old_release = serving_layout_derive(g: srv4_grant, groups: srv4_layer_split_groups,
+    b: sl_profile_retaining_across(b: strata_srv4_layer_split_profile, most: 1), r: serving_context_ceiling_requirement)
+  (match srv4_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
+      rs.length() == 1
+        && rs.all(c => c.devices.length() == 2 && c.admitted_conversations == 13 && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 96)))
+        && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
+        && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
+        && sl_all_grow_to_ceiling_under(r: srv4_layout, b: strata_srv4_layer_split_profile)
+    _ => false
+  })
+    && (match sl_refusal(r: old_release) { Present { value: ServingLayoutBackendCannotRetain { group: gr, devices: n, most: m } } => gr == "gunbc-srv4-daily-engine" && n == 2 && m == 1  _ => false })
 }

@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
@@ -17,7 +17,7 @@ import gunbc.serving.serving_host_memory {
   ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
   serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
   ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
-  host_6ce85c_serving_memory_observed,
+  host_6ce85c_serving_memory_observed, srv4_serving_engine_memory, srv4_strata_snapshot_cost,
 }
 
 // HOW A SERVING HOST IS LAID OUT, DERIVED FROM WHAT IT HAS, HOW ITS DEVICES ARE GROUPED, AND WHAT THE ENGINE
@@ -94,6 +94,10 @@ type ServingBackendProfile {
   active_slot_ram: ServingMemoryReading
   // What one retained conversation costs as a function of its context.
   retention: ConversationSnapshotCost
+  // The free memory the engine requires inside its own cgroup beside a snapshot before it parks one: a cap
+  // without this headroom makes the engine skip parking (Strata: "skip parking (physical RAM admission; need
+  // N MiB plus F MiB floor ... source cgroup)"), so the retention budget is unusable without it.
+  park_free_floor: ServingMemoryReading
   // The most devices a replica may span and still retain conversations.
   max_devices_with_retention: Nat
   // The longest context a replica is launched to serve.
@@ -181,6 +185,10 @@ fn serving_grant_overhead(g: ServingResourceGrant) -> Nat {
   }
 }
 
+fn serving_profile_readings(b: ServingBackendProfile) -> List<ServingMemoryReading> {
+  [b.device_fixed_vram, b.device_min_elastic_vram, b.replica_base_ram, b.active_slot_ram, b.park_free_floor]
+}
+
 fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
   let ram = match g.usable_ram {
     HostUsableRamUnmeasured { reason: r } => [r]
@@ -190,8 +198,7 @@ fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> 
     HostFixedOverheadUnmeasured { reason: r } => [r]
     _ => [] as List<NonEmptyStr>
   }
-  let backend_figures = concat(serving_reading_missing(r: b.device_fixed_vram), concat(serving_reading_missing(r: b.device_min_elastic_vram),
-    concat(serving_reading_missing(r: b.replica_base_ram), serving_reading_missing(r: b.active_slot_ram))))
+  let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_missing(r: x))
   concat(ram, concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_missing(r: d.vram)))))
 }
 
@@ -208,8 +215,7 @@ fn serving_layout_assumptions(g: ServingResourceGrant, b: ServingBackendProfile)
     HostFixedOverheadAllowance { bytes: _, reason: r } => [r]
     _ => [] as List<NonEmptyStr>
   }
-  let backend_figures = concat(serving_reading_assumption(r: b.device_fixed_vram), concat(serving_reading_assumption(r: b.device_min_elastic_vram),
-    concat(serving_reading_assumption(r: b.replica_base_ram), serving_reading_assumption(r: b.active_slot_ram))))
+  let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_assumption(r: x))
   concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_assumption(r: d.vram))))
 }
 
@@ -265,9 +271,11 @@ fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendPr
   }
 }
 
-// What one replica needs before it retains anything: its base and its active slots.
+// What one replica needs beside its retention budget: its base, its active slots, and the free headroom the
+// engine demands before it will park.
 fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
   byte_size_count(b: serving_reading_bytes_or_zero(r: b.replica_base_ram)) + b.active_slots * byte_size_count(b: serving_reading_bytes_or_zero(r: b.active_slot_ram))
+    + byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor))
 }
 
 fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ByteSize, admitted: Nat) -> ServingReplicaConfig {
@@ -330,7 +338,7 @@ fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile,
       name: c.group,
       memory_cap: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
       swap_cap: ServingMemoryRead { bytes: c.swap_max, provenance: "the grant's swap bound" as NonEmptyStr },
-      base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base plus active-slot RAM from the backend profile" as NonEmptyStr },
+      base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base, active-slot RAM and park headroom from the backend profile" as NonEmptyStr },
       conversation_cache: ServingMemoryRead { bytes: c.retention_budget, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
       conversation_slots: Present { value: c.admitted_conversations },
     }),
@@ -438,30 +446,88 @@ data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
   ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
 ]
 
-// STRATA 0.1.48, Qwen3.8-Flash-Next IQ3_S, on one A16 GPU (h11-a16, 2026-10-30). Fixed VRAM is what the engine
-// used beside its expert cache (nvidia-smi memory.used 14544 MiB less the engine's reported 7935 MiB expert
-// cache). The least expert cache, the active-slot RAM and its snapshot peaks are ASSUMED until read. One active
-// slot (/props total_slots 1). Parking is rejected with a layer split (docs/DETAILS.md "Conversation
-// cache"), so a replica retains only on one device. The base was read after load, so it includes the pinned
-// host copy of the max-context KV.
+// STRATA 0.1.48 (source 44df8fd5), Qwen3.8-Flash-Next IQ3_S, on one A16 GPU (h11-a16, 2026-10-30). Fixed VRAM is
+// what the engine used beside its expert cache (nvidia-smi memory.used 14544 MiB less the engine's reported
+// 7935 MiB expert cache). The least expert cache, the active-slot RAM and its snapshot peaks are ASSUMED until
+// read. One active slot (/props total_slots 1). THIS RELEASE rejects parking with a layer split (its
+// docs/DETAILS.md: "enabled parking with --layer-split is rejected before model loading"), so a replica
+// retains only on one device; srv4's later release parks across two (strata_srv4_layer_split_profile). The
+// base was read after load, so it includes the pinned host copy of the max-context KV.
 data strata_iq3_s_a16_profile: ServingBackendProfile = ServingBackendProfile {
-  backend: "strata 0.1.48 qwen3.8-flash-next-iq3_s" as NonEmptyStr,
+  backend: "strata 0.1.48 (44df8fd5) qwen3.8-flash-next-iq3_s" as NonEmptyStr,
   device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6609)), provenance: "h11-a16 nvidia-smi memory.used 14544 MiB less the engine's expert_cache_mib 7935, 2026-10-30" as NonEmptyStr },
   device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache the engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
   replica_base_ram: ServingMemoryRead { bytes: byte_size(count: 4703334400), provenance: "systemctl show h11-strata@c8 MemoryCurrent=4703334400, loaded, idle, 0 requests, nothing parked, 2026-10-30T17:10Z" as NonEmptyStr },
   active_slots: 1,
   active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above the base, including snapshot capture and restore peaks: a 512 MiB assumption until h11-strata@c8 memory.peak is read through real turns" as NonEmptyStr },
   retention: strata_iq3_s_snapshot_cost,
+  park_free_floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), provenance: "h11-strata@c7 engine log: skip parking (physical RAM admission; need 1250 MiB plus 512 MiB floor, 1262 MiB available, source cgroup), 2026-10-30" as NonEmptyStr },
   max_devices_with_retention: 1,
   max_context: token_count(count: 229376),
 }
 
-// THE REQUIREMENT: the engine's own context ceiling, and at least one conversation retained per replica.
-data h11_serving_requirement: ServingRequirement = ServingRequirement { max_context: token_count(count: 229376), min_retained_per_replica: 1 }
+// THE REQUIREMENT: the one serving context ceiling (operator 2026-10-30: "229k is fine", every engine and the
+// daily workspace harness on one cap), and at least one conversation retained per replica.
+data serving_context_ceiling_requirement: ServingRequirement = ServingRequirement { max_context: token_count(count: 229376), min_retained_per_replica: 1 }
 
 data host_6ce85c_layout: ServingLayoutResult = serving_layout_with_qualification(
-  result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: h11_serving_requirement),
+  result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement),
   q: ServingLiveUnqualified { obligation: "h11 has not run this configuration: apply it, read each engine's memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
+)
+
+// ---- srv4 AS GRANTED: ONE REPLICA ACROSS TWO GPUs
+
+fn srv4_rtx_2000_ada_device(bus: String) -> ServingDevice {
+  ServingDevice {
+    device: ("rtx2000ada-" + bus) as NonEmptyStr,
+    board: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_catalog"),
+    vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16380)), provenance: "srv4 nvidia-smi memory.total 16380 MiB, both RTX 2000 Ada GPUs, read 2026-10-30" as NonEmptyStr },
+  }
+}
+
+// THE GRANT is the serving slice, not the host: srv4 also runs CI runners, so serving holds what
+// gunbc-srv4-daily.slice grants. Its MemoryHigh (96 GiB) is the grant, because above it the kernel throttles and
+// reclaims the engine; MemoryMax (120 GiB) is the hard edge beyond that. The engine service's own front end is
+// inside its measured base, and the TLS front runs outside the slice, so the overhead is a small allowance.
+// Nothing is shared: the routed experts are in the engine's own memory. The slice has no swap.
+data srv4_grant: ServingResourceGrant = ServingResourceGrant {
+  host: operator_host_srv4,
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), basis: "gunbc-srv4-daily.slice MemoryHigh=103079215104 (MemoryMax 120 GiB), read 2026-10-30: the RAM serving is granted on a host it shares with CI runners" as NonEmptyStr },
+  overhead: HostFixedOverheadAllowance { bytes: mebibyte_to_byte_size(m: mebibyte(count: 256)), reason: "srv4 slice overhead: a 256 MiB allowance; the engine's front end is inside its base and the TLS front is outside the slice" as NonEmptyStr },
+  shared: [] as List<ServingSharedArtifact>,
+  swap_bound: byte_size(count: 0),
+  charging: [] as List<NonEmptyStr>,
+  devices: [srv4_rtx_2000_ada_device(bus: "0000-01"), srv4_rtx_2000_ada_device(bus: "0004-01")],
+}
+
+// ONE GROUP OF TWO: the engine splits its layers across both GPUs (--layer-split 24: CUDA0 runs layers 0-23,
+// CUDA1 24-47), so the two devices are one replica.
+data srv4_layer_split_groups: List<ServingDeviceGroup> = [
+  ServingDeviceGroup { name: "gunbc-srv4-daily-engine" as NonEmptyStr, devices: ["rtx2000ada-0000-01", "rtx2000ada-0004-01"] },
+]
+
+// STRATA RELEASE 406c9de18cef, Qwen3.8-Flash-Next IQ3_S, layer split across two RTX 2000 Ada GPUs (srv4,
+// 2026-10-30). Fixed VRAM per device is the larger of the two devices' use beside their expert caches: CUDA1
+// 15216 MiB less 10687 MiB of cache is 4529 MiB (CUDA0: 15548 less 12613 is 2935 MiB); the halves differ
+// because they hold different layers. The base is the engine service's memory.current loaded and idle and
+// includes the routed experts. This release PARKS across the split: its log reads "layer split across 2 GPUs"
+// and "parked=8". The park headroom is the engine's own conversation_cache_min_free_mib.
+data strata_srv4_layer_split_profile: ServingBackendProfile = ServingBackendProfile {
+  backend: "strata 406c9de18cef qwen3.8-flash-next-iq3_s, layer split 24" as NonEmptyStr,
+  device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 4529)), provenance: "srv4 nvidia-smi memory.used 15216 MiB on CUDA1 less its expert cache 10687 MiB (/metrics expert_cache_mib 23300 less expert_cache_primary_mib 12613), 2026-10-30" as NonEmptyStr },
+  device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache srv4's engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
+  replica_base_ram: srv4_serving_engine_memory.base,
+  active_slots: 1,
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above srv4's base, including snapshot capture and restore peaks: a 512 MiB assumption until memory.peak is read through real turns" as NonEmptyStr },
+  retention: srv4_strata_snapshot_cost,
+  park_free_floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 2560)), provenance: "srv4 Strata /metrics conversation_cache_min_free_mib 2560, 2026-10-30" as NonEmptyStr },
+  max_devices_with_retention: 2,
+  max_context: token_count(count: 229376),
+}
+
+data srv4_layout: ServingLayoutResult = serving_layout_with_qualification(
+  result: serving_layout_derive(g: srv4_grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement),
+  q: ServingLiveUnqualified { obligation: "srv4 has not run this configuration: its live cache is 32 GiB in 8 slots; apply the derived cap and cache, read memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
 )
 
 // CONSUMER, declared frontier (DESIGN section 3c): the h11 engine units' MemoryMax, MemorySwapMax,

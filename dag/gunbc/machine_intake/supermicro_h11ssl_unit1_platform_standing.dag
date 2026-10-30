@@ -131,8 +131,22 @@ data supermicro_h11ssl_unit1_dimmh1_experiments: List<CausalExperimentReceipt> =
     hypothesis: "Stale CMOS settings disable DIMMH1",
     intervention: "Operator reset the CMOS (date unrecorded)",
     observation: "DIMMH1 trained on some later boots and was disabled again on others, including 2026-10-30T16:31Z",
-    verdict: ExperimentInconclusive { reason: "A per-boot intermittent fault is untouched by a one-time reset; the boots after it are the same mix as before, so the reset neither cleared nor caused it." },
+    verdict: ExperimentInconclusive { reason: "The boots after the reset are the same mix as before, so the reset was not sufficient to clear it; that does not rule out firmware initialization state as a cause." },
     observed_at: 1793378400000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "Retained standby-power state disables DIMMH1, and removing AC clears it",
+    intervention: "AC removed with settings untouched: once for 42 s (BMC unreachable 17:17:26Z, answering 17:18:08Z) and once for about 6 minutes; then the CMOS battery pulled",
+    observation: "DIMMH1 disabled again on the POST after each",
+    verdict: ExperimentInconclusive { reason: "Removing AC was not sufficient on any trial; with three trials of one intermittent fault, this weakens a power-path explanation without refuting it." },
+    observed_at: 1793380620000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "A full CMOS clear recovers DIMMH1",
+    intervention: "AC removed and JBT1 shorted (RTC reset to 2011; BIOS defaults restored, which also set Dual boot with legacy first and caused a PXE loop, fixed by setting UEFI boot mode)",
+    observation: "DIMMH1 disabled on both POSTs after the clear (SEL d8, da), and still absent once Ubuntu started",
+    verdict: ExperimentInconclusive { reason: "The clear was not sufficient on this trial; the earlier recovery after a reset was not reproduced, and settings and firmware state stay unseparated." },
+    observed_at: 1793383200000,
   },
 ]
 

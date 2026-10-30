@@ -154,10 +154,10 @@ test fn witness_snapshot_cost_covers_observed_parks() -> Bool {
     && byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 176183))) >= 2420042020
 }
 
-// THE SHARED-HOST ROWS NAME WHAT IS UNREAD, AND AN UNREAD CACHE KEEPS NOTHING WARM.
+// THE SHARED-HOST ROWS NAME WHAT IS UNREAD, AND AN UNREAD CACHE KEEPS NOTHING WARM; srv4's row is now read in full.
 test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
   serving_engine_missing(e: srv1_vllm_engine_memory).length() == 1
     && serving_engine_missing(e: srv3_strata_engine_memory).length() == 3
-    && serving_engine_missing(e: srv4_serving_engine_memory).length() == 4
-    && is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
+    && serving_engine_missing(e: srv4_serving_engine_memory).length() == 0
+    && !is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
 }
