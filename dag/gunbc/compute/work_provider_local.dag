@@ -80,7 +80,7 @@ import gunbc.compute.work_class_grant {
   work_class_peak_sample, work_class_peak_sample_wire, work_class_summary_peak_upper,
 }
 import gunbc.compute.host_capacity {
-  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, ComputeReservationRecoveryRequired,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
@@ -1455,7 +1455,11 @@ fn compute_run_opened(
                 compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
               ComputeReservationRefused { detail: d } =>
                 compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
-              ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+              ComputeReservationRecoveryRequired { detail: d } =>
+                provide_result_with_host_record(
+                  r: compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: ComputeCapacityLedgerUnavailable { detail: d }),
+                  carried: HostRecordLost { detail: concat("capacity remains charged; recover the recorded attempt: ", d) })
+              ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } =>
                 compute_run_ceiling_retry(
                   instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
                   dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
@@ -2421,15 +2425,20 @@ fn compute_reserve_opened(
       compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
     ComputeReservationRefused { detail: d } =>
       compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+    ComputeReservationRecoveryRequired { detail: d } =>
+      provide_result_with_host_record(
+        r: compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: d }),
+        carried: HostRecordLost { detail: concat("capacity remains charged; recover the recorded attempt: ", d) })
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } =>
       compute_run_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
         dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
   }
 }
 
-// A REFUSED RESERVATION CLOSES THE SLOT IT WAS TAKEN UNDER, then reports as a request that holds
-// nothing. The close's own failure is a host-record fact beside the refusal, never a second verdict.
+// A REFUSED RESERVATION CLOSES THE SLOT IT WAS TAKEN UNDER. Recovery-required callers carry
+// HostRecordLost as well: the terminal slot remains the recovery binding for a partial charge.
+// The close's own failure is a host-record fact beside the refusal, never a second verdict.
 fn compute_refused_after_open(
   instance: HostDashboardInstance,
   identity: String,
@@ -3182,6 +3191,7 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // request, but the subject names the hold it is about rather than a figure invented for it.
 fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyStr, reason: String) -> ComputeRelease {
   compute_release_on(
+    parent_partition: subject.parent_partition,
     store: compute_capacity_store(subject: subject),
     partition: subject.partition,
     appropriation: kibibyte(count: 0),

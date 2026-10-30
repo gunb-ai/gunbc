@@ -17,7 +17,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
-  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, ComputeReservationRecoveryRequired,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
@@ -85,6 +85,8 @@ fn subject_at(dir: String) -> ComputeCapacitySubject {
     root: join([dir, "/capacity"], "") as NonEmptyStr,
     partition: "session-memory-g5-witness" as NonEmptyStr as PartitionId,
     appropriation: kibibyte(count: 1048576),
+    parent_partition: "fixture-parent-memory" as PartitionId,
+    parent_appropriation: kibibyte(count: 1048576),
     request: kibibyte(count: 1024),
   }
 }
@@ -129,23 +131,25 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
       records_dir: dir,
       store: compute_capacity_store(subject: subject_at(dir: dir)),
       partition: subject_at(dir: dir).partition,
+      parent_partition: subject_at(dir: dir).parent_partition,
     } }
   }
 }
 
 fn reserve_real(dir: String) -> LeaseGrant? {
   match compute_reserve_against(subject: subject_at(dir: dir), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
-    ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
+    ComputeReserved { parent_partition: _, grant, partition: _, amount: _, store: _ } => Present { value: grant }
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none
     ComputeReservationRefused { detail: _ } => none
+    ComputeReservationRecoveryRequired { detail: _ } => none
   }
 }
 
 // THE LEDGER STILL HOLDS THE REFERENCE iff a release proposed now returns it. Destructive, so it is
 // each control's LAST read.
 fn ledger_still_holds(dir: String) -> Bool {
-  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
+  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), parent_partition: subject_at(dir: dir).parent_partition, partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
     ComputeReleased { partition: _, reference: _, reason: _ } => true
     ComputeNothingToRelease { detail: _ } => false
     ComputeReleaseRefused { detail: _ } => false

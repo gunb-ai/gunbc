@@ -8,6 +8,8 @@
 // legs under test are the real plan's, not hand-built.
 module test.claim.live_deploy.live_deploy_apply_run_witness
 
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
+
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.algebra { Cons, Empty, skip }
 import std.optional { Optional, Present, Absent }
@@ -142,6 +144,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegReport { step: _, line: line } => string_contains(s: line, pattern: "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: no census")
         ApplyLegCommand { step: _, command: _ } => false
         ApplyLegInstallFile { step: _, command: _, payload: _ } => false
+        ApplyLegInstallUnit { step: _, install: install } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegBrokerStateDirectories { revision: _ } => false
@@ -410,6 +413,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegDigestVerify { step: _, path: p, digest: d } => p == "/src/target/release/gunbc" && digest_hex_eq(a: d, b: deploy_witness_full_install_plan(spec: spec).target.executable)
         ApplyLegCommand { step: _, command: _ } => false
         ApplyLegInstallFile { step: _, command: _, payload: _ } => false
+        ApplyLegInstallUnit { step: _, install: install } => false
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
@@ -562,6 +566,7 @@ fn leg_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
     ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegInstallUnit { step: _, install: install } => argv_words(command: apply_unit_install_command(install: install))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -599,6 +604,7 @@ test fn the_cap_install_writes_the_members_content_to_its_dropin() -> Bool {
       match a {
         ApplyLegInstallFile { step: _, command: c, payload: p } =>
           p == the_member().content && any(argv_words(command: c), w => w == (the_member().dropin_path as String))
+        ApplyLegInstallUnit { step: _, install: _ } => false
         ApplyLegCommand { step: _, command: _ } => false
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
@@ -668,3 +674,19 @@ test fn the_credstore_copy_bracket_answers_each_remedy() -> Bool {
     && (match credstore_run(port: credstore_port(mktemp: 1, copy: 0, root: 0, rmdir: 0)) { CredstoreCopyNotEntered { cause: _ } => true  _ => false })
 }
 
+
+// The real publication producer supplies both typed unit records. A broken executor
+// that merely reports success without delivering stdin fails the refused-port control.
+test fn typed_unit_installs_reach_the_existing_stdin_transport() -> Bool {
+  let units = filter(publication_legs(), leg => match leg {
+    ApplyLegInstallUnit { step: _, install: _ } => true
+    _ => false
+  })
+  count(units) == 2 && match deploy_apply_run_legs(legs: units, ports: ports(command_code: 0, stdin_code: 0)) {
+    ApplyRunFailed { step: _, reason: _, legs_run: _ } => false
+    ApplyRunOk { legs_run: n, reports: _ } => n == 2 && match deploy_apply_run_legs(legs: units, ports: ports(command_code: 0, stdin_code: 4)) {
+      ApplyRunOk { legs_run: _, reports: _ } => false
+      ApplyRunFailed { step: _, reason: reason, legs_run: n } => n == 0 && string_contains(s: reason, pattern: "stdin-boom")
+    }
+  }
+}

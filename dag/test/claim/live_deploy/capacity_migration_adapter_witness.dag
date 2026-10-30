@@ -1,0 +1,77 @@
+module test.claim.live_deploy.capacity_migration_adapter_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.systemd.unit_file { ServiceUnitFile, SliceUnitFile, NotInstallable, ServiceSlice }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.compute.capacity_migration { CapacityWriterReading, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified }
+import gunbc.live_deploy.capacity_migration {
+  DeploymentCapacityWriter, deployment_capacity_writer_parent, deployment_capacity_population_from_installs,
+}
+import test.claim.compute.capacity_migration_witness { migration_fixture_population }
+
+fn adapter_writer_source() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.live_deploy.capacity_migration_adapter_witness", decl_name: "adapter_writer_source")
+}
+
+fn adapter_service(unit: NonEmptyStr, parents: List<NonEmptyStr>) -> DeploymentUnitInstall {
+  DeploymentUnitInstall {
+    manager: UserManager { uid: 1234 }, unit: unit, destination: join(["/fixture/", unit as String], "") as NonEmptyStr,
+    file: ServiceUnitFile { unit: [], service: map(parents, name => ServiceSlice { name: name }), install: NotInstallable },
+  }
+}
+
+fn adapter_classify(row: DeploymentUnitInstall) -> CapacityWriterReading {
+  CapacityWriterReading {
+    source: adapter_writer_source(),
+    standing: if row.unit == "writer.service" { CapacityConfirmedWriter }
+      else if row.unit == "reader.service" { CapacityConfirmedNonWriter }
+      else { CapacityUnclassified { detail: "source reachability unresolved" } },
+  }
+}
+
+test fn a_slice_with_no_writer_is_not_a_parent_requirement() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let unused = DeploymentUnitInstall {
+    manager: SystemManager, unit: "srv1-inference.slice", destination: "/fixture/srv1-inference.slice",
+    file: SliceUnitFile { unit: [], slice: [], install: NotInstallable },
+  }
+  match deployment_capacity_population_from_installs(
+    installed: [adapter_service(unit: "writer.service", parents: ["work.slice"]), adapter_service(unit: "reader.service", parents: ["srv1-inference.slice"]), unused],
+    transients: base.transients, children: base.children, classify: row => adapter_classify(row: row)) {
+    Err { value: _ } => false
+    Ok { value: population } => count(population.installed) == 1 && count(population.writer_parents) == 1
+      && all(population.writer_parents, requirement => match requirement.parents {
+        Err { value: _ } => false
+        Ok { value: parents } => count(parents) == 1 && all(parents, parent => parent.manager == UserManager { uid: 1234 } && parent.unit == "work.slice")
+      })
+  }
+}
+
+test fn unresolved_writer_reachability_is_drained_and_labelled() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  match deployment_capacity_population_from_installs(
+    installed: [adapter_service(unit: "writer.service", parents: ["work.slice"]), adapter_service(unit: "unknown.service", parents: ["other.slice"])],
+    transients: base.transients, children: base.children, classify: row => adapter_classify(row: row)) {
+    Err { value: _ } => false
+    Ok { value: population } => count(population.installed) == 2 && count(population.writer_parents) == 2
+      && any(population.writer_parents, row => match row.standing {
+        CapacityUnclassified { detail: detail } => detail == "source reachability unresolved" && match row.parents {
+          Err { value: _ } => false
+          Ok { value: parents } => any(parents, parent => parent.unit == "other.slice")
+        }
+        _ => false
+      })
+  }
+}
+
+test fn missing_or_ambiguous_writer_placement_is_not_a_parent_guess() -> Bool {
+  all([[] as List<NonEmptyStr>, ["one.slice", "two.slice"]], parents =>
+    match deployment_capacity_writer_parent(writer: DeploymentCapacityWriter { reading: CapacityWriterReading { source: adapter_writer_source(), standing: CapacityUnclassified { detail: "unresolved root" } }, install: adapter_service(unit: "writer.service", parents: parents) }).parents {
+      Err { value: _ } => true
+      Ok { value: _ } => false
+    })
+}

@@ -1,0 +1,249 @@
+module gunbc.compute.capacity_migration
+
+import std.types { String, NonEmptyStr, List, CommitSha, Bool }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import std.decl_ref { DeclarationRef }
+import std.measure { kibibyte_count }
+import extdeps.systemd.manager { SystemdManager }
+import product.capacity.event_chain { PartitionId }
+import gunbc.deploy_transition_bootstrap {
+  ExternalQuiescence, QuiescenceInForce, QuiescenceRefused, unit_quiescence_admission,
+}
+import gunbc.compute.recorded_cgroup_drain {
+  RecordedCgroupPathStanding, RecordedCgroupMaySeal, RecordedCgroupPreserve, recorded_cgroup_drain,
+}
+import gunbc.compute.host_capacity {
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread,
+}
+
+// Source reachability readings are supplied, never recomputed during activation.
+// Unknown is included in the drain, not mistaken for a negative reading.
+type CapacityWriterStanding
+  = CapacityConfirmedWriter
+  | CapacityConfirmedNonWriter
+  | CapacityUnclassified { detail: String }
+
+type CapacityWriterReading {
+  source: DeclarationRef
+  standing: CapacityWriterStanding
+}
+
+// DECLARED FRONTIER: the drain over-approximates writers by unclassified roots.
+// A positive hit from v2.std.fn_index.call_reachable_decls_from_root is useful today;
+// its service-call blind spot prevents a sound negative for uncovered roots. The
+// trigger that shrinks this set is service-call-edge coverage in that existing owner,
+// as recorded by gunbc.instruments.roster_reach_inhabitance. No parser or reachability
+// walk is added to activation; longer quiet windows are the cost of this uncertainty.
+type CapacityManagedUnit {
+  manager: SystemdManager
+  unit: NonEmptyStr
+}
+
+// One row per naming authority, not one copied prefix per consumer. The source owner
+// derives patterns from its own name producer. Enumeration belongs to that owner too;
+// an unreadable or incomplete population must be supplied as Err, never as [].
+type CapacityFamilyPlacement
+  = CapacityFamilyParents { parents: Result<List<CapacityManagedUnit>, String> }
+  | CapacityActivationFamily { targets: List<CapacityManagedUnit> }
+
+type CapacityTransientFamily {
+  standing: CapacityWriterStanding
+  manager: SystemdManager
+  source: DeclarationRef
+  patterns: List<NonEmptyStr>
+  exclude_patterns: List<NonEmptyStr>
+  activators: List<CapacityManagedUnit>
+  // Includes destinations of self-wrap/relaunch, not only the initial service cgroup.
+  placement: CapacityFamilyPlacement
+}
+
+// Drain scheduling consumes this projection, including unresolved placements. It cannot
+// schedule a host quiet window from only the successfully resolved subset.
+type CapacityMigrationParentRequirement {
+  standing: CapacityWriterStanding
+  source: DeclarationRef
+  parents: Result<List<CapacityManagedUnit>, String>
+}
+
+fn capacity_migration_parent_requirements(population: CapacityMigrationPopulation) -> List<CapacityMigrationParentRequirement> {
+  filter(population.writer_parents, row => row.standing != CapacityConfirmedNonWriter)
+    + capacity_migration_family_parent_requirements(families: population.transients)
+}
+
+// Stated divergence: keep these predicates at declaration scope until the
+// production-module builtin/effect-summary resolution defect is understood.
+// Receipt: gunbc.recurring_failure_mode.nested_builtin_loses_callee_identity.
+fn capacity_units_have_wrong_manager(units: List<CapacityManagedUnit>, manager: SystemdManager) -> Bool {
+  fold(units, init: false, f: (wrong, unit) => wrong || unit.manager != manager)
+}
+
+fn capacity_unit_is_not_excluded(excluded: List<CapacityManagedUnit>, unit: CapacityManagedUnit) -> Bool {
+  fold(excluded, init: true, f: (keep, other) => keep && other != unit)
+}
+
+// The manager owns glob matching. Read inclusions and exclusions through that same
+// reader after inhibition; never implement a second glob parser here. A failed
+// exclusion read is not an empty exclusion set. Both readings carry manager identity.
+fn capacity_migration_enumerate_family(
+  family: CapacityTransientFamily,
+  read_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>,
+) -> Result<List<CapacityManagedUnit>, String> {
+  match read_matches(family.manager, family.patterns) {
+    Err { value: why } => Err { value: why }
+    Ok { value: included } => {
+      let exclusion = if count(family.exclude_patterns) == 0 { Ok { value: [] } }
+        else { read_matches(family.manager, family.exclude_patterns) }
+      match exclusion {
+        Err { value: why } => Err { value: why }
+        Ok { value: excluded } => {
+          if capacity_units_have_wrong_manager(units: included + excluded, manager: family.manager) {
+            Err { value: "family selector reading came from a different manager" }
+          } else {
+            Ok { value: filter(included, unit => capacity_unit_is_not_excluded(excluded: excluded, unit: unit)) }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Each parent is a whole manager-scoped slice: inhibition and emptiness cover every
+// session on that host using it, not just the producer whose row requires it.
+fn capacity_migration_family_parent_requirements(families: List<CapacityTransientFamily>) -> List<CapacityMigrationParentRequirement> {
+  flat_map(filter(families, family => family.standing != CapacityConfirmedNonWriter), family => match family.placement {
+    CapacityFamilyParents { parents: parents } => [CapacityMigrationParentRequirement { standing: family.standing, source: family.source, parents: parents }]
+    CapacityActivationFamily { targets: _ } => []
+  })
+}
+
+type CapacityMigrationChild {
+  root: NonEmptyStr
+  partition: PartitionId
+}
+
+type CapacityMigrationPopulation {
+  source: DeclarationRef
+  installed: List<CapacityManagedUnit>
+  writer_parents: List<CapacityMigrationParentRequirement>
+  transients: List<CapacityTransientFamily>
+  children: List<CapacityMigrationChild>
+}
+
+type CapacityUnitDrain {
+  subject: CapacityManagedUnit
+  quiescence: ExternalQuiescence
+  descendants: RecordedCgroupPathStanding
+}
+
+// This is a pure admission, not a deployment receipt or a marker writer. Its production
+// consumer remains the source-owned lab activation transaction. In particular, supplying
+// a roster here does not assert that a hand-written list describes the live deployment.
+// Parent slices are inhibited as well as their activators: an empty reading alone must
+// never open a window in which an old-generation writer can start again.
+type CapacityMigrationAdmission sole_constructor {
+  population: CapacityMigrationPopulation
+  target_revision: CommitSha
+}
+
+fn capacity_migration_unit_refusal(subject: CapacityManagedUnit, observed: List<CapacityUnitDrain>) -> String? {
+  let matches = filter(observed, item => item.subject == subject)
+  if count(matches) != 1 {
+    Present { value: concat("missing or ambiguous drain observation for ", subject.unit as String) }
+  } else {
+    match first(matches) {
+      Absent => Present { value: "unit drain observation was absent" }
+      Present { value: reading } =>
+        if reading.quiescence.unit != subject.unit {
+          Present { value: "quiescence names a different unit" }
+        } else {
+          match unit_quiescence_admission(q: reading.quiescence) {
+            QuiescenceRefused { cause: why } => Present { value: why }
+            QuiescenceInForce => match recorded_cgroup_drain(path: reading.descendants) {
+              RecordedCgroupPreserve { detail: why } => Present { value: why }
+              RecordedCgroupMaySeal { detail: _ } => none
+            }
+          }
+        }
+    }
+  }
+}
+
+fn capacity_migration_admit(
+  population: CapacityMigrationPopulation,
+  target_revision: CommitSha,
+  observed: List<CapacityUnitDrain>,
+  enumerate: fn(CapacityTransientFamily) -> Result<List<CapacityManagedUnit>, String>,
+  read_child: fn(CapacityMigrationChild) -> ComputeCapacityStanding,
+) -> Result<CapacityMigrationAdmission, String> {
+  if count(population.installed) == 0 || count(population.transients) == 0 || count(population.children) == 0 {
+    return Err { value: "migration population is incomplete" }
+  }
+  let drained_families = filter(population.transients, family => family.standing != CapacityConfirmedNonWriter)
+  if any(drained_families, family => count(family.patterns) == 0 || count(family.activators) == 0) {
+    return Err { value: "transient family lacks its naming patterns or activators" }
+  }
+  // An activation-only family may omit a parent only when every destination is
+  // itself in the installed drain. This is an edge to an inhibited writer, not a
+  // non-writer exemption from enumerating/quiescing the transient family.
+  if any(drained_families, family => match family.placement {
+    CapacityFamilyParents { parents: _ } => false
+    CapacityActivationFamily { targets: targets } => count(targets) == 0
+      || fold(targets, init: false, f: (missing, target) => missing || fold(population.installed, init: true, f: (absent, unit) => absent && unit != target))
+  }) { return Err { value: "activation family destination is absent from the installed drain" } }
+  let requirements = capacity_migration_parent_requirements(population: population)
+  let placement_refusal = fold(requirements, init: none, f: (prior, family) => match prior {
+    Present { value: _ } => prior
+    Absent => match family.parents {
+      Err { value: why } => Present { value: why }
+      Ok { value: parents } => if count(parents) == 0 { Present { value: "transient placement has no observed parent" } } else { none }
+    }
+  })
+  match placement_refusal { Present { value: why } => { return Err { value: why } } Absent => {} }
+  let inhibited = population.installed + flat_map(drained_families, family => family.activators)
+    + flat_map(requirements, row => match row.parents {
+      Ok { value: parents } => parents
+      Err { value: _ } => []
+    })
+  let refusal = fold(inhibited, init: none, f: (prior, unit) => match prior {
+    Present { value: _ } => prior
+    Absent => capacity_migration_unit_refusal(subject: unit, observed: observed)
+  })
+  match refusal {
+    Present { value: why } => Err { value: why }
+    Absent => {
+      // Enumeration happens only after the installed/parent inhibition gate. Every
+      // observed transient must have its own unit and descendant proof, even if inactive.
+      let transient_refusal = fold(drained_families, init: none, f: (prior, family) => match prior {
+        Present { value: _ } => prior
+        Absent => match enumerate(family) {
+          Err { value: why } => Present { value: why }
+          Ok { value: units } => if any(units, unit => unit.manager != family.manager) {
+            Present { value: "transient enumeration returned a unit from a different manager" }
+          } else { fold(units, init: none, f: (previous, unit) => match previous {
+            Present { value: _ } => previous
+            Absent => capacity_migration_unit_refusal(subject: unit, observed: observed)
+          }) }
+        }
+      })
+      match transient_refusal {
+        Present { value: why } => Err { value: why }
+        Absent => {
+          // Empty ledgers are the last observation, never a substitute for inhibition.
+          let ledger_refusal = fold(population.children, init: none, f: (prior, child) => match prior {
+            Present { value: _ } => prior
+            Absent => match read_child(child) {
+              ComputeCapacityStandingUnread { detail: why } => Present { value: why }
+              ComputeCapacityStandingRead { committed: held } =>
+                if kibibyte_count(k: held) == 0 { none } else { Present { value: "a child ledger still holds capacity" } }
+            }
+          })
+          match ledger_refusal {
+            Present { value: why } => Err { value: why }
+            Absent => Ok { value: CapacityMigrationAdmission { population: population, target_revision: target_revision } }
+          }
+        }
+      }
+    }
+  }
+}

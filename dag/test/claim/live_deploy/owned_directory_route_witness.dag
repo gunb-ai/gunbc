@@ -1,5 +1,7 @@
 module test.claim.live_deploy.owned_directory_route_witness
 
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload }
+
 import std.types { Bool, String, NonEmptyStr, FilePath, List, Int }
 import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
@@ -283,6 +285,7 @@ fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
       ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
       ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
       ApplyLegInstallFile { step: st, command: c, payload: p } => concat([st, p], c.arguments)
+      ApplyLegInstallUnit { step: st, install: install } => concat([st, apply_unit_install_payload(install: install)], apply_unit_install_command(install: install).arguments)
       ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
       _ => []
     }),

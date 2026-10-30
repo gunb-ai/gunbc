@@ -69,6 +69,8 @@ fn subject_at(root: String) -> ComputeCapacitySubject {
     root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
     partition: "compute-seat-discharge-wet-witness" as PartitionId,
     appropriation: kibibyte(count: granted_kib * 4),
+    parent_partition: "fixture-parent-memory" as PartitionId,
+    parent_appropriation: kibibyte(count: granted_kib * 4),
     request: kibibyte(count: granted_kib),
   }
 }
@@ -154,7 +156,7 @@ fn dispatch_owner() -> AttemptOwner {
 
 fn reserved(subject: ComputeCapacitySubject, reference: String) -> Bool {
   match compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host) {
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => true
     _ => false
   }
 }
@@ -834,7 +836,7 @@ fn minted_reference(root: String, key: String) -> String {
 fn reserved_and_released(subject: ComputeCapacitySubject, reference: String) -> Bool {
   let r = compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host)
   match r {
-    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => match compute_release(reservation: r, reason: "control release" as NonEmptyStr) {
+    ComputeReserved { parent_partition: _, grant: _, partition: _, amount: _, store: _ } => match compute_release(reservation: r, reason: "control release" as NonEmptyStr) {
       ComputeReleased { partition: _, reference: _, reason: _ } => true
       _ => false
     }

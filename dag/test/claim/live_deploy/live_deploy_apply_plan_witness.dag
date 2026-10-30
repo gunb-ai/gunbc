@@ -6,6 +6,13 @@
 // removes the last execution of production's entry.
 module test.claim.live_deploy.live_deploy_apply_plan_witness
 
+import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_payload, deploy_apply_unit_installs }
+import gunbc.live_deploy.unit_install_roster { deployment_desired_unit_installs }
+import std.error_primitives { Ok, Err }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.live_deploy.spec { deployment_belt_exit_path_unit_name, deployment_belt_discovery_service_unit_name, deployment_belt_credential_recovery_timer_unit_name }
+
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
@@ -168,6 +175,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
     ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
     ApplyLegInstallFile { step: _, command: c, payload: _ } => command_within_grants(c: c)
+    ApplyLegInstallUnit { step: _, install: install } => command_within_grants(c: apply_unit_install_command(install: install))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
@@ -311,6 +319,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
+        ApplyLegInstallUnit { step: _, install: install } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
@@ -590,6 +599,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
     ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegInstallUnit { step: _, install: install } => argv_words(command: apply_unit_install_command(install: install))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -609,6 +619,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegInstallUnit { step: _, install: install } => apply_unit_install_payload(install: install)
     ApplyLegCommand { step: _, command: _ } => ""
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
@@ -847,6 +858,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallUnit { step: _, install: install } => launcher_snapshot_owner(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
@@ -873,4 +885,29 @@ test fn the_launcher_snapshot_is_root_owned_and_outside_the_service_release() ->
   launcher_snapshot_owner(legs: legs) == (approval_broker_helper_root_principal as String)
     && starts_with(s: base, prefix: attempt_system_unit_launcher_helpers_root)
     && !starts_with(s: base, prefix: spec.service.repo_root as String)
+}
+
+// Inhabitance: the full source plan produces the same records the executor consumes.
+// The secondary discovery service and recovery timer are not top-level spec steps;
+// deleting either installation must make this claim fail.
+test fn desired_unit_roster_keeps_secondary_producers_and_user_manager_identity() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deployment_desired_unit_installs(spec: spec, target: deploy_witness_release_target(spec: spec),
+    authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: tracker_web_test_console_readback_observed_at_epoch) {
+    Err { value: _ } => false
+    Ok { value: units } =>
+      any(units, unit => unit.manager == SystemManager && unit.unit == spec.names.unit_name)
+        && any(units, unit => unit.manager == SystemManager && unit.unit == deployment_belt_exit_path_unit_name(names: spec.names))
+        && any(units, unit => unit.manager == SystemManager && unit.unit == deployment_belt_discovery_service_unit_name(names: spec.names))
+        && any(units, unit => unit.manager == SystemManager && unit.unit == deployment_belt_credential_recovery_timer_unit_name(names: spec.names))
+        && any(units, unit => unit.manager == UserManager { uid: gunbc_service_uid } && unit.unit == user_work_slice_unit_name && unit.destination == gunbc_user_work_slice_unit_path())
+        && !any(units, unit => unit.manager == SystemManager && unit.unit == user_work_slice_unit_name)
+  }
+}
+
+test fn refused_installation_cannot_be_read_as_an_empty_unit_roster() -> Bool {
+  match deploy_apply_unit_installs(plan: ApplyPlanRefused { step: "unreadable", reason: "observer failed" }) {
+    Ok { value: _ } => false
+    Err { value: reason } => string_contains(s: reason, pattern: "observer failed")
+  }
 }
