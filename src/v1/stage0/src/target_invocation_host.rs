@@ -1120,7 +1120,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
-fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
+fn run_producer(producer: TargetProducer) -> InvocationOutcome {
     match producer {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
@@ -5021,7 +5021,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: invocation_refusal_rendered(&refusal),
             }
         }
-        Some((bound, producer)) => run_producer(producer, &bound.target),
+        Some((_, producer)) => run_producer(producer),
     }
 }
 
