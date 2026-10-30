@@ -10,6 +10,7 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_
 import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments }
 import extdeps.gpu.types { GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused }
 import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_board_catalog, amd_board_catalogs }
+import extdeps.gpu.gigabyte { gigabyte_r9700_ai_top_32g_board_catalog }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,8 +43,9 @@ test fn witness_srv1_holds_the_pro_6000_and_the_r9700s_are_uninstalled() -> Bool
 // EVERY CARD IN INVENTORY BINDS A BOARD ROW THAT EXISTS, and the R9700 board row is admitted.
 test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
   admitted(a: amd_radeon_ai_pro_r9700_board_catalog)
+    && admitted(a: gigabyte_r9700_ai_top_32g_board_catalog)
     && amd_board_catalogs.length() == 1
-    && gpu_board_assets.all(a => a.catalog.decl_name == "nvidia_rtx_pro_6000_workstation_board_catalog" || a.catalog.decl_name == "amd_radeon_ai_pro_r9700_board_catalog")
+    && gpu_board_assets.all(a => a.catalog.decl_name == "nvidia_rtx_pro_6000_workstation_board_catalog" || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog")
 }
 
 // THE H11 HOST IS A ROSTER MEMBER UNDER ITS OPAQUE IDENTITY.

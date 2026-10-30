@@ -289,15 +289,15 @@ data gpu_board_01_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-// The operator's two Radeon AI PRO R9700 cards (2026-10-30). Owned, not installed: their host is the
-// plan's operator decision D3, still open ("will probably go in a new host", operator 2026-10-30, so no
-// host row exists for them to be contained in). Their partner SKU and serials are unread, so they bind
-// AMD's board row.
+// The operator's two Radeon AI PRO R9700 cards (2026-10-30): Gigabyte's AI TOP 32G board
+// (extdeps.gpu.gigabyte), carrying AMD's GPU. Owned, not installed: their host is the plan's operator
+// decision D3, still open ("will probably go in a new host", operator 2026-10-30, so no host row exists for
+// them to be contained in). Their serials and board revision are unread.
 data gpu_board_02_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_02,
   catalog: DeclarationRef {
-    module_path: "extdeps.gpu.amd",
-    decl_name: "amd_radeon_ai_pro_r9700_board_catalog",
+    module_path: "extdeps.gpu.gigabyte",
+    decl_name: "gigabyte_r9700_ai_top_32g_board_catalog",
     field: WholeDeclaration,
   },
   physical_serial: none,
@@ -307,8 +307,8 @@ data gpu_board_02_asset: PhysicalAsset = PhysicalAsset {
 data gpu_board_03_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_03,
   catalog: DeclarationRef {
-    module_path: "extdeps.gpu.amd",
-    decl_name: "amd_radeon_ai_pro_r9700_board_catalog",
+    module_path: "extdeps.gpu.gigabyte",
+    decl_name: "gigabyte_r9700_ai_top_32g_board_catalog",
     field: WholeDeclaration,
   },
   physical_serial: none,
