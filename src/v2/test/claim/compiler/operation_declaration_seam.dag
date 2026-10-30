@@ -197,7 +197,13 @@ test fn the_m2v_population_splits_one_implementable_and_the_rest_blocked_holds()
       }
     }
   )
-  implementable == [decl_ref(module_path: "v2.std.live_read", decl_name: "filesystem_read")]
+  length(xs: implementable) == 1
+    && operation_declaration_row_count_for(declaration: decl_ref(module_path: "v2.std.live_read", decl_name: "filesystem_read")) == 1
+    && fold_list(
+      xs: implementable,
+      empty: true,
+      cons: fn(ok, declaration) { ok && declaration.module_path == "v2.std.live_read" && declaration.decl_name == "filesystem_read" }
+    )
     && blocked + length(xs: implementable) == length(xs: rows)
     && length(xs: rows) > 1
 }

@@ -336,12 +336,15 @@ test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -
 }
 
 // The one probe that reads the LIVE classification, asserting the split this slice measured: of the
-// seven operations the occupancy census found, exactly one is implementable and six are blocked on the
-// corpus-snapshot question. It is deliberately an identity-free count over a roster this module owns,
+// operations that observe the host, exactly one is implementable and eight are blocked. The count was
+// six before the host-boundary rows were declared from their host realizations: compile_dag_diagnostic_census
+// and shell_materialize_operation_argv read the corpus (default_source_roots, parse_extdeps_module_items),
+// so they were host observations the old seven-name list simply never contained -- the expectation of six
+// rested on that omission, not on a fact about the seams. It is deliberately an identity-free count over a roster this module owns,
 // and it moves the day an operation is reclassified -- which is the intended signal, not a fragility.
-test fn effect_demand_witness_live_classification_splits_one_and_six() -> Bool {
+test fn effect_demand_witness_live_classification_splits_one_and_eight() -> Bool {
   (effect_demand_implementable_operation_count() == 1)
-    && (effect_demand_blocked_operation_count() == 6)
+    && (effect_demand_blocked_operation_count() == 8)
 }
 
 // THE PRODUCER JOIN'S DISCRIMINATING TRIPLE. One world, three readings. The agreed pair must produce
