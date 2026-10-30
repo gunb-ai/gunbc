@@ -11,7 +11,7 @@ import gunbc.auth.request_api_key { request_api_key_read }
 import gunbc.host_state_root { isolated_host_state_tree }
 import gunbc.runner.runner_revision_request_context { revision_request_context }
 import gunbc.durable_handoff_rest { host_request_response }
-import gunbc.runner.runner_revision_job_request { revision_job_request_respond }
+import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
 

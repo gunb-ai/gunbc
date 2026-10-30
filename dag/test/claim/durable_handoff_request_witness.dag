@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, Bool, FilePath }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
 import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store, request_api_key_store_path, request_api_key_store_read, request_api_key_store_commit }
 import gunbc.runner.runner_revision_request_context { revision_request_context, revision_request_store_path }
-import gunbc.runner.runner_revision_job_request { revision_job_request_respond }
+import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
 import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, CasReadableAbsent, ExpectSlotAbsent, ExpectSlotGeneration }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }

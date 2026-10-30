@@ -1,34 +1,20 @@
 module gunbc.runner.runner_revision_job_request
 
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
-import gunbc.auth.request_api_key { RequestApiKeyUser, request_api_key_read }
-import std.types { String, NonEmptyStr, CommitSha, List }
-import std.error_primitives { Result, Ok, Err }
+import std.types { String, CommitSha }
+import std.error_primitives { Ok, Err }
 import extdeps.http.server { ServeWireResponse }
 import extdeps.languages.json.emit { JsonNull }
-import gunbc.durable_handoff_rest { host_request_rest, host_request_response }
-import gunbc.runner.runner_revision_job_spec { decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
+import gunbc.auth.request_api_key { request_api_key_read }
 import gunbc.host_state_root { host_state_tree }
-import gunbc.runner.runner_revision_request_context { RevisionRequestContext, revision_request_context }
-import gunbc.fabric.fabric_writer_roster {
-  fabric_door_principal_from_api_key, fabric_door_writer_admission_over, fabric_served_writer_roster, fabric_door_local_roster,
-  FabricDoorWriterAdmitted, FabricDoorWriterRefused,
-}
+import gunbc.runner.runner_revision_request_context { revision_request_context }
+import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
+import gunbc.fabric.fabric_writer_roster { fabric_served_writer_roster }
+import gunbc.durable_handoff_rest { host_request_response }
 
-// First consumer of the shared REST contract. Admission validates a revision-job
-// specification; request storage is not authority to execute it. The worker still
-// owes the image, source, root approval and fabric grant checks before any launch.
-// The operator-issued API key resolves to a stable rostered user, never a JSON
-// field or a fabricated proxy/kernel identity. Deployment owes HTTPS termination
-// and a private native listener; this handler confers no execution authority.
-// Tailscale-User-Login is deliberately ignored: only the API key selects the user.
-fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
-  match decode_revision_job_spec(text: text) {
-    RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }
-    RevisionJobSpecRefused { refusal: _ } => Err { value: "revision-job specification was not admitted" }
-  }
-}
-
+// Native submission/readback only. Durable acceptance is not execution authority:
+// the worker still owes staging, root approval and fabric grant enforcement.
+// Tailscale-User-Login is ignored; only the API key selects the stable user.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
 
 fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
@@ -42,20 +28,4 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
   }
   revision_job_request_respond(context: context, permitted_users: fabric_served_writer_roster(),
     verified: verified, method: method, path: path, body: body)
-}
-
-// Shared by production and the real-HTTP fixture. The verified user, not a body
-// field or key digest, is the only principal entering durable acceptance.
-fn revision_job_request_respond(context: RevisionRequestContext, permitted_users: List<NonEmptyStr>,
-  verified: RequestApiKeyUser, method: String, path: String, body: String) -> ServeWireResponse {
-  if (verified.store != context.keys) {
-    return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key belongs to another request store", result: JsonNull)
-  }
-  let principal = fabric_door_principal_from_api_key(verified: verified)
-  match fabric_door_writer_admission_over(logins: permitted_users, locals: [], principal: principal) {
-    FabricDoorWriterRefused { refusal: _ } => host_request_response(status: 403, request_id: "", standing: "rejected", detail: "request principal is not admitted", result: JsonNull)
-    FabricDoorWriterAdmitted { principal: p } => host_request_rest(
-      root: context.request_root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
-    )
-  }
 }
