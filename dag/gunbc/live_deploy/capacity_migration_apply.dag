@@ -117,7 +117,7 @@ fn capacity_migration_apply_authorized(
   request: CapacityMigrationApplyRequest, ports: CapacityMigrationApplyPorts,
   authorization: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>,
 ) -> Result<CapacityMigrationAdmission, String> {
-  if request.target_revision != authorization.intent.revision {
+  if (request.target_revision != authorization.intent.revision) {
     return Err { value: "capacity migration revision differs from the approved cutover" }
   }
   capacity_migration_apply(request: request, ports: CapacityMigrationApplyPorts {

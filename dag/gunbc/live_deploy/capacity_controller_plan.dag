@@ -104,7 +104,7 @@ fn capacity_controller_bind_publications(plan: CapacityControllerPlan,
   let bound = fold(plan.legs, init: Ok { value: [] }, f: (prior, leg) => match prior {
     Err { value: why } => Err { value: why }
     Ok { value: legs } => match leg {
-      CapacityControllerDrain { request: request } => if request.target_revision != first_publication.revision {
+      CapacityControllerDrain { request: request } => if (request.target_revision != first_publication.revision) {
         Err { value: "controller drain revision differs from published generation" }
       } else { Ok { value: legs + [CapacityBoundControllerDrain { request: request }] } }
       CapacityControllerReload { manager: manager } => Ok { value: legs + [CapacityBoundControllerReload { manager: manager }] }

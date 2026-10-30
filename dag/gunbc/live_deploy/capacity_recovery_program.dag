@@ -26,7 +26,7 @@ fn capacity_recovery_program_bind(authorization: CapacityRecoveryAuthorization,
   journal_root: NonEmptyStr, journal_key: NonEmptyStr, helper_digest: Sha256Digest,
   observed: CasSlotObservation<NonEmptyStr>) -> Result<CapacityRecoveryProgram, String> {
   let subject = authorization.recovery.subject
-  if journal_root != subject.journal_root || journal_key != subject.journal_key || helper_digest != subject.helper_digest {
+  if (journal_root != subject.journal_root || journal_key != subject.journal_key || helper_digest != subject.helper_digest) {
     return Err { value: "recovery executor journal or helper differs from approval" }
   }
   match observed {
@@ -38,11 +38,11 @@ fn capacity_recovery_program_bind(authorization: CapacityRecoveryAuthorization,
       let record = match capacity_cutover_record_decode(text: version.value as String) {
         Err { value: why } => { return Err { value: why } } Ok { value: value } => value
       }
-      if record.attempt != subject.apply_reference { return Err { value: "recovery original apply reference changed" } }
+      if (record.attempt != subject.apply_reference) { return Err { value: "recovery original apply reference changed" } }
       let legs = match capacity_recovery_plan(record: record, choice: subject.choice) {
         Err { value: why } => { return Err { value: why } } Ok { value: value } => value
       }
-      if capacity_recovery_leg_scopes(legs: legs, record_digest: subject.record_digest, choice: subject.choice) != subject.scopes {
+      if (capacity_recovery_leg_scopes(legs: legs, record_digest: subject.record_digest, choice: subject.choice) != subject.scopes) {
         return Err { value: "recovery leg scopes differ from the approved retained plan" }
       }
       Ok { value: CapacityRecoveryProgram { authorization: authorization, record: record,

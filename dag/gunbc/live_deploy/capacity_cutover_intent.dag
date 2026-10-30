@@ -210,7 +210,7 @@ fn capacity_cutover_plan_digest(intent: CapacityCutoverIntent) -> Result<Sha256D
   match capacity_drain_input_admit(request: intent.drain, controller_slot: intent.controller_slot) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
   }
-  if intent.drain.target_revision != intent.revision { return Err { value: "drain revision differs from the approved cutover" } }
+  if (intent.drain.target_revision != intent.revision) { return Err { value: "drain revision differs from the approved cutover" } }
   match sha256_hex_digest(hex: sha256_hex_of_text(text: capacity_cutover_intent_text(intent: intent) as String)) {
     Present { value: digest } => Ok { value: digest }
     Absent => Err { value: "cutover plan digest is unreadable" }

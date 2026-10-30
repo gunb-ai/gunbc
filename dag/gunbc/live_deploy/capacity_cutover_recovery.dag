@@ -76,7 +76,7 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
   let intent = match capacity_retained_plan_result(finding: capacity_retained_plan_read(envelope: record.plan.envelope, digest: record.plan.digest, approved_digest: record.plan.approved_digest)) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  if intent.attempt != record.attempt || intent.revision != record.target_revision {
+  if (intent.attempt != record.attempt || intent.revision != record.target_revision) {
     return Err { value: "retained plan differs from original apply identity" }
   }
   if (record.phase == CapacityClosed) { return Err { value: "cutover is closed; its apply identity cannot be reused" } }
@@ -89,7 +89,7 @@ fn capacity_recovery_plan(record: CapacityCutoverRecord, choice: CapacityRecover
   }
   let selected = match choice { CapacityResume => record.target CapacityRollback => record.prior }
   if count(selected) == 0 { return Err { value: "recovery has no captured generation" } }
-  if record.created_paths != record.planned_paths {
+  if (record.created_paths != record.planned_paths) {
     return Err { value: "inhibition ownership is incomplete; reconcile creation receipts before recovery" }
   }
   if !all(record.created_paths, path => capacity_recovery_has_artifact(artifacts: record.artifacts, path: path)) {

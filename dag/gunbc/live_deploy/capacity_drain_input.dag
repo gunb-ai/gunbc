@@ -51,9 +51,11 @@ fn capacity_drain_input_admit(request: CapacityMigrationApplyRequest,
   }
   match controller_slot {
     Absent => {}
-    Present { value: slot } => if any(required, unit => unit == slot) || any(request.bindings, binding => binding.subject == slot) {
-      return Err { value: "controller exception is also in the fixed drain set" }
-    } else { {} }
+    Present { value: slot } => {
+      if (any(required, unit => unit == slot) || any(request.bindings, binding => binding.subject == slot)) {
+        return Err { value: "controller exception is also in the fixed drain set" }
+      }
+    }
   }
   Ok { value: request }
 }

@@ -139,7 +139,7 @@ test fn a_later_roster_value_does_not_change_the_retained_recovery_drain() -> Bo
       writer_parents: before.drain.population.writer_parents, transients: before.drain.population.transients,
       children: before.drain.population.children }, target_revision: before.drain.target_revision,
       bindings: before.drain.bindings, child_subjects: before.drain.child_subjects } }
-  if capacity_cutover_intent_text(intent: after) == record.plan.envelope { return false }
+  if (capacity_cutover_intent_text(intent: after) == record.plan.envelope) { return false }
   match capacity_recovery_plan(record: record, choice: CapacityResume) {
     Err { value: _ } => false
     Ok { value: legs } => count(filter(legs, leg => match leg {

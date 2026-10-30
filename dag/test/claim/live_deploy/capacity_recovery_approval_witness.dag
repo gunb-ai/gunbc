@@ -61,7 +61,7 @@ test fn the_existing_broker_gate_admits_the_recovery_claim() -> Bool {
     GateAdmitted { authorization: grant } => match capacity_recovery_execute(request: request,
       reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: cas_generation_first(), choice: CapacityResume) },
       authorization: grant, at: "2026-10-30T00:01:00Z",
-      claim: (subject, attempt, at) => if subject == request.subject {
+      claim: (subject, attempt, at) => if (subject == request.subject) {
         ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }
       } else { ClaimUndecided { reason: "wrong claim identity" } },
       execute: admitted => Ok { value: admitted.recovery.request.subject.job == "capacity-cutover-recovery"
@@ -134,7 +134,7 @@ test fn a_second_approval_cannot_spend_the_same_journal_generation() -> Bool {
     && first.subject.generation == second.subject.generation
     && (match capacity_recovery_claim(request: second, reread: fn() { Ok { value: second.subject } },
       authorization: recovery_approval_grant(recovery: second), at: "2026-10-30T00:01:00Z",
-      claim: (subject, attempt, at) => if subject.journal_root == first.subject.journal_root && subject.journal_key == first.subject.journal_key && subject.generation == first.subject.generation {
+      claim: (subject, attempt, at) => if (subject.journal_root == first.subject.journal_root && subject.journal_key == first.subject.journal_key && subject.generation == first.subject.generation) {
         ClaimLost { holder: first.request.attempt }
       } else { ClaimUndecided { reason: "wrong claim key" } }) {
       Err { value: why } => why == "recovery journal generation already consumed"
@@ -210,7 +210,7 @@ test fn journal_cas_consumes_approval_by_advancing_generation_without_changing_r
   let bytes = capacity_cutover_record_encode(record: recovery_fixture_record())
   match capacity_recovery_consume_journal(subject: request.subject, observed: observed,
     attempt: request.request.attempt, at: "2026-10-30T00:01:00Z", commit: verified => {
-      if verified.attempt.proposed != bytes || verified.attempt.key != request.subject.journal_key {
+      if (verified.attempt.proposed != bytes || verified.attempt.key != request.subject.journal_key) {
         CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "claim changed the record or slot" } }
       } else { cas_decide(attempt: verified.attempt, observed: observed) }
     }) {

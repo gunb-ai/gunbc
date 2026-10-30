@@ -45,9 +45,11 @@ fn capacity_discharge_admit(record: CapacityCutoverRecord, reloads: Result<List<
       Ok { value: ready } => {
         let entry = match read_entry(artifact.inhibition) { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
         match entry {
-          Present { value: value } => if value.identity == artifact.identity {
-            return Err { value: "owned inhibition inode remains; retain journal and captures" }
-          } else { {} }
+          Present { value: value } => {
+            if (value.identity == artifact.identity) {
+              return Err { value: "owned inhibition inode remains; retain journal and captures" }
+            }
+          }
           Absent => {}
         }
         let foreign = match entry {

@@ -166,7 +166,7 @@ fn capacity_lock_control_exit(words: List<String>) -> Int {
 // fixture path isolates the control from the host's production generation lock.
 test fn a_second_actor_cannot_enter_during_the_locked_program() -> Bool {
   let dir = shell.Mktemp.Dir()
-  if !dir.success { return false }
+  if (!dir.success) { return false }
   let path = concat(dir.path, "/fleet.lock") as NonEmptyStr
   let lock = FleetHostLock { lock_path: path, wait: second(count: 0), conflict_exit_code: 75 }
   let second = typed_remote_file_locked_step_argv(lock: lock, privilege: RemoteFileAsSessionPrincipal, argv: ["/usr/bin/true"])

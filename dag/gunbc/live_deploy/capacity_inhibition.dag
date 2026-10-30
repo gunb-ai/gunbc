@@ -40,10 +40,10 @@ fn capacity_inhibition_path(subject: CapacityManagedUnit, user_config_home: Resu
 // supplied manager reading; missing/ambiguous entries refuse. The later wet
 // consumer additionally requires masked LoadState and refused START after reload.
 fn capacity_inhibition_precedes_install(inhibition: CapacityInhibitionPath, install: DeploymentUnitInstall, effective_directories: Result<List<NonEmptyStr>, String>) -> Result<CapacityInhibitionPath, String> {
-  if inhibition.subject.manager != install.manager || inhibition.subject.unit != install.unit {
+  if (inhibition.subject.manager != install.manager || inhibition.subject.unit != install.unit) {
     return Err { value: "inhibition and installation name different manager/unit subjects" }
   }
-  if inhibition.path == install.destination { return Err { value: "unit installation would overwrite its inhibition" } }
+  if (inhibition.path == install.destination) { return Err { value: "unit installation would overwrite its inhibition" } }
   match effective_directories {
     Err { value: why } => Err { value: why }
     Ok { value: directories } => {

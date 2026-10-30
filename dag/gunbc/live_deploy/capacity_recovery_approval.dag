@@ -39,7 +39,7 @@ fn capacity_recovery_request(leg: CapacityRecoveryLeg, observed: Result<Capacity
   let subject = match observed { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match leg {
     CapacityRecoveryRequireApproval { attempt: attempt, choice: choice } => {
-      if attempt != subject.apply_reference || choice != subject.choice {
+      if (attempt != subject.apply_reference || choice != subject.choice) {
         return Err { value: "recovery approval leg differs from the observed journal and choice" }
       }
       match srv1_root_mutation_request_for_kind(kind: CapacityCutoverRecovery { subject: subject },
@@ -68,7 +68,7 @@ fn capacity_recovery_claim(request: Srv1RecoveryRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, at: Timestamp,
   claim: fn(CapacityRecoverySubject, AttemptIdentity, Timestamp) -> AuthorizationClaimOutcome) -> Result<CapacityRecoveryAuthorization, String> {
   let observed = match reread() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
-  if observed != request.subject { return Err { value: "recovery journal, choice, helper or scopes changed after approval" } }
+  if (observed != request.subject) { return Err { value: "recovery journal, choice, helper or scopes changed after approval" } }
   match authorize(authorization: authorization, request: request.request, observed_at: at) {
     AuthorizationRefused { cause: cause } => Err { value: authorization_refusal_reason(cause: cause) }
     AuthorizationPermitted { grant: grant } => match claim(observed, request.request.attempt, at) {
@@ -91,9 +91,11 @@ fn capacity_recovery_consume_journal(subject: CapacityRecoverySubject,
     observed: observed, choice: subject.choice, helper_digest: subject.helper_digest)
   match reread {
     Err { value: why } => { return ClaimUndecided { reason: why as NonEmptyStr } }
-    Ok { value: current } => if current != subject {
-      return ClaimLost { holder: "journal-generation-or-content-changed" }
-    } else { {} }
+    Ok { value: current } => {
+      if (current != subject) {
+        return ClaimLost { holder: "journal-generation-or-content-changed" }
+      }
+    }
   }
   match observed {
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
@@ -124,7 +126,7 @@ fn capacity_recovery_claim_checked(request: Srv1RecoveryRequest,
     Err { value: why } => { return Err { value: CapacityRecoveryBoundaryRefused { cause: why } } }
     Ok { value: value } => value
   }
-  if subject != request.subject { return Err { value: CapacityRecoveryBoundaryRefused {
+  if (subject != request.subject) { return Err { value: CapacityRecoveryBoundaryRefused {
     cause: "recovery journal, choice, helper or scopes changed after approval" } } }
   let record = match observed {
     CasObservedReadable { readable: CasReadablePresent { version: version } } => match capacity_cutover_record_decode(text: version.value as String) {

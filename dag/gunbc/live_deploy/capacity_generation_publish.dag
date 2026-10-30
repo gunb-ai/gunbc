@@ -97,7 +97,7 @@ fn capacity_generation_target_admit(plan: CapacityPlannedGeneration, approval: C
     decl_ref(module_path: "test.claim.live_deploy.capacity_generation_publish_witness", decl_name: "a_verified_published_target_binds_the_closed_controller"),
   ]
 {
-  if plan.store.attempt != approval.intent.attempt { return Err { value: "target approval belongs to another apply" } }
+  if (plan.store.attempt != approval.intent.attempt) { return Err { value: "target approval belongs to another apply" } }
   match capacity_cutover_generation_admission(authorization: approval, operation: plan.operation, at: at) {
     Err { value: why } => Err { value: why }
     Ok { value: _ } => match published {
@@ -126,7 +126,7 @@ fn capacity_generation_diff_lines(plans: List<CapacityPlannedGeneration>, record
     Err { value: why } => Err { value: why }
     Ok { value: lines } => {
       let old = filter(record.prior, file => file.manager == plan.install.manager && file.unit == plan.install.unit && file.destination == plan.install.destination)
-      if count(old) != 1 || record.attempt != plan.store.attempt { Err { value: "old unit capture is missing, ambiguous or belongs to another apply" } }
+      if (count(old) != 1 || record.attempt != plan.store.attempt) { Err { value: "old unit capture is missing, ambiguous or belongs to another apply" } }
       else { match first(old) {
         Absent => Err { value: "old unit capture is missing" }
         Present { value: file } => Ok { value: lines + [join(["unit=", plan.install.unit as String, " old=", file.digest.hex as String,
@@ -159,7 +159,7 @@ fn capacity_generation_record_result(record: CapacityCutoverRecord, file: Capaci
 fn capacity_generation_publish(plan: CapacityPlannedGeneration, provider: LocalStoreCapability,
   journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization,
   now: fn() -> Result<Timestamp, String>, ports: DeployApplyPorts) -> Result<LocalStoreBracket<Result<CapacityPublishedGeneration, String>>, String> {
-  if local_store_binding_path(b: provider.binding) != (plan.store.root as String) || plan.store.attempt != approval.intent.attempt {
+  if (local_store_binding_path(b: provider.binding) != (plan.store.root as String) || plan.store.attempt != approval.intent.attempt) {
     return Err { value: "target provider or approval belongs to another apply" }
   }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
@@ -178,7 +178,7 @@ fn capacity_generation_publish_held(plan: CapacityPlannedGeneration, provider: L
   let prior = match capacity_capture_journal_open(store: plan.store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value
   }
-  if prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest {
+  if (prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest) {
     return Err { value: "target journal revision differs from approval" }
   }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
@@ -203,7 +203,7 @@ fn capacity_generation_publish_held(plan: CapacityPlannedGeneration, provider: L
     FabricBlobReadRefused { fault: fault } => { return Err { value: fabric_blob_fault_text(fault: fault) } }
     FabricBlobRead { reading: value } => value
   }
-  if fabric_blob_reading_digest(reading: reading) != plan.operation.digest {
+  if (fabric_blob_reading_digest(reading: reading) != plan.operation.digest) {
     return Err { value: "rendered bytes differ from approved target digest" }
   }
   let request = CutoverCaptureRequest { host: approval.intent.host, source_unit: plan.install.destination, digest: plan.operation.digest }

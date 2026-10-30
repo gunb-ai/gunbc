@@ -54,7 +54,7 @@ fn capacity_migration_apply_ports(request: CapacityMigrationApplyRequest, run: f
   CapacityMigrationApplyPorts {
     self_cgroup: fn() {
       let reading = Filesystem.Read(path: procfs_path_literal(p: ProcSelfCgroup) as String)
-      if reading.success { Ok { value: reading.content } } else { Err { value: reading.error } }
+      if (reading.success) { Ok { value: reading.content } } else { Err { value: reading.error } }
     },
     parent_cgroup: subject => match run(capacity_quiescence_step_command(step: CapacityReadUnit { subject: subject })) {
       Err { value: why } => Err { value: why }

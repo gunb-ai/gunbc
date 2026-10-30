@@ -44,7 +44,7 @@ fn capacity_capture_journal_root(store: CapacityCaptureStore) -> NonEmptyStr {
 
 fn capacity_capture_approval_admission(store: CapacityCaptureStore, source: NonEmptyStr,
   approval: CapacityCutoverAuthorization, now: fn() -> Result<Timestamp, String>) -> Result<Timestamp, String> {
-  if approval.intent.attempt != store.attempt { return Err { value: "capture approval belongs to another cutover" } }
+  if (approval.intent.attempt != store.attempt) { return Err { value: "capture approval belongs to another cutover" } }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match capacity_cutover_capture_admission(authorization: approval,
     operation: CapacityCaptureOperation { source: source, root: store.root }, at: at) {
@@ -83,7 +83,7 @@ fn capacity_cutover_journal_read(store: CapacityCaptureStore, journal: SlotStore
     CasObservedReadable { readable: CasReadableAbsent } => Err { value: "capture journal absent" }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => match capacity_cutover_record_decode(text: version.value as String) {
       Err { value: why } => Err { value: why }
-      Ok { value: record } => if record.attempt != store.attempt {
+      Ok { value: record } => if (record.attempt != store.attempt) {
         Err { value: "cutover journal belongs to another apply" }
       } else { Ok { value: CapacityCaptureJournalReading { record: record, generation: version.generation } } }
     }
@@ -167,7 +167,7 @@ fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalSto
   let prior = match capacity_capture_journal_open(store: store, journal: journal, key: key) {
     Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: value } => value
   }
-  if prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest {
+  if (prior.record.target_revision != approval.intent.revision || prior.record.plan.approved_digest != approval.approved_plan_digest) {
     return Err { value: CapacityCaptureBoundaryRefused { detail: "capture journal revision differs from the approved revision" } }
   }
   if any(prior.record.prior, file => file.host == approval.intent.host && file.destination == source) {
@@ -373,7 +373,7 @@ fn capacity_cutover_claim_initial(intent: CapacityCutoverIntent, request: Srv1Cu
     prior: [], target: [], planned_paths: planned_paths, created_paths: [], artifacts: [], phase: CapacityCapturingGeneration }
   capacity_cutover_claim(intent: intent, request: request, authorization: authorization, at: at,
     claim: (escalation, attempt, claimed_at) => {
-      if escalation != request.request.escalation_id || attempt != request.request.attempt {
+      if (escalation != request.request.escalation_id || attempt != request.request.attempt) {
         return ClaimUndecided { reason: "initial journal claim differs from the original approval" }
       }
       match admit_cas_attempt_for_derived_payload(key: "record", expected: ExpectSlotAbsent,
@@ -396,7 +396,7 @@ fn capacity_cutover_claim_over_journal(store: CapacityCaptureStore, journal: Slo
   intent: CapacityCutoverIntent, request: Srv1CutoverRequest,
   authorization: ScopedAuthorization<Srv1RootMutationApproval>, planned_paths: List<CapacityInhibitionPath>,
   at: Timestamp) -> Result<CapacityCutoverAuthorization, String> {
-  if journal.root != capacity_capture_journal_root(store: store) || store.attempt != intent.attempt {
+  if (journal.root != capacity_capture_journal_root(store: store) || store.attempt != intent.attempt) {
     return Err { value: "initial journal belongs to another apply" }
   }
   capacity_cutover_claim_initial(intent: intent, request: request, authorization: authorization,

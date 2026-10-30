@@ -52,7 +52,7 @@ fn capacity_cleanup_close(record: CapacityCutoverRecord) -> CapacityCutoverRecor
 
 fn capacity_cleanup_consent(store: CapacityCaptureStore, approval: CapacityCutoverAuthorization,
   now: fn() -> Result<Timestamp, String>) -> Result<Timestamp, String> {
-  if store.attempt != approval.intent.attempt { return Err { value: "cleanup approval belongs to another apply" } }
+  if (store.attempt != approval.intent.attempt) { return Err { value: "cleanup approval belongs to another apply" } }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match capacity_cutover_file_admission(authorization: approval,
     operation: CapacityCutoverFileOperation { path: store.root, verb: CapacityCaptureRemove }, at: at) {

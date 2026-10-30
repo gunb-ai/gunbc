@@ -48,7 +48,7 @@ fn capacity_reload_completed(approval: CapacityCutoverAuthorization, record: Cap
 // drain and post-reload proofs. It supplies a freshly read durable journal.
 fn capacity_reload_record_admission(approval: CapacityCutoverAuthorization, record: CapacityCutoverRecord,
   manager: SystemdManager, boundary: CapacityReloadBoundary, at: Timestamp) -> Result<CapacityReloadBoundary, String> {
-  if record.attempt != approval.intent.attempt || record.target_revision != approval.intent.revision {
+  if (record.attempt != approval.intent.attempt || record.target_revision != approval.intent.revision) {
     return Err { value: "reload journal belongs to another apply or revision" }
   }
   let ready = match boundary {
@@ -115,7 +115,7 @@ fn capacity_reload_from_journal(store: CapacityCaptureStore, provider: LocalStor
   journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization, manager: SystemdManager,
   boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
   run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<LocalStoreBracket<Result<CapacityReloadCompleted, String>>, String> {
-  if local_store_binding_path(b: provider.binding) != (store.root as String) || store.attempt != approval.intent.attempt {
+  if (local_store_binding_path(b: provider.binding) != (store.root as String) || store.attempt != approval.intent.attempt) {
     return Err { value: "reload provider or approval belongs to another apply" }
   }
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }

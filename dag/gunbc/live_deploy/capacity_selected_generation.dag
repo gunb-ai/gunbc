@@ -68,7 +68,7 @@ fn capacity_cutover_projection_admit(intent: CapacityCutoverIntent,
 
 fn capacity_cutover_derive_installs(intent: CapacityCutoverIntent, target: ReleaseTarget,
   authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> Result<List<DeploymentUnitInstall>, String> {
-  if target.revision != intent.revision { return Err { value: "cutover target revision differs from the approved snapshot" } }
+  if (target.revision != intent.revision) { return Err { value: "cutover target revision differs from the approved snapshot" } }
   match capacity_cutover_selected_deployment(intent: intent) {
     Err { value: why } => Err { value: why }
     Ok { value: row } => capacity_cutover_projection_admit(intent: intent,

@@ -31,7 +31,7 @@ type CapacityStagedInhibition sole_constructor {
 
 fn capacity_staged_inhibition(inhibition: CapacityInhibitionPath, staged_path: NonEmptyStr,
   staged: Result<CapacityMaskEntry, String>, destination_device: Result<Int, String>) -> Result<CapacityStagedInhibition, String> {
-  if staged_path == inhibition.path { return Err { value: "staging and publication must have distinct names" } }
+  if (staged_path == inhibition.path) { return Err { value: "staging and publication must have distinct names" } }
   match staged {
     Err { value: why } => Err { value: why }
     Ok { value: entry } => {
@@ -40,7 +40,7 @@ fn capacity_staged_inhibition(inhibition: CapacityInhibitionPath, staged_path: N
       }
       match destination_device {
         Err { value: why } => Err { value: why }
-        Ok { value: device } => if device != entry.identity.st_dev {
+        Ok { value: device } => if (device != entry.identity.st_dev) {
           Err { value: "inhibition staging and control directory are on different filesystems" }
         } else { Ok { value: CapacityStagedInhibition { artifact: CapacityInhibitionArtifact { inhibition: inhibition, staged_path: staged_path, identity: entry.identity } } } }
       }
@@ -56,7 +56,7 @@ fn capacity_published_inhibition_owned(artifact: CapacityStagedInhibition, publi
     Ok { value: entry } => {
       if entry.kind != S_IFLNK || entry.target != systemd_mask_link_target {
         Err { value: "published inhibition is not a symlink to /dev/null; preserve it" }
-      } else if entry.identity != artifact.artifact.identity {
+      } else if (entry.identity != artifact.artifact.identity) {
         Err { value: "published inhibition is a foreign inode; preserve it" }
       } else { Ok { value: artifact.artifact.inhibition } }
     }
@@ -66,7 +66,7 @@ fn capacity_published_inhibition_owned(artifact: CapacityStagedInhibition, publi
 fn capacity_recover_staged_inhibition(recorded: CapacityInhibitionArtifact, staged: Result<CapacityMaskEntry, String>, destination_device: Result<Int, String>) -> Result<CapacityStagedInhibition, String> {
   match capacity_staged_inhibition(inhibition: recorded.inhibition, staged_path: recorded.staged_path, staged: staged, destination_device: destination_device) {
     Err { value: why } => Err { value: why }
-    Ok { value: observed } => if observed.artifact.identity == recorded.identity { Ok { value: observed } }
+    Ok { value: observed } => if (observed.artifact.identity == recorded.identity) { Ok { value: observed } }
       else { Err { value: "retained staged inode differs from the durable cutover record" } }
   }
 }
