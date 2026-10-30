@@ -8,6 +8,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_cou
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
@@ -466,9 +467,10 @@ data strata_iq3_s_a16_profile: ServingBackendProfile = ServingBackendProfile {
   max_context: token_count(count: 229376),
 }
 
-// THE REQUIREMENT: the one serving context ceiling (operator 2026-10-30: "229k is fine", every engine and the
-// daily workspace harness on one cap), and at least one conversation retained per replica.
-data serving_context_ceiling_requirement: ServingRequirement = ServingRequirement { max_context: token_count(count: 229376), min_retained_per_replica: 1 }
+// THE REQUIREMENT: the fleet's one serving context cap (ruling gunbc.design_ruling one_serving_context_cap), and
+// at least one conversation retained per replica. Each profile's max_context is a different fact: the ceiling
+// that engine is launched with, read from its argv, which the derivation checks against this requirement.
+data serving_context_ceiling_requirement: ServingRequirement = ServingRequirement { max_context: serving_fleet_context_cap, min_retained_per_replica: 1 }
 
 data host_6ce85c_layout: ServingLayoutResult = serving_layout_with_qualification(
   result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement),
