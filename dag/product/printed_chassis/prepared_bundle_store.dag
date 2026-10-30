@@ -1,0 +1,52 @@
+module product.printed_chassis.prepared_bundle_store
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.content_hash { sha256_hex_of_text }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+
+// THE PREPARED BUNDLE STORE, SEALED. A fleet preparation writes one bundle -- the CAD check output, the staged
+// profiles, the sliced plates and the prepared-queues.json receipt -- and LATER runs read it back: the inventory
+// verbs (plan_remaining, record_inspection, reserve_plan) re-verify its bytes, and a printer start re-hashes the
+// plates by path. That later reader makes it a store, not a scratch output (ruling M1), so it is keyed by a business
+// identity and never by a caller-chosen directory.
+//
+// THE KEY IS THE PLAN: prepared-<sha256 of the plan text>, taken through std.content_hash (an existing HashFamily).
+// No earlier plan identity exists in the corpus (print_batch_plan parses a plan, it never names one), so this is the
+// first. The same plan bytes always address the same bundle; a second preparation of them finds the receipt already
+// written and refuses (create-once), exactly as a re-run into one output directory always did.
+type PreparedBundleDeclaration { member: NonEmptyStr }
+
+data prepared_bundle_slots: PreparedBundleDeclaration = PreparedBundleDeclaration { member: "prepared-plans" as NonEmptyStr }
+
+data prepared_bundle_key_prefix: String = "prepared-"
+data prepared_queues_receipt_name: String = "prepared-queues.json"
+
+type PreparedBundle sole_constructor { root: NonEmptyStr }
+
+type PreparedBundleReading = PreparedBundleReady { bundle: PreparedBundle } | PreparedBundleUnready { detail: String }
+
+// THE MINT TAKES THE TREE AND THE PLAN TEXT, never a path. It ensures the bundle directory.
+fn prepared_bundle(tree: HostStateTree, plan_text: String) -> PreparedBundleReading {
+  if plan_text == "" { return PreparedBundleUnready { detail: "A prepared bundle is keyed by a plan, and the plan is empty" } }
+  let root = join([host_state_tree_path(tree: tree) as String, "/", prepared_bundle_slots.member as String, "/", prepared_bundle_key_prefix, sha256_hex_of_text(text: plan_text)], "")
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return PreparedBundleUnready { detail: concat("Cannot create the prepared bundle directory ", root) } }
+  PreparedBundleReady { bundle: PreparedBundle { root: root as NonEmptyStr } }
+}
+
+// The bundle's directory, for the preparation steps that write their outputs beneath it.
+fn prepared_bundle_directory(bundle: PreparedBundle) -> String { bundle.root as String }
+
+// A name inside the bundle. Preparation writes its CAD output, staged inputs and plates under these.
+fn prepared_bundle_path(bundle: PreparedBundle, name: String) -> String { join([bundle.root as String, "/", name], "") }
+
+type PreparedReceiptWrite = PreparedReceiptWritten | PreparedReceiptRefused { cause: String }
+
+// THE RECEIPT, create-once and read back byte-equal.
+fn prepared_bundle_write_receipt(bundle: PreparedBundle, content: String) -> PreparedReceiptWrite {
+  let path = prepared_bundle_path(bundle: bundle, name: prepared_queues_receipt_name)
+  if !Filesystem.WriteCreateNew(path: path, content: content).success { return PreparedReceiptRefused { cause: "Prepared queue receipt already exists or is not writable" } }
+  let back = Filesystem.Read(path: path)
+  if back.success && back.content == content { PreparedReceiptWritten } else { PreparedReceiptRefused { cause: "The prepared queue receipt read back differently from what was written" } }
+}

@@ -1,21 +1,67 @@
 module gunbc.fleet.printer_workflow_artifact
 
-import std.types { String, NonEmptyStr, List, FilePath }
+import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import std.algebra { trim, string_contains }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DeclaredDirectoryMode }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 
 // The runtime writer, CI display and workflow uploader share one receipt path.
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 
-// THE PRINTER LAN HOST'S STATE ROOTS. Start claims, the controller hold and completion records live in
-// printer-starts; request records (gunbc.fleet.print_request PrintRequestRecord) in its requests/
-// child; each pass's prepared plate and verified copy in print-runs.
-data printer_start_claim_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts"
-// Request records share the start claims' directory and failure domain, so their root is derived from it.
-fn printer_request_directory() -> NonEmptyStr { concat(printer_start_claim_directory as String, "/requests") as NonEmptyStr }
-data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
+// THE PRINTER LAN HOST'S STATE TREE: the parent directory beneath which each printer store has its OWN member
+// directory (requests, claims, completions, execution-hold, cassette-inventory; each declared in the module
+// that owns the store, never here). This module is the shared leaf: the parent's declaration, the path every
+// member derives from, the directory rows, and the one scan every store mint runs for entries a previous
+// layout left in the parent (printer_starts_legacy_entries). Until 2026-10-30 the parent was one flat
+// directory shared by five stores through three libraries; the stores are sealed per member now, and the
+// flat entries are moved by gunbc.fleet.printer_state_layout.
+type PrinterStartsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data printer_starts: PrinterStartsDeclaration = PrinterStartsDeclaration {
+  member: "printer-starts" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+fn printer_starts_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", printer_starts.member as String], "") as NonEmptyStr
+}
+
+// The member directory of a store: the parent plus the store's own declared member name.
+fn printer_starts_member_path(tree: HostStateTree, member: NonEmptyStr) -> NonEmptyStr {
+  join([printer_starts_path(tree: tree) as String, "/", member as String], "") as NonEmptyStr
+}
+
+data print_run_member: NonEmptyStr = "print-runs" as NonEmptyStr
+fn print_run_directory(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", print_run_member as String], "") as NonEmptyStr
+}
+
+// WHAT THE PARENT HOLDS BESIDE ITS MEMBERS, read once for every mint. A member is a directory whose name
+// carries no dot; every record the flat layout wrote (<key>.claimed, <key>.claimed.*, fleet-print-controller.<n>,
+// cassette-prototype-inventory.<n>) carries one. A store mint refuses permanently while any such entry
+// remains (never dual-read): the stores answer from their member directories alone, so a claim that
+// still sits in the parent would read as absent and admit a second start.
+type PrinterStartsLegacyScan
+  = PrinterStartsClean
+  | PrinterStartsLegacyEntries { names: List<String> }
+  | PrinterStartsUnreadable { detail: String }
+
+fn printer_starts_legacy_scan(tree: HostStateTree) -> PrinterStartsLegacyScan {
+  let root = printer_starts_path(tree: tree)
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => PrinterStartsUnreadable { detail: join(["the printer-starts directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => PrinterStartsUnreadable { detail: join(["the printer-starts directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(listed) => {
+      let legacy = filesystem_listing_entry_names(listing: listed).filter(n => string_contains(s: trim(s: n), pattern: "."))
+      if count(legacy) == 0 { PrinterStartsClean } else { PrinterStartsLegacyEntries { names: legacy } }
+    }
+  }
+}
 
 // EACH IS AN OWNED DIRECTORY OF THE FLEET ACCOUNT, converged by the pass that reads it
 // (gunbc.fleet.print_converge ensure_printer_state_directories) before anything is read. The owner is
@@ -23,28 +69,27 @@ data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
 // fleet account, not a per-capability one); the job principal that runs the printer pass, the CI job
 // user, reaches it through the gunbc-fleet group, so the mode is group-writable setgid and every
 // record created inside stays in that group. Neither account holds sudo for this: the job converges
-// these three paths only through its exact grants (gunbc.runner.runner_host_grants
+// these paths only through its exact grants (gunbc.runner.runner_host_grants
 // printer_state_privileged_operations). A present directory under another owner refuses rather than
 // being re-owned, because these hold the evidence that a request was prepared, an attempt claimed
 // and a job completed.
-fn printer_state_directory(member: String, path: NonEmptyStr) -> OwnedDirectoryTarget {
+fn printer_state_directory(member: String, path: NonEmptyStr, mode: DeclaredDirectoryMode) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
     member: member as NonEmptyStr,
     path: path as String as FilePath,
     owner: PosixOwnerNames { user: fleet_automation_user.name, group: fleet_automation_user.name },
-    mode: DirectoryOwnerGroupWritableSetgid,
+    mode: mode,
     group_adoption: ForeignOwnershipRefuses,
   }
 }
 
+fn printer_starts_directory(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member: printer_starts.member as String, path: printer_starts_path(tree: tree), mode: printer_starts.mode)
+}
+
+fn print_run_directory_target(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member: print_run_member as String, path: print_run_directory(tree: tree), mode: DirectoryOwnerGroupWritableSetgid)
+}
+
 // The group the job principal must hold to use them.
 fn printer_state_group() -> NonEmptyStr { fleet_automation_user.name }
-
-// Parent before child: requests/ is ensured only after printer-starts converged.
-fn printer_state_directories() -> List<OwnedDirectoryTarget> {
-  [
-    printer_state_directory(member: "printer-start-claims", path: printer_start_claim_directory),
-    printer_state_directory(member: "printer-request-records", path: printer_request_directory()),
-    printer_state_directory(member: "print-runs", path: print_run_directory),
-  ]
-}

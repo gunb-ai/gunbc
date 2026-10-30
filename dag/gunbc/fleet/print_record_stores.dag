@@ -1,0 +1,209 @@
+module gunbc.fleet.print_record_stores
+
+import std.types { String, NonEmptyStr, Bool, FilePath, List }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_workflow_artifact {
+  printer_starts_member_path, printer_state_directory, printer_starts_legacy_scan,
+  PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable,
+}
+import gunbc.fleet.print_request {
+  PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name, record_matches, field, field_is,
+  completion_matches,
+}
+
+// THE PRINT REQUEST RECORDS AND THE COMPLETION RECORDS, two plain-file record stores sealed in place
+// (operator ruling 2026-10-24: no format change). Each is a member of the printer-starts parent
+// (gunbc.fleet.printer_workflow_artifact printer_starts), declared once here; the mint derives its root
+// from the host-state tree and that member, the provisioning row derives from the same declaration, and
+// no function takes a path. A request record is `requests/<sha256(request_id)>.request.json`, byte for
+// byte what the flat layout wrote (the requests/ child already existed). A completion record is
+// `completions/<attempt-claim-key>.completed.json`; the flat layout wrote the same bytes as
+// `<claim-key>.claimed.completed.json` in the parent, and gunbc.fleet.printer_state_layout moves them.
+//
+// The seal is on CONSTRUCTION only (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module):
+// a holder can read the field, so the rung claimed is that no forged store or store over the wrong root
+// can be handed to a consumer. Records are DATA only, non-generic, never a variant arm.
+type PrintRecordStoreDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data print_request_slots: PrintRecordStoreDeclaration = PrintRecordStoreDeclaration {
+  member: "requests" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+data print_completion_slots: PrintRecordStoreDeclaration = PrintRecordStoreDeclaration {
+  member: "completions" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+fn print_request_path(tree: HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree: tree, member: print_request_slots.member) }
+fn print_completion_path(tree: HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree: tree, member: print_completion_slots.member) }
+
+fn print_request_directory_target(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member: print_request_slots.member as String, path: print_request_path(tree: tree), mode: print_request_slots.mode)
+}
+
+fn print_completion_directory_target(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member: print_completion_slots.member as String, path: print_completion_path(tree: tree), mode: print_completion_slots.mode)
+}
+
+type PrintRequestStore sole_constructor {
+  root: NonEmptyStr
+}
+
+type PrintCompletionStore sole_constructor {
+  root: NonEmptyStr
+}
+
+type PrintRequestStoreReading
+  = PrintRequestStoreReady { store: PrintRequestStore }
+  | PrintRequestStoreUnready { detail: String }
+
+type PrintCompletionStoreReading
+  = PrintCompletionStoreReady { store: PrintCompletionStore }
+  | PrintCompletionStoreUnready { detail: String }
+
+// THE MINTS TAKE THE TREE AND NOTHING ELSE. Each refuses while the parent still holds entries of the flat
+// layout (never dual-read: a completion that still sits in the parent would read as absent here), then lists
+// its own member directory and refuses a directory it cannot list rather than reading it as empty.
+fn print_request_store(tree: HostStateTree) -> PrintRequestStoreReading {
+  match printer_starts_legacy_scan(tree: tree) {
+    PrinterStartsUnreadable { detail: d } => PrintRequestStoreUnready { detail: d }
+    PrinterStartsLegacyEntries { names: n } => PrintRequestStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
+    PrinterStartsClean => match listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)) {
+      SlotStoreRefused { detail: d } => PrintRequestStoreUnready { detail: d }
+      SlotStoreListed { root: r } => PrintRequestStoreReady { store: PrintRequestStore { root: r } }
+    }
+  }
+}
+
+fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
+  match printer_starts_legacy_scan(tree: tree) {
+    PrinterStartsUnreadable { detail: d } => PrintCompletionStoreUnready { detail: d }
+    PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
+    PrinterStartsClean => match listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)) {
+      SlotStoreRefused { detail: d } => PrintCompletionStoreUnready { detail: d }
+      SlotStoreListed { root: r } => PrintCompletionStoreReady { store: PrintCompletionStore { root: r } }
+    }
+  }
+}
+
+// ── REQUEST RECORDS ──────────────────────────────────────────────────────────────────────────────
+type RecordRead = RecordAbsent | RecordPresent { record: PrintRequestRecord } | RecordRefused { cause: String }
+
+fn missing(name: String) -> RecordRead { RecordRefused { cause: join(["Request record field ", name, " is absent or malformed"], "") } }
+
+fn record_json(r: PrintRequestRecord) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc.print-request-record.v2")),
+    json_kv(key: "request_id", value: json_string(s: r.request.request_id as String)),
+    json_kv(key: "root", value: json_string(s: r.request.root as String)),
+    json_kv(key: "recipe", value: json_string(s: r.request.recipe as String)),
+    json_kv(key: "printer", value: json_string(s: r.request.printer as String)),
+    json_kv(key: "source_revision", value: json_string(s: r.source_revision as String)),
+    json_kv(key: "artifact_location", value: json_string(s: r.artifact_location as String)),
+    json_kv(key: "artifact_sha256", value: json_string(s: r.artifact_sha256.hex as String)),
+    json_kv(key: "attempt_id", value: json_string(s: r.attempt_id as String)),
+  ]))
+}
+
+fn digest_field(v: JsonValue, key: String) -> Sha256Digest? {
+  match field(v: v, key: key) { Present { value: s } => sha256_hex_digest(hex: s as String) Absent => none }
+}
+
+fn request_record_path(store: PrintRequestStore, request: PrintRequest) -> String {
+  join([store.root as String, "/", request_record_name(request_id: request.request_id)], "")
+}
+
+fn print_request_read(store: PrintRequestStore, request: PrintRequest) -> RecordRead {
+  match listed_entry_presence(directory: store.root as String, name: request_record_name(request_id: request.request_id)) {
+    FilesystemEntryAbsent(_) => RecordAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => RecordRefused { cause: concat("Request records unreadable: ", c) }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => RecordRefused { cause: c }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let read = Filesystem.Read(path: request_record_path(store: store, request: request))
+      if !read.success { return RecordRefused { cause: "Request record listed but unreadable" } }
+      match parse_json_document(s: read.content) {
+        JsonDocumentUnreadable { gap: _ } => RecordRefused { cause: "Request record is not JSON" }
+        JsonDocumentParsed { value: v } => {
+          if !field_is(v: v, key: "schema", expected: "gunbc.print-request-record.v2") { return RecordRefused { cause: "Request record does not declare schema gunbc.print-request-record.v2" } }
+          let request_id = match field(v: v, key: "request_id") { Present { value: x } => x Absent => return missing(name: "request_id") }
+          let root = match field(v: v, key: "root") { Present { value: x } => x Absent => return missing(name: "root") }
+          let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return missing(name: "recipe") }
+          let printer = match field(v: v, key: "printer") { Present { value: x } => x Absent => return missing(name: "printer") }
+          let revision = match field(v: v, key: "source_revision") { Present { value: x } => x Absent => return missing(name: "source_revision") }
+          let location = match field(v: v, key: "artifact_location") { Present { value: x } => x Absent => return missing(name: "artifact_location") }
+          let artifact = match digest_field(v: v, key: "artifact_sha256") { Present { value: x } => x Absent => return missing(name: "artifact_sha256") }
+          let attempt = match field(v: v, key: "attempt_id") { Present { value: x } => x Absent => return missing(name: "attempt_id") }
+          let recorded = PrintRequestRecord {
+            request: PrintRequest { request_id: request_id, root: root, recipe: recipe, printer: printer as PhysicalAssetIdentity },
+            source_revision: revision, artifact_sha256: artifact, artifact_location: location, attempt_id: attempt,
+          }
+          if !record_matches(record: recorded, request: request) { RecordRefused { cause: "This request id is recorded for a different root, recipe or printer; use a new request id" } }
+          else { if recorded.attempt_id != print_attempt_id(request: request, artifact_sha256: recorded.artifact_sha256) { RecordRefused { cause: "Recorded attempt does not derive from the recorded request and artifact" } }
+          else { RecordPresent { record: recorded } } }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE WRITE, create-new then read back through the same read the next pass takes: a record counts as
+// recorded only when the store's own read returns this record. Another pass that wrote first, or a
+// record that does not read back as this one, refuses (the caller re-runs).
+fn print_request_record(store: PrintRequestStore, record: PrintRequestRecord) -> RecordRead {
+  if !Filesystem.WriteCreateNew(path: request_record_path(store: store, request: record.request), content: record_json(r: record)).success {
+    return RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
+  }
+  match print_request_read(store: store, request: record.request) {
+    RecordPresent { record: r } => if record_json(r: r) == record_json(r: record) { RecordPresent { record: r } } else { RecordRefused { cause: "The request record read back differently from what was written" } }
+    RecordAbsent => RecordRefused { cause: "The request record is absent after its write" }
+    RecordRefused { cause: c } => RecordRefused { cause: c }
+  }
+}
+
+// ── COMPLETION RECORDS ───────────────────────────────────────────────────────────────────────────
+fn completion_record_name(claim_key: NonEmptyStr) -> String { concat(claim_key as String, ".completed.json") }
+fn completion_record_path(store: PrintCompletionStore, claim_key: NonEmptyStr) -> String {
+  join([store.root as String, "/", completion_record_name(claim_key: claim_key)], "")
+}
+
+type CompletionPresence = CompletionListed | CompletionNotListed | CompletionPresenceUnreadable { cause: String }
+
+fn print_completion_presence(store: PrintCompletionStore, claim_key: NonEmptyStr) -> CompletionPresence {
+  match listed_entry_presence(directory: store.root as String, name: completion_record_name(claim_key: claim_key)) {
+    FilesystemEntryListed { directory: _, name: _ } => CompletionListed
+    FilesystemEntryAbsent(_) => CompletionNotListed
+    FilesystemEntryPresenceIndeterminate { cause: c } => CompletionPresenceUnreadable { cause: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => CompletionPresenceUnreadable { cause: c }
+  }
+}
+
+type CompletionStanding = CompletionMatchesRequest | CompletionDoesNotMatchRequest | CompletionUnreadable { cause: String }
+
+// THE READ AND THE MATCH ARE ONE STORE OPERATION: a read that fails is CompletionUnreadable, never
+// projected to empty text that then fails to match.
+fn print_completion_standing(store: PrintCompletionStore, claim_key: NonEmptyStr, record: PrintRequestRecord, remote: NonEmptyStr) -> CompletionStanding {
+  let read = Filesystem.Read(path: completion_record_path(store: store, claim_key: claim_key))
+  if !read.success { return CompletionUnreadable { cause: "Completion record unreadable" } }
+  if completion_matches(text: read.content, record: record, remote: remote) { CompletionMatchesRequest } else { CompletionDoesNotMatchRequest }
+}
+
+type CompletionWrite = CompletionWritten | CompletionWriteRefused { cause: String }
+
+// Create-new then read back the exact bytes; another pass that wrote first, or bytes that read back
+// differently, refuse.
+fn print_completion_record(store: PrintCompletionStore, claim_key: NonEmptyStr, text: String) -> CompletionWrite {
+  let path = completion_record_path(store: store, claim_key: claim_key)
+  if !Filesystem.WriteCreateNew(path: path, content: text).success { return CompletionWriteRefused { cause: "Cannot write the completion record, or another pass wrote it first" } }
+  let back = Filesystem.Read(path: path)
+  if back.success && back.content == text { CompletionWritten } else { CompletionWriteRefused { cause: "The completion record read back differently from what was written" } }
+}

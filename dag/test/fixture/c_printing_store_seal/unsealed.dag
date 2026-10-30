@@ -1,0 +1,8 @@
+module test.fixture.c_printing_store_seal.unsealed
+
+import std.types { NonEmptyStr }
+
+// THE STRIPPED TWIN for test.claim.c_printing_store_seal_witness: PreparedBundle with the SAME field and NO
+// sole_constructor keyword, so the same forged text compiles clean here and the refusal is pinned to the keyword.
+
+type PreparedBundle { root: NonEmptyStr }

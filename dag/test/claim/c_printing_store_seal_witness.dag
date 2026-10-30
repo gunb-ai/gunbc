@@ -1,0 +1,71 @@
+module test.claim.c_printing_store_seal_witness
+
+import std.types { String }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE PRINTING STORES CANNOT BE SPELLED OR CAST OUTSIDE THEIR DECLARING FILES. Each sealed record
+// (PrinterStartClaims, PrinterExecutionHoldStore, PrintRequestStore, PrintCompletionStore, CassetteInventoryStore,
+// CadRuntimeStore, PreparedBundle) is sole_constructor and built only by its one mint, which takes the sealed
+// HostStateTree (or, for the bundle, the tree and a plan) and never a path. Each RED hands the compiler a foreign
+// module that spells the record over a path and asserts, on the real acceptance path, exactly one
+// SoleConstructorViolation keyed on that record. The twin pair pins the refusal to the keyword. The rung claimed is
+// that a consumer cannot be handed a forged store or one over the wrong root; field reads stay open (the existing
+// a_slot_store_is_built_over_a_literal_path_by_any_module row), and no rung is claimed for them.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+data forged_claims_source: String = "module probe_c_printing_forged_claims\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store }\nimport gunbc.fleet.printer_actuation { PrinterStartClaims }\nfn forged(dir: NonEmptyStr) -> PrinterStartClaims {\n  PrinterStartClaims { slots: file_slot_store(root: dir) }\n}\n"
+
+data forged_hold_source: String = "module probe_c_printing_forged_hold\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_execution_hold { PrinterExecutionHoldStore }\nfn forged(dir: NonEmptyStr) -> PrinterExecutionHoldStore {\n  PrinterExecutionHoldStore { root: dir }\n}\n"
+
+data forged_request_source: String = "module probe_c_printing_forged_request\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.print_record_stores { PrintRequestStore }\nfn forged(dir: NonEmptyStr) -> PrintRequestStore {\n  PrintRequestStore { root: dir }\n}\n"
+
+data forged_completion_source: String = "module probe_c_printing_forged_completion\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.print_record_stores { PrintCompletionStore }\nfn forged(dir: NonEmptyStr) -> PrintCompletionStore {\n  PrintCompletionStore { root: dir }\n}\n"
+
+data forged_inventory_source: String = "module probe_c_printing_forged_inventory\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store }\nimport product.printed_chassis.assembly_inventory_store { CassetteInventoryStore }\nfn forged(dir: NonEmptyStr) -> CassetteInventoryStore {\n  CassetteInventoryStore { slots: file_slot_store(root: dir) }\n}\n"
+
+data forged_cad_source: String = "module probe_c_printing_forged_cad\nimport std.types { NonEmptyStr }\nimport product.printing.cad_runtime_store { CadRuntimeStore }\nfn forged(dir: NonEmptyStr) -> CadRuntimeStore {\n  CadRuntimeStore { root: dir, locks: dir }\n}\n"
+
+data forged_bundle_source: String = "module probe_c_printing_forged_bundle\nimport std.types { NonEmptyStr }\nimport product.printed_chassis.prepared_bundle_store { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir }\n}\n"
+
+data twin_bundle_source: String = "module probe_c_printing_twin_bundle\nimport std.types { NonEmptyStr }\nimport test.fixture.c_printing_store_seal.unsealed { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir }\n}\n"
+
+test fn a_forged_claims_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_claims_source, subject: "PrinterStartClaims"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_hold_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_hold_source, subject: "PrinterExecutionHoldStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_request_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_request_source, subject: "PrintRequestStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_completion_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_completion_source, subject: "PrintCompletionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_inventory_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_inventory_source, subject: "CassetteInventoryStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_cad_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_cad_source, subject: "CadRuntimeStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_bundle_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_bundle_source, subject: "PreparedBundle"), holds: fn(n) { n == 1 }))
+}
+
+// THE STRIPPED TWIN, same text: it compiles and draws no blocking diagnostic and no SoleConstructorViolation.
+test fn the_same_forged_bundle_passes_against_the_seal_stripped_twin() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: total_blocking_census(source: twin_bundle_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_bundle_source, subject: "PreparedBundle"), holds: fn(n) { n == 0 }),
+  ])
+}

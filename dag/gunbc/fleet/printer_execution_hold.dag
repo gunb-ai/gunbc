@@ -2,7 +2,11 @@ module gunbc.fleet.printer_execution_hold
 import gunbc.durable_exclusive_hold_file_store {FileHoldOccupied,FileHoldAcquireLost,FileHoldAcquireStoreUnavailable,FileHoldSlotUndecodable,FileHoldKeyNotSlotAddressable,FileHoldReleaseLost,FileHoldReleaseStoreUnavailable,FileHoldReleaseKeyNotSlotAddressable,FileHoldReleaseNotEligible}
 import std.durable_exclusive_hold {HoldSlotAbsent,HoldSlotFree,HoldSlotUndecodable,HoldObservationUnavailable}
 import std.types {NonEmptyStr,Bool,String}
-import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
+import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer_state_directory,printer_starts_legacy_scan,PrinterStartsClean,PrinterStartsLegacyEntries,PrinterStartsUnreadable}
+import gunbc.host_state_root {HostStateTree}
+import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
+import gunbc.owned_directory {OwnedDirectoryTarget}
+import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreRefused}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
@@ -40,6 +44,39 @@ import gunbc.auth.approval_decision_store {
 // A crashed/uncertain owner remains held until the existing dead-holder recovery
 // protocol establishes recovery; merely using the same owner text does not re-enter.
 data hold_key:NonEmptyStr = "fleet-print-controller"
+
+// THE CONTROLLER HOLD'S STORE, SEALED. One member of the printer-starts parent (gunbc.fleet.printer_workflow_artifact
+// printer_starts), declared once here; the mint derives the root from the host-state tree and this member, the
+// provisioning row derives from the same declaration, and no function takes a root. The slot inside it is hold_key.
+type PrinterExecutionHoldDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data printer_execution_hold_slots: PrinterExecutionHoldDeclaration = PrinterExecutionHoldDeclaration {
+  member: "execution-hold" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+fn printer_execution_hold_path(tree:HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree:tree,member:printer_execution_hold_slots.member) }
+
+fn printer_execution_hold_directory_target(tree:HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member:printer_execution_hold_slots.member as String,path:printer_execution_hold_path(tree:tree),mode:printer_execution_hold_slots.mode)
+}
+
+type PrinterExecutionHoldStore sole_constructor {root:NonEmptyStr}
+
+type PrinterExecutionHoldStoreReading = PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore} | PrinterExecutionHoldStoreUnready {detail:String}
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds the flat layout, whose
+// fleet-print-controller.<n> slot would otherwise read as free here and admit a second controller.
+fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
+  match printer_starts_legacy_scan(tree:tree) {
+    PrinterStartsUnreadable {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
+    PrinterStartsLegacyEntries {names:n}=>PrinterExecutionHoldStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+    PrinterStartsClean=>match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {
+      SlotStoreRefused {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
+      SlotStoreListed {root:r}=>PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}}
+    }
+  }
+}
 
 // THE OWNER NAME IS THE AUTHORIZATION PLUS THE PROCESS THAT TOOK THE SLOT, the pattern
 // gunbc.host.managed_host_unit_hold and extdeps.realization.materialization_store_local already
@@ -115,21 +152,21 @@ fn printer_operator_observation_intent_text(hold_root:NonEmptyStr,hold_slot:NonE
   join(["printer-start-stale-hold-release-v1 root=",hold_root as String," slot=",hold_slot as String," holder=",holder as String," generation=",int_to_decimal_string(value:cas_generation_count(g:generation))],"") as NonEmptyStr
 }
 
-fn printer_operator_observation_request(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> AuthorizationRequest<DurableHoldSubject> {
+fn printer_operator_observation_request(store:PrinterExecutionHoldStore,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> AuthorizationRequest<DurableHoldSubject> {
   AuthorizationRequest {
     escalation_id: escalation_id,
     scopes: [printer_operator_observation_verb],
-    subject: DurableHoldSubject { hold:file_hold_ref(root:hold_root,slot_key:hold_slot), holder:holder, generation:generation },
+    subject: DurableHoldSubject { hold:file_hold_ref(root:store.root,slot_key:hold_key), holder:holder, generation:generation },
     purpose: printer_operator_observation_purpose,
     attempt: printer_operator_observation_attempt,
-    intent_hash: content_hash_of_value(value:printer_operator_observation_intent_text(hold_root:hold_root,hold_slot:hold_slot,holder:holder,generation:generation)),
+    intent_hash: content_hash_of_value(value:printer_operator_observation_intent_text(hold_root:store.root,hold_slot:hold_key,holder:holder,generation:generation)),
     destructive: true,
   }
 }
 
-type PrinterExecutionHold sole_constructor {owner:DurableHoldOwnerRef,generation:CasGeneration}
+type PrinterExecutionHold sole_constructor {store:PrinterExecutionHoldStore,owner:DurableHoldOwnerRef,generation:CasGeneration}
 fn hold_current(hold:PrinterExecutionHold) -> Bool {
- match observe_file_hold(root:printer_start_claim_directory,key:hold_key) {
+ match observe_file_hold(root:hold.store.root,key:hold_key) {
   HoldSlotHeld {owner:o,generation:g}=>durable_hold_owner_equal(left:o,right:hold.owner) && cas_generation_count(g:g)==cas_generation_count(g:hold.generation)
   HoldSlotAbsent=>false HoldSlotFree {generation:_,released_by:_}=>false HoldSlotUndecodable {generation:_,detail:_}=>false HoldObservationUnavailable {cause:_}=>false
  }
@@ -152,10 +189,10 @@ fn printer_hold_slot_text(slot_key:NonEmptyStr,holder:DurableHoldOwnerRef,genera
 // THE ACQUIRE-USE-RELEASE DANCE, spelled ONCE and used by the first attempt and by every retry
 // after a recovery -- because the one thing the retries must not change is the discipline that only
 // the holder it just won may free its own slot, at the generation it won.
-fn printer_hold_run_acquired(root:NonEmptyStr,slot_key:NonEmptyStr,owner:NonEmptyStr,held:PrinterExecutionHold,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
+fn printer_hold_run_acquired(owner:NonEmptyStr,held:PrinterExecutionHold,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
    let result=use(held)
    match result {
-    ExitSuccess=>match file_hold_release_assess(root:root,slot_key:slot_key,owner:held.owner,acquired_generation:held.generation,released_by:owner as DurableHoldReleaseRef) {
+    ExitSuccess=>match file_hold_release_assess(root:held.store.root,slot_key:hold_key,owner:held.owner,acquired_generation:held.generation,released_by:owner as DurableHoldReleaseRef) {
      FileHoldReleasePlanned {plan:p}=>match file_hold_release_commit(plan:p) {FileHoldReleased {slot_key:_,generation:_}=>ExitSuccess FileHoldReleaseLost {slot_key:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller") FileHoldReleaseStoreUnavailable {slot_key:_,cause:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller") FileHoldReleaseKeyNotSlotAddressable {slot_key:_}=>exit_failure(reason:"Printer controller hold release failed; do not start another controller")}
      FileHoldReleaseNotEligible {slot_key:_,refusal:_}=>exit_failure(reason:"Printer controller hold changed before release")
     }
@@ -168,9 +205,9 @@ fn printer_hold_run_acquired(root:NonEmptyStr,slot_key:NonEmptyStr,owner:NonEmpt
 // second controller took the slot in the meantime: it is NOT dead by the evidence that freed the
 // first one, and re-running recovery off the old verdict would release a slot whose current holder
 // was never observed at all.
-fn printer_hold_retry_after_release(root:NonEmptyStr,slot_key:NonEmptyStr,owner:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit,prior:NonEmptyStr) -> ProcessExit {
-  match file_hold_acquire(root:root,slot_key:slot_key,requested_owner:owner as DurableHoldOwnerRef) {
-    FileHoldAcquired {slot_key:_,owner:o2,generation:g2}=>printer_hold_run_acquired(root:root,slot_key:slot_key,owner:owner,held:PrinterExecutionHold {owner:o2,generation:g2},use:use)
+fn printer_hold_retry_after_release(store:PrinterExecutionHoldStore,owner:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit,prior:NonEmptyStr) -> ProcessExit {
+  match file_hold_acquire(root:store.root,slot_key:hold_key,requested_owner:owner as DurableHoldOwnerRef) {
+    FileHoldAcquired {slot_key:_,owner:o2,generation:g2}=>printer_hold_run_acquired(owner:owner,held:PrinterExecutionHold {store:store,owner:o2,generation:g2},use:use)
     FileHoldOccupied {slot_key:k,holder:h,generation:g}=>exit_failure(reason:join(["Printer fleet controller: ",prior as String,"; the retry then met a LIVE occupant ",printer_hold_slot_text(slot_key:k,holder:h,generation:g),". Never a second controller."],""))
     FileHoldAcquireLost {slot_key:k}=>exit_failure(reason:join(["Printer fleet controller claim on slot ",k as String," was lost to a racing controller after the stale hold was freed; no second controller admitted."],""))
     FileHoldAcquireStoreUnavailable {slot_key:k,cause:c}=>exit_failure(reason:concat(concat("Printer fleet controller store on slot ",concat(k as String," is unavailable after the stale hold was freed: ")),store_failure_detail(cause:c)))
@@ -190,17 +227,17 @@ fn printer_hold_retry_after_release(root:NonEmptyStr,slot_key:NonEmptyStr,owner:
 // shells out; without a decided observation the hold STAYS HELD and the refusal names the missing
 // thing by type -- not filed, pending, decided for another intent, store unreadable, expired,
 // refused -- each its own sentence.
-fn printer_hold_release_on_operator_observation(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,cause:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
+fn printer_hold_release_on_operator_observation(store:PrinterExecutionHoldStore,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,cause:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
   match approval_instant_now() {
     Absent=>exit_failure(reason:"Cannot read the clock; an operator observation cannot be checked for expiry, and the stale printer-start hold stays held")
     Present{value:now}=>
-      match printer_hold_operator_grant(root:root,approvals_root:approvals_root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation,observed_at:now) {
+      match printer_hold_operator_grant(store:store,approvals_root:approvals_root,escalation_id:escalation_id,holder:holder,generation:generation,observed_at:now) {
         PrinterHoldOperatorGrantMissing {cause:mc}=>exit_failure(reason:join(["Printer fleet controller is held by an UNOBSERVABLE holder: ",printer_hold_slot_text(slot_key:hold_slot,holder:holder,generation:generation),cause as String," ",printer_hold_operator_grant_missing_detail(cause:mc),". Nothing released."],""))
         PrinterHoldOperatorGrantHeld {decision:d}=>
-          match printer_hold_nonholder_assess(root:root,hold_slot:hold_slot,request:ReleasedByOperator {authorization:d},released_by:join(["operator-observed-release:",holder as String],"") as DurableHoldReleaseRef) {
+          match printer_hold_nonholder_assess(store:store,request:ReleasedByOperator {authorization:d},released_by:join(["operator-observed-release:",holder as String],"") as DurableHoldReleaseRef) {
             FileHoldNonHolderReleasePlanned {plan:p,released_holder:rh,basis:_}=>
               match file_hold_release_commit(plan:p) {
-                FileHoldReleased {slot_key:_,generation:_}=>printer_hold_retry_after_release(root:root,slot_key:hold_slot,owner:printer_execution_hold_owner_text(escalation_id:escalation_id),use:use,prior:join(["the stale printer-start hold on slot ",hold_slot as String," (holder ",rh as String,") was released on the operator's approved observation"],""))
+                FileHoldReleased {slot_key:_,generation:_}=>printer_hold_retry_after_release(store:store,owner:printer_execution_hold_owner_text(escalation_id:escalation_id),use:use,prior:join(["the stale printer-start hold on slot ",hold_slot as String," (holder ",rh as String,") was released on the operator's approved observation"],""))
                 FileHoldReleaseLost {slot_key:_}=>exit_failure(reason:join(["the stale printer-start hold on slot ",hold_slot as String," moved under the operator-observed release; nothing released, re-run"],""))
                 FileHoldReleaseStoreUnavailable {slot_key:_,cause:cs}=>exit_failure(reason:join(["the printer-start claim store refused the operator-observed release on slot ",hold_slot as String,": ",store_failure_detail(cause:cs)],""))
                 FileHoldReleaseKeyNotSlotAddressable {slot_key:_}=>exit_failure(reason:join(["the printer-start hold slot key ",hold_slot as String," is not slot-addressable; the operator-observed release did not commit"],""))
@@ -217,8 +254,8 @@ fn printer_hold_release_on_operator_observation(root:NonEmptyStr,approvals_root:
 // ReleasedByOperator -- the evidence arm (NonHolderReleaseOnEvidence) is the other consumer's route
 // and is never constructed here, so a stale hold can never be freed by "evidence" this module itself
 // produced. Admission lives on the store's admit_callers for this function.
-fn printer_hold_nonholder_assess(root:NonEmptyStr,hold_slot:NonEmptyStr,request:DurableHoldNonHolderRelease<NonEmptyStr>,released_by:DurableHoldReleaseRef) -> FileHoldNonHolderReleaseAssessment<NonEmptyStr> {
-  file_hold_nonholder_release_assess(root:root,slot_key:hold_slot,request:request,released_by:released_by)
+fn printer_hold_nonholder_assess(store:PrinterExecutionHoldStore,request:DurableHoldNonHolderRelease<NonEmptyStr>,released_by:DurableHoldReleaseRef) -> FileHoldNonHolderReleaseAssessment<NonEmptyStr> {
+  file_hold_nonholder_release_assess(root:store.root,slot_key:hold_key,request:request,released_by:released_by)
 }
 
 // WHAT A NON-HOLDER-RELEASE REFUSAL MEANS, every arm in its own words, so the operator reading the
@@ -282,8 +319,8 @@ fn printer_hold_operator_grant_missing_detail(cause:PrinterHoldOperatorGrantCaus
   }
 }
 
-fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,observed_at:Timestamp) -> PrinterHoldOperatorGrant {
-  let request = printer_operator_observation_request(hold_root:root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation)
+fn printer_hold_operator_grant(store:PrinterExecutionHoldStore,approvals_root:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,observed_at:Timestamp) -> PrinterHoldOperatorGrant {
+  let request = printer_operator_observation_request(store:store,escalation_id:escalation_id,holder:holder,generation:generation)
   match grant_from_store(root:approvals_root,request:request) {
     GrantDerived {authorization:a}=>
       match authorize(authorization:a,request:request,observed_at:observed_at) {
@@ -297,11 +334,11 @@ fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_
   }
 }
 
-// THE PRINTER ROOT'S ENTRY, PRODUCTION WIRING: the real claim directory, the real hold slot and the
-// real approval store. Everything below is the SAME code the witnesses run -- they only name
-// different roots -- so no witness ever exercises a second copy of this policy.
-fn with_execution_hold(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
-  printer_hold_enter(escalation_id:escalation_id,use:use,root:printer_start_claim_directory,slot_key:hold_key,approvals_root:approval_decision_store_root)
+// THE PRINTER ROOT'S ENTRY, PRODUCTION WIRING: the sealed hold store the caller minted from the host-state tree and
+// the real approval store. Everything below is the SAME code the witnesses run -- they only mint the store over
+// an isolated tree -- so no witness ever exercises a second copy of this policy.
+fn with_execution_hold(store:PrinterExecutionHoldStore,escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
+  printer_hold_enter(store:store,escalation_id:escalation_id,use:use,approvals_root:approval_decision_store_root)
 }
 
 // THE HOLD PROTOCOL ITSELF, ROOT- AND SLOT-PARAMETERIZED (DESIGN.md §6b: one generalization, not a
@@ -314,15 +351,15 @@ fn with_execution_hold(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->P
 //     holder observed LIVE is refused as live (wait -- something is printing); a holder that cannot be
 //     observed at all goes to the operator-observation arm, because the only thing that makes a release
 //     sound is an observation someone actually made, and here nobody can make one.
-fn printer_hold_enter(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit,root:NonEmptyStr,slot_key:NonEmptyStr,approvals_root:NonEmptyStr) -> ProcessExit {
+fn printer_hold_enter(store:PrinterExecutionHoldStore,escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit,approvals_root:NonEmptyStr) -> ProcessExit {
   let owner = printer_execution_hold_owner_text(escalation_id:escalation_id)
-  match file_hold_acquire(root:root,slot_key:slot_key,requested_owner:owner as DurableHoldOwnerRef) {
-    FileHoldAcquired {slot_key:_,owner:o,generation:g}=>printer_hold_run_acquired(root:root,slot_key:slot_key,owner:owner,held:PrinterExecutionHold {owner:o,generation:g},use:use)
+  match file_hold_acquire(root:store.root,slot_key:hold_key,requested_owner:owner as DurableHoldOwnerRef) {
+    FileHoldAcquired {slot_key:_,owner:o,generation:g}=>printer_hold_run_acquired(owner:owner,held:PrinterExecutionHold {store:store,owner:o,generation:g},use:use)
     FileHoldOccupied {slot_key:k,holder:h,generation:g}=>
-      match file_hold_recover_dead_holder(root:root,slot_key:k,holder:h,generation:g,released_by:join(["recovered-dead-holder:",h as String],"") as DurableHoldReleaseRef,live_owner:printer_execution_hold_live_owner) {
-        FileHoldDeadHolderRecovered {dead_holder:d,evidence:e}=>printer_hold_retry_after_release(root:root,slot_key:slot_key,owner:owner,use:use,prior:join(["the dead holder ",d as String," was released on observed evidence (",e as String,")"],""))
+      match file_hold_recover_dead_holder(root:store.root,slot_key:k,holder:h,generation:g,released_by:join(["recovered-dead-holder:",h as String],"") as DurableHoldReleaseRef,live_owner:printer_execution_hold_live_owner) {
+        FileHoldDeadHolderRecovered {dead_holder:d,evidence:e}=>printer_hold_retry_after_release(store:store,owner:owner,use:use,prior:join(["the dead holder ",d as String," was released on observed evidence (",e as String,")"],""))
         FileHoldDeadHolderHolderLive {holder:hl,evidence:e}=>exit_failure(reason:join(["Printer fleet controller is held by a LIVE controller: ",printer_hold_slot_text(slot_key:k,holder:hl,generation:g),"evidence: ",e as String,". Wait for it to finish; never a second controller."],""))
-        FileHoldDeadHolderHolderUnobservable {holder:hu,cause:c}=>printer_hold_release_on_operator_observation(root:root,approvals_root:approvals_root,hold_slot:k,escalation_id:escalation_id,holder:hu,generation:g,cause:join([": ",c as String,"."],""),use:use)
+        FileHoldDeadHolderHolderUnobservable {holder:hu,cause:c}=>printer_hold_release_on_operator_observation(store:store,approvals_root:approvals_root,hold_slot:k,escalation_id:escalation_id,holder:hu,generation:g,cause:join([": ",c as String,"."],""),use:use)
         FileHoldDeadHolderNotEligible {refusal:r}=>exit_failure(reason:join(["Printer fleet controller is held and recovery refused: ",printer_hold_slot_text(slot_key:k,holder:h,generation:g),"-- ",printer_recovery_refusal_detail(refusal:r),"; never a second controller."],""))
         FileHoldDeadHolderReleaseLost=>exit_failure(reason:join(["the stale printer-start hold on slot ",k as String," moved under the recovery; nothing was released, re-run."],""))
         FileHoldDeadHolderReleaseStoreUnavailable {cause:cs}=>exit_failure(reason:join(["the printer-start claim store refused the dead-holder release on slot ",k as String,": ",cs as String],""))

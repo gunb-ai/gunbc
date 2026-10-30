@@ -1,0 +1,116 @@
+module test.claim.printer_state_layout_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.print_record_stores { print_request_store, PrintRequestStoreReady, PrintRequestStoreUnready, print_completion_store, PrintCompletionStoreReady, PrintCompletionStoreUnready, print_request_path, print_completion_path }
+import gunbc.fleet.printer_actuation { printer_start_claims, PrinterStartClaimsReady, PrinterStartClaimsUnready, printer_start_claim_path }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready, printer_execution_hold_path, hold_key }
+import product.printed_chassis.assembly_inventory_store { cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready, cassette_inventory_path }
+import gunbc.fleet.printer_state_layout { printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
+import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environments_member, legacy_lock_suffix }
+import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_digest }
+
+// THE CUTOVER OF THE FLAT printer-starts LAYOUT, driven against a throwaway host-state tree. The legacy files are
+// planted with raw writes (the shapes the old code wrote); every store, the move step and the hold library are the
+// production functions.
+
+fn tree_with_members() -> HostStateTree? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_printer_layout.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let made = [printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
+  if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
+}
+
+fn claim_file(tree: HostStateTree) -> String { join([printer_starts_path(tree: tree) as String, "/printer-attempt-abc.claimed"], "") }
+
+fn plant_claim(tree: HostStateTree) -> Bool { Filesystem.WriteCreateNew(path: claim_file(tree: tree), content: "signed-subject-bytes").success }
+
+fn claims_unready(tree: HostStateTree) -> Bool { match printer_start_claims(tree: tree) { PrinterStartClaimsReady { store: _ } => false PrinterStartClaimsUnready { detail: _ } => true } }
+fn requests_unready(tree: HostStateTree) -> Bool { match print_request_store(tree: tree) { PrintRequestStoreReady { store: _ } => false PrintRequestStoreUnready { detail: _ } => true } }
+fn completions_unready(tree: HostStateTree) -> Bool { match print_completion_store(tree: tree) { PrintCompletionStoreReady { store: _ } => false PrintCompletionStoreUnready { detail: _ } => true } }
+fn hold_unready(tree: HostStateTree) -> Bool { match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: _ } => false PrinterExecutionHoldStoreUnready { detail: _ } => true } }
+fn inventory_unready(tree: HostStateTree) -> Bool { match cassette_inventory_store(tree: tree) { CassetteInventoryStoreReady { store: _ } => false CassetteInventoryStoreUnready { detail: _ } => true } }
+fn claims_ready(tree: HostStateTree) -> Bool { !claims_unready(tree: tree) }
+
+// RED: while a flat-layout entry remains, every store minted over the printer-starts parent refuses; POSITIVE
+// CONTROL: the same mints over the clean tree are Ready.
+test fn w_every_printer_store_mint_refuses_while_the_flat_layout_remains() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let clean = claims_ready(tree: tree) && !requests_unready(tree: tree) && !completions_unready(tree: tree) && !hold_unready(tree: tree) && !inventory_unready(tree: tree)
+      let planted = plant_claim(tree: tree)
+      clean && planted && claims_unready(tree: tree) && requests_unready(tree: tree) && completions_unready(tree: tree) && hold_unready(tree: tree) && inventory_unready(tree: tree)
+    }
+  }
+}
+
+// The move carries the legacy claim byte for byte onto the slot the claim store reads, deletes the old name, and
+// the mint is Ready afterwards.
+test fn w_the_move_carries_a_legacy_claim_onto_the_claim_store_unchanged() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant_claim(tree: tree)
+      let before = claims_unready(tree: tree)
+      let moved = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let to = Filesystem.Read(path: join([printer_start_claim_path(tree: tree) as String, "/printer-attempt-abc.1"], ""))
+      let gone = !Filesystem.Read(path: claim_file(tree: tree)).success
+      planted && before && moved && to.success && to.content == "signed-subject-bytes" && gone && claims_ready(tree: tree)
+    }
+  }
+}
+
+// RED: a live holder of the OLD hold makes the move refuse before anything has moved.
+test fn w_a_held_old_hold_makes_the_move_refuse_and_nothing_moves() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant_claim(tree: tree)
+      let held = match file_hold_acquire(root: printer_starts_path(tree: tree), slot_key: hold_key, requested_owner: "live-controller" as NonEmptyStr as DurableHoldOwnerRef) {
+        FileHoldAcquired { slot_key: _, owner: _, generation: _ } => true
+        FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
+        FileHoldAcquireLost { slot_key: _ } => false
+        FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => false
+        FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
+        FileHoldKeyNotSlotAddressable { slot_key: _ } => false
+      }
+      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: _ } => true }
+      let still = Filesystem.Read(path: claim_file(tree: tree))
+      let not_moved = !Filesystem.Read(path: join([printer_start_claim_path(tree: tree) as String, "/printer-attempt-abc.1"], "")).success
+      planted && held && refused && still.success && still.content == "signed-subject-bytes" && not_moved && claims_unready(tree: tree)
+    }
+  }
+}
+
+// RED: an entry no store claims refuses the move, and the claimable entry beside it is not moved either.
+test fn w_an_unclaimed_entry_refuses_the_move_and_nothing_moves() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant_claim(tree: tree) && Filesystem.WriteCreateNew(path: join([printer_starts_path(tree: tree) as String, "/stray.txt"], ""), content: "x").success
+      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: _ } => true }
+      planted && refused && Filesystem.Read(path: claim_file(tree: tree)).success
+    }
+  }
+}
+
+// RED: a CAD convergence lock directory left by the old code makes the CAD runtime mint refuse; POSITIVE CONTROL:
+// the same mint over a tree without one is Ready.
+test fn w_a_legacy_cad_lock_makes_the_cad_mint_refuse() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let ready = match cad_runtime_store(tree: tree) { CadRuntimeStoreReady { store: _ } => true CadRuntimeStoreUnready { detail: _ } => false }
+      let lock = join([print_runtime_path(tree: tree), "/", cad_environments_member, "/", cad_runtime_spec_digest(spec: cad_runtime_spec), legacy_lock_suffix], "")
+      let planted = shell.Mkdir.Parents(path: lock as FilePath).success
+      let refused = match cad_runtime_store(tree: tree) { CadRuntimeStoreReady { store: _ } => false CadRuntimeStoreUnready { detail: _ } => true }
+      ready && planted && refused
+    }
+  }
+}

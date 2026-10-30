@@ -1,0 +1,49 @@
+module test.claim.prepared_bundle_store_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host_state_root { isolated_host_state_tree }
+import product.printed_chassis.prepared_bundle_store { prepared_bundle, PreparedBundle, PreparedBundleReady, PreparedBundleUnready, prepared_bundle_directory, prepared_bundle_write_receipt, PreparedReceiptWritten, PreparedReceiptRefused }
+
+fn bundle_over(dir: String, plan: String) -> PreparedBundle? {
+  match prepared_bundle(tree: isolated_host_state_tree(dir: dir as NonEmptyStr), plan_text: plan) {
+    PreparedBundleReady { bundle: b } => Present { value: b }
+    PreparedBundleUnready { detail: _ } => none
+  }
+}
+
+// The bundle is addressed by the plan: the same plan bytes name the same directory, other bytes another.
+test fn w_a_bundle_is_keyed_by_its_plan() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  match bundle_over(dir: dir, plan: "plan-a") {
+    Absent => false
+    Present { value: a } => match bundle_over(dir: dir, plan: "plan-a") {
+      Absent => false
+      Present { value: again } => match bundle_over(dir: dir, plan: "plan-b") {
+        Absent => false
+        Present { value: other } => prepared_bundle_directory(bundle: a) == prepared_bundle_directory(bundle: again) && prepared_bundle_directory(bundle: a) != prepared_bundle_directory(bundle: other) && starts_with(s: prepared_bundle_directory(bundle: a), prefix: concat(dir, "/prepared-plans/prepared-"))
+      }
+    }
+  }
+}
+
+// RED: an empty plan names no bundle.
+test fn w_an_empty_plan_mints_no_bundle() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  match bundle_over(dir: dir, plan: "") { Absent => true Present { value: _ } => false }
+}
+
+// The receipt is create-once and reads back as written; a second write refuses and leaves the first.
+test fn w_the_receipt_is_create_once_and_read_back() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  match bundle_over(dir: dir, plan: "plan-c") {
+    Absent => false
+    Present { value: b } => {
+      let first = match prepared_bundle_write_receipt(bundle: b, content: "[1]") { PreparedReceiptWritten => true PreparedReceiptRefused { cause: _ } => false }
+      let second = match prepared_bundle_write_receipt(bundle: b, content: "[2]") { PreparedReceiptWritten => false PreparedReceiptRefused { cause: _ } => true }
+      let kept = Filesystem.Read(path: concat(prepared_bundle_directory(bundle: b), "/prepared-queues.json"))
+      first && second && kept.success && kept.content == "[1]"
+    }
+  }
+}
