@@ -36,7 +36,7 @@ test fn cleanup_only_forbids_rollback_from_possibly_reclaimed_bytes() -> Bool {
 test fn closed_is_completed_and_cannot_reuse_the_apply_identity() -> Bool {
   let record = cleanup_fixture_record(phase: CapacityClosed)
   (match capacity_recovery_finding(record: CasObservedReadable { readable: CasReadablePresent {
-    version: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: record), value: record }
+    version: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: capacity_cutover_record_encode(record: record)), value: record }
   } }, owned_masks: Ok { value: [] }) {
     CapacityRecoveryCompleted { record: value } => value == record _ => false
   }) && capacity_recovery_plan(record: record, choice: CapacityResume)

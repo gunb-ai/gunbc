@@ -56,10 +56,17 @@ type CapacityCaptureOperation {
   root: NonEmptyStr
 }
 
+// Absolute filesystem paths are data within this operation tuple, not namespace
+// path segments (the authorization wire rejects '/' inside a segment). Address
+// the canonical exact tuple by SHA-256; the plan retains its operator-visible
+// source/root fields and the broker binds that plan digest alongside these scopes.
 fn capacity_capture_scope(intent: CapacityCutoverIntent, operation: CapacityCaptureOperation) -> AuthorizationScope {
   AuthorizationScope { verb: Execute,
     resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.capture" },
-      path: [intent.host as String, intent.attempt as String, operation.source as String, operation.root as String] },
+      path: [sha256_hex_of_text(text: serialize_json(v: JsonArray { elements: [
+        JsonString { value: intent.host as String }, JsonString { value: intent.attempt as String },
+        JsonString { value: operation.source as String }, JsonString { value: operation.root as String }
+      ] }))] },
     action: "capture-create" as NonEmptyStr as AuthorizedAction }
 }
 
@@ -75,9 +82,12 @@ type CapacityGenerationOperation {
 fn capacity_generation_scope(intent: CapacityCutoverIntent, operation: CapacityGenerationOperation) -> AuthorizationScope {
   AuthorizationScope { verb: Execute,
     resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc.cutover.generation" },
-      path: [intent.host as String, intent.attempt as String,
-        match operation.subject.manager { SystemManager => "system" UserManager { uid: uid } => concat("user:", to_string(uid)) },
-        operation.subject.unit as String, operation.destination as String, operation.root as String, operation.digest.hex as String] },
+      path: [sha256_hex_of_text(text: serialize_json(v: JsonArray { elements: [
+        JsonString { value: intent.host as String }, JsonString { value: intent.attempt as String },
+        JsonString { value: capacity_reload_manager_text(manager: operation.subject.manager) },
+        JsonString { value: operation.subject.unit as String }, JsonString { value: operation.destination as String },
+        JsonString { value: operation.root as String }, JsonString { value: operation.digest.hex as String }
+      ] }))] },
     action: "generation-publish" as NonEmptyStr as AuthorizedAction }
 }
 
