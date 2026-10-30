@@ -2,6 +2,7 @@ module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified, acquisition_reached }
+import v2.workflow.source_locus { line_starts, locus_at }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
@@ -149,8 +150,8 @@ type RosterWaveLeg {
 // census occurrence keys of ITS sites. The keys are the census location column `file:line:byte column` (1-based, byte
 // column; the same rendering the admission join uses at dag/gunbc/instruments/namespace_wave_occurrence_join.dag locus_at);
 // they arrive as ONE-SHOT generator INPUT at a run, never as a landed artifact, and every key must meet exactly one FREE
-// value-position site of the row's spelling in the file -- a key that matches nothing, or matches a site the row would not
-// touch, REFUSES the run (RefusalOccurrenceKeyUnmatched). There is NO FALLBACK TO SPELLING: a selection carrying keys is
+// value-position site of the row's spelling in the file -- a key that matches nothing, matches a site the row would not
+// touch (a bound name), or names a file outside the run's paths, REFUSES the run (RefusalOccurrenceKeyUnmatched). There is NO FALLBACK TO SPELLING: a selection carrying keys is
 // an exact claim about sites, and a partial match is a stale census, not a hint.
 type RosterRowSelection
   = EveryRowOfHome
@@ -778,8 +779,36 @@ fn roster_import_sweep_for_paths(paths_csv: String) -> String {
   }
 }
 
-fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+// A KEY NAMING A FILE OUTSIDE THE RUN'S PATHS meets no file's run, so it would vanish without a refusal: refused here, once,
+// before any read, lock or write (DESIGN section 5, never a silent narrowing). The census location column is `<file>:<line>:<col>`.
+fn roster_key_outside_paths(paths_csv: String, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
+  let paths = split(s: paths_csv, delimiter: ",")
+  match scope {
+    AllHomes => Absent
+    OneHome { home: _, rows: sel } =>
+      match sel {
+        OnlyOccurrences { row: _, call: c, occurrences: os } =>
+          fold_list(xs: os, empty: Absent, cons: fn(acc, k) {
+            match acc {
+              Present { value: r } => Present { value: r }
+              Absent => if roster_contains(xs: paths, name: roster_key_file(key: k)) { Absent } else { Present { value: RefusalOccurrenceKeyUnmatched { path: roster_key_file(key: k), call: c, key: k } } }
+            }
+          })
+        EveryRowOfHome => Absent
+        OnlyCall { call: _ } => Absent
+      }
+  }
+}
+
+fn roster_selection_and_paths_refusal(paths_csv: String, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
   match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
+    Present { value: r } => Present { value: r }
+    Absent => roster_key_outside_paths(paths_csv: paths_csv, scope: scope)
+  }
+}
+
+fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+  match roster_selection_and_paths_refusal(paths_csv: paths_csv, scope: scope) {
     Present { value: reason } => roster_refuse_row(path: "*", reason: reason)
     Absent => roster_sweep_selected(paths_csv: paths_csv, prepared: prepared, lex: lex, scope: scope)
   }
@@ -998,7 +1027,7 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
 
 fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName, rows: RosterRowSelection) -> String {
   let scope = OneHome { home: home, rows: rows }
-  match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
+  match roster_selection_and_paths_refusal(paths_csv: paths_csv, scope: scope) {
     Present { value: reason } => roster_refuse_row(path: "*", reason: reason)
     Absent =>
       match roster_lock_acquire(root_dir: root_dir) {
@@ -1486,7 +1515,7 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
-                  let unmet = roster_gate_unmet(gates: gates, candidates: candidates, sites: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
+                  let unmet = roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
                   let outcome = match unmet {
                     Present { value: reason } => RosterRefused { reason: reason }
                     Absent => match roster_sweep_rows(sides: sides, 
@@ -1676,25 +1705,14 @@ type RosterSiteGate {
   starts: List<Int>
 }
 
-fn roster_gate_ungated() -> RosterSiteGate {
-  RosterSiteGate { home: "", row_key: "", call: "", keys: [], path: "", starts: [0] }
-}
-
-fn roster_gate_active(gate: RosterSiteGate) -> Bool {
-  gate.call != "" && !is_empty(xs: gate.keys)
-}
-
-// THE ROW'S GATE: the gate whose home AND call name this row, or the ungated gate. With two legs over one call
+// THE ROW'S GATE: the gate whose home AND row key name this row, or Absent (an ungated row admits every site). With two legs over one call
 // (to_string over std.integer and over std.nat) the call alone would let either leg's keys admit the other row's sites;
 // the home is what makes each row answer to ITS keys only.
-fn roster_gate_for(gates: List<RosterSiteGate>, row: RosterHeadRow) -> RosterSiteGate {
-  fold_list(xs: gates, empty: roster_gate_ungated(), cons: fn(acc, g) {
-    if acc.call != "" {
-      acc
-    } else if g.home == roster_qn_text(qn: row.home) && g.row_key == row.key {
-      g
-    } else {
-      acc
+fn roster_gate_for(gates: List<RosterSiteGate>, row: RosterHeadRow) -> Optional<RosterSiteGate> {
+  fold_list(xs: gates, empty: Absent, cons: fn(acc, g) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if g.home == roster_qn_text(qn: row.home) && g.row_key == row.key { Present { value: g } } else { Absent }
     }
   })
 }
@@ -1748,7 +1766,7 @@ fn roster_scope_gates(scope: RosterHomeScope, path: String, text: String) -> Lis
 
 fn roster_leg_gates(home: QualifiedName, rows: RosterRowSelection, path: String, text: String) -> List<RosterSiteGate> {
   match rows {
-    OnlyOccurrences { row: k, call: c, occurrences: os } => [RosterSiteGate { home: roster_qn_text(qn: home), row_key: k, call: c, keys: os, path: path, starts: roster_line_starts(text: text) }]
+    OnlyOccurrences { row: k, call: c, occurrences: os } => [RosterSiteGate { home: roster_qn_text(qn: home), row_key: k, call: c, keys: os, path: path, starts: line_starts(text: text) }]
     EveryRowOfHome => []
     OnlyCall { call: _ } => []
   }
@@ -1760,10 +1778,13 @@ fn roster_leg_gates(home: QualifiedName, rows: RosterRowSelection, path: String,
 // There is NO FALLBACK TO SPELLING: in an active run, a site of the gated call passes ONLY if a key of the selection
 // names this file and matches the site's derived key. A file the selection names no key of has the gated row ACT AS
 // ABSENT there (its gated-call sites allow nothing: no import, no rename) -- it is never swept by spelling.
-fn roster_gate_allows_site(gate: RosterSiteGate, st: ScopedReferenceSite, spans: SpanIndex) -> Bool {
-  !roster_gate_active(gate: gate) ||
-    !roster_spelling_is(qn: st.site.spelling, call: gate.call) ||
-    roster_key_matches_site(keys: roster_keys_for_path(keys: gate.keys, path: gate.path), key: roster_site_key(st: st, spans: spans, path: gate.path, starts: gate.starts))
+fn roster_gate_allows_site(gate: Optional<RosterSiteGate>, st: ScopedReferenceSite, spans: SpanIndex) -> Bool {
+  match gate {
+    Absent => true
+    Present { value: g } =>
+      !roster_spelling_is(qn: st.site.spelling, call: g.call) ||
+        roster_key_matches_site(keys: roster_keys_for_path(keys: g.keys, path: g.path), key: roster_site_key(st: st, spans: spans, path: g.path, starts: g.starts))
+  }
 }
 
 // EVERY KEY MUST MEET A SITE. A key naming this file that meets no value-position site of the gated call -- free or
@@ -1783,25 +1804,37 @@ fn roster_gate_allows_site(gate: RosterSiteGate, st: ScopedReferenceSite, spans:
 // post-conversion rule; see roster_gate_keys_all_met). With two gates of one call (std.integer and std.nat to_string),
 // each gate tests only ITS keys, and the skip is per row: a file that already imports std.integer but not std.nat is
 // still gated on the nat keys.
-fn roster_gate_unmet(gates: List<RosterSiteGate>, candidates: List<RosterHeadRow>, sites: FreeMonoid<ScopedReferenceSite>, spans: SpanIndex, imported: List<AliasBindingRow>) -> Optional<RosterRefusalReason> {
+fn roster_gate_unmet(sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, candidates: List<RosterHeadRow>, sites: FreeMonoid<ScopedReferenceSite>, spans: SpanIndex, imported: List<AliasBindingRow>) -> Optional<RosterRefusalReason> {
   fold_list(xs: gates, empty: Absent, cons: fn(acc, g) {
     match acc {
       Present { value: r } => Present { value: r }
       Absent =>
-        if !roster_gate_active(gate: g) {
-          Absent
-        } else {
-          let row_imported = fold_list(xs: candidates, empty: false, cons: fn(hit, row) {
-            hit || (row.key == g.row_key && roster_qn_text(qn: row.home) == g.home && roster_symbol_imported(imported: imported, row: row))
+        let gated = fold_list(xs: candidates, empty: [], cons: fn(hit, row) {
+          if row.key == g.row_key && roster_qn_text(qn: row.home) == g.home { list_snoc_item(xs: hit, item: row) } else { hit }
+        })
+        let row_imported = fold_list(xs: gated, empty: false, cons: fn(hit, row) { hit || roster_symbol_imported(imported: imported, row: row) })
+        // A KEY IS MET ONLY BY A SITE THE ROW WOULD EDIT: a free value-position site of the call (roster_free_heads' own test),
+        // never a bound one -- a key on a parameter or local spelled like the call would otherwise pass and edit nothing.
+        let editable = fold_list(xs: gated, empty: [], cons: fn(acc, row) {
+          let imported_from_home = roster_symbol_imported(imported: imported, row: row)
+          fold_list(xs: sites, empty: acc, cons: fn(acc2, st) {
+            if roster_site_is_value_position(st: st) && roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { list_snoc_item(xs: acc2, item: st) } else { acc2 }
           })
-          roster_gate_keys_all_met(gate: g, sites: sites, spans: spans, already_imported: row_imported)
-        }
+        })
+        roster_gate_keys_all_met(gate: g, sites: editable, spans: spans, already_imported: row_imported)
     }
   })
 }
 
+fn roster_site_is_value_position(st: ScopedReferenceSite) -> Bool {
+  match st.position {
+    ValuePosition => true
+    _ => false
+  }
+}
+
 fn roster_gate_keys_all_met(gate: RosterSiteGate, sites: FreeMonoid<ScopedReferenceSite>, spans: SpanIndex, already_imported: Bool) -> Optional<RosterRefusalReason> {
-  if !roster_gate_active(gate: gate) || already_imported {
+  if already_imported {
     Absent
   } else {
     match roster_first_unmet_key(keys: roster_keys_for_path(keys: gate.keys, path: gate.path), sites: sites, gate: gate, spans: spans) {
@@ -1845,42 +1878,12 @@ fn roster_site_key(st: ScopedReferenceSite, spans: SpanIndex, path: String, star
   path + ":" + roster_locus_at(starts: starts, offset: roster_identity_start(identity: st.occurrence, spans: spans))
 }
 
-// The byte offsets at which each line starts (line 1 at 0), computed by counting bytes and splitting on \n -- the same
-// recipe the admission join uses, so a line:column the census carries and a line:column derived here agree byte for byte.
-fn roster_line_starts(text: String) -> List<Int> {
-  fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: RosterLineScan { next: 0, starts: [0] }, cons: fn(acc, o) {
-    if o == 10 {
-      RosterLineScan { next: acc.next + 1, starts: list_snoc_item(xs: acc.starts, item: acc.next + 1) }
-    } else {
-      RosterLineScan { next: acc.next + 1, starts: acc.starts }
-    }
-  }).starts
-}
-
-type RosterLineScan {
-  next: Int
-  starts: List<Int>
-}
-
-// `<line>:<byte column>` for a head-start offset, 1-based both; "-" when the offset is absent. The line is how many
-// line-starts are <= the offset, the column is the offset's distance past the last such start -- folded in one pass so
-// the helper needs no filter/last beyond what this module imports.
+// `<line>:<byte column>` for a head-start offset; "-" when the offset is absent.
 fn roster_locus_at(starts: List<Int>, offset: Optional<Int>) -> String {
   match offset {
     Absent => "-"
-    Present { value: o } =>
-      match fold_list(xs: starts, empty: RosterLocusScan { lines: 0, last_start: 0 - 1 }, cons: fn(acc, st) {
-        if st <= o { RosterLocusScan { lines: acc.lines + 1, last_start: st } } else { acc }
-      }) {
-        RosterLocusScan { lines: 0, last_start: _ } => "-"
-        RosterLocusScan { lines: k, last_start: s } => int_to_decimal_string(value: k) + ":" + int_to_decimal_string(value: o - s + 1)
-      }
+    Present { value: o } => locus_at(starts: starts, offset: o)
   }
-}
-
-type RosterLocusScan {
-  lines: Int
-  last_start: Int
 }
 
 // The keys of a selection that name THIS file: the text before the first `:` is the file (a repo path carries no colon;
@@ -3545,7 +3548,9 @@ fn roster_rename_control_names() -> List<String> {
     "wave-applies-half-imported",
     "wave-imported-labels",
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
-    "occurrences-unknown-row-key-refuses"
+    "occurrences-unknown-row-key-refuses",
+    "occurrences-key-on-a-bound-site-refuses",
+    "occurrences-key-outside-the-paths-refuses"
   ]
 }
 
@@ -3798,7 +3803,7 @@ fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRul
 // THE PER-SITE SELECTION (OnlyOccurrences), on one home. The fixture holds two free map_get sites, lines 6 and 7; a
 // census key names a site by `<path>:<line>:<byte column>`.
 fn roster_occ_gate(text: String, keys: List<String>) -> List<RosterSiteGate> {
-  [RosterSiteGate { home: "std.algebra", row_key: "map_get", call: "map_get", keys: keys, path: "control/rename.dag", starts: roster_line_starts(text: text) }]
+  [RosterSiteGate { home: "std.algebra", row_key: "map_get", call: "map_get", keys: keys, path: "control/rename.dag", starts: line_starts(text: text) }]
 }
 
 fn roster_occ_outcome(text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
@@ -3829,6 +3834,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
   let wide = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(x: \"é😀\", y: map_get(m, k))\n}\n"
   let wide_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(x: \"é😀\", y: map_lookup(m: m, key: k))\n}\n"
   let src = head + body
+  let bound = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(k: String) -> String {\n  let map_get = k\n  map_get\n}\n"
   [
     roster_control_verdict(name: "occurrences-selected-site-rewrites-unselected-untouched", fail: roster_occ_expect_text(name: "occurrences-selected-site-rewrites-unselected-untouched", before: src, keys: ["control/rename.dag:7:3"], after: second_only, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-every-site-selected", fail: roster_occ_expect_text(name: "occurrences-every-site-selected", before: src, keys: ["control/rename.dag:6:11", "control/rename.dag:7:3"], after: both, prepared: prepared, lex: lex)),
@@ -3838,8 +3844,27 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-byte-column-after-multibyte-text", fail: roster_occ_expect_text(name: "occurrences-byte-column-after-multibyte-text", before: wide, keys: ["control/rename.dag:6:21"], after: wide_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own", fail: roster_occ_two_rows_control(prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-unknown-row-key-refuses", fail: roster_occ_unknown_row_control()),
-    roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control())
   ]
+}
+
+fn roster_occ_scope_of(key: String) -> RosterHomeScope {
+  OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "map_get", call: "map_get", occurrences: [key] } }
+}
+
+// A key naming a file outside the run's paths meets no file's run, so it refuses at the entry; a key inside the paths passes it.
+fn roster_occ_outside_paths_control() -> String {
+  let outside = match roster_key_outside_paths(paths_csv: "a.dag,b.dag", scope: roster_occ_scope_of(key: "c.dag:1:1")) {
+    Present { value: r } => if roster_refusal_text(reason: r) == "occurrence-key-unmatched path=c.dag call=map_get key=c.dag:1:1" { "" } else { "CONTROL-FAIL occurrences-key-outside-the-paths-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
+    Absent => "CONTROL-FAIL occurrences-key-outside-the-paths-refuses: a key outside the paths was admitted\n"
+  }
+  let inside = match roster_key_outside_paths(paths_csv: "a.dag,b.dag", scope: roster_occ_scope_of(key: "b.dag:1:1")) {
+    Present { value: r } => "CONTROL-FAIL occurrences-key-outside-the-paths-refuses: a key inside the paths refused " + roster_refusal_text(reason: r) + "\n"
+    Absent => ""
+  }
+  outside + inside
 }
 
 fn roster_occ_empty_control() -> String {
