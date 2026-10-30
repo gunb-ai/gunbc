@@ -183,10 +183,13 @@ test fn w_the_read_card_selects_through_the_same_function() -> Bool {
 // a reviewer must tell which before re-recording. It becomes a grounded control when a print record carries the
 // FIT-RING part geometry to digest instead. The root is now spelled as a catalogued card joined to a shape
 // (printable_assembly_selection duct_card_root); the two literals below are byte-for-byte what they were.
+// Digest re-recorded for the schema-string change ONLY (gunbc.a16-inlet-duct-review.v2 -> gunbc.printed-duct-review.v3):
+// a field-by-field diff of the manifest against main 18a76b7 shows that string as the sole difference, and main's
+// digest reproduced the previous literal.
 test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() -> Bool {
   match selected(root: a16_root(kind: PlugFitRing)) {
     Present { value: a } => match manifest_identity(content: serialize_json(v: printable_manifest(a: a))) {
-      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "c12992f1156658e0c81955f452c61e2bd9a02fa674691e2d671ed39180e66ac2"
+      Present { value: m } => m.root_wire == "a16-plug-fit-ring" && m.digest.hex == "83dddd9fb4066e4756974fd3d5c1d0dfba3dbc4f2434bf040af82d64549f3a78"
       Absent => false
     }
     Absent => false
