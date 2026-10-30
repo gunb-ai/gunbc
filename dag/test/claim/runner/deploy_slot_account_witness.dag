@@ -11,7 +11,7 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
   classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
   DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
-  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned,
+  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned, deploy_slot_tree_owned_find_argv,
   deploy_slot_runner_stage_dir, deploy_slot_runner_stage_fetch_commands,
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
@@ -138,6 +138,15 @@ test fn the_tree_owner_read_is_three_valued() -> Bool {
     && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
 }
 
+// THE TREE IS HELD ONLY OWNER-ONLY: the far-side find that answers "held" asks for the account AND the
+// deploy role's 0700, so a tree the account owns at 0755 -- srv1-02 as read on 2026-10-30, its listener's
+// RSA key 0644 inside -- answers not held and is rebuilt (gunbc.recurring_failure_mode
+// a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids). RED: drop the -perm word.
+test fn the_tree_is_held_only_at_the_owner_only_mode() -> Bool {
+  let argv = deploy_slot_tree_owned_find_argv(slot_dir: "/opt/actions-runner/srv1-02")
+  argv == ["find", "/opt/actions-runner/srv1-02", "-maxdepth", "0", "-type", "d", "-user", "ghdeploy", "-perm", "0700"]
+}
+
 // THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
 // that order, then removes the stage as root: no file of the old tree survives and no new file is root's.
 test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
@@ -145,6 +154,7 @@ test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
   length(lines) == 4
     && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 1), pattern: "ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "-m 00700")
     && string_contains(s: nth(xs: lines, i: 1), pattern: "/opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghdeploy")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "/var/lib/gunbc/stage/runner.tar.gz")
