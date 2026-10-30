@@ -1,0 +1,42 @@
+module test.claim.string_contains_agrees_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+
+// The ambient String `contains` against std.algebra string_contains, the callee the contains RenameHead row moves the six
+// extdeps.uri / extdeps.uri_path sites to. Inputs discriminate position (start, middle, end), absence, the empty pattern and
+// non-ASCII text, so agreement is the same test and not merely a resolving name.
+data hay: String = "abcdef"
+data wide: String = "é😀x"
+
+test fn agrees_with_a_substring_at_the_start() -> Bool {
+  string_contains(s: hay, pattern: "abc") == (hay |> contains("abc"))
+}
+
+test fn agrees_with_a_substring_in_the_middle() -> Bool {
+  string_contains(s: hay, pattern: "cd") == (hay |> contains("cd"))
+}
+
+test fn agrees_with_a_substring_at_the_end() -> Bool {
+  string_contains(s: hay, pattern: "def") == (hay |> contains("def"))
+}
+
+test fn agrees_when_the_pattern_is_absent() -> Bool {
+  string_contains(s: hay, pattern: "xyz") == (hay |> contains("xyz"))
+}
+
+test fn agrees_on_the_empty_pattern() -> Bool {
+  string_contains(s: hay, pattern: "") == (hay |> contains(""))
+}
+
+test fn agrees_on_non_ascii_text() -> Bool {
+  string_contains(s: wide, pattern: "😀") == (wide |> contains("😀"))
+}
+
+test fn the_fixture_has_a_true_and_a_false_answer() -> Bool {
+  string_contains(s: hay, pattern: "cd") && !string_contains(s: hay, pattern: "xyz")
+}
+
+test fn a_wrong_realization_is_a_discriminating_red() -> Bool {
+  string_contains(s: hay, pattern: "xyz") == (hay |> contains("cd"))
+}
