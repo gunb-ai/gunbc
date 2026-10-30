@@ -1,0 +1,316 @@
+module test.claim.auth.auth_record_store_wet_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List, Email }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.uri { Uri, Https }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
+import gunbc.auth.session_store_root { SessionStore, SessionStoreReady, SessionStoreUnready, session_store, session_store_slots_path }
+import gunbc.auth.session_store {
+  session_store_save, session_store_lookup, session_store_delete,
+  SessionStoreSaved, SessionStoreSaveRefused, SessionStoreFound, SessionStoreUnknown, SessionStoreUnread, SessionStoreEntryMalformed,
+  SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused,
+}
+import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_slots_path }
+import gunbc.auth.login_transaction_store {
+  login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete,
+  LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed,
+  LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused,
+}
+import gunbc.auth.profile_store_root { ProfileStoreReady, ProfileStoreUnready, profile_store, profile_store_slots_path }
+import gunbc.auth.profile_projection {
+  PrincipalProfile, ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread,
+  profile_store_upsert_from_session, profile_store_read_all,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+
+// THE SEALED AUTH RECORD STORES OVER REAL FILES (gunbc.auth.session_store_root, gunbc.auth.login_transaction_store_root,
+// gunbc.auth.profile_store_root). Each store is minted the production way, from an instance whose root is a
+// throwaway directory, its directory created the way the instance directory row would create it.
+//
+// SEALED IN PLACE MEANS THE BYTES DID NOT MOVE. The three *_bytes_before_the_seal rows are the exact files the
+// stores wrote BEFORE they were sealed: each was written by the pre-seal code (head c24fbe2, the layout-taking
+// session_store_save / login_transaction_store_save / profile_store_upsert_from_session) for the fixture
+// records below, and copied here byte for byte (receipt in the change). Each claim plants that file, reads it
+// back through the sealed store, then writes the same record through a second sealed store over a fresh tree
+// (the stores write create-new, owner-only, so a write never replaces a file) and requires that file to be
+// byte-identical to the planted one. RED if the format moved, if the sealed read does not find what the old
+// code wrote, or if the store reads somewhere other than the declared directory.
+
+data session_bytes_before_the_seal: String = "{\"schema\": \"gunbc-auth-session/v1\", \"session_id\": \"sealreadback-session\", \"principal\": \"principal:google-oidc/accounts/seal-readback-subject\", \"authenticated_at\": \"2026-10-24T00:00:00Z\", \"expires_at\": \"2099-01-01T00:00:00Z\", \"auth_method\": \"google-oidc\", \"client\": \"tracker-web\", \"csrf\": \"sealreadback-csrf\", \"picture\": \"https://example.com/a.png\", \"name\": \"Ada Readback\", \"email\": \"ada@example.com\"}"
+
+data login_transaction_bytes_before_the_seal: String = "{\"schema\": \"gunbc-login-transaction/v1\", \"state\": \"sealreadback-state\", \"nonce\": \"sealreadback-nonce\", \"created_at\": \"2026-10-24T00:00:00Z\", \"expires_at\": \"2099-01-01T00:00:00Z\", \"verifier\": \"sealreadback-verifier\", \"return_path\": \"/after\"}"
+
+data profile_bytes_before_the_seal: String = "{\"schema\": \"gunbc-auth-profile/v1\", \"principal\": \"principal:google-oidc/accounts/seal-readback-subject\", \"updated_at\": \"2026-10-24T00:00:00Z\", \"source\": \"google-oidc-login\", \"name\": \"Ada Readback\", \"email\": \"ada@example.com\", \"picture\": \"https://example.com/a.png\"}"
+
+data profile_file_before_the_seal: String = "3c76eb97447ac648fe93eed227472769f960b96a682d2d690ce71d2ab134bf9b.json"
+
+fn fixture_principal() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "seal-readback-subject" }
+}
+
+fn fixture_session() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "sealreadback-session" as NonEmptyStr,
+    principal: fixture_principal(),
+    authenticated_at: "2026-10-24T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "sealreadback-csrf" as NonEmptyStr },
+    profile: SessionProfile { picture: Present { value: Uri { scheme: Https, locator: "example.com/a.png" as NonEmptyStr } }, name: Present { value: "Ada Readback" }, email: Present { value: "ada@example.com" as Email } },
+  }
+}
+
+fn fixture_transaction() -> OidcLoginTransaction {
+  OidcLoginTransaction { state: "sealreadback-state", nonce: "sealreadback-nonce", created_at: "2026-10-24T00:00:00Z", expires_at: "2099-01-01T00:00:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: "sealreadback-verifier" }, return_path: RelativeReturnPath { path: "/after" } }
+}
+
+fn fixture_instance(directory: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(deployment: deployment_id(name: "auth-record-store-fixture" as NonEmptyStr), instance_id: "auth-record-store-fixture", layout: srv1_host_layout(), root: directory as FilePath,
+    serve_function: "unused", listen_port: 18747, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+}
+
+fn with_temp_dir(scenario: fn(String) -> ProcessExit) -> ProcessExit {
+  let dir = shell.Mktemp.Dir()
+  if !dir.success { exit_failure(reason: "the fixture directory could not be created") } else {
+    let observed = scenario(dir.path)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    match observed {
+      ExitSuccess => holds(ok: cleaned.success, failing: "the fixture directory could not be removed")
+      ExitFailure { code: _, reason: _ } => observed
+    }
+  }
+}
+
+// A claim's verdict carries the reason it failed. A store mint that refuses is its own failure, never folded
+// into the business answer under test (stern-ram-763, 2026-10-25).
+fn holds(ok: Bool, failing: String) -> ProcessExit {
+  if ok { ExitSuccess } else { exit_failure(reason: failing) }
+}
+
+fn and_then(first: ProcessExit, next: fn() -> ProcessExit) -> ProcessExit {
+  match first {
+    ExitSuccess => next()
+    ExitFailure { code: _, reason: _ } => first
+  }
+}
+
+fn mint_refused(store: String, detail: String) -> ProcessExit {
+  exit_failure(reason: join(["the ", store, " mint refused over the fixture tree: ", detail], ""))
+}
+
+fn file_is(path: String, bytes: String) -> Bool {
+  let read = Filesystem.Read(path: path)
+  read.success && read.content == bytes
+}
+
+// ── 1. records written before the seal read back, and are written again byte for byte ──────────
+
+fn session_rewritten_identically(dir: String) -> ProcessExit {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: session_store_slots_path(instance: instance))
+  and_then(first: holds(ok: made.success, failing: "the rewrite tree's session directory could not be created"), next: fn() {
+    match session_store(instance: instance) {
+      SessionStoreUnready { detail: d } => mint_refused(store: "rewrite session store", detail: d)
+      SessionStoreReady { store: sessions } =>
+        and_then(
+          first: match session_store_save(store: sessions, session: fixture_session()) {
+            SessionStoreSaved { session_id: _ } => ExitSuccess
+            SessionStoreSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the sealed session store refused the rewrite at ", s, ": ", r], ""))
+          },
+          next: fn() { holds(ok: file_is(path: join([session_store_slots_path(instance: instance) as String, "/sealreadback-session.json"], ""), bytes: session_bytes_before_the_seal), failing: "the session the sealed store wrote differs from the bytes written before the seal") },
+        )
+    }
+  })
+}
+
+fn login_transaction_rewritten_identically(dir: String) -> ProcessExit {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
+  and_then(first: holds(ok: made.success, failing: "the rewrite tree's login transaction directory could not be created"), next: fn() {
+    match login_transaction_store(instance: instance) {
+      LoginTransactionStoreUnready { detail: d } => mint_refused(store: "rewrite login transaction store", detail: d)
+      LoginTransactionStoreReady { store: transactions } =>
+        and_then(
+          first: match login_transaction_store_save(store: transactions, transaction: fixture_transaction()) {
+            LoginTransactionSaved { state: _ } => ExitSuccess
+            LoginTransactionSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the sealed login transaction store refused the rewrite at ", s, ": ", r], ""))
+          },
+          next: fn() { holds(ok: file_is(path: join([login_transaction_store_slots_path(instance: instance) as String, "/sealreadback-state.json"], ""), bytes: login_transaction_bytes_before_the_seal), failing: "the login transaction the sealed store wrote differs from the bytes written before the seal") },
+        )
+    }
+  })
+}
+
+fn profile_rewritten_identically(dir: String) -> ProcessExit {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: profile_store_slots_path(instance: instance))
+  and_then(first: holds(ok: made.success, failing: "the rewrite tree's profile directory could not be created"), next: fn() {
+    match profile_store(instance: instance) {
+      ProfileStoreUnready { detail: d } => mint_refused(store: "rewrite profile store", detail: d)
+      ProfileStoreReady { store: profiles } =>
+        and_then(
+          first: match profile_store_upsert_from_session(store: profiles, session: fixture_session()) {
+            ProfileStoreUpserted { principal: _ } => ExitSuccess
+            ProfileStoreUpsertRefused { step: s, reason: r } => exit_failure(reason: join(["the sealed profile store refused the rewrite at ", s, ": ", r], ""))
+          },
+          next: fn() { holds(ok: file_is(path: join([profile_store_slots_path(instance: instance) as String, "/", profile_file_before_the_seal], ""), bytes: profile_bytes_before_the_seal), failing: "the profile the sealed store wrote differs from the bytes written before the seal") },
+        )
+    }
+  })
+}
+
+test fn a_session_written_before_the_seal_reads_back_and_rewrites_identically() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    let made = shell.Mkdir.Parents(path: session_store_slots_path(instance: instance))
+    let file = join([session_store_slots_path(instance: instance) as String, "/sealreadback-session.json"], "")
+    let planted = Filesystem.Write(path: file, content: session_bytes_before_the_seal)
+    and_then(first: holds(ok: made.success && planted.success, failing: "the pre-seal session could not be planted"), next: fn() {
+      match session_store(instance: instance) {
+        SessionStoreUnready { detail: d } => mint_refused(store: "session store", detail: d)
+        SessionStoreReady { store: sessions } =>
+          and_then(
+            first: match session_store_lookup(store: sessions, session_id: "sealreadback-session" as NonEmptyStr) {
+              SessionStoreFound { session: s } =>
+                holds(ok: principal_ref_eq(a: s.principal, b: fixture_principal()) && (s.csrf.token as String) == "sealreadback-csrf"
+                  && (match s.profile.name { Present { value: n } => n == "Ada Readback"  Absent => false }), failing: "the pre-seal session read back with different fields")
+              _ => exit_failure(reason: "the sealed session store did not find the session written before the seal")
+            },
+            next: fn() { session_rewritten_identically(dir: join([dir, "/rewrite"], "")) },
+          )
+      }
+    })
+  })
+}
+
+test fn a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
+    let file = join([login_transaction_store_slots_path(instance: instance) as String, "/sealreadback-state.json"], "")
+    let planted = Filesystem.Write(path: file, content: login_transaction_bytes_before_the_seal)
+    and_then(first: holds(ok: made.success && planted.success, failing: "the pre-seal login transaction could not be planted"), next: fn() {
+      match login_transaction_store(instance: instance) {
+        LoginTransactionStoreUnready { detail: d } => mint_refused(store: "login transaction store", detail: d)
+        LoginTransactionStoreReady { store: transactions } =>
+          and_then(
+            first: match login_transaction_store_lookup(store: transactions, state: "sealreadback-state" as NonEmptyStr) {
+              LoginTransactionStoreFound { transaction: t } => holds(ok: (t.nonce as String) == "sealreadback-nonce" && (t.return_path.path as String) == "/after", failing: "the pre-seal login transaction read back with different fields")
+              _ => exit_failure(reason: "the sealed login transaction store did not find the transaction written before the seal")
+            },
+            next: fn() { login_transaction_rewritten_identically(dir: join([dir, "/rewrite"], "")) },
+          )
+      }
+    })
+  })
+}
+
+test fn a_profile_written_before_the_seal_reads_back_and_rewrites_identically() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    let made = shell.Mkdir.Parents(path: profile_store_slots_path(instance: instance))
+    let file = join([profile_store_slots_path(instance: instance) as String, "/", profile_file_before_the_seal], "")
+    let planted = Filesystem.Write(path: file, content: profile_bytes_before_the_seal)
+    and_then(first: holds(ok: made.success && planted.success, failing: "the pre-seal profile could not be planted"), next: fn() {
+      match profile_store(instance: instance) {
+        ProfileStoreUnready { detail: d } => mint_refused(store: "profile store", detail: d)
+        ProfileStoreReady { store: profiles } =>
+          and_then(
+            first: match profile_store_read_all(store: profiles) {
+              ProfileStoreRead { profiles: ps, skipped: sk } =>
+                holds(ok: count(ps) == 1 && count(sk) == 0 && (match ps.first() {
+                  Present { value: p } => principal_ref_eq(a: p.principal, b: fixture_principal()) && (match p.name { Present { value: n } => n == "Ada Readback"  Absent => false })
+                  Absent => false
+                }), failing: "the sealed profile store did not read back exactly the one profile written before the seal")
+              ProfileStoreUnread { step: s, reason: r } => exit_failure(reason: join(["the sealed profile store could not be read at ", s, ": ", r], ""))
+            },
+            next: fn() { profile_rewritten_identically(dir: join([dir, "/rewrite"], "")) },
+          )
+      }
+    })
+  })
+}
+
+// ── 2. a request-supplied id that is not a store key never consults the store ───────────────────
+// The store is minted, then its directory is removed, so a store that WERE consulted would answer Unread (its
+// listing refused). Each traversal shape must still answer Unknown / not-a-store-key; the control is a lawful key
+// over the same store, which does answer Unread. RED if a traversal shape reaches the store. The mint itself
+// refusing is a separate failure: it never stands in for the Unread the control expects.
+
+data traversal_ids: List<String> = ["../x", "a/b", "/etc/passwd"]
+
+test fn a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    let made = shell.Mkdir.Parents(path: session_store_slots_path(instance: instance))
+    and_then(first: holds(ok: made.success, failing: "the session directory could not be created"), next: fn() {
+      match session_store(instance: instance) {
+        SessionStoreUnready { detail: d } => mint_refused(store: "session store", detail: d)
+        SessionStoreReady { store: sessions } => {
+          let removed = shell.Remove.RecursiveForce(path: session_store_slots_path(instance: instance) as String)
+          and_then(first: holds(ok: removed.success, failing: "the session directory could not be removed after the mint"), next: fn() {
+            and_then(
+              first: holds(ok: all(traversal_ids, raw =>
+                (match session_store_lookup(store: sessions, session_id: raw as NonEmptyStr) { SessionStoreUnknown { session_id: _ } => true  _ => false })
+                  && (match session_store_delete(store: sessions, session_id: raw as NonEmptyStr) { SessionStoreDeleteRefused { session_id: _, detail: d } => string_contains(s: d, pattern: "not a store key")  _ => false })),
+                failing: "a traversal session id was not answered Unknown / not-a-store-key"),
+              next: fn() { holds(ok: match session_store_lookup(store: sessions, session_id: "sealreadback-session" as NonEmptyStr) { SessionStoreUnread { session_id: _, detail: _ } => true  _ => false },
+                failing: "the lawful control key did not consult the removed store directory") },
+            )
+          })
+        }
+      }
+    })
+  })
+}
+
+test fn a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
+    and_then(first: holds(ok: made.success, failing: "the login transaction directory could not be created"), next: fn() {
+      match login_transaction_store(instance: instance) {
+        LoginTransactionStoreUnready { detail: d } => mint_refused(store: "login transaction store", detail: d)
+        LoginTransactionStoreReady { store: transactions } => {
+          let removed = shell.Remove.RecursiveForce(path: login_transaction_store_slots_path(instance: instance) as String)
+          and_then(first: holds(ok: removed.success, failing: "the login transaction directory could not be removed after the mint"), next: fn() {
+            and_then(
+              first: holds(ok: all(traversal_ids, raw =>
+                (match login_transaction_store_lookup(store: transactions, state: raw as NonEmptyStr) { LoginTransactionStoreUnknown { state: _ } => true  _ => false })
+                  && (match login_transaction_store_delete(store: transactions, state: raw as NonEmptyStr) { LoginTransactionDeleteRefused { state: _, detail: d } => string_contains(s: d, pattern: "not a store key")  _ => false })),
+                failing: "a traversal state was not answered Unknown / not-a-store-key"),
+              next: fn() { holds(ok: match login_transaction_store_lookup(store: transactions, state: "sealreadback-state" as NonEmptyStr) { LoginTransactionStoreUnread { state: _, detail: _ } => true  _ => false },
+                failing: "the lawful control state did not consult the removed store directory") },
+            )
+          })
+        }
+      }
+    })
+  })
+}
+
+// ── 3. no directory, no store ─────────────────────────────────────────────────────────────────
+// The mint is the only route to a store and it lists the declared directory first: over an instance whose
+// directories were never created, each of the three refuses. This claim's subject IS the refusal, so it matches
+// the Unready arm itself. RED if a mint answers Ready over a directory that does not list.
+test fn every_auth_record_store_mint_refuses_a_directory_that_does_not_list() -> ProcessExit {
+  with_temp_dir(scenario: fn(dir) {
+    let instance = fixture_instance(directory: dir)
+    and_then(
+      first: match session_store(instance: instance) { SessionStoreUnready { detail: _ } => ExitSuccess  SessionStoreReady { store: _ } => exit_failure(reason: "the session store minted over a directory that does not list") },
+      next: fn() { and_then(
+        first: match login_transaction_store(instance: instance) { LoginTransactionStoreUnready { detail: _ } => ExitSuccess  LoginTransactionStoreReady { store: _ } => exit_failure(reason: "the login transaction store minted over a directory that does not list") },
+        next: fn() { match profile_store(instance: instance) { ProfileStoreUnready { detail: _ } => ExitSuccess  ProfileStoreReady { store: _ } => exit_failure(reason: "the profile store minted over a directory that does not list") } },
+      ) },
+    )
+  })
+}

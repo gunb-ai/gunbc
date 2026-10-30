@@ -198,7 +198,24 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.roadmap.roadmap_belt_receipt_store_root {
+  BeltReceiptWritten, BeltReceiptWriteRefused,
+  BeltTickReceiptStoreReady, BeltTickReceiptStoreUnready, belt_tick_receipt_store, belt_tick_receipt_observe, belt_tick_receipt_put,
+  BeltObligationReceiptStoreReady, BeltObligationReceiptStoreUnready, belt_obligation_receipt_store, belt_obligation_receipt_observe, belt_obligation_receipt_put,
+  BeltPublicationReceiptStoreReady, BeltPublicationReceiptStoreUnready, belt_publication_receipt_store, belt_publication_receipt_put,
+  belt_projects_slots_path,
+}
+import gunbc.roadmap.roadmap_belt_attempt_store_root {
+  BeltAttemptEntryRead, BeltAttemptEntryAbsent, BeltAttemptEntryUnreadable,
+  BeltSubmissionStore, BeltSubmissionStoreReady, BeltSubmissionStoreUnready, belt_submission_store, belt_submission_store_ensure_argv,
+  belt_submission_store_roster, BeltCaptureRosterListed, BeltCaptureRosterUnlistable, BeltCaptureRosterEntryRead, BeltCaptureRosterEntryUnreadable,
+  belt_submission_store_observe_head, belt_submission_store_put_head,
+  BeltCaptureIntentStore, BeltCaptureIntentStoreReady, BeltCaptureIntentStoreUnready, belt_capture_intent_store, belt_capture_intent_store_ensure_argv,
+  belt_capture_intent_store_observe, belt_capture_intent_store_put, belt_capture_intent_store_clear, BeltCaptureIntentCleared, BeltCaptureIntentClearRefused,
+  BeltIntegrationStore, BeltIntegrationStoreReady, BeltIntegrationStoreUnready, belt_integration_store, belt_integration_store_ensure_argv,
+  belt_integration_store_observe_head, belt_integration_store_put_head,
+}
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
@@ -4127,13 +4144,6 @@ data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v8"
 // is DispatchStateHostShared, so blue and green resolve
 // dashboard_instance_dispatch_attempt_state_root to ONE path and a receipt there would answer for
 // two instances. Deriving from instance_root keeps it per-instance by construction.
-fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([
-    instance_receipts_dir(instance_root: instance.instance_root as String),
-    "/belt-last-tick.json",
-  ], "")
-}
-
 fn belt_pass_outcome_key(o: BeltPassOutcome) -> String {
   match o {
     BeltPassRecorded => "recorded"
@@ -4376,11 +4386,11 @@ fn belt_tick_receipt_read_from_observation(observation: FilesystemFileObservatio
 fn belt_tick_receipt_read_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltTickReceiptRead {
-  belt_tick_receipt_read_from_observation(
-    observation: filesystem_file_observation_of_path(
-      path: belt_tick_receipt_path_for_instance(instance: instance),
-    ),
-  )
+  match belt_tick_receipt_store(instance: instance) {
+    BeltTickReceiptStoreUnready { detail } => BeltTickReceiptUnreadable { reason: join(["belt tick receipt could not be read: ", detail], "") }
+    BeltTickReceiptStoreReady { store } =>
+      belt_tick_receipt_read_from_observation(observation: belt_tick_receipt_observe(store: store))
+  }
 }
 
 fn belt_tick_execution_json(e: BeltTickExecutionStanding) -> JsonValue {
@@ -4594,19 +4604,15 @@ fn belt_tick_receipt_write_for_instance(
   instance: HostDashboardInstance,
   receipt: BeltTickReceipt,
 ) -> BeltPassOutcome {
-  let write = Filesystem.Write(
-    path: belt_tick_receipt_path_for_instance(instance: instance),
-    content: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt)),
-  )
-  if write.success {
-    BeltPassRecorded
-  } else {
-    BeltPassFailed {
-      reason: join([
-        "the belt tick receipt could not be written: ",
-        write.error,
-      ], ""),
-    }
+  match belt_tick_receipt_store(instance: instance) {
+    BeltTickReceiptStoreUnready { detail } =>
+      BeltPassFailed { reason: join(["the belt tick receipt could not be written: ", detail], "") }
+    BeltTickReceiptStoreReady { store } =>
+      match belt_tick_receipt_put(store: store, content: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {
+        BeltReceiptWritten => BeltPassRecorded
+        BeltReceiptWriteRefused { error } =>
+          BeltPassFailed { reason: join(["the belt tick receipt could not be written: ", error], "") }
+      }
   }
 }
 
@@ -6681,11 +6687,8 @@ fn belt_workflow_attempt_evidence_for_key(
       belt_integration_receipt_observe(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_integration_dir_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: current_key,
-        ),
+        node_id: node_id,
+        attempt_key: current_key,
         head_sha: revision as String,
       )
   }
@@ -6971,15 +6974,58 @@ type BeltCaptureRoster
 // subdirectory, and `install -d` is idempotent, so ensuring it here keeps the old population
 // legible (absence established by a successful listing) instead of refused (an unlistable
 // directory that is simply absent on older attempts).
-fn belt_attempt_submission_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    "/submissions",
-  ], "")
+type BeltSubmissionStoreEnsured
+  = BeltSubmissionStoreEnsureReady { store: BeltSubmissionStore }
+  | BeltSubmissionStoreEnsureRefused { detail: String }
+
+fn belt_submission_store_ensured(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltSubmissionStoreEnsured {
+  match belt_exec(cmd: belt_submission_store_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key), workdir: worktree) {
+    ExecFailed { program, exit_code, stderr } =>
+      BeltSubmissionStoreEnsureRefused { detail: belt_commit_exec_detail(step: "submission-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      BeltSubmissionStoreEnsureRefused { detail: belt_commit_exec_detail(step: "submission-directory", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout: _ } =>
+      match belt_submission_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+        BeltSubmissionStoreUnready { detail } => BeltSubmissionStoreEnsureRefused { detail: detail }
+        BeltSubmissionStoreReady { store } => BeltSubmissionStoreEnsureReady { store: store }
+      }
+  }
+}
+
+type BeltCaptureIntentStoreEnsured
+  = BeltCaptureIntentStoreEnsureReady { store: BeltCaptureIntentStore }
+  | BeltCaptureIntentStoreEnsureRefused { detail: String }
+
+fn belt_capture_intent_store_ensured(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureIntentStoreEnsured {
+  match belt_exec(cmd: belt_capture_intent_store_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key), workdir: worktree) {
+    ExecFailed { program, exit_code, stderr } =>
+      BeltCaptureIntentStoreEnsureRefused { detail: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      BeltCaptureIntentStoreEnsureRefused { detail: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout: _ } =>
+      match belt_capture_intent_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+        BeltCaptureIntentStoreUnready { detail } => BeltCaptureIntentStoreEnsureRefused { detail: detail }
+        BeltCaptureIntentStoreReady { store } => BeltCaptureIntentStoreEnsureReady { store: store }
+      }
+  }
+}
+
+type BeltIntegrationStoreEnsured
+  = BeltIntegrationStoreEnsureReady { store: BeltIntegrationStore }
+  | BeltIntegrationStoreEnsureRefused { detail: String }
+
+fn belt_integration_store_ensured(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltIntegrationStoreEnsured {
+  match belt_exec(cmd: belt_integration_store_ensure_argv(instance: instance, node_id: node_id, attempt_key: attempt_key), workdir: worktree) {
+    ExecFailed { program, exit_code, stderr } =>
+      BeltIntegrationStoreEnsureRefused { detail: belt_commit_exec_detail(step: "integration-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      BeltIntegrationStoreEnsureRefused { detail: belt_commit_exec_detail(step: "integration-directory", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout: _ } =>
+      match belt_integration_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+        BeltIntegrationStoreUnready { detail } => BeltIntegrationStoreEnsureRefused { detail: detail }
+        BeltIntegrationStoreReady { store } => BeltIntegrationStoreEnsureReady { store: store }
+      }
+  }
 }
 
 fn belt_attempt_submission_dir_ensure(instance: HostDashboardInstance, worktree: String, dir: String) -> BeltExecOutcome {
@@ -6995,120 +7041,69 @@ fn belt_attempt_submission_dir_ensure(instance: HostDashboardInstance, worktree:
   )
 }
 
-fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: String, dir: String) -> BeltCaptureRoster {
-  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
-    ExecFailed { program, exit_code, stderr } =>
-      CaptureRosterUnobservable {
-        reason: belt_commit_exec_detail(
-          step: "submission-directory",
-          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-        ),
-      }
-    ExecRefused { program, reason } =>
-      CaptureRosterUnobservable {
-        reason: belt_commit_exec_detail(step: "submission-directory", outcome: ExecRefused { program: program, reason: reason }),
-      }
-    ExecOk { stdout: _ } => {
-  let listing = Filesystem.List(path: dir)
-  if !listing.success {
-    CaptureRosterUnobservable {
-      reason: join([
-        "the submission capture directory could not be listed, so the capture history is unknown: ",
-        dir, " (", listing.error, ")",
-      ], ""),
-    }
-  } else {
-    fold(
-      split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != ""),
-      init: CaptureRosterObserved { captures: [] },
-      f: (acc, entry) =>
-        match acc {
-          CaptureRosterUnobservable { reason: _ } => acc
-          CaptureRosterObserved { captures } => {
-            let read = Filesystem.Read(path: join([dir, "/", trim(entry)], ""))
-            match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-              FilesystemReadRefused { error } =>
-                CaptureRosterUnobservable {
-                  reason: join([
-                    "a submission capture record was listed and then could not be read: ",
-                    trim(entry), " (", error, ")",
-                  ], ""),
-                }
-              FilesystemReadSucceeded { content } =>
-                match submission_capture_decode(text: content) {
-                CaptureNotDecodable { reason } =>
-                  CaptureRosterUnobservable {
-                    reason: join(["the submission capture record ", trim(entry), " does not decode: ", reason], ""),
+fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureRoster {
+  match belt_submission_store_ensured(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    BeltSubmissionStoreEnsureRefused { detail } => CaptureRosterUnobservable { reason: detail }
+    BeltSubmissionStoreEnsureReady { store } =>
+      match belt_submission_store_roster(store: store) {
+        BeltCaptureRosterUnlistable { detail } => CaptureRosterUnobservable { reason: detail }
+        BeltCaptureRosterListed { entries } =>
+          fold(
+            entries,
+            init: CaptureRosterObserved { captures: [] },
+            f: (acc, entry) =>
+              match acc {
+                CaptureRosterUnobservable { reason: _ } => acc
+                CaptureRosterObserved { captures } =>
+                  match entry {
+                    BeltCaptureRosterEntryUnreadable { name, error } =>
+                      CaptureRosterUnobservable {
+                        reason: join(["a submission capture record was listed and then could not be read: ", name, " (", error, ")"], ""),
+                      }
+                    BeltCaptureRosterEntryRead { name, content } =>
+                      match submission_capture_decode(text: content) {
+                        CaptureNotDecodable { reason } =>
+                          CaptureRosterUnobservable { reason: join(["the submission capture record ", name, " does not decode: ", reason], "") }
+                        CaptureDecoded { capture } =>
+                          CaptureRosterObserved { captures: concat(captures, [capture]) }
+                      }
                   }
-                CaptureDecoded { capture } =>
-                  CaptureRosterObserved { captures: concat(captures, [capture]) }
-              }
-            }
-          }
-        },
-    )
+              },
+          )
+      }
   }
-  }
-}
 }
 
 // THE HEAD-GRAIN CAPTURE LOOKUP: the one read both the verify gate and the dashboard projection
 // make. Absence is listing-established; a record at the head's own address that decodes but names
 // a different head is unexplained state, refused rather than read as this head's binding.
 fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
-  let dir = belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
-    ExecFailed { program, exit_code, stderr } =>
-      CaptureUnreadable {
-        reason: belt_commit_exec_detail(
-          step: "submission-directory",
-          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-        ),
-      }
-    ExecRefused { program, reason } =>
-      CaptureUnreadable {
-        reason: belt_commit_exec_detail(step: "submission-directory", outcome: ExecRefused { program: program, reason: reason }),
-      }
-    ExecOk { stdout: _ } => {
-  let listing = Filesystem.List(path: dir)
-  if !listing.success {
-    CaptureUnreadable {
-      reason: join([
-        "the submission capture directory could not be listed, so whether this head is a captured candidate is unknown: ",
-        dir, " (", listing.error, ")",
-      ], ""),
-    }
-  } else if !filesystem_listing_names_entry(listing: listing.entries, name: submission_capture_basename(head_sha: head_sha)) {
-    belt_capture_absence_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
-  } else {
-    let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
-    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-      FilesystemReadRefused { error } =>
-        CaptureUnreadable {
-          reason: join(["the submission capture for this head was listed and then could not be read: ", error], ""),
-        }
-      FilesystemReadSucceeded { content } =>
-        match submission_capture_decode(text: content) {
-        CaptureNotDecodable { reason } =>
-          CaptureUnreadable {
-            reason: join(["the submission capture at this head's own address does not decode: ", reason], ""),
-          }
-        CaptureDecoded { capture } =>
-          if capture.head_sha != head_sha {
-            CaptureUnreadable {
-              reason: join([
-                "the submission capture at this head's own address names ", capture.head_sha,
-                ", which is unexplained state rather than this head's binding",
-              ], ""),
-            }
-          } else {
-            CaptureForHead { capture: capture }
+  match belt_submission_store_ensured(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    BeltSubmissionStoreEnsureRefused { detail } => CaptureUnreadable { reason: detail }
+    BeltSubmissionStoreEnsureReady { store } =>
+      match belt_submission_store_observe_head(store: store, head_sha: head_sha) {
+        BeltAttemptEntryUnreadable { detail } => CaptureUnreadable { reason: detail }
+        BeltAttemptEntryAbsent => belt_capture_absence_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+        BeltAttemptEntryRead { content } =>
+          match submission_capture_decode(text: content) {
+            CaptureNotDecodable { reason } =>
+              CaptureUnreadable {
+                reason: join(["the submission capture at this head's own address does not decode: ", reason], ""),
+              }
+            CaptureDecoded { capture } =>
+              if capture.head_sha != head_sha {
+                CaptureUnreadable {
+                  reason: join([
+                    "the submission capture at this head's own address names ", capture.head_sha,
+                    ", which is unexplained state rather than this head's binding",
+                  ], ""),
+                }
+              } else {
+                CaptureForHead { capture: capture }
+              }
           }
       }
-    }
   }
-  }
-}
 }
 
 type BeltStagedCommit
@@ -7145,7 +7140,7 @@ fn belt_commit_staged(instance: HostDashboardInstance, worktree: String, message
 // ------------------------------------------------------------------------------------------------
 
 fn belt_scm_projects_dir(instance: HostDashboardInstance) -> String {
-  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/projects"], "")
+  belt_projects_slots_path(instance: instance) as String
 }
 
 fn belt_scm_project_repository_path(instance: HostDashboardInstance, project_key: String) -> String {
@@ -8365,85 +8360,64 @@ type BeltIntentCompletion
   | IntentCompleted { head_sha: String }
   | IntentCompletionFailed { detail: String }
 
-fn belt_capture_intent_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "-intent"], "")
-}
-
-fn belt_capture_intent_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/intent.json"], "")
-}
-
 fn belt_capture_intent_read(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureIntent {
-  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
-    ExecFailed { program, exit_code, stderr } =>
-      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
-    ExecRefused { program, reason } =>
-      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecRefused { program: program, reason: reason }) }
-    ExecOk { stdout: _ } => {
-      let listing = Filesystem.List(path: dir)
-      if !listing.success {
-        IntentUnreadable { reason: join(["the capture intent directory could not be listed: ", dir, " (", listing.error, ")"], "") }
-      } else if !filesystem_listing_names_entry(listing: listing.entries, name: "intent.json") {
-        IntentAbsent
-      } else {
-        let read = Filesystem.Read(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
-        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-          FilesystemReadRefused { error } => IntentUnreadable { reason: join(["the capture intent was listed and then could not be read: ", error], "") }
-          FilesystemReadSucceeded { content } =>
-            match submission_capture_decode(text: content) {
-              CaptureNotDecodable { reason } => IntentUnreadable { reason: join(["the capture intent does not decode: ", reason], "") }
-              CaptureDecoded { capture } => IntentRead { capture: capture }
-            }
-        }
+  match belt_capture_intent_store_ensured(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    BeltCaptureIntentStoreEnsureRefused { detail } => IntentUnreadable { reason: detail }
+    BeltCaptureIntentStoreEnsureReady { store } =>
+      match belt_capture_intent_store_observe(store: store) {
+        BeltAttemptEntryUnreadable { detail } => IntentUnreadable { reason: detail }
+        BeltAttemptEntryAbsent => IntentAbsent
+        BeltAttemptEntryRead { content } =>
+          match submission_capture_decode(text: content) {
+            CaptureNotDecodable { reason } => IntentUnreadable { reason: join(["the capture intent does not decode: ", reason], "") }
+            CaptureDecoded { capture } => IntentRead { capture: capture }
+          }
       }
-    }
   }
 }
 
 fn belt_capture_intent_write(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, capture: SubmissionCapture) -> String? {
-  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", dir],
-    ),
-    workdir: worktree,
-  ) {
-    ExecFailed { program: _, exit_code: _, stderr } => Present { value: join(["intent directory: ", stderr], "") }
-    ExecRefused { program: _, reason } => Present { value: join(["intent directory refused: ", reason], "") }
-    ExecOk { stdout: _ } => {
-      let write = Filesystem.Write(
-        path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
-        content: submission_capture_text(capture: capture),
-      )
-      if write.success { none } else { Present { value: write.error } }
-    }
+  match belt_capture_intent_store_ensured(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    BeltCaptureIntentStoreEnsureRefused { detail } => Present { value: join(["intent directory: ", detail], "") }
+    BeltCaptureIntentStoreEnsureReady { store } =>
+      match belt_capture_intent_store_put(store: store, content: submission_capture_text(capture: capture)) {
+        BeltReceiptWritten => none
+        BeltReceiptWriteRefused { error } => Present { value: error }
+      }
   }
 }
 
 fn belt_capture_intent_clear(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
-  let gone = Filesystem.Delete(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
-  if gone.success { none } else { Present { value: gone.error } }
+  match belt_capture_intent_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    BeltCaptureIntentStoreUnready { detail } => Present { value: detail }
+    BeltCaptureIntentStoreReady { store } =>
+      match belt_capture_intent_store_clear(store: store) {
+        BeltCaptureIntentCleared => none
+        BeltCaptureIntentClearRefused { error } => Present { value: error }
+      }
+  }
 }
 
 fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String, intent: SubmissionCapture) -> String? {
-  let write = Filesystem.Write(
-    path: join([
-      belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      "/",
-      submission_capture_basename(head_sha: head),
-    ], ""),
-    content: submission_capture_text(capture: SubmissionCapture {
-      head_sha: head,
-      scm_repository: intent.scm_repository,
-      scm_commit_ordinal: intent.scm_commit_ordinal,
-      scm_root_locator: intent.scm_root_locator,
-      digest: intent.digest,
-      submission: intent.submission,
-    }),
-  )
-  if write.success { none } else { Present { value: write.error } }
+  match belt_submission_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    BeltSubmissionStoreUnready { detail } => Present { value: detail }
+    BeltSubmissionStoreReady { store } =>
+      match belt_submission_store_put_head(
+        store: store,
+        head_sha: head,
+        content: submission_capture_text(capture: SubmissionCapture {
+          head_sha: head,
+          scm_repository: intent.scm_repository,
+          scm_commit_ordinal: intent.scm_commit_ordinal,
+          scm_root_locator: intent.scm_root_locator,
+          digest: intent.digest,
+          submission: intent.submission,
+        }),
+      ) {
+        BeltReceiptWritten => none
+        BeltReceiptWriteRefused { error } => Present { value: error }
+      }
+  }
 }
 
 // A rerun's first move: if an intent names a base head the worktree has moved past, the git commit happened
@@ -9005,11 +8979,8 @@ fn belt_commit_attempt_decide(
           match belt_submission_captures_observe(
             instance: instance,
             worktree: worktree,
-            dir: belt_attempt_submission_dir_for_instance(
-              instance: instance,
-              node_id: node_id,
-              attempt_key: progress.attempt_key,
-            ),
+            node_id: node_id,
+attempt_key: progress.attempt_key,
           ) {
             CaptureRosterUnobservable { reason } =>
               CommitFailed {
@@ -12452,52 +12423,21 @@ fn belt_review_outcome_json(o: BeltReviewOutcome) -> JsonValue {
 // restart continues from the envelope with no belt-side bookkeeping.
 // ------------------------------------------------------------------------------------------------
 
-fn belt_attempt_integration_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    "/integration",
-  ], "")
-}
-
 fn belt_integration_receipt_observe(
   instance: HostDashboardInstance,
   worktree: String,
-  dir: String,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
   head_sha: String,
 ) -> IntegrationReceiptObservation {
-  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
-    ExecFailed { program, exit_code, stderr } =>
-      IntegrationReceiptUnreadable {
-        reason: belt_commit_exec_detail(
-          step: "integration-directory",
-          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-        ),
-      }
-    ExecRefused { program, reason } =>
-      IntegrationReceiptUnreadable {
-        reason: belt_commit_exec_detail(step: "integration-directory", outcome: ExecRefused { program: program, reason: reason }),
-      }
-    ExecOk { stdout: _ } => {
-      let listing = Filesystem.List(path: dir)
-      if !listing.success {
-        IntegrationReceiptUnreadable {
-          reason: join(["the integration receipt directory could not be listed: ", dir, " (", listing.error, ")"], ""),
-        }
-      } else if !filesystem_listing_names_entry(listing: listing.entries, name: join([head_sha, ".json"], "")) {
-        IntegrationReceiptAbsent
-      } else {
-        let read = Filesystem.Read(path: join([dir, "/", head_sha, ".json"], ""))
-        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-          FilesystemReadRefused { error } =>
-            IntegrationReceiptUnreadable {
-              reason: join(["the integration receipt for this head was listed and then could not be read: ", error], ""),
-            }
-          FilesystemReadSucceeded { content } =>
-            match integration_receipt_decode(text: content) {
+  match belt_integration_store_ensured(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    BeltIntegrationStoreEnsureRefused { detail } => IntegrationReceiptUnreadable { reason: detail }
+    BeltIntegrationStoreEnsureReady { store } =>
+      match belt_integration_store_observe_head(store: store, head_sha: head_sha) {
+        BeltAttemptEntryUnreadable { detail } => IntegrationReceiptUnreadable { reason: detail }
+        BeltAttemptEntryAbsent => IntegrationReceiptAbsent
+        BeltAttemptEntryRead { content } =>
+          match integration_receipt_decode(text: content) {
             IntegrationReceiptNotDecodable { reason } =>
               IntegrationReceiptUnreadable {
                 reason: join(["the integration receipt at this head's own address does not decode: ", reason], ""),
@@ -12511,9 +12451,7 @@ fn belt_integration_receipt_observe(
                 IntegrationReceiptForHead { receipt: receipt }
               }
           }
-        }
       }
-    }
   }
 }
 
@@ -12522,36 +12460,15 @@ type BeltIntegrationReceiptWrite
   | IntegrationReceiptRecordFailed { detail: String }
 
 fn belt_integration_receipt_record(
-  instance: HostDashboardInstance,
-  worktree: String,
-  dir: String,
+  store: BeltIntegrationStore,
   receipt: IntegrationReceipt,
 ) -> BeltIntegrationReceiptWrite {
-  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
-    ExecFailed { program, exit_code, stderr } =>
+  match belt_integration_store_put_head(store: store, head_sha: receipt.head_sha, content: integration_receipt_text(receipt: receipt)) {
+    BeltReceiptWritten => IntegrationReceiptRecorded
+    BeltReceiptWriteRefused { error } =>
       IntegrationReceiptRecordFailed {
-        detail: belt_commit_exec_detail(
-          step: "integration-directory",
-          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-        ),
+        detail: join(["the integration receipt could not be written, so the judgment was reached and then lost: ", error], ""),
       }
-    ExecRefused { program, reason } =>
-      IntegrationReceiptRecordFailed {
-        detail: belt_commit_exec_detail(step: "integration-directory", outcome: ExecRefused { program: program, reason: reason }),
-      }
-    ExecOk { stdout: _ } => {
-      let write = Filesystem.Write(
-        path: join([dir, "/", receipt.head_sha, ".json"], ""),
-        content: integration_receipt_text(receipt: receipt),
-      )
-      if write.success {
-        IntegrationReceiptRecorded
-      } else {
-        IntegrationReceiptRecordFailed {
-          detail: join(["the integration receipt could not be written, so the judgment was reached and then lost: ", write.error], ""),
-        }
-      }
-    }
   }
 }
 
@@ -12668,17 +12585,13 @@ type BeltEnvelopeIntegration
   | EnvelopeIntegrationUnreadable { detail: String }
 
 fn belt_integration_receipt_record_state(
-  instance: HostDashboardInstance,
-  worktree: String,
-  dir: String,
+  store: BeltIntegrationStore,
   capture: SubmissionCapture,
   project_key: String,
   state: IntegrationReceiptState,
 ) -> BeltIntegrationReceiptWrite {
   belt_integration_receipt_record(
-    instance: instance,
-    worktree: worktree,
-    dir: dir,
+    store: store,
     receipt: IntegrationReceipt {
       head_sha: capture.head_sha,
       project: project_key,
@@ -13468,7 +13381,7 @@ fn belt_integrate_into_envelope(
   worktree: String,
   capture: SubmissionCapture,
   project_key: String,
-  dir: String,
+  store: BeltIntegrationStore,
 ) -> BeltEnvelopeIntegration {
   match load_repository_indexed(path: capture.scm_repository) {
     RepositoryLoadRefused { cause } =>
@@ -13480,7 +13393,7 @@ fn belt_integrate_into_envelope(
           EnvelopeIntegrationUnreadable { detail: belt_capture_underivable_detail(detail: detail) }
         CaptureBaseStale { commit, captured_against, repository_base } => {
           let detail = belt_capture_base_stale_detail(commit: commit, captured_against: captured_against, repository_base: repository_base)
-          match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+          match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
             IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
             IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
           }
@@ -13496,7 +13409,7 @@ fn belt_integrate_into_envelope(
           }
         Present { value: head } =>
           if repository_commit_ref_eq(left: head, right: candidate) {
-            match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+            match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
               IntegrationReceiptRecorded => EnvelopeIntegrated
               IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
             }
@@ -13508,7 +13421,7 @@ fn belt_integrate_into_envelope(
                   " but commit ", to_string(capture.scm_commit_ordinal), " of the loaded envelope freezes root locator ",
                   actual, "; the candidate is not integrated because the envelope cannot authenticate it",
                 ], "")
-                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
                   IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
                   IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
                 }
@@ -13518,7 +13431,7 @@ fn belt_integrate_into_envelope(
                   "the capture record predates the root-locator binding (schema ",
                   "roadmap-submission-capture/v2), so the capture cannot be authenticated against its commit: binding unverifiable",
                 ], "")
-                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
                   IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
                   IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
                 }
@@ -13541,7 +13454,7 @@ fn belt_integrate_into_envelope(
               message: join(["integrate ", capture.head_sha, " into ", project_key], ""),
             ) {
               FaninAlreadyIntegrated { head: _ } =>
-                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+                match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                   IntegrationReceiptRecorded => EnvelopeIntegrated
                   IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
                 }
@@ -13555,7 +13468,7 @@ fn belt_integrate_into_envelope(
                 }
                 match save_repository_sharded_guarded(path: capture.scm_repository, repo: moved, expected: GenerationExpected(generation)) {
                   RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
-                    match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
+                    match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                       IntegrationReceiptRecorded => EnvelopeIntegrated
                       IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
                     }
@@ -13586,7 +13499,7 @@ fn belt_integrate_into_envelope(
                   to_string(count(conflicts)), " conflicting path(s): ",
                   join(map(conflicts, c => c.path as String), ", "),
                 ], "")
-                match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                match belt_integration_receipt_record_state(store: store, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
                   IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
                   IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
                 }
@@ -13669,11 +13582,8 @@ fn belt_integrate_candidate_core_for_instance(
       match belt_integration_receipt_observe(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_integration_dir_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
+        node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
+attempt_key: attempt_key,
         head_sha: revision as String,
       ) {
         IntegrationReceiptUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
@@ -13713,20 +13623,25 @@ fn belt_integrate_candidate_core_for_instance(
                     MembershipMember { arc } => arc
                     MembershipAmbiguous { arcs: _ } => node_id
                   }
-                  match belt_integrate_into_envelope(
+                  match belt_integration_store_ensured(
                     instance: instance,
                     worktree: worktree,
-                    capture: capture,
-                    project_key: project_key,
-                    dir: belt_attempt_integration_dir_for_instance(
-                      instance: instance,
-                      node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-                      attempt_key: attempt_key,
-                    ),
+                    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
+                    attempt_key: attempt_key,
                   ) {
-                    EnvelopeIntegrationUnreadable { detail } => IntegrationCoreUnreadable { detail: detail }
-                    EnvelopeIntegrationBlocked { detail } => IntegrationCoreBlocked { detail: detail }
-                    EnvelopeIntegrated => IntegrationCoreIntegrated { project_key: project_key }
+                    BeltIntegrationStoreEnsureRefused { detail } => IntegrationCoreUnreadable { detail: detail }
+                    BeltIntegrationStoreEnsureReady { store } =>
+                      match belt_integrate_into_envelope(
+                        instance: instance,
+                        worktree: worktree,
+                        capture: capture,
+                        project_key: project_key,
+                        store: store,
+                      ) {
+                        EnvelopeIntegrationUnreadable { detail } => IntegrationCoreUnreadable { detail: detail }
+                        EnvelopeIntegrationBlocked { detail } => IntegrationCoreBlocked { detail: detail }
+                        EnvelopeIntegrated => IntegrationCoreIntegrated { project_key: project_key }
+                      }
                   }
                 }
               }
@@ -13801,11 +13716,8 @@ fn belt_integration_census(instance: HostDashboardInstance, member_ids: List<Str
                     node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                     attempt_key: progress.attempt_key,
                   ),
-                  dir: belt_attempt_integration_dir_for_instance(
-                    instance: instance,
-                    node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-                    attempt_key: progress.attempt_key,
-                  ),
+                  node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
+attempt_key: progress.attempt_key,
                   head_sha: revision as String,
                 ) {
                   IntegrationReceiptAbsent => MemberCensusPending { node_id: member }
@@ -14425,20 +14337,39 @@ fn belt_publish_project_for_instance(
                                                             request_path: request_path,
                                                           }
                                                         AnswerReady { receipt } => {
-                                                          let write = Filesystem.Write(
-                                                            path: join([
-                                                              belt_scm_projects_dir(instance: instance),
-                                                              "/", project_key, ".publication-receipt.json",
-                                                            ], ""),
-                                                            content: publication_receipt_json(receipt: receipt),
-                                                          )
-                                                          belt_publish_write_outcome(
-                                                            node_id: project_key,
-                                                            subject: project_subject,
-                                                            receipt: receipt,
-                                                            write_success: write.success,
-                                                            write_error: write.error,
-                                                          )
+                                                          match belt_publication_receipt_store(instance: instance) {
+                                                            BeltPublicationReceiptStoreUnready { detail } =>
+                                                              belt_publish_write_outcome(
+                                                                node_id: project_key,
+                                                                subject: project_subject,
+                                                                receipt: receipt,
+                                                                write_success: false,
+                                                                write_error: detail,
+                                                              )
+                                                            BeltPublicationReceiptStoreReady { store } =>
+                                                              match belt_publication_receipt_put(
+                                                                store: store,
+                                                                project_key: project_key,
+                                                                content: publication_receipt_json(receipt: receipt),
+                                                              ) {
+                                                                BeltReceiptWritten =>
+                                                                  belt_publish_write_outcome(
+                                                                    node_id: project_key,
+                                                                    subject: project_subject,
+                                                                    receipt: receipt,
+                                                                    write_success: true,
+                                                                    write_error: "",
+                                                                  )
+                                                                BeltReceiptWriteRefused { error } =>
+                                                                  belt_publish_write_outcome(
+                                                                    node_id: project_key,
+                                                                    subject: project_subject,
+                                                                    receipt: receipt,
+                                                                    write_success: false,
+                                                                    write_error: error,
+                                                                  )
+                                                              }
+                                                          }
                                                         }
                                                       }
                                                     }
@@ -15064,10 +14995,6 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
 // pass over every attempt found.
 data belt_attempt_obligation_receipt_schema: String = "roadmap-belt-attempt-obligations/v1"
 
-fn belt_attempt_obligation_receipt_path(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String {
-  join([instance_receipts_dir(instance_root: instance.instance_root as String), "/obligations-", node_id, "-", attempt_key, ".json"], "")
-}
-
 fn belt_attempt_obligation_step_json(step: BeltAttemptObligationStep) -> JsonValue {
   json_object(members: [
     json_kv(key: "kind", value: json_string(s: belt_attempt_obligation_kind_key(kind: step.kind))),
@@ -15129,11 +15056,21 @@ fn belt_attempt_obligation_run_failure(run: BeltAttemptObligationRun) -> String?
 }
 
 fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: BeltAttemptObligationRun, node_id: String, attempt_key: String, observed_at: String, claimed: List<String>) -> BeltPassOutcome {
-  let write = Filesystem.Write(
-    path: belt_attempt_obligation_receipt_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    content: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at, claimed: claimed)),
-  )
-  if write.success { BeltPassRecorded } else { BeltPassFailed { reason: join(["the attempt's obligation receipt could not be written: ", write.error], "") } }
+  match belt_obligation_receipt_store(instance: instance) {
+    BeltObligationReceiptStoreUnready { detail } =>
+      BeltPassFailed { reason: join(["the attempt's obligation receipt could not be written: ", detail], "") }
+    BeltObligationReceiptStoreReady { store } =>
+      match belt_obligation_receipt_put(
+        store: store,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        content: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at, claimed: claimed)),
+      ) {
+        BeltReceiptWritten => BeltPassRecorded
+        BeltReceiptWriteRefused { error } =>
+          BeltPassFailed { reason: join(["the attempt's obligation receipt could not be written: ", error], "") }
+      }
+  }
 }
 
 // ── HANDING AN OBLIGATION TO ITS UNIT ──────────────────────────────────────────────────────────
@@ -15484,12 +15421,16 @@ fn belt_attempt_obligation_receipt_by_standing(doc: JsonValue, standing: String)
 }
 
 fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationReceiptRead {
-  match filesystem_file_observation_of_path(path: belt_attempt_obligation_receipt_path(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    FilesystemFileAbsent(_) => BeltAttemptObligationReceiptAbsent
-    FilesystemFileRead { path: _, content } => belt_attempt_obligation_receipt_decode(raw: content, node_id: node_id, attempt_key: attempt_key)
-    FilesystemFileIndeterminate { cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
-    FilesystemFileObservationsDisagree { path: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
-    FilesystemFileSubjectRefused { directory: _, name: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
+  match belt_obligation_receipt_store(instance: instance) {
+    BeltObligationReceiptStoreUnready { detail } => BeltAttemptObligationReceiptUnreadable { reason: detail }
+    BeltObligationReceiptStoreReady { store } =>
+      match belt_obligation_receipt_observe(store: store, node_id: node_id, attempt_key: attempt_key) {
+        FilesystemFileAbsent(_) => BeltAttemptObligationReceiptAbsent
+        FilesystemFileRead { path: _, content } => belt_attempt_obligation_receipt_decode(raw: content, node_id: node_id, attempt_key: attempt_key)
+        FilesystemFileIndeterminate { cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
+        FilesystemFileObservationsDisagree { path: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
+      }
   }
 }
 

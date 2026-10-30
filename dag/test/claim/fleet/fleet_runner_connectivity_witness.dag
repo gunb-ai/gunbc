@@ -263,6 +263,14 @@ test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
 // ONE ONLINE REGISTRATION, VARIED ONLY IN ITS LABELS, read through the real verdict fold over a
 // complete roster. The expected sets are spelled here rather than computed from the composition, so
 // a composition that dropped a label would turn the positive control red.
+//
+// SRV4'S SET DOES NOT CARRY gunbc-user-session YET, and this fixture spells that state: the label is
+// granted only from a parsed converge receipt handed to the evidence entry
+// (gunbc.runner.runner_registration_labels runner_registration_labels_with_user_session_receipt), and no
+// production entry supplies one until the fleet-converge read lands (the follow-up in the PR body of
+// gunbc#15253). test.claim.runner.runner_user_session_label_witness covers the receipt-backed side; this
+// fixture pins that a PRODUCTION registration observed WITH the label diverges from the desired set -- so
+// a hand-forced label on a live runner is noticed, not blessed. srv3's controls are unchanged.
 fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerdict {
   runner_slot_connectivity_verdict_for_incarnation(
     incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
@@ -288,6 +296,18 @@ fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerd
 test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> Bool {
   connectivity_verdict_is_healthy(
     v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]),
+  )
+}
+
+// THE LABEL IS OFF UNTIL THE FLEET READ LANDS, AND A LIVE REGISTRATION THAT CARRIES IT ANYWAY IS A
+// DIVERGENCE, NOT A HEALTHY RUNNER. The production entry grants the label to nobody until the
+// fleet-converge receipt read lands (the follow-up in the PR body of gunbc#15253), so a srv4 runner
+// advertising gunbc-user-session means someone forced it -- a stale config, a hand-edited .credential
+// file -- and the roster check must see it. This is the connectivity witness's half of the same state
+// test.claim.runner.runner_user_session_label_witness pins on the grant side.
+test fn online_registration_carrying_the_user_session_label_before_the_fleet_read_is_not_healthy() -> Bool {
+  connectivity_verdict_labels_diverge(
+    v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr]),
   )
 }
 

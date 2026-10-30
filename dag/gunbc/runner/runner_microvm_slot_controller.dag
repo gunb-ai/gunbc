@@ -34,7 +34,7 @@ import gunbc.runner.runner_microvm_slot_unit { workspace_launch_credential_id }
 
 
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceDesired, WorkspaceRetired, WorkspaceAcquiring }
+import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceDesired, WorkspaceRetired, WorkspaceAcquiring, workspace_allocation_store }
 import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner.runner_attempt_launch { LaunchWithdrawn }
@@ -65,8 +65,8 @@ import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload }
 import gunbc.runner.workspace_microvm { WorkspaceLaunchBinding, workspace_attempt_identity, workspace_launch_plan }
 import gunbc.runner.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
 import gunbc.workspace_allocation_wait { workspace_await_allocation }
-import gunbc.workspace_allocation_metrics { workspace_capture_runtime_metrics }
-import gunbc.workspace_gateway_store { workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
+import gunbc.workspace_allocation_metrics { workspace_capture_runtime_metrics, workspace_metrics_store }
+import gunbc.workspace_gateway_store { workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable, workspace_gateway_store }
 
 import std.durable_compare_and_set { cas_unreadable_slot_detail, CasUnreadableReadRefused }
 import std.types { String, NonEmptyStr, Bool, List, Int }
@@ -698,7 +698,7 @@ fn run_workspace_slot(
         identity: live, launch: launch,
         observe_connection: (observed, started) => workspace_observe_admitted_connection(store: allocation_store, identity: observed, launch: started, owner: binding.reservation.request.owner),
       )
-      let measured = workspace_capture_runtime_metrics(store: allocation_store, reservation: binding.reservation, identity: live, launch: launch)
+      let measured = workspace_capture_runtime_metrics(store: workspace_metrics_store(binding: allocation_store), reservation: binding.reservation, identity: live, launch: launch)
       if measured { terminal } else { terminal }
     },
   )
@@ -716,7 +716,7 @@ fn workspace_observe_admitted_connection(store: FabricStorageBinding, identity: 
         Absent => WorkspaceConnectionUnavailable { reason: "fleet tailnet gateway is unconfigured" }
         Present { value: gateway } => match clock_now_probed_at() {
           Absent => WorkspaceConnectionUnavailable { reason: "gateway admission clock is unreadable" }
-          Present { value: now } => match workspace_current_gateway_connection(store: store, slot: identity.attempt.slot, now: now) {
+          Present { value: now } => match workspace_current_gateway_connection(store: workspace_gateway_store(binding: store), slot: identity.attempt.slot, now: now) {
             WorkspaceGatewayUnavailable { reason } => WorkspaceConnectionUnavailable { reason: reason as String }
             WorkspaceGatewayReady { known_host } => workspace_observe_connection(identity: identity, launch: launch,
               route: WorkspaceGatewaySsh { gateway: gateway, known_host: known_host })
@@ -807,7 +807,7 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
           WorkspacePolicyRefused { reason } => workspace_slot_refused(reason: reason)
           WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: directive.allocation.request.owner) {
             Absent => workspace_slot_refused(reason: "workspace directive owner is not enrolled by the installed allocation policy")
-            Present { value: enrollment } => match workspace_read_owner(store: store, owner: enrollment.principal) {
+            Present { value: enrollment } => match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: enrollment.principal) {
               WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
               WorkspaceStoreReadOk { snapshot: ledger } =>
                 if workspace_launch_directive_matches(directive: directive, observed: ledger, authorized_owner: enrollment.principal,
@@ -973,7 +973,7 @@ fn workspace_slot_apply_if_needed(allocation: WorkspaceAllocation, slot: RunnerS
     Absent => if (allocation.desired == WorkspaceRetired && allocation.phase != WorkspaceAcquiring) {
       match clock_now_probed_at() {
         Absent => workspace_slot_refused(reason: "workspace retirement clock is unreadable")
-        Present { value: now } => match workspace_settle_unstarted_retirement(store: store, owner: allocation.request.owner,
+        Present { value: now } => match workspace_settle_unstarted_retirement(store: workspace_allocation_store(binding: store), owner: allocation.request.owner,
           idempotency_key: allocation.request.idempotency_key, observed_at: now) {
           WorkspaceStoreWritten { allocation: _ } => SlotControllerSettledWithoutLaunch { reason: "workspace retired before acquisition" }
           WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace retirement has an unresolved acquisition obligation")
