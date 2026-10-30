@@ -14,11 +14,11 @@ import gunbc.serving.serving_layout {
   ServingResourceGrant, ServingDevice, ServingDeviceGroup, ServingBackendProfile, ServingRequirement, ServingReplicaConfig,
   ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutRefusal,
   ServingLayoutRamShort, ServingLayoutDeviceTooSmall, ServingLayoutBackendCannotRetain, ServingLayoutUnknownDevice,
-  ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend,
+  ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend, ServingLayoutDuplicateGroupName,
   ServingBackendSupportsTopology, ServingLiveQualified, ServingLiveUnqualified,
   ServingLiveStandingUnqualified, ServingLiveStandingQualified, ServingLiveRequalificationRequired,
   ServingAdmitted, ServingAdmissionRefused, ServingAdmission,
-  serving_layout_derive, serving_layout_with_qualification, serving_configuration_identity, serving_replica_admit,
+  serving_layout_derive, serving_layout_with_qualification, serving_configuration_identity, serving_replica_identity, serving_replica_admit,
   host_6ce85c_grant, host_6ce85c_independent_groups, strata_iq3_s_a16_profile, serving_context_ceiling_requirement, host_6ce85c_layout,
   srv4_grant, srv4_layer_split_groups, strata_srv4_layer_split_profile, srv4_layout,
 }
@@ -66,6 +66,13 @@ fn sl_replicas(r: ServingLayoutResult) -> List<ServingReplicaConfig> {
 
 fn sl_admitted_total(r: ServingLayoutResult) -> Nat {
   fold(sl_replicas(r: r), init: 0, f: (acc, c) => acc + c.admitted_conversations)
+}
+
+fn sl_configuration(r: ServingLayoutResult) -> String {
+  match r {
+    ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => e.configuration
+    ServingLayoutRefused { refusal: _ } => ""
+  }
 }
 
 fn sl_refusal(r: ServingLayoutResult) -> ServingLayoutRefusal? {
@@ -177,8 +184,7 @@ test fn witness_one_more_admission_is_refused_without_eviction() -> Bool {
 // A CHANGED DIMENSION REQUIRES REQUALIFICATION: a receipt bound to today's configuration qualifies it, and
 // the same receipt read against the configuration a larger grant derives is not carried forward.
 test fn witness_changed_grant_requires_requalification() -> Bool {
-  let today = sl_replicas(r: host_6ce85c_layout)
-  let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: serving_configuration_identity(replicas: today) }
+  let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: sl_configuration(r: host_6ce85c_layout) }
   let same = serving_layout_with_qualification(result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
   let grown = serving_layout_with_qualification(result: serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
   (match same { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveStandingQualified { receipt: _ } => true  _ => false }  _ => false })
@@ -212,4 +218,41 @@ test fn witness_srv4_is_one_replica_across_two_gpus() -> Bool {
     _ => false
   })
     && (match sl_refusal(r: old_release) { Present { value: ServingLayoutBackendCannotRetain { group: gr, devices: n, most: m } } => gr == "gunbc-srv4-daily-engine" && n == 2 && m == 1  _ => false })
+}
+
+fn sl_replica_on(devices: List<NonEmptyStr>) -> ServingReplicaConfig {
+  ServingReplicaConfig {
+    group: "g" as NonEmptyStr, devices: devices, memory_max: sl_gib(n: 8), swap_max: sl_gib(n: 2), retention_budget: sl_gib(n: 3),
+    admitted_conversations: 1, active_slots: 1, max_context: token_count(count: 229376),
+  }
+}
+
+// A RECEIPT IS BOUND TO THE BACKEND TOO: the same h11 grant and topology under a profile that differs only in
+// its named release derives the same caps and counts, and today's receipt is NOT carried onto it.
+test fn witness_backend_change_with_equal_numbers_requires_requalification() -> Bool {
+  let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: sl_configuration(r: host_6ce85c_layout) }
+  let b = strata_iq3_s_a16_profile
+  let renamed = ServingBackendProfile {
+    backend: "strata 0.1.49 qwen3.8-flash-next-iq3_s" as NonEmptyStr, device_fixed_vram: b.device_fixed_vram, device_min_elastic_vram: b.device_min_elastic_vram,
+    replica_base_ram: b.replica_base_ram, active_slots: b.active_slots, active_slot_ram: b.active_slot_ram,
+    retention: b.retention, park_free_floor: b.park_free_floor, max_devices_with_retention: b.max_devices_with_retention, max_context: b.max_context,
+  }
+  let other = serving_layout_with_qualification(result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: renamed, r: serving_context_ceiling_requirement), q: receipt)
+  serving_configuration_identity(replicas: sl_replicas(r: other)) == serving_configuration_identity(replicas: sl_replicas(r: host_6ce85c_layout))
+    && (match other { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+}
+
+// IDENTITIES ARE FRAMED, NOT DELIMITED: one device named "a+b" and two devices "a" and "b" are different
+// replicas, and so are their identities.
+test fn witness_device_names_cannot_impersonate_a_delimiter() -> Bool {
+  serving_replica_identity(c: sl_replica_on(devices: ["a+b"])) != serving_replica_identity(c: sl_replica_on(devices: ["a", "b"]))
+    && serving_replica_identity(c: sl_replica_on(devices: ["a", "b"])) == serving_replica_identity(c: sl_replica_on(devices: ["a", "b"]))
+}
+
+// TWO GROUPS UNDER ONE NAME REFUSE, naming it, even when their devices are disjoint.
+test fn witness_duplicate_group_names_refuse() -> Bool {
+  let twice = serving_layout_derive(g: host_6ce85c_grant,
+    groups: [ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-85"] }, ServingDeviceGroup { name: "x" as NonEmptyStr, devices: ["a16-87"] }],
+    b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
+  match sl_refusal(r: twice) { Present { value: ServingLayoutDuplicateGroupName { group: g } } => g == "x"  _ => false }
 }

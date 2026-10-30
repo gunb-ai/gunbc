@@ -6,6 +6,7 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fabric.work { identity_frame }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
@@ -139,6 +140,8 @@ type ServingLiveStanding
   | ServingLiveRequalificationRequired { qualified: String, derived: String }
 
 type ServingLayoutEvidence {
+  // The configuration's identity: what a live receipt must have been taken on (serving_layout_identity).
+  configuration: String
   budget: ServingMemoryVerdict
   assumptions: List<NonEmptyStr>
   backend: ServingBackendSupport
@@ -151,6 +154,7 @@ type ServingLayoutRefusal
   | ServingLayoutUnknownDevice { group: NonEmptyStr, device: NonEmptyStr }
   | ServingLayoutDeviceInTwoGroups { device: NonEmptyStr }
   | ServingLayoutEmptyGroup { group: NonEmptyStr }
+  | ServingLayoutDuplicateGroupName { group: NonEmptyStr }
   | ServingLayoutContextAboveBackend { required: TokenCount, backend: TokenCount }
   | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
   | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
@@ -231,14 +235,16 @@ fn serving_group_count_with(groups: List<ServingDeviceGroup>, device: NonEmptySt
   fold(groups, init: 0, f: (acc, gr) => acc + filter(gr.devices, d => d == device).length())
 }
 
-// The first structural fault in the topology, in a fixed order: no groups, an empty group, a device the grant
-// does not have, a device in two groups. Absent when the topology is a partition of granted devices.
+// The first structural fault in the topology, in a fixed order: no groups, an empty group, a group name used
+// twice, a device the grant does not have, a device in two groups. Absent when the topology is a partition of
+// granted devices into uniquely named groups. A group name is a replica's name, so two groups under one name
+// would be two replicas one receipt or one binding could not tell apart.
 fn serving_topology_fault(g: ServingResourceGrant, groups: List<ServingDeviceGroup>) -> ServingLayoutRefusal? {
   if groups.length() == 0 { Present { value: ServingLayoutNoGroups } } else {
     fold(groups, init: Absent, f: (acc, gr) => match acc {
       Present { value: v } => Present { value: v }
       Absent =>
-        if gr.devices.length() == 0 { Present { value: ServingLayoutEmptyGroup { group: gr.name } } } else {
+        if gr.devices.length() == 0 { Present { value: ServingLayoutEmptyGroup { group: gr.name } } } else if filter(groups, o => o.name == gr.name).length() > 1 { Present { value: ServingLayoutDuplicateGroupName { group: gr.name } } } else {
           fold(gr.devices, init: Absent, f: (inner, d) => match inner {
             Present { value: v } => Present { value: v }
             Absent => match serving_device_named(g: g, name: d) {
@@ -319,6 +325,7 @@ fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b
       replicas: configs,
       unallocated_ram: byte_size(count: pool_total - committed),
       evidence: ServingLayoutEvidence {
+        configuration: serving_layout_identity(g: g, b: b, replicas: configs),
         budget: serving_host_memory_verdict(h: serving_layout_host_memory(g: g, b: b, configs: configs)),
         assumptions: concat(serving_layout_assumptions(g: g, b: b), concat(serving_retention_extrapolated(b: b, r: r), g.charging)),
         backend: ServingBackendSupportsTopology,
@@ -372,14 +379,40 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
 
 // ---- LIVE QUALIFICATION AND REDERIVATION
 
-// The configuration's identity as a receipt can bind it: each replica's group, devices, cap, swap, retention
-// budget and admitted count. Two derivations with the same identity are the same configuration.
+// The configuration's identity as a receipt can bind it. Every component is length-framed through the
+// repository's one identity framing (product.fabric.work identity_frame, as rented_replica_wire uses), so no
+// free-string name can impersonate a delimiter: ["a+b"] and ["a", "b"] are different identities. A replica's
+// identity is its group, each device, cap, swap, retention budget, admitted count, active slots and ceiling.
 fn serving_replica_identity(c: ServingReplicaConfig) -> String {
-  join([c.group as String, join(map(c.devices, d => d as String), "+"), to_string(byte_size_count(b: c.memory_max)), to_string(byte_size_count(b: c.swap_max)), to_string(byte_size_count(b: c.retention_budget)), to_string(c.admitted_conversations), to_string(c.active_slots), to_string(token_count_value(t: c.max_context))], ":")
+  concat(identity_frame(label: "group", value: c.group as String),
+    concat(identity_frame(label: "devices", value: to_string(c.devices.length())),
+    concat(fold(c.devices, init: "", f: (acc, d) => concat(acc, identity_frame(label: "device", value: d as String))),
+    concat(identity_frame(label: "memory-max", value: to_string(byte_size_count(b: c.memory_max))),
+    concat(identity_frame(label: "swap-max", value: to_string(byte_size_count(b: c.swap_max))),
+    concat(identity_frame(label: "retention", value: to_string(byte_size_count(b: c.retention_budget))),
+    concat(identity_frame(label: "admitted", value: to_string(c.admitted_conversations)),
+    concat(identity_frame(label: "active-slots", value: to_string(c.active_slots)),
+      identity_frame(label: "max-context", value: to_string(token_count_value(t: c.max_context)))))))))))
 }
 
 fn serving_configuration_identity(replicas: List<ServingReplicaConfig>) -> String {
-  join(map(replicas, c => serving_replica_identity(c: c)), "|")
+  concat(identity_frame(label: "replicas", value: to_string(replicas.length())),
+    fold(replicas, init: "", f: (acc, c) => concat(acc, identity_frame(label: "replica", value: serving_replica_identity(c: c)))))
+}
+
+// THE WHOLE CONFIGURATION a receipt is bound to: the host, the backend (its release and model as the profile
+// names them, the snapshot cost its KV settings produce, its park headroom and launched ceiling) and every
+// replica. Two hosts, or two backends, deriving the same numbers are different configurations, so a receipt
+// taken on one never qualifies the other. The launch row's complete argv is not yet a carrier; it joins this
+// identity when the launch row renders from the layout (serving_layout_consumer_frontier).
+fn serving_layout_identity(g: ServingResourceGrant, b: ServingBackendProfile, replicas: List<ServingReplicaConfig>) -> String {
+  concat(identity_frame(label: "host", value: g.host as String),
+    concat(identity_frame(label: "backend", value: b.backend as String),
+    concat(identity_frame(label: "snapshot-fixed", value: to_string(byte_size_count(b: b.retention.fixed))),
+    concat(identity_frame(label: "snapshot-per-token", value: to_string(byte_size_count(b: b.retention.per_token))),
+    concat(identity_frame(label: "park-floor", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor)))),
+    concat(identity_frame(label: "backend-max-context", value: to_string(token_count_value(t: b.max_context))),
+      serving_configuration_identity(replicas: replicas)))))))
 }
 
 // A receipt qualifies the derived configuration only if it was taken on exactly this configuration. A changed
@@ -390,18 +423,23 @@ fn serving_layout_with_qualification(result: ServingLayoutResult, q: ServingLive
     ServingLayoutRefused { refusal: f } => ServingLayoutRefused { refusal: f }
     ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
       ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: ServingLayoutEvidence {
-        budget: e.budget, assumptions: e.assumptions, backend: e.backend,
+        configuration: e.configuration, budget: e.budget, assumptions: e.assumptions, backend: e.backend,
         live: match q {
           ServingLiveUnqualified { obligation: o } => ServingLiveStandingUnqualified { obligation: o }
           ServingLiveQualified { receipt: rc, configuration: c } =>
-            if c == serving_configuration_identity(replicas: rs) { ServingLiveStandingQualified { receipt: rc } } else { ServingLiveRequalificationRequired { qualified: c, derived: serving_configuration_identity(replicas: rs) } }
+            if c == e.configuration { ServingLiveStandingQualified { receipt: rc } } else { ServingLiveRequalificationRequired { qualified: c, derived: e.configuration } }
         },
       } }
   }
 }
 
-// ---- ADMISSION: a replica admits a conversation only if every admitted conversation, this one included, can
-// still grow to the context ceiling within its retention budget. A refusal changes nothing: it never evicts.
+// ---- ADMISSION ARITHMETIC: a replica admits a conversation only if every admitted conversation, this one
+// included, can still grow to the context ceiling within its retention budget. A refusal changes nothing: it
+// never evicts. THIS IS THE COUNT, NOT THE PROTOCOL: it takes the admitted count as given, so it cannot say which
+// conversations are counted, whether a request resumes one already admitted, or whether another admission ran
+// concurrently. The protocol (find or acquire this conversation's retention reservation, then its turn grant,
+// keyed by an authenticated conversation identity and joined to turn_admission's seat ledger) is
+// serving_admission_protocol_frontier.
 type ServingAdmission
   = ServingAdmitted { now_admitted: Nat }
   | ServingAdmissionRefused { admitted: Nat, capacity: Nat }
@@ -536,6 +574,18 @@ data srv4_layout: ServingLayoutResult = serving_layout_with_qualification(
 // --conversation-cache-mib and --conversation-cache-slots, and the router's per-replica admission, read this
 // configuration. Until a launch row renders them, the witnesses are the only readers and the values are
 // applied by hand from the derivation's output.
+data serving_admission_protocol_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when the router's admission is one transaction per request: find or acquire the conversation's retention reservation (keyed by authenticated namespace and explicit conversation identity, never a content hash), then its active-turn grant through gunbc.serving.turn_admission, so that retries, concurrency, storage pressure and client disconnects can neither mint capacity nor erase a reservation; and serving_replica_admit's count is read from those reservations." as NonEmptyStr
+)
+
+// A DERIVED LAYOUT IS A TARGET FOR AN EMPTY DEPLOYMENT. serving_allocate deals the extra conversations in group
+// order and has no input describing current reservations, so applying it to an occupied fleet can shrink a
+// replica beneath conversations it already holds (the 2026-10-30 h11 case: the target gave 85 the second
+// conversation while 87 held two warm ones, and the operator chose 87 by hand).
+data serving_layout_transition_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when a transition plan derives from the applied configuration, the current reservations and their retained-state locations, and the target layout: it keeps valid placements, never shrinks a replica beneath its outstanding reservations before they are discharged, never advertises capacity before its configuration is applied and read back, names every conversation that needs drain or explicit reconstruction, and refuses when no transition fits the grant." as NonEmptyStr
+)
+
 data serving_layout_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "Delete when the h11 Strata launch row renders each engine's MemoryMax, MemorySwapMax and conversation-cache flags from host_6ce85c_layout, and router placement admits through serving_replica_admit." as NonEmptyStr
 )
