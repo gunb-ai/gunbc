@@ -2,6 +2,7 @@ module gunbc.auth.branch_dispatch_federation
 
 import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp, CommitSha }
+import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_from_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
@@ -31,6 +32,17 @@ import gunbc.auth.authorization_pattern_selection {
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
 }
+import gunbc.auth.mtcollins1_branch_boot_trust {
+  mtcollins1_boot_branch_federation, mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_is_trusted,
+  mtcollins1_boot_branch_route_refusal_cause_with, mtcollins1_boot_branch_route_refusal_text,
+}
+// THE READER KEY'S STATE, AS A TYPE, IS WHAT OPENS AND CLOSES THIS ROUTE. Imported rather than re-derived:
+// review 87627 found two consumers comparing the secret's version against the literal "pending", so the
+// question "is the key minted?" now has exactly one home (gunbc.host.boot_medium_reader_key
+// BootMediumReaderKeyState) and every reader below takes it as a parameter. The parameter, not a global read,
+// is the point -- the route is closed until the fleet_keypair_mint mode mints the key, and the only way to assert the law on BOTH
+// sides of a mint that has not happened is to ask the law with the receipt in hand.
+import gunbc.host.boot_medium_reader_key { BootMediumReaderKeyState, boot_medium_reader_key_state }
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
 // The main-only federation (gunbc.auth.fleet_convergence_federation) keeps every account it reaches
@@ -182,10 +194,47 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 
 // THE ONE MODE/REF ELIGIBILITY RULE, shared by the broker prefilter and the grant planner. A mode is
 // eligible for a run-scoped grant on a ref only if it maps in run_scoped_modes and, for the boot mode,
-// select_boot_credential_source selects RunScopedApprovedGrant for that ref (it refuses it on the
-// reviewed default branch, where the dedicated identity applies). Other modes are not ref-gated.
+// the credential selection for THAT REF names the run-scoped source: the boot is refused on the reviewed
+// default branch (the dedicated identity applies there), and it needs no grant at all off main at a ref
+// the code roster holds, because there it federates the approval-free branch identity instead.
+//
+// ASKING THE SELECTION BY REF, not by ref class, is what keeps the broker honest. Read by class alone, a
+// rostered branch boot would still look grant-eligible, so the broker would still dispatch a grant run for
+// a boot that never waits for one -- spending a srv1-constrained converge run to authorize a boot that does
+// not need it, which is the shape of the 2026-10-23 deadlock (boot run 39895480515 holding srv1-01 while its
+// grant run 39895564897 queued for that same runner). A mode that needs no credential needs no grant, and
+// this is now the single place that decides both.
+//
+// ONLY THE SELECTED-SOURCE ROUTE IS REF-GATED THIS WAY. Every OTHER ROW of run_scoped_modes() --
+// hetzner_cloud_server_read, plan, apply -- keeps the class rule it has always had, at every ref, and the
+// measurement says so rather than this comment asserting it (2026-10-29, the claim route on
+// test.claim.auth.branch_run_grant_witness): fleet_converge_grant_required is true for each of them at
+// every ref. The roster opens mtcollins1_boot and nothing else.
+//
+// DO NOT READ THIS AS COVERING MODES OUTSIDE THAT TABLE. host_reset_return has no row in run_scoped_modes()
+// -- an earlier draft of these comments cited it as a mode that "keeps its grant" here, and the claim
+// route refused it: for such modes fleet_converge_grant_required is false at every ref, main and branch
+// alike, because this is not the authority that decides their admission. Saying less is the honest move.
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
-  run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: branch == (gunbc_default_branch_name as String))
+  run_scoped_mode_eligible_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch)
+}
+
+// THE SAME ELIGIBILITY RULE, ASKED OF A GIVEN READER KEY STATE. The ref-aware branch of the table below
+// reaches the boot's selection, and the boot's selection depends on whether the reader key exists -- so a
+// witness that wants to assert the law on both sides of the mint (a rostered boot KEEPS its grant while the
+// route is closed, and drops it after the mint) has to ask eligibility itself, not only the selection under
+// it. Production reads the world through the wrapper above.
+fn run_scoped_mode_eligible_with(state: BootMediumReaderKeyState, mode: String, branch: String) -> RunScopedMode? {
+  let on_main = branch == (gunbc_default_branch_name as String)
+  match run_scoped_mode_named(mode: mode) {
+    Absent => none
+    Present { value: m } => match m.main_route {
+      MainUsesSelectedSource =>
+        if on_main { none } else if boot_grant_required_at_ref_with(state: state, on_reviewed_main: false, branch: branch) { Present { value: m } } else { none }
+      MainUsesGrantedAccount => run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: on_main)
+      MainUsesFleetIdentity => run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: on_main)
+    }
+  }
 }
 
 // THE SAME RULE READ BY REF CLASS, for a reader that knows whether the dispatch is at reviewed main but
@@ -200,6 +249,13 @@ fn run_scoped_mode_eligible_on(mode: String, on_reviewed_main: Bool) -> RunScope
         match select_boot_credential_source(on_reviewed_main: on_reviewed_main) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
+          // UNREACHABLE FROM THIS READER, AND IT FAILS CLOSED IF IT EVER IS REACHED. This class-level
+          // reader holds no branch name, and the approval-free branch source is established ONLY at a
+          // rostered ref (select_boot_credential_source_at_ref) -- the ref-less twin above can never
+          // produce it. Answering as if the grant were still required is the safe direction: a mode that
+          // wrongly landed here would wait for a grant rather than boot unattended. The reader that must
+          // answer for a trusted branch is the ref-aware one, never this one.
+          BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => Present { value: m }
           BootCredentialSourceRefused { cause: _ } => none
         }
     }
@@ -401,6 +457,16 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
+  // THE APPROVAL-FREE BRANCH BOOT (operator rulings 2026-10-22 and 2026-10-23, carried in full by
+  // gunbc.auth.mtcollins1_branch_boot_trust). A same-repository branch dispatch of mtcollins1_boot whose
+  // ref the code-declared roster holds federates as a DEDICATED branch boot account, through a pool and
+  // provider of its own whose WIF condition pins the ref and the job environment. It waits for no grant
+  // run. It is not the grant route bypassed -- it is a different, STANDING IAM-side trust. Every other
+  // ROW of run_scoped_modes() still selects RunScopedApprovedGrant off main (measured: true for
+  // hetzner_cloud_server_read, plan and apply at every ref, and for mtcollins1_boot at every ref except a
+  // rostered one). Modes with no row there -- host_reset_return -- are neither opened nor restricted by
+  // this arm; this row is not their authority.
+  | TrustedBranchBootIdentity
 
 type BootCredentialStanding
   = BootCredentialSourceSelected { source: BootCredentialSource }
@@ -481,6 +547,176 @@ fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: Authorizatio
 
 fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStanding {
   boot_credential_source_from_selection(on_reviewed_main: on_reviewed_main, s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
+}
+
+// THE APPROVAL-FREE BRANCH BOOT AS A CENSUS ROW, the third boot-credential effect beside the reviewed-main
+// and off-main rows above, and the row gunbc.auth.privileged_effect_census carries with the operator's
+// rulings quoted (2026-10-22 "is not sensitive"; 2026-10-23 "permission to boot it endlessly" and a
+// non-main integration branch "shouldn't need an approval", extending the 2026-09-23/25 rulings).
+//
+// IT IS A NO-APPROVAL SELECTION, NOT A SECOND APPROVAL ROUTE (gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). That ruling binds an effect "that a human can attend"
+// to the one approval-broker route and keeps the administrator edge only for an UNATTENDED
+// MintsHostRootReach. A BMC power cycle is neither: no human attends it (the operator's consent is
+// STANDING and recorded in code, exactly as the 2026-09-23/25 rulings recorded it for the main-dispatched
+// twin), and it mints resource-scoped reads, not host root. So this effect goes through the SAME
+// selection algebra as every other effect here -- no second broker, no second consent object -- and its
+// selection lands on FederatedScopedGrant, the pattern that needs no human action per effect.
+fn branch_boot_credential_effect_approval_free_over(state: BootMediumReaderKeyState) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "drive the mtcollins1 BMC directly as a same-repository branch dispatch of mtcollins1_boot: power-cycle it and mount its virtual CD, federating as the dedicated branch boot account through the branch boot pool" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: branch_boot_workload_identity_over(state: state),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    // THE ACT IS NOT NEW, AND NEITHER IS ITS DISCHARGE. This effect is the SAME destructive act the
+    // 2026-09-23/25 ruling already discharges -- same power cycle, same media mount, same BMC -- reached
+    // through a different credential. Its irreversibility is discharged by that ruling at the boot's own
+    // site (gunbc.machine_intake.mtcollins1_boot_run::mtcollins1_boot_wet), which is interlocked against
+    // the unit hold; this row's site is the CREDENTIAL SEAM, and a credential seam that mints a
+    // resource-scoped token, bills nothing and is not break-glass owes no witness of its own. Marking it
+    // StandingRulingUnderInterlock with a NEW ruling would invent a second discharge for one act, and the
+    // census's own join (rulings_without_a_rostered_interlock) reads discharges, not rows -- so the second
+    // ruling would have to be rostered as if it were a new authority over the act. It is not: it is the
+    // operator's standing permission for the CREDENTIAL, carried as text in
+    // gunbc.auth.privileged_effect_census mtcollins1_branch_boot_operator_ruling_text and as the IAM trust
+    // in gunbc.auth.mtcollins1_branch_boot_trust.
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// THE PRODUCTION READ: the effect as the world actually has it, with the reader key's real standing. The
+// census row carries this one; the _over form above exists so the same row can be asked on the far side of
+// the mint (see boot_credential_source_from_branch_selection_with for why that is a parameter at all).
+fn branch_boot_credential_effect_approval_free() -> PrivilegedEffect {
+  branch_boot_credential_effect_approval_free_over(state: boot_medium_reader_key_state())
+}
+
+// THE BINDING FACT, same shape as dedicated_boot_workload_identity for the other row: the branch account
+// is bindable exactly while its federation is provisioned, and unbindable -- so unselectable -- when it
+// is not. Nothing can be federated that was never admitted.
+fn branch_boot_workload_identity_over(state: BootMediumReaderKeyState) -> WorkloadIdentityStanding {
+  match mtcollins1_boot_branch_federation_with(state: state) {
+    Present { value: f } => WorkloadIdentityBindable { member: f.service_account_member as NonEmptyStr }
+    Absent => WorkloadIdentityUnbindable {
+      cause: "no provisioned branch boot identity, so no branch boot credential to bind" as NonEmptyStr,
+    }
+  }
+}
+
+fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
+  branch_boot_workload_identity_over(state: boot_medium_reader_key_state())
+}
+
+// THE RENDER FOR THE BRANCH EFFECT, through the SAME selection algebra (the pattern must be admissible
+// for the effect, not merely named) and its own arm, because off reviewed main FederatedScopedGrant means
+// the dedicated main-only identity and refuses a branch. A branch outside the roster never reaches this:
+// select_boot_credential_source_at_ref asks the roster first, and every other ref falls through to the
+// per-run grant. So every other row of run_scoped_modes() keeps its grant, at the trusted ref included.
+fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection) -> BootCredentialStanding {
+  boot_credential_source_from_branch_selection_with(state: boot_medium_reader_key_state(), s: s)
+}
+
+// THE SAME SELECTION, ASKED OF A GIVEN READER KEY STATE. The state is an input for one reason: the route
+// is closed until the reader keypair is minted (gunbc.host.fleet_keypair_mint), so the ONLY way to test what the selection does
+// on the other side of that mint -- without minting it, and without mutating the world to pretend -- is to
+// ask the law directly. mtcollins1_boot_branch_route_refusal_cause_with is the same function the federation
+// builder consults, and the effect handed to the selection algebra is built from the very same state, so the
+// cause a refusal reports cannot drift from the reason the route is absent, and a witness that hands in a
+// minted receipt gets the real post-mint answer rather than a paraphrase of it. (Before review 87627 the
+// state reached this function only partway: the credential was injected while the EFFECT still read the
+// world, so a witness standing post-mint was answered by the closed route and its claims went red for a
+// reason that had nothing to do with what they asserted.)
+fn boot_credential_source_from_branch_selection_with(state: BootMediumReaderKeyState, s: AuthorizationPatternSelection) -> BootCredentialStanding {
+  match s {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>
+      match mtcollins1_boot_branch_route_refusal_cause_with(state: state) {
+        // THE CAUSE IS THE ROUTE'S OWN, carried through rather than restated here -- as a TYPED cause, which
+        // is rendered to operator prose only at the boundary, because BootCredentialSourceRefused is an
+        // existing authority shape whose cause field is a sentence. Today it names the unminted reader key;
+        // it never says "unprovisioned" when the reason is something else.
+        Present { value: cause } =>
+          BootCredentialSourceRefused { cause: mtcollins1_boot_branch_route_refusal_text(cause: cause) }
+        Absent => BootCredentialSourceSelected { source: TrustedBranchBootIdentity }
+      }
+    PatternSelected { pattern: _, receipt: _ } => BootCredentialSourceRefused { cause: "the branch boot selected a pattern that mints no branch boot credential" as NonEmptyStr }
+    ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "the branch boot selection requires a manual step" as NonEmptyStr }
+    NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused { cause: "no pattern is admissible for the branch boot effect" as NonEmptyStr }
+    PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused { cause: "the branch boot selection needs evidence it does not have" as NonEmptyStr }
+    PatternSelectionNeedsPolicy { survivors: _ } => BootCredentialSourceRefused { cause: "the branch boot selection left several survivors and no policy to choose" as NonEmptyStr }
+    PatternSelectionRefused { defects: _ } => BootCredentialSourceRefused { cause: "the branch boot selection refused the effect" as NonEmptyStr }
+  }
+}
+
+// THE SELECTION FOR A DISPATCH AT A GIVEN REF: the same law, asked with the branch it runs on. On
+// reviewed main nothing changes at all. Off main, ONLY a ref the code-declared roster holds selects the
+// approval-free branch identity; every other ref -- a fork, an unrostered branch, a branch that renamed
+// its own environment -- keeps the run-scoped grant, because the roster is the one door and it opens for
+// this mode alone.
+//
+// WHY THIS IS NOT A WORKFLOW-TEXT BYPASS -- AND WHAT THE PINS DO NOT DO (review 87197).
+// This function only chooses which IAM identity to federate as; the admission decision is GCP's, made by a
+// WIF condition over issuer-signed claims (gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_branch_attribute_condition). Be exact about what that condition can and cannot bind,
+// because an earlier draft of this comment overstated it and DESIGN.md section 4b does not allow a
+// safety argument to be reported stronger than its evidence.
+//
+// IT BINDS WHO MAY FEDERATE: the repository's NUMERIC identity and owner id, the event, and the ref roster.
+// Those four hold even against a branch that rewrites its own workflow file -- they are signed by GitHub
+// and evaluated in GCP, and a fork cannot present this repository's numeric id at all. That is the
+// authority the 2026-09-23 ruling put on the IAM side, and it is why this is not a workflow-text bypass.
+//
+// IT DOES NOT BIND WHAT THE JOB THEN DOES. workflow_ref is a heads-prefix starts_with and the environment
+// name is declared inside the very file that runs, so a rostered branch CAN edit its own copy of
+// fleet-converge.yml -- change the steps, and even re-declare the environment. Anyone who reads the pins
+// as a tamper-proof on job behaviour is reading them wrong. What makes that edit harmless is NOT the pins.
+//
+// THE REACH IS BOUNDED BY THE POLICY, NOT BY THE PINS: the identity a rostered branch federates as holds
+// only this host's pinned BMC credential and the boot medium reader key -- see
+// mtcollins1_boot_branch_secret_grants, which refuses to mirror the boot federation's fleet automation key
+// onto it. A branch that rewrites its job to print every secret it can read prints one host's BMC
+// credential and a force-commanded digest reader, not a fleet credential. THAT is the wall, so the
+// narrowing is load-bearing, not incidental: weaken it and the pins do not catch you.
+fn select_boot_credential_source_at_ref(on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
+  select_boot_credential_source_at_ref_with(state: boot_medium_reader_key_state(), on_reviewed_main: on_reviewed_main, branch: branch)
+}
+
+// THE SAME LAW, ASKED OF A GIVEN READER KEY STATE -- see
+// boot_credential_source_from_branch_selection_with for why the state is an input rather than a
+// global read here. The default form above is what production calls; this form is what lets a witness
+// stand on the far side of the reader-key mint (gunbc.host.fleet_keypair_mint) and ask what the branch boot selects there,
+// without minting anything and without editing the world to pretend.
+fn select_boot_credential_source_at_ref_with(state: BootMediumReaderKeyState, on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
+  if !on_reviewed_main && mtcollins1_boot_branch_is_trusted(branch: branch) {
+    boot_credential_source_from_branch_selection_with(
+      state: state,
+      s: select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: state))
+    )
+  } else {
+    select_boot_credential_source(on_reviewed_main: on_reviewed_main)
+  }
+}
+
+// DOES A BOOT AT THIS REF NEED A PER-RUN GRANT? The workflow's grant wait asks this, so a rostered branch
+// boot never queues behind a grant run it does not need -- which is also what keeps that boot off the srv1
+// slot a grant run may be waiting for (the 2026-10-23 deadlock: the boot held the only srv1 runner while
+// its own grant run queued behind it for that same runner). Every other ref, and every other mode at
+// every ref, still needs the grant and still waits for it.
+fn boot_grant_required_at_ref(on_reviewed_main: Bool, branch: String) -> Bool {
+  boot_grant_required_at_ref_with(state: boot_medium_reader_key_state(), on_reviewed_main: on_reviewed_main, branch: branch)
+}
+
+// THE SAME ANSWER, FOR A GIVEN READER KEY STATE. Both sides of the mint are assertable: closed today, and
+// grant-free on a rostered ref once the key exists. CLOSED MEANS DEGRADED, NEVER APPROVAL-FREE: a refused
+// selection returns true here, so a rostered branch whose route is shut still waits for its grant rather
+// than booting unattended.
+fn boot_grant_required_at_ref_with(state: BootMediumReaderKeyState, on_reviewed_main: Bool, branch: String) -> Bool {
+  match select_boot_credential_source_at_ref_with(state: state, on_reviewed_main: on_reviewed_main, branch: branch) {
+    BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
+    BootCredentialSourceRefused { cause: _ } => true
+  }
 }
 
 // ── the table, read as the workflow's coverage ───────────────────────────────────────────────

@@ -2,8 +2,8 @@ module test.claim.auth.branch_run_grant_witness
 
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Int, List, String, Timestamp, CommitSha }
-import std.optional { Present, Absent }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, CommitSha }
+import std.optional { Present, Absent, optional_is_absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell, IamCondition, gcp_policy_cells, gcp_cell_in }
 import extdeps.cloud.hetzner_cloud_api { HetznerTokenRead }
 import extdeps.github.github { GitHubUser, User }
@@ -17,25 +17,97 @@ import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_default_read_token,
 import gunbc.auth.branch_dispatch_federation {
   hetzner_cloud_control_federation, branch_dispatch_attribute_condition, branch_dispatch_attribute_mapping,
   branch_run_impersonation_cell, branch_run_principal_set, parse_branch_run_key, mode_of_run_title, run_scoped_mode_named, run_scoped_mode_eligible,
-  mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_boot_credential_source,
+  mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   boot_credential_effect, boot_credential_source_from_selection, boot_credential_source_from_pattern,
   ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceSelected, BootCredentialSourceRefused,
   BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, run_scoped_account_id,
+  mtcollins1_boot_mode_name,
+  TrustedBranchBootIdentity, select_boot_credential_source_at_ref, boot_grant_required_at_ref,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
   OperatorOwnSession, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy,
+  NoWitnessDischarge,
 }
-import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
+import gunbc.auth.privileged_effect_census {
+  privileged_effect_census, site_verdict, site_conformance, Conforms, SiteNotDecidable, Diverges,
+  DivergesWithReason, RealizedFederatedGrant, RealizedApprovalCapability,
+  site_ruling_linkage, ruling_backed_privileged_sites, PrivilegedEffectSite,
+  site,
+}
+import std.decl_ref { declaration_ref_eq, declaration_ref_in_list }
+import gunbc.design_ruling { mtcollins1_branch_boot_is_approval_free }
+// THE RULING THAT OPENS THIS ROUTE, AS A TYPED ROW. review 87627: the 2026-10-22/23 operator permission sat
+// in `//` prose while a citation pointed at a symbol that did not exist. DESIGN section 4c puts a ruling in a
+// typed carrier and section 3 refuses a citation whose home does not resolve -- so the words live in
+// gunbc.design_ruling, the census module exposes them, and the claims below check all three links: the row is
+// registered, its provenance carries the operator's own sentences, and the census row names it.
+import gunbc.design_ruling { design_rulings, DesignRuling }
+import gunbc.auth.privileged_effect_census { mtcollins1_branch_boot_operator_ruling_text }
+import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_approval_free }
+import gunbc.auth.mtcollins1_branch_boot_trust {
+  mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
+  mtcollins1_boot_trusted_ref_pin,
+  mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
+  mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource,
+  mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_claim_pins_with,
+  mtcollins1_boot_branch_attribute_condition,
+  mtcollins1_boot_branch_provider, mtcollins1_boot_branch_federation, mtcollins1_boot_trusted_environment_pin,
+  mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_secret_grants_with,
+  mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
+  mtcollins1_boot_branch_route_refusal_cause, mtcollins1_boot_branch_route_refusal_cause_with,
+  mtcollins1_boot_branch_route_refusal_text, mtcollins1_boot_branch_route_standing,
+  mtcollins1_boot_branch_route_standing_with, mtcollins1_boot_branch_secret_grants_with,
+  ReaderKeyUnusable, Refused, Admitted,
+  mtcollins1_boot_branch_bmc_secret_id, mtcollins1_boot_branch_bmc_grants,
+  mtcollins1_boot_branch_principal_set, mtcollins1_boot_branch_wif_pool_id,
+}
+import gunbc.host.boot_medium_reader_key {
+  BootMediumReaderKeyState, Unminted, Minted, HalfMinted,
+  NotMinted, PartlyMinted, boot_medium_reader_key_state,
+  boot_medium_reader_ssh_privkey_secret,
+}
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import std.content_hash { sha256_hex_digest }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+// ONE HOME FOR THE BMC CREDENTIAL'S ID AND VERSION (review 87659; DESIGN section 3). A witness that spells
+// the id itself is a second source that can drift from the provisioned one -- and a claim that agrees with a
+// stale literal is worse than no claim, because it reads as evidence.
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.auth.branch_dispatch_federation {
+  select_boot_credential_source_at_ref_with, boot_grant_required_at_ref_with,
+  boot_credential_source_from_branch_selection_with,
+  branch_boot_credential_effect_approval_free_over, run_scoped_mode_eligible_with,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_grant_required_at_ref, fleet_converge_grant_wait_admits_at_ref,
+  fleet_converge_grant_wait_admits_at_ref_with, GrantWaitSkipped, GrantWaitSucceeded, GrantWaitFailed, GrantWaitCancelled,
+  MtCollins1Boot, HostResetReturn, GcpIamConverge,
+  // THE RUNTIME FACE OF THE ROUTE: the wait job's own condition, and the job's step list. A branch boot
+  // is approval-free only if the wait job is SKIPPED for it and the boot still runs; and a narrowed
+  // account is only a wall if the job dies before it can touch the BMC.
+  fleet_converge_off_main_grant_required_term_with, fleet_converge_branch_run_grant_wait_if,
+  fleet_converge_jobs, fleet_converge_mode_job_id,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.github.expressions { serialize_expression, LogicalAnd, LogicalNot }
 import gunbc.auth.branch_run_grant {
   BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
 import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
-import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
+import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim, OidcClaimPin }
+import std.algebra { string_contains }
+import gunbc.auth.managed_host_boot_federation {
+  ManagedHostBootFederation, boot_federation_for, provisioned_federation_of, boot_federation_principal_set,
+}
+import extdeps.cloud.gcp.gcp { wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashKnown }
+import std.content_hash { ContentHash, Sha256Hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -271,13 +343,15 @@ test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool
         grant_secret_versions(grants: standing.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && grant_secret_versions(grants: run.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && any(admitted.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key" && g.target.version == "1")
-          && any(admitted.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc" && g.target.version == "2")
+          && any(admitted.secret_grants, g => (g.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                && (g.target.version as String) == (mtcollins1_bmc_gunbc_secret_ref.version as String))
           && !any(gcp_iam_converge_targets, t =>
             (t.service_account_id as String) == (run.service_account_id as String)
-              && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
-                && any(admitted.secret_grants, a => (a.target.secret as String) == "bmc-mtcollins1-gunbc" && a.target.version != g.target.version)))
-          && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceRefused { cause: _ } => false }
-          && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceRefused { cause: _ } => false }
+              && any(t.secret_grants, g => (g.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                && any(admitted.secret_grants, a => (a.target.secret as String) == (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+                  && a.target.version != g.target.version)))
+          && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
+          && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
       }
     }
   }
@@ -314,8 +388,8 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
     && !boot_pattern_is_approved(on_reviewed_main: true)
     && boot_pattern_is_approved(on_reviewed_main: false)
     && !boot_pattern_is_federated(on_reviewed_main: false)
-    && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceRefused { cause: _ } => false }
-    && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceRefused { cause: _ } => false }
+    && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
+    && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false  BootCredentialSourceRefused { cause: _ } => false }
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_on_reviewed_main")
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_off_reviewed_main")
 }
@@ -347,4 +421,1233 @@ test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool
     && standing_is_refused(s: boot_credential_source_from_selection(on_reviewed_main: false, s: PatternSelectionNeedsPolicy { survivors: [] }))
     && standing_is_refused(s: boot_credential_source_from_pattern(on_reviewed_main: false, p: FederatedScopedGrant))
     && standing_is_refused(s: boot_credential_source_from_pattern(on_reviewed_main: true, p: OperatorApprovedCapability))
+}
+
+// ══ THE APPROVAL-FREE BRANCH BOOT (operator rulings 2026-10-22 "is not sensitive", 2026-10-23
+// "permission to boot it endlessly" / a non-main integration branch "shouldn't need an approval") ═══
+// These REDs hold the line the brief drew: the ONE mode at the ROSTERED ref gets the approval-free
+// identity, and nothing else moves. They deliberately do not ask "does the workflow file say
+// approval-free" -- a branch can rewrite its own workflow file, so a check on workflow text would pass
+// for a bypass. They ask what the SELECTION returns, and what GCP's provider condition ADMITS.
+
+// THE (BRANCH, ENVIRONMENT) CASE THESE CLAIMS PRESENT -- decided ONCE, and TYPED. Both halves are
+// optional at the source: the roster can be empty, and gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_trusted_environment answers none when the boot identity cannot name its environment.
+// This module used to paper over both: it handed out "__gunbc_no_rostered_branch__" for an empty roster
+// and "" for an unnameable environment, so every claim below was silently judging a ref nobody can push
+// to and an environment no dispatch can carry. That is the fabricated default DESIGN §5 calls a hard
+// reject -- the same disease this PR cured in the pins, the provider condition and the workflow text,
+// smuggled back in through a test fixture, where it is invisible because a red claim looks like a green
+// one either way. Absence is Absent here: a claim that needs a concrete case is RED when there is none,
+// which is exactly what it means. (The reviewer's other suggestion -- a FreeSemigroup roster -- was not
+// taken: the roster's own consumers already refuse on empty, in the type, so an empty roster is not a
+// state the authorities can act on; the fix this module needed was to stop inventing an inhabitant.)
+type RosteredBootCase {
+  branch: String
+  environment: String
+}
+
+fn rostered_boot_case() -> RosteredBootCase? {
+  match mtcollins1_boot_trusted_branches.first() {
+    Absent => none
+    Present { value: b } => match mtcollins1_boot_trusted_environment() {
+      Absent => none
+      Present { value: e } =>
+        Present { value: RosteredBootCase { branch: b as String, environment: e as String } }
+    }
+  }
+}
+
+// THE CLAIM SET A ROSTERED BRANCH BOOT ACTUALLY PRESENTS. Optional at the source (review 87673): with no
+// pin set there is nothing to present -- and [] admits nothing, so a claim that needs a real claim set
+// goes red rather than passing vacuously over an empty list.
+fn branch_real_claims(case: RosteredBootCase) -> List<OidcPresentedClaim> {
+  match mtcollins1_boot_branch_presented_claims(branch: case.branch, environment: case.environment) {
+    Absent => []
+    Present { value: c } => c
+  }
+}
+
+// THE ROSTER IS ANSWERED AS A SET, NOT THROUGH A REPRESENTATIVE. For every entry, the wait-job rule must
+// agree with the credential selection AT THAT SAME REF -- so an entry added to the roster is judged on its
+// own ref and cannot inherit a neighbour's approval, and an entry the selection refuses cannot borrow the
+// route. This is the assertion that would have caught the single-representative version of this code.
+test fn every_roster_entry_is_answered_on_its_own_ref() -> Bool {
+  all(mtcollins1_boot_trusted_branches, b =>
+    fleet_converge_grant_required_at_ref(mode: MtCollins1Boot, branch: b as String)
+      == boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
+    // AND THE BOOT IS THE ONLY MODE WHOSE GRANT QUESTION CAN DIFFER BY REF -- asked of the modes that
+    // actually own a grant question. MEASURED, NOT ASSUMED (2026-10-29, gunbc test on this file): the
+    // run-scoped grant universe is gunbc.auth.branch_dispatch_federation run_scoped_modes(), which holds
+    // hetzner_cloud_server_read, mtcollins1_boot, plan and apply. An earlier draft of this claim asked
+    // host_reset_return and gcp_iam_converge instead, and it FAILED: neither has a row in that table, so
+    // fleet_converge_grant_required answers false for them at every ref -- main and branch alike -- and
+    // their admission is decided by other authorities entirely. Asking the "still needs the grant"
+    // question of a mode that never had one is a claim that cannot fail for the wrong reason, which is
+    // the same thing as proving nothing.
+    && all(mtcollins1_boot_trusted_branches, b =>
+      fleet_converge_grant_required_at_ref(mode: HetznerCloudServerRead, branch: b as String)
+        && fleet_converge_grant_required_at_ref(mode: FleetApply, branch: b as String))
+}
+
+
+// THE ROUTE CANNOT EXIST WITHOUT THE BOOT IDENTITY THAT NAMES ITS ENVIRONMENT. The provider pins the
+// job's `environment:` to the boot federation's own name, read from code, so an unprovisioned boot
+// federation means no branch route at all -- and the selection refuses rather than selecting. Asserting
+// this here is what keeps every environment-shaped RED below from being vacuous.
+test fn branch_boot_route_has_a_provisioned_boot_identity() -> Bool {
+  match mtcollins1_boot_trusted_environment() { Present { value: e } => (e as String).length() > 0  Absent => false }
+}
+
+// THE ROSTER IS NOT EMPTY, AND A REF IS PINNED TO A REAL BRANCH. An empty roster would poison the
+// provider's ref condition into matching nothing, which is safe but silent; a roster is a code list, so
+// this asks the list directly.
+test fn branch_boot_roster_is_rostered_and_pinned() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    mtcollins1_boot_trusted_branches.length() > 0
+      && starts_with(s: mtcollins1_boot_trusted_branch_ref(branch: c.branch), prefix: "refs/heads/")
+      && mtcollins1_boot_branch_is_trusted(branch: c.branch)
+    }
+  }
+}
+
+// THE WIDENING, STATED AS A FACT. A same-repository branch dispatch of mtcollins1_boot at a rostered ref
+// selects a THIRD credential source: neither the reviewed-main dedicated identity nor the
+// approval-gated run-scoped grant, but the dedicated branch-boot identity. This is the row the PR body
+// says plainly -- anyone with branch push in gunb-ai/gunbc can now drive mtcollins1's BMC at that ref.
+// ...WHILE THE ROUTE IS CLOSED, IT DOES NOT. This is the state on main today, because the reader keypair
+// is unminted (see the mint-gate claims below): the rostered ref falls back to the approval-gated
+// run-scoped grant rather than selecting an identity that was never converged. Asserting the old form here
+// would have been rung inflation of the opposite sign -- advertising the widening as delivered when the
+// credential that makes it complete does not exist yet.
+test fn branch_boot_selects_the_approval_free_identity() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: c.branch) {
+      BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
+        !boot_grant_required_at_ref(on_reviewed_main: false, branch: c.branch)
+      // closed route: no approval-free selection, and the grant is still required -- degraded, never bypassed
+      BootCredentialSourceRefused { cause: _ } =>
+        boot_grant_required_at_ref(on_reviewed_main: false, branch: c.branch)
+      BootCredentialSourceSelected { source: _ } => false
+    }
+    }
+  }
+}
+
+// ...AND IT SELECTS THE IDENTITY THAT WAS DECLARED FOR IT, not the main identity wearing a different
+// label: the account and provider this route federates are the branch route's own.
+test fn branch_boot_identity_is_a_distinct_principal() -> Bool {
+  (mtcollins1_boot_branch_service_account as String) != (mtcollins1_boot_run_scoped_service_account as String)
+    && match mtcollins1_boot_branch_provider_resource() {
+      // NO PROVIDER IS NOT "DIFFERENT ENOUGH": an absent resource would satisfy != on nothing, so the
+      // distinct-principal property is asserted over a resource that exists.
+      Absent => false
+      Present { value: resource } => resource != branch_dispatch_provider_resource()
+    }
+    && match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+      // not the reviewed-main boot's account under a new label, either
+      Present { value: f } => (mtcollins1_boot_branch_service_account as String) != (f.names.service_account as String)
+      Absent => false
+    }
+}
+
+// RED: THE GRANT STILL GATES THE BOOT AT A BRANCH THE CODE DOES NOT NAME. The roster is the whole
+// permission; an arbitrary integration branch is not it.
+test fn an_unrostered_branch_boot_still_needs_the_grant() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let untrusted = concat(c.branch, "-not-rostered")
+    !mtcollins1_boot_branch_is_trusted(branch: untrusted)
+      && boot_grant_required_at_ref(on_reviewed_main: false, branch: untrusted)
+      && match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: untrusted) {
+        BootCredentialSourceSelected { source: TrustedBranchBootIdentity } => false
+        _ => true
+      }
+    }
+  }
+}
+
+// RED: MAIN IS UNCHANGED. The reviewed default branch keeps the dedicated boot identity and still needs
+// no grant, exactly as the 2026-09-23/25 rulings left it -- the new rows did not touch it.
+// MAIN IS UNCHANGED, and the roster buys nothing there: a run ON reviewed main selects the dedicated
+// boot identity even when the branch name it carries is a rostered one.
+test fn main_boot_still_selects_the_dedicated_identity() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    match select_boot_credential_source_at_ref(on_reviewed_main: true, branch: c.branch) {
+      BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
+      BootCredentialSourceRefused { cause: _ } => false
+    }
+    }
+  }
+}
+
+// RED: A DIFFERENT MODE ON THE SAME BRANCH STILL NEEDS ITS GRANT. This is the scope the brief drew --
+// mtcollins1_boot only. Read at the rostered ref, every other run-scoped mode must still be eligible for
+// a per-run grant, because the only credential the roster opens is the boot's.
+test fn another_mode_at_the_rostered_ref_still_needs_its_grant() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    // THE BOOT ALONE DROPS ITS GRANT AT THE ROSTERED REF -- and only once the reader key exists. Asked on
+    // both sides, because eligibility reaches the boot's selection and the selection depends on the reader
+    // key: a one-sided claim here would also be satisfied by a rule that never required a grant for this mode.
+    match run_scoped_mode_eligible_with(state: Unminted, mode: mtcollins1_boot_mode_name as String, branch: c.branch) {
+      Present { value: _ } => true
+      Absent => false
+    }
+      && match run_scoped_mode_eligible_with(state: minted_reader_state(), mode: mtcollins1_boot_mode_name as String, branch: c.branch) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      // ...and every other run-scoped mode keeps the grant it already had, at that same ref
+      && all(run_scoped_modes(), m => m.mode == mtcollins1_boot_mode_name
+        || match run_scoped_mode_eligible(mode: m.mode as String, branch: c.branch) {
+          Present { value: got } => got.mode == m.mode
+          Absent => false
+        })
+    }
+  }
+}
+
+// RED: A FORK DISPATCH IS REFUSED -- asked of the PROVIDER, not of a workflow text. A fork is a different
+// NUMERIC repository identity, so the claim set it presents fails the condition before any job runs; and
+// no roster entry can rescue it, because the pins are conjunctive.
+test fn a_fork_dispatch_cannot_present_admissible_claims() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    mtcollins1_boot_branch_admits(claims: real)
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_id", value: "999999999"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "repository_owner_id", value: "999999999"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "event_name", value: "push"))
+    }
+  }
+}
+
+// RED: A BRANCH THAT RENAMES ITS OWN `environment:` GETS NOTHING. The boot job's environment is pinned to
+// the boot federation's NAME, which comes from code -- so editing the workflow file to drop or rename the
+// environment is refused by GCP, not by a step that could be deleted.
+test fn a_renamed_environment_is_refused() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "mtcollins1-boot-but-not"))
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+    }
+  }
+}
+
+// RED: A BRANCH THAT IS NOT THE ROSTERED ONE PRESENTS NOTHING ADMISSIBLE, even carrying every other
+// claim correctly -- the ref pin alone refuses. This is what makes the roster the permission.
+test fn an_unrostered_ref_presents_nothing_admissible() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(
+      claims: real,
+      claim: "ref",
+      value: mtcollins1_boot_trusted_branch_ref(branch: concat(c.branch, "-lookalike")),
+    ))
+    }
+  }
+}
+
+// RED: A JOB THAT IS NOT THE FLEET-CONVERGE WORKFLOW IS REFUSED, whatever ref it sits on. The condition
+// pins the workflow file itself, so a new workflow on the rostered branch cannot borrow this identity.
+test fn a_different_workflow_file_is_refused() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "workflow_ref", value: ".github/workflows/anything-else.yml"))
+    }
+  }
+}
+
+// RED: THE APPROVAL-FREE ROUTE IS COUNTED IN THE CENSUS, on both sides of the mint, and counted honestly
+// in each. A credential seam that no census row names is the shape of every bypass this repo has been
+// burned by, and the row also carries the classification against
+// gunbc.design_ruling one_approval_route_for_every_privileged_action.
+//
+// WHAT THE TWO EARLIER VERSIONS OF THESE CLAIMS GOT WRONG, AND WHAT WAS MEASURED TO SETTLE IT. Both asked
+// site_verdict for an arm it cannot produce. SiteNotDecidable comes from the SELECTION -- NeedsEvidence,
+// NeedsPolicy, Refused -- never from a provisioning state, and its `standing` carries a selection, not the
+// refusal cause an earlier comment here claimed. So "not decidable while the route is closed" was
+// unsatisfiable; and the minted-side version asked the algebra about the minted world while handing it the
+// row's own `realized`, which describes today. The answer was measured rather than argued (a temporary
+// diagnostic module, run through the interpreter and since deleted): today
+// gunbc.auth.authorization_pattern_selection select_authorization_pattern returns
+// OperatorApprovedCapability for this site's effect, and with the reader key minted it returns
+// FederatedScopedGrant. That is not a wording accident -- with no reader key, the only credential that can
+// still drive this BMC from a branch IS the run-scoped grant an operator approves -- and it is why the
+// census row declares RealizedApprovalCapability now instead of the RealizedFederatedGrant an earlier draft
+// claimed. Writing the far side into `realized` today would have been rung inflation on the one field whose
+// whole job is to say what runs today.
+fn branch_boot_census_rows() -> List<PrivilegedEffectSite> {
+  filter(privileged_effect_census, candidate => (candidate.site.decl_name as String) == "branch_boot_credential_effect_approval_free")
+}
+
+// TODAY: the verdict is Conforms, because the row's own `realized` arm is what the selection demands of it.
+// Any other arm is a census whose record disagrees with the standing it cites -- a bare Diverges is the
+// review's defect outright, a DivergesWithReason here would mean today's binding is being explained away
+// rather than simply stated, and SiteNotDecidable would mean the selection will not classify an effect it
+// can classify. Then the closure the row leans on must be the ROUTE'S OWN WORDS naming the change that
+// lifts it, and the row must carry that transition in its own divergence_reason, where whoever mints the
+// key will read it instead of rediscovering it as a red corpus the morning after.
+fn branch_boot_verdict_matches_todays_binding() -> Bool {
+  match branch_boot_census_rows().first() {
+    Absent => false
+    Present { value: row } =>
+      match row.realized {
+        RealizedApprovalCapability =>
+          match site_verdict(row: row).conformance {
+            Conforms => true
+            Diverges => false
+            DivergesWithReason { reason: _ } => false
+            SiteNotDecidable { standing: _ } => false
+          }
+        _ => false
+      }
+      && match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+        // THE CAUSE IS MATCHED, NOT GREPED (review 88050): the route is closed BECAUSE the key is unminted,
+        // not because some other conjunct happens to be missing -- a swap of causes would have kept the old
+        // text-grepping claim green. The operator sentence that names the mint is the renderer's business.
+        Absent => false
+        Present { value: ReaderKeyUnusable { fault: NotMinted } } =>
+          string_contains(
+            s: mtcollins1_boot_branch_route_refusal_text(
+              cause: ReaderKeyUnusable { fault: NotMinted }
+            ),
+            pattern: "boot_medium_reader_keypair_mint_subject"
+          )
+        Present { value: _ } => false
+      }
+      && match branch_boot_census_rows().first() {
+        Absent => false
+        Present { value: r } => match r.divergence_reason {
+          Absent => false
+          Present { value: reason } => string_contains(s: reason.statement, pattern: "boot_medium_reader_keypair_mint_subject")
+        }
+      }
+  }
+}
+
+// WHAT THE MINT CHANGES IS THE SELECTION, AND THAT IS WHERE IT IS ASSERTED. One effect, two worlds, each
+// demanded BY NAME -- which also settles the conformance question the operator's ruling raises: neither
+// world may be the administrator edge, and neither can be, because any pattern other than these two is a
+// false here. The census's `realized` arm is deliberately not asked about the minted world: it is a record
+// of today, and its divergence_reason is what speaks for the day it stops matching.
+fn branch_boot_selection_opens_with_the_mint() -> Bool {
+  match select_authorization_pattern(e: branch_boot_credential_effect_approval_free()) {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+      match select_authorization_pattern(e: branch_boot_credential_effect_approval_free_over(state: minted_reader_state())) {
+        PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_branch_boot_credential_is_censused_and_conforms() -> Bool {
+  branch_boot_census_rows().length() == 1
+    && branch_boot_verdict_matches_todays_binding()
+    && branch_boot_selection_opens_with_the_mint()
+}
+
+// ...AND IT CHANGES NO EXISTING VERDICT: the two boot-credential rows and the actuation row keep their
+// own effects and their own discharges, so the branch route did not quietly re-authorize the act.
+test fn the_branch_boot_row_adds_no_new_discharge() -> Bool {
+  // the branch row discharges nothing of its own...
+  all(filter(privileged_effect_census, r => (r.site.decl_name as String) == "branch_boot_credential_effect_approval_free"), r =>
+    r.effect.witness_discharge == NoWitnessDischarge
+    // ...and it never diverges, in either state of the route
+    && match site_verdict(row: r).conformance {
+      Diverges => false
+      DivergesWithReason { reason: _ } => false
+      Conforms => true
+      SiteNotDecidable { standing: _ } => mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted()
+    })
+    && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_on_reviewed_main")
+    && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_off_reviewed_main")
+}
+
+// THE WAIT IS SKIPPED, AND THAT SKIP IS ADMITTED -- at the rostered ref, for the boot only. Before
+// Change 2 a skipped wait off main was always an unauthorized boot; the class-level question still says
+// that (most branches DO need the grant), so the ref-aware admission is what makes this route legal
+// instead of a hole. Failure and cancellation are never admitted, at any ref.
+test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    // POST-MINT, at the rostered ref: the skip the rendered pipeline performs is admitted, and so is a
+    // successful wait.
+    fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && fleet_converge_grant_wait_admits_at_ref_with(state: minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSucceeded)
+      // CLOSED TODAY at that same ref: no skip is admitted. A shut route does not make the boot
+      // approval-free -- it keeps the grant wait, and a pipeline that skipped there is a run missing its
+      // authorization. This is the conjunct a rule admitting skips unconditionally would fail, which is why
+      // the claim asks both sides instead of only the flattering one.
+      && !fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && fleet_converge_grant_wait_admits_at_ref_with(state: Unminted, mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSucceeded)
+      // A HALF-MINTED KEY IS NOT A MINT: no skip on that either.
+      && !fleet_converge_grant_wait_admits_at_ref_with(state: half_minted_reader_state(), mode: MtCollins1Boot, branch: c.branch, result: GrantWaitSkipped)
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: c.branch, result: GrantWaitFailed)
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: c.branch, result: GrantWaitCancelled)
+      // an unrostered branch keeps the OLD admission: no grant, no boot
+      && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(c.branch, "-not-rostered"), result: GrantWaitSkipped)
+      // and a different mode AT THE ROSTERED REF keeps the old admission. HetznerCloudServerRead is chosen
+      // because the measurement says it genuinely requires the grant off main (run_scoped_modes:
+      // MainUsesGrantedAccount); HostResetReturn was the earlier choice and it passed vacuously, since it
+      // has no row in that table and so never waits anywhere.
+      && !fleet_converge_grant_wait_admits_at_ref(mode: HetznerCloudServerRead, branch: c.branch, result: GrantWaitSkipped)
+    }
+  }
+}
+
+// ══ THE ENVIRONMENT STANDING CANNOT BE REMOVED WITHOUT SHUTTING THE ROUTE DOWN (side-chat
+// REQUEST_CHANGES on 18c3e1d0, merry-fox-82, §5 fail-open) ═════════════════════════════════════
+// The defect: mtcollins1_boot_branch_claim_pins matched over the boot identity's environment and its
+// Absent arm returned the pin list WITHOUT the environment conjunct. So losing the environment standing
+// made the converged provider LESS restrictive -- a job in no environment at all would have reached the
+// approval-free boot identity. It mattered that the guard lived in the pins and not in the federation:
+// the provider is built from claim_pins() directly, NOT through the guarded federation, so a federation
+// guard alone would have left the provisioned provider admitting more than the federation describes.
+
+// THE ENVIRONMENT CONJUNCT IS PRESENT, in both projections, unconditionally. Counted rather than
+// illustrated: the pins are the membership rule and the CEL is a fold over them.
+test fn the_environment_conjunct_is_never_droppable() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    match mtcollins1_boot_branch_claim_pins() {
+      // NO PIN SET IS NOT A PASS: this claim is about the conjunct being undroppable from a rule that
+      // exists, and the rule exists exactly when the roster and the boot's environment both name
+      // themselves. mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted and
+      // branch_boot_environment_pin_tracks_the_standing cover the absent side; here, absence is red.
+      Absent => false
+      Present { value: pins } =>
+        // exactly one environment conjunct, and it is the pin the trust module derives -- not a copy of it
+        match filter(pins, pin => (pin.claim as String) == "environment").first() {
+          Absent => false
+          Present { value: p } =>
+            p.value == c.environment
+              // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would
+              // remove this conjunct from the CEL itself, which is the fail-open the review named.
+              && match mtcollins1_boot_branch_attribute_condition() {
+                Absent => false
+                Present { value: c } =>
+                  string_contains(s: c, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                    // every conjunct survives: the condition is a fold, so one term per pin
+                    && pins.length() == split(s: c, delimiter: " && ").length()
+              }
+              // AND on the provisioned provider, the object converge actually creates. Optional since
+              // review 87673 -- no pins, no provider -- so its absence here is red rather than silent.
+              && match mtcollins1_boot_branch_provider() {
+                Absent => false
+                Present { value: provider } => match provider.attribute_condition {
+                  Absent => false
+                  Present { value: stored } => string_contains(s: stored, pattern: mtcollins1_boot_environment_conjunct(pin: p))
+                }
+              }
+        }
+    }
+    }
+  }
+}
+
+// WHAT GCP IS ACTUALLY ASKED TO BIND (review 87964). A `principalSet://` member is scoped to a whole pool,
+// to a group, or to an attribute -- there is no provider-scoped principalSet. The form this module first
+// invented (`.../provider/<provider>/*`) is not one Cloud IAM accepts: applied, it is rejected or stored as a
+// member no token ever matches, and the branch account gets no grant -- which would leave the approval-free
+// boot this PR exists for silently dead rather than visibly refused. So this asserts the member is the shape
+// the rest of the repository builds, through the shared constructor rather than by repeating a string:
+// dag/extdeps/cloud/gcp/gcp.dag wif_pool_resource + "/*", the shape
+// gunbc.auth.managed_host_boot_federation boot_federation_principal_set uses.
+//
+// The pool-wide form is only safe because the pool is DEDICATED, so that fact is checked here and not
+// assumed: the member must name this route's own pool, and must differ from the main boot's member, so a
+// token minted into the boot federation's pool can never reach the branch account.
+test fn the_iam_member_is_the_pool_scoped_form_gcp_accepts() -> Bool {
+  let member = mtcollins1_boot_branch_principal_set()
+  let pool_wide_shape = join(
+    [
+      "principalSet://iam.googleapis.com/",
+      wif_pool_resource(
+        project_number: fleet_secrets_project_number,
+        pool_id: mtcollins1_boot_branch_wif_pool_id as String
+      ),
+      "/*"
+    ],
+    ""
+  )
+  let pool_is_dedicated = match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Absent => false
+    Present { value: boot } => member != boot_federation_principal_set(f: boot)
+  }
+  member == pool_wide_shape
+    // the form GCP does not accept must not reappear, even as a suffix
+    && !string_contains(s: member, pattern: "/provider/")
+    && string_contains(s: member, pattern: mtcollins1_boot_branch_wif_pool_id as String)
+    && pool_is_dedicated
+}
+
+// THE MUTANT PROOF FOR THE FAIL-OPEN, made observable. In the live world the boot federation names its
+// environment, so the fail-closed arm (`Absent => none`) and the fail-open it replaced (an Absent arm
+// returning `base`, the defect merry-fox-82 caught at 18c3e1d0) produce byte-identical output and NO
+// world-reading claim can separate them -- which is why gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_branch_claim_pins_with takes the two membership pins as arguments. Hand it a missing pin
+// and the rule's all-or-nothing character becomes visible: a missing environment, or a missing roster,
+// takes the whole conjunct list with it. Revert either arm to `Present { value: base }` and this claim goes
+// red -- the list comes back carrying the four fixed identity conjuncts and no environment term for GCP to
+// check, which is a provider LESS restrictive than the route it stands for.
+test fn a_missing_membership_pin_takes_the_whole_rule_with_it() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: nothing to judge, and this claim is RED for that
+    // reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+      let ref_pin = mtcollins1_boot_trusted_ref_pin()
+      let environment_pin = mtcollins1_boot_trusted_environment_pin()
+      // THE WORLD'S OWN PAIR builds a rule carrying both membership conjuncts, so the refusals below are
+      // about the missing pin and not about a builder that ignores its arguments.
+      let complete_pair_builds_the_whole_rule = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: ref_pin,
+        environment_pin: environment_pin,
+      ) {
+        Absent => false
+        Present { value: pins } =>
+          match filter(pins, pin => (pin.claim as String) == "environment").first() {
+            Absent => false
+            Present { value: named_environment } =>
+              named_environment.value == c.environment
+                && length(filter(pins, pin => (pin.claim as String) == "environment")) == 1
+                && length(filter(pins, pin => (pin.claim as String) == "ref")) == 1
+          }
+      }
+      // NO ENVIRONMENT => NO RULE. Not a rule with one conjunct quietly dropped.
+      let environment_missing_refuses = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: ref_pin,
+        environment_pin: none,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      // NO ROSTER => NO RULE, for the same reason and by the same arm.
+      let roster_missing_refuses = match mtcollins1_boot_branch_claim_pins_with(
+        ref_pin: none,
+        environment_pin: environment_pin,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+      complete_pair_builds_the_whole_rule && environment_missing_refuses && roster_missing_refuses
+    }
+  }
+}
+
+// THE ENVIRONMENT CONJUNCT, spelled the way gunbc.auth.oidc_claim_pins claim_pin_cel spells it:
+// `assertion.<claim> == '<value>'`. Taken as a PARAMETER -- the pin the claim just found in the list --
+// rather than re-read from the module, so the assertion compares the fold's input to the fold's output
+// instead of comparing a function to itself.
+fn mtcollins1_boot_environment_conjunct(pin: OidcClaimPin) -> String {
+  concat("assertion.", pin.claim as String, " == '", pin.value, "'")
+}
+
+// THE RED THE REVIEW REQUIRED: removing the environment standing CANNOT produce a provider that admits a
+// branch boot. Stated the way it has to be stated -- a boot that presents NO environment claim is refused
+// outright. That is precisely the claim set the old `Absent => base` arm admitted, because a pin list
+// without an environment conjunct is satisfied by a token that never mentions one.
+test fn a_boot_presenting_no_environment_is_refused() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let real = branch_real_claims(case: c)
+    mtcollins1_boot_branch_admits(claims: real)
+      // the exact fail-open: same claims, environment standing removed
+      && !mtcollins1_boot_branch_admits(claims: without_presented_claim(claims: real, claim: "environment"))
+      // and the same for every other environment-shaped value: nothing but the pinned name admits
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+      // a value no dispatch can carry, named as the fixture it is: the route no longer relies on any
+      // sentinel value to mean absence (review 87673), so the witness supplies its own impossible value
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "witness-environment-nobody-declared"))
+      // and the pinned name itself ADMITS, so the refusals above are about the pin and not about a
+      // broken comparison: the environment the boot federation declares (managed_host_boot_federation's
+      // own names.environment) is the one value that passes
+      && mtcollins1_boot_branch_admits(claims: with_presented_value(
+        claims: real, claim: "environment", value: c.environment))
+      // a near-miss on that name is refused, which is what an equality pin must do and a prefix pin would not
+      && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: concat(c.environment, "-else")))
+    }
+  }
+}
+
+// THE ROUTE IS NOT DECLARED WHEN THE BOOT IDENTITY CANNOT NAME ITS ENVIRONMENT. The federation returns
+// none, so it is not a converge target and no provider is created -- the failure is the absence of the
+// route, never a wider route. Asserted alongside the pin poison so both halves are held: the pins refuse
+// AND the federation declines to exist.
+// THE PIN FOLLOWS THE ENVIRONMENT STANDING AND NOTHING ELSE -- stated as an equivalence, which is what the
+// first version of this claim got wrong. It branched on whether the ROUTE exists and, in the absent arm,
+// demanded the poison pin; but the route is closed today for a different reason entirely (the reader key is
+// unminted), so the claim asserted that the environment had vanished whenever some other conjunct was
+// missing. That is not a law about the environment, and it would have gone red for reasons unrelated to the
+// fail-open it exists to catch.
+//
+// THE EQUIVALENCE IS THE HONEST SHAPE: the pin is the poison value exactly when the boot identity cannot
+// name its environment. Whether a federation is being built at all, and whether the reader key is minted,
+// are separate questions with their own claims. And because the PROVIDER is folded from the same pin list
+// (mtcollins1_boot_branch_provider reads mtcollins1_boot_branch_claim_pins directly, as does the workflow
+// renderer), the stored CEL carries the environment conjunct exactly when the pin is not the poison -- which
+// is the §5 property the review asked for: removing the environment standing cannot leave a provider that
+// admits a branch boot.
+fn branch_boot_environment_is_nameable() -> Bool {
+  // ASKED OF THE PIN BUILDER, which is where that question is actually decided -- and expressed as presence
+  // (std.optional optional_is_absent) rather than a hand-written Absent/Present match, per review 87673. The
+  // authority module's own is_nameable helper is gone: review 88050 showed it was only ever standing in for
+  // the typed standing, which now says the same thing in mtcollins1_boot_branch_route_standing.
+  !optional_is_absent(opt: mtcollins1_boot_trusted_environment_pin())
+}
+
+// (1) the pin tracks the standing, in BOTH directions
+// THE EQUIVALENCE, AND NOW WITHOUT A SENTINEL: the environment pin EXISTS exactly when the boot identity
+// can name its environment. The first version of this claim compared the pin against the fabricated value
+// "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"; review 87673 was right that a made-up value carrying the
+// meaning of absence is the wrong shape -- its safety was a fact about GitHub never sending that string.
+// Absence is now typed, so the claim asks whether the pin is there.
+fn branch_boot_environment_pin_tracks_the_standing() -> Bool {
+  (match mtcollins1_boot_trusted_environment_pin() {
+    Present { value: _ } => true
+    Absent => false
+  }) == branch_boot_environment_is_nameable()
+}
+
+// (2) the stored provider condition carries the environment term exactly when the standing exists
+fn branch_boot_provider_condition_tracks_the_standing(case: RosteredBootCase) -> Bool {
+  match mtcollins1_boot_branch_provider() {
+    // NO PROVIDER IS THE HONEST ANSWER WHEN THERE IS NO RULE: no cloud object exists to admit a branch
+    // boot, which is the property the review asked for -- not a provider whose condition happens to match
+    // nothing. So: a provider exists exactly when the environment can be named.
+    Absent => !branch_boot_environment_is_nameable()
+    Present { value: provider } => match provider.attribute_condition {
+      Absent => false
+      Present { value: c } =>
+        branch_boot_environment_is_nameable() == string_contains(s: c, pattern: case.environment)
+          && string_contains(s: c, pattern: "environment")
+    }
+  }
+}
+
+// (3) and a federation that DOES exist says the same thing about its own condition
+fn branch_boot_federation_condition_tracks_the_standing(case: RosteredBootCase) -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    Present { value: f } => match mtcollins1_boot_branch_attribute_condition() {
+      Absent => false
+      Present { value: condition } =>
+        f.attribute_condition == condition
+          && string_contains(s: f.attribute_condition, pattern: case.environment)
+          && branch_boot_environment_is_nameable()
+    }
+    Absent => true
+  }
+}
+
+test fn an_unnameable_environment_leaves_no_federation_and_no_admissible_rule() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    branch_boot_environment_pin_tracks_the_standing()
+      && branch_boot_provider_condition_tracks_the_standing(case: c)
+      && branch_boot_federation_condition_tracks_the_standing(case: c)
+    // (4) THE POINT OF IT ALL, INDEPENDENT OF WHAT ELSE IS CLOSED: with the environment claim carrying
+    // some value no dispatch can carry, no presented claim set admits -- and neither does one that
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(
+      claims: branch_real_claims(case: c),
+      claim: "environment",
+      // a fixture value, not a sentinel the route depends on: the pin is the only name that admits
+      value: "witness-environment-nobody-declared",
+    ))
+    }
+  }
+}
+
+// THE CLAIM THAT PRESENTS THE REAL ENVIRONMENT NAME STILL ADMITS (asserted above, in
+// the_environment_conjunct_is_never_droppable), so the refusal in (4) is the value's fault and not
+// an empty-list artifact.
+
+// ── THE BRANCH ACCOUNT HOLDS NO FLEET-WIDE CREDENTIAL (review 87197) ──────────────────────────
+// WHAT THE POLICY LOOKS LIKE ON THE FAR SIDE OF THE MINT. The reader secret at a concrete version is the
+// ONLY difference from the standing today, which is version "pending" -- so this is the minted credential
+// gunbc.host.fleet_keypair_mint installs, constructed rather than read, because reading it would hand back the unminted
+// standing and the claim would prove nothing about the state it is meant to describe.
+// THE MINT'S RECEIPT, AS THE STATE TYPE REQUIRES IT. BootMediumReaderKeyState.Minted demands a pinned
+// version WITH a content hash, the public half and its fingerprint -- all four, because that is what
+// gunbc.host.boot_medium_reader_key says lands together. Constructing the hash goes through
+// std.content_hash.sha256_hex_digest rather than a literal, per that module's construction wall; the digest
+// is a stand-in for the one the mint will read out of the store, and no claim below depends on its value,
+// only on the state being Minted. The public key material is likewise a shape stand-in: what is asserted is
+// WHICH CELLS the branch policy holds, not the cryptographic validity of a key that does not exist yet.
+fn minted_reader_state() -> BootMediumReaderKeyState {
+  match sha256_hex_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+    Absent => Unminted
+    Present { value: d } => Minted {
+      reference: SecretRef {
+        project: boot_medium_reader_ssh_privkey_secret.project,
+        secret: boot_medium_reader_ssh_privkey_secret.secret,
+        version: "1" as NonEmptyStr,
+        hash_state: HashKnown { content_hash: Sha256Hash(d) },
+      },
+      public_key: SshPublicKey {
+        algorithm: Ed25519,
+        material: "AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderForTheMintedReaderPublicKeyShape000" as NonEmptyStr,
+        comment: "gunbc-boot-medium-reader" as NonEmptyStr,
+      },
+      fingerprint: "SHA256:0000000000000000000000000000000000000000000" as NonEmptyStr,
+    }
+  }
+}
+
+// A MINT THAT LANDED PART OF ITS RECEIPT: a pinned version and hash, no public half. Not a hypothetical --
+// it is the state a partially-applied converge leaves, and the route has to answer it distinctly.
+fn half_minted_reader_state() -> BootMediumReaderKeyState {
+  match sha256_hex_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+    Absent => Unminted
+    Present { value: d } => HalfMinted {
+      why: "witness fixture: a pinned version with no public half" as NonEmptyStr,
+    }
+  }
+}
+
+fn branch_grant_secrets(grants: List<SecretAccessGrant>) -> List<String> {
+  map(grants, g => g.target.secret as String)
+}
+
+// THE BLOCKING FINDING, FIXED AND HELD. An earlier draft mirrored the boot federation's own secret grants
+// onto the branch account. One of those cells is the fleet automation private key -- a single key that
+// authenticates as the automation principal against EVERY enrolled host -- and the branch identity is one
+// that unreviewed branch code can federate at will, because the workflow_ref pin is a heads-prefix
+// starts_with and the environment is declared in the file the branch edits. Mirroring therefore handed
+// fleet-wide reach to anyone with branch push, while the census row recorded the reach as
+// resource-scoped: a rung reported above the evidence that established it (DESIGN.md §4b).
+//
+// ASKED FROM BOTH SIDES SO IT CANNOT PASS BY ACCIDENT: the fleet key must be ABSENT from the branch
+// policy and PRESENT in the boot's -- if someone re-mirrors f.secret_grants, or "helpfully" adds the fleet
+// key because the main boot holds it, the second half fails instead of converging quietly.
+test fn the_branch_policy_never_holds_the_fleet_automation_key() -> Bool {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    // an unprovisioned boot identity means there is nothing to narrow FROM, so the narrowing claim has no
+    // subject; it fails rather than passing vacuously over an absent federation.
+    Absent => false
+    Present { value: f } =>
+  let branch_secrets = branch_grant_secrets(grants: mtcollins1_boot_branch_secret_grants_with(f: f, state: minted_reader_state()))
+  let boot_secrets = branch_grant_secrets(grants: f.secret_grants)
+  let fleet_key = fleet_automation_ssh_privkey_secret.secret as String
+  // the narrowing itself
+  filter(branch_secrets, sec => sec == fleet_key).length() == 0
+    // ...and it is a narrowing: the boot really does hold that key, so the claim above is not vacuous
+    && filter(boot_secrets, sec => sec == fleet_key).length() > 0
+    // the branch policy is exactly the two cells that were ruled, nothing else
+    && branch_secrets.length() == 2
+    && all(branch_secrets, sec =>
+      sec == (mtcollins1_boot_branch_bmc_secret_id as String)
+        || sec == (boot_medium_reader_ssh_privkey_secret.secret as String))
+  }
+}
+
+// THE BMC CELL IS INHERITED, NOT RE-DERIVED: same secret, same pinned version, same condition. A rotation
+// moves both identities together, and a branch boot cannot read an unpinned or older version. Matched BY
+// SECRET ID -- an index-0 grab would become a silent fleet-key handover the first time someone reorders
+// the boot federation's cells, which is exactly the failure this section exists to close.
+test fn the_bmc_cell_is_the_boot_federations_own() -> Bool {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Absent => false
+    Present { value: f } => match mtcollins1_boot_branch_bmc_grant(f: f) {
+    Absent => false
+    Present { value: g } =>
+      (g.target.secret as String) == (mtcollins1_boot_branch_bmc_secret_id as String)
+        && filter(f.secret_grants, b => (b.target.secret as String) == (g.target.secret as String)
+          && (b.target.version as String) == (g.target.version as String)).length() > 0
+    }
+  }
+}
+
+// CLOSED TODAY, AND THE REFUSAL NAMES THE REASON. The route is not provisioned while the reader key is
+// unminted: no pool, no provider, no service account, and the selection refuses. This is the fail-closed
+// state the manager ruled for (option A, 2026-10-29) -- the alternative was a branch boot that advertises
+// a readback it cannot perform and then refuses at the evidence step, which reports a capability the
+// executed evidence does not establish.
+test fn the_branch_route_is_closed_until_the_reader_key_is_minted() -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    Present { value: _ } => false
+    Absent =>
+      // nothing is converged for a route that does not exist
+      match mtcollins1_boot_branch_reader_grant() { Absent => true  Present { value: _ } => false }
+        // and the refusal is actionable: it names the missing credential and the change that installs it
+        && match mtcollins1_boot_branch_route_refusal_cause() {
+             Present { value: cause } =>
+               string_contains(s: cause as String, pattern: "reader key")
+                 && string_contains(s: cause as String, pattern: "boot_medium_reader_keypair_mint_subject")
+             Absent => false
+           }
+  }
+}
+
+// THE MINT IS THE ONLY GATE. Same builder, same pins, same account -- the reader credential is the sole
+// input that decides whether the route exists. Asserted from both sides in one claim, because a route that
+// was closed by something ELSE as well would pass a one-sided version of this.
+test fn the_reader_mint_is_the_only_thing_that_opens_the_route() -> Bool {
+  match mtcollins1_boot_branch_federation_with(state: minted_reader_state()) {
+    Absent => false
+    Present { value: fed } =>
+      // the policy it converges is the narrowed one, not the boot's
+      filter(branch_grant_secrets(grants: fed.secret_grants), sec => sec == (fleet_automation_ssh_privkey_secret.secret as String)).length() == 0
+        && fed.secret_grants.length() == 2
+        // with no reader credential the very same builder declares nothing at all. The match below already
+        // decides the conjunct -- a Bool is not matchable, so it is not wrapped in a second match.
+        && match mtcollins1_boot_branch_federation_with(state: Unminted) { Absent => true  Present { value: _ } => false }
+  }
+}
+
+// A HALF-MINTED KEY DOES NOT OPEN ANYTHING, AND SAYS WHY IT IS SHUT. The state type has a third inhabitant
+// precisely because "the mint ran" and "the mint is usable" are different facts: a pinned version with no
+// public half is a converge that applied part of its receipt. Treating that as unminted would let a partially
+// applied mint reopen a route whose credential nobody can verify; treating it as minted would converge a
+// policy granting a secret whose public half is missing. It refuses, by a name that includes the state's own
+// reason -- which is the difference between a typed state and the version-string tag review 87627 replaced.
+test fn a_half_minted_reader_key_keeps_the_route_closed_by_its_own_reason() -> Bool {
+  match mtcollins1_boot_branch_federation_with(state: half_minted_reader_state()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  && match mtcollins1_boot_branch_route_refusal_cause_with(state: half_minted_reader_state()) {
+    Absent => false
+    // THE FAULT IS TYPED AND CARRIES ITS OWN REASON (review 88050): matching the arm says WHICH fault the
+    // route refused on, and `why` is the state's own text -- mutate the fixture's why and both the matched
+    // value and the rendered sentence move with it.
+    Present { value: ReaderKeyUnusable { fault: PartlyMinted { why: w } } } =>
+      string_contains(s: w as String, pattern: "witness fixture")
+      && string_contains(
+        s: mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: PartlyMinted { why: w } }),
+        pattern: "part of its receipt"
+      )
+      // and the sentence still points at the one place to act
+      && string_contains(
+        s: mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: PartlyMinted { why: w } }),
+        pattern: "boot_medium_reader_keypair_mint_subject"
+      )
+    Present { value: _ } => false
+  }
+  // the reader cell is absent, so the policy would have been the BMC credential alone -- which is exactly
+  // the incomplete policy the both-cells-or-nothing rule refuses to converge
+  && match mtcollins1_boot_branch_reader_grant_over(state: half_minted_reader_state()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  // and the UNMINTED refusal is the other sentence, naming the mint rather than a partial one
+  && match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+    Absent => false
+    // THE TWO FAULTS STAY TWO: different arms of the typed sum, different rendered sentences. Under the old
+    // string causes this pair of claims was the only thing keeping them distinct, and it could not say which
+    // cause had fired -- only which words had.
+    Present { value: ReaderKeyUnusable { fault: NotMinted } } => {
+      let sentence = mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: NotMinted })
+      string_contains(s: sentence, pattern: "is not minted")
+        && !string_contains(s: sentence, pattern: "part of its receipt")
+    }
+    Present { value: _ } => false
+  }
+}
+
+// ONE DERIVATION, TWO PROJECTIONS (review 88050). The refusal and the federation builder used to read the
+// standing separately, and the builder carried two arms to catch them disagreeing -- arms its own comment
+// called unreachable, which is the tell that they were a second representation of one fact rather than safety.
+// Both are now projections of gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_standing,
+// and this claim is what makes that more than a comment: for the same input state, the standing is Refused
+// exactly when the refusal reports a cause (and reports THAT cause's rendering, not some other sentence), and
+// it is Admitted exactly when a federation exists -- carrying the admission's own condition and grants rather
+// than a second computation that could have drifted. Reintroduce the double read (e.g. have the builder call
+// mtcollins1_boot_branch_attribute_condition() again instead of folding the standing's pins) and the second
+// half goes red the moment the two disagree.
+test fn the_refusal_and_the_federation_are_projections_of_one_standing() -> Bool {
+  match mtcollins1_boot_branch_route_standing(state: Unminted) {
+    // today's world closes the route, so the projection must say so rather than stay silent
+    Admitted { facts: _ } => false
+    Refused { cause: cause } => match mtcollins1_boot_branch_route_refusal_cause_with(state: Unminted) {
+      Absent => false
+      Present { value: reported } =>
+        // STRUCTURAL EQUALITY ON THE CAUSE (the corpus does this of any coproduct value:
+        // dag/gunbc/auth/approval_device_crypto_client.dag verdict == CryptoRefused). The projection reports
+        // the SAME cause the standing carries -- not merely a sentence that reads the same.
+        reported == cause
+          && mtcollins1_boot_branch_route_refusal_text(cause: reported)
+              == mtcollins1_boot_branch_route_refusal_text(cause: cause)
+          && match mtcollins1_boot_branch_federation_with(state: Unminted) {
+            // refused means NO federation -- not an empty one, not a partial one
+            Present { value: _ } => false
+            Absent => match mtcollins1_boot_branch_route_standing(state: minted_reader_state()) {
+              Refused { cause: _ } => false
+              Admitted { facts: facts } => match mtcollins1_boot_branch_federation_with(state: minted_reader_state()) {
+                Absent => false
+                Present { value: fed } =>
+                  fed.attribute_condition == facts.attribute_condition
+                    && branch_grant_secrets(grants: fed.secret_grants) == branch_grant_secrets(grants: facts.secret_grants)
+              }
+            }
+          }
+    }
+  }
+}
+
+// ── DRIVING EVERY REFUSAL ARM ────────────────────────────────────────────────────────────────────────
+// The standing's inputs, from the world, so the counterfactual claims below change exactly one of them.
+fn route_world_boot() -> ManagedHostBootFederation? {
+  provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1))
+}
+
+fn route_world_pins() -> List<OidcClaimPin>? {
+  mtcollins1_boot_branch_claim_pins_with(
+    ref_pin: mtcollins1_boot_trusted_ref_pin(),
+    environment_pin: mtcollins1_boot_trusted_environment_pin(),
+  )
+}
+
+// The absent cases, given a home so their element type is declared rather than inferred: a bare `none` in an
+// argument position reaches the checker as Optional<Unit>, which is the wrong thing to hand a
+// List<OidcClaimPin>?/ManagedHostBootFederation? parameter -- and "it compiled because the literal happened to
+// infer" is not a property anyone reading the claim can check.
+fn route_no_boot() -> ManagedHostBootFederation? {
+  none
+}
+
+fn route_no_pins() -> List<OidcClaimPin>? {
+  none
+}
+
+fn route_world_grants() -> List<SecretAccessGrant> {
+  match route_world_boot() {
+    Absent => []
+    Present { value: boot } => mtcollins1_boot_branch_secret_grants_with(f: boot, state: minted_reader_state())
+  }
+}
+
+// EVERY REFUSAL ARM IS DRIVEN, ONE CLAIM PER ARM (review 88050's reason for wanting a sum in the first place).
+// Four of the five arms are unreachable in the live world -- the host IS provisioned, the roster IS non-empty,
+// the boot federation DOES name its environment, the BMC cell IS admitted -- so while the standing read the
+// world directly no claim could tell which cause it carried, and swapping two of them would have kept every
+// claim green. gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_standing_with takes the
+// standing's whole input surface, so each arm can be put in front of it and named. Each claim below changes
+// exactly one input and matches the arm by name: an arm that stops being reachable, or a cause swapped for
+// another, turns that claim red.
+test fn an_unprovisioned_boot_identity_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_no_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: BootIdentityUnprovisioned } => true
+    _ => false
+  }
+}
+
+test fn an_empty_roster_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: [] as List<NonEmptyStr>,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    // NOT NoRosteredBranch-by-accident: an empty roster is the permission being absent, which is a different
+    // fact from the boot federation naming no environment -- the two must not collapse into one sentence.
+    Refused { cause: NoRosteredBranch } => true
+    _ => false
+  }
+}
+
+test fn an_environment_the_boot_does_not_name_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_no_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: EnvironmentUnnamed } => true
+    _ => false
+  }
+}
+
+test fn an_unadmitted_bmc_credential_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    // the key is fine here; only the cells are missing, and the refusal must say so rather than blame the key
+    grants: [] as List<SecretAccessGrant>,
+  ) {
+    Refused { cause: NoBmcCredential } => true
+    _ => false
+  }
+}
+
+test fn a_complete_standing_is_admitted_and_carries_its_own_material() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: _ } => false
+    Admitted { facts: facts } =>
+      // the material is the input it was given, not a re-read: same cells, and a condition folded from the
+      // pins handed in -- which is what the federation then publishes.
+      branch_grant_secrets(grants: facts.secret_grants) == branch_grant_secrets(grants: route_world_grants())
+        && branch_grant_secrets(grants: facts.secret_grants).length() >= 1
+        && string_contains(s: facts.attribute_condition, pattern: "environment")
+        && string_contains(s: facts.attribute_condition, pattern: "ref")
+  }
+}
+
+// THE PERMISSION THAT MAKES THIS ROUTE LEGAL IS A TYPED ROW, NOT A COMMENT (review 87627, DESIGN §4c and §3).
+// Three links, checked as one claim because they fail together:
+//   1. gunbc.design_ruling registers mtcollins1_branch_boot_is_approval_free;
+//   2. its provenance carries the operator's own sentences, so the consent cannot be paraphrased away;
+//   3. the census row that admits the widening names that ruling, and the census module's
+//      mtcollins1_branch_boot_operator_ruling_text -- the symbol the selection's citation points at, which
+//      did not exist when the review was written -- reads them out of that same row.
+// Empty the ruling and this goes red; rename it and the citation check goes red; rewrite the operator's
+// words into a summary and the provenance conjuncts go red. That is what makes it a carrier rather than
+// prose.
+fn branch_boot_ruling_rows() -> List<DesignRuling> {
+  filter(design_rulings(), candidate => (candidate.reference.decl_name as String) == "mtcollins1_branch_boot_is_approval_free")
+}
+
+// THE OPERATOR'S OWN WORDS, STILL IN THE ROW. Each conjunct is one of their sentences; paraphrase the
+// provenance into a summary and the conjunct it satisfies goes red.
+fn branch_boot_ruling_carries_the_operators_words() -> Bool {
+  match branch_boot_ruling_rows().first() {
+    Absent => false
+    Present { value: row } =>
+      string_contains(s: row.provenance, pattern: "is not sensitive")
+        && string_contains(s: row.provenance, pattern: "permission to boot it endlessly")
+        && string_contains(s: row.provenance, pattern: "shouldn't need an approval")
+        && string_contains(s: row.provenance, pattern: "2026-09-23")
+        && string_contains(s: row.provenance, pattern: "one_approval_route_for_every_privileged_action")
+        && row.decided == "2026-10-23"
+  }
+}
+
+// ONE HOME FOR THE TEXT: the census module's datum -- the symbol the selection's citation names, which did
+// not exist when review 87627 was written -- is that row's provenance, not a copy of it.
+fn branch_boot_ruling_text_has_one_home() -> Bool {
+  match branch_boot_ruling_rows().first() {
+    Absent => false
+    Present { value: row } => mtcollins1_branch_boot_operator_ruling_text() == row.provenance
+  }
+}
+
+// THE JOIN: the census site is backed by a ruling that RESOLVES. PrivilegedEffectSite carries no prose field,
+// so the association is data in the census module (SiteRulingLinkage) keyed by the site identity the row
+// itself uses. This is the half that catches a citation whose home has gone missing -- exactly what the
+// review found by hand, now a claim.
+fn branch_boot_ruling_linkage_resolves() -> Bool {
+  match site_ruling_linkage(site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free")) {
+    Absent => false
+    Present { value: linkage } =>
+      declaration_ref_in_list(target: linkage.ruling, refs: map(design_rulings(), candidate => candidate.reference))
+        && declaration_ref_eq(a: linkage.ruling, b: mtcollins1_branch_boot_is_approval_free.reference)
+  }
+}
+
+test fn the_approval_free_branch_boot_rests_on_a_typed_ruling() -> Bool {
+  branch_boot_ruling_rows().length() == 1
+    && branch_boot_ruling_carries_the_operators_words()
+    && branch_boot_ruling_text_has_one_home()
+    && branch_boot_ruling_linkage_resolves()
+}
+
+// THE WIDENING, ASSERTED WHERE IT IS TRUE -- on the far side of the mint. On a rostered ref the boot needs
+// NO per-run grant; on the same ref with the route closed (today) it still does, which is what keeps the
+// closed route from being a silent bypass: a branch boot that cannot get the narrowed identity falls back
+// to the approval-gated grant rather than booting unattended.
+test fn branch_boot_selects_the_approval_free_identity_once_the_key_is_minted() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let b = c.branch
+    // post-mint: the dedicated branch identity, and no grant required at that ref. THE BODY STARTS WITH A
+    // PRIMARY ON PURPOSE -- a leading '&&' here is parsed as a continuation of the let's initializer.
+    match select_boot_credential_source_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b) {
+         BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
+           !boot_grant_required_at_ref_with(state: minted_reader_state(), on_reviewed_main: false, branch: b)
+         _ => false
+       }
+    // today (route closed): the same ref still requires the grant -- closed means degraded to the old route,
+    // never means approved-free by accident
+    && boot_grant_required_at_ref_with(state: Unminted, on_reviewed_main: false, branch: b)
+    }
+  }
+}
+
+// ══ THE RUNTIME FACE: WHAT THE RENDERED PIPELINE ACTUALLY DOES ════════════════════════════
+// Everything above decides the CREDENTIAL. What decides whether an approval-free boot is approval-free
+// in practice is one more step: the separate wait job (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_branch_run_grant_await_job, moved off the host-mutation runner by #15001) runs only under
+// fleet_converge_branch_run_grant_wait_if, and the boot job needs it -- admitting a skipped wait only
+// where no grant is owed. So the route is approval-free exactly when that condition stops naming the
+// rostered ref, and it is shut exactly while it still does.
+// OPTIONAL, AND THE CLAIM MATCHES ON IT: the absence of a term IS an answer ("nothing about this mode
+// owes a wait"), and rendering it as some sentinel string -- the mistake review 87673 was about, in a
+// witness rather than in the authority -- would let a claim read "the term does not name the rostered
+// ref" out of a term that does not exist at all.
+fn boot_job_off_main_grant_term(state: BootMediumReaderKeyState) -> String? {
+  match fleet_converge_off_main_grant_required_term_with(state: state, mode: MtCollins1Boot) {
+    Absent => none
+    Present { value: e } => Present { value: serialize_expression(expression: e) }
+  }
+}
+
+// CLOSED TODAY, OPEN ON THE FAR SIDE OF THE MINT -- AND NOT ONE DAY EARLIER. This is the conjunct that
+// turns "the IAM side admits it" into "the pipeline lets it through", and it is the one that keeps the
+// first branch attempt's failure from coming back: while the reader key is unminted the rostered ref is
+// NOT exempted, so the wait job still runs for it. Read off the EXPRESSED TERM, not the rendered string
+// alone: today the term is the bare mode test with no exemption anywhere in it; minted, it is the mode
+// test ANDED WITH A NEGATION of the rostered ref -- an exclusion, which is what "the wait job is skipped
+// for that ref" means when GitHub evaluates it. A positive equality there would be the opposite rule.
+test fn the_wait_job_condition_opens_only_with_the_mint() -> Bool {
+  match rostered_boot_case() {
+    // no rostered branch, or no nameable environment: there is nothing to judge, and this
+    // claim is RED for that reason rather than rerouted onto an invented ref
+    Absent => false
+    Present { value: c } => {
+    let rostered = mtcollins1_boot_trusted_branch_ref(branch: c.branch)
+    let rendered_wait_if = fleet_converge_branch_run_grant_wait_if()
+    match boot_job_off_main_grant_term(state: Unminted) {
+      // A TERM MUST EXIST ON BOTH SIDES. Its absence would mean the wait job never gates on this mode --
+      // which is the open route wearing the closed route's clothes, so it is red and not "vacuously fine".
+      Absent => false
+      Present { value: today } => match boot_job_off_main_grant_term(state: minted_reader_state()) {
+        Absent => false
+        Present { value: minted } =>
+      string_contains(s: today, pattern: mtcollins1_boot_mode_name)
+      && string_contains(s: minted, pattern: mtcollins1_boot_mode_name)
+      // CLOSED TODAY: no exemption for the rostered ref appears anywhere in the term
+      && !string_contains(s: today, pattern: rostered)
+      // OPEN AFTER THE MINT: the ref appears, and only inside the negation
+      && string_contains(s: minted, pattern: rostered)
+      // NOTHING FABRICATED REACHES THE RENDERED TEXT (review 87673): the placeholder pins this PR replaced
+      // were well-formed comparisons against strings no dispatch could carry. No such value may survive
+      // into the condition the wait job is gated on -- not the two that were removed, nor a future one.
+      && !string_contains(s: today, pattern: "__GUNBC")
+      && !string_contains(s: minted, pattern: "__GUNBC")
+      // THE SHAPE IS AN EXCLUSION, not an inclusion: base AND NOT(ref == <rostered>)
+      && match fleet_converge_off_main_grant_required_term_with(state: minted_reader_state(), mode: MtCollins1Boot) {
+        Absent => false
+        // matched STRUCTURALLY as an AND whose right operand is a negation -- not by looking for a "!" in
+        // some serializer's spelling of one, which would make the claim's truth depend on punctuation
+        Present { value: LogicalAnd { left: l, right: LogicalNot { operand: o } } } =>
+          string_contains(s: serialize_expression(expression: l), pattern: mtcollins1_boot_mode_name)
+            && string_contains(s: serialize_expression(expression: o), pattern: rostered)
+        Present { value: _ } => false
+      }
+      // AND THE WAIT JOB'S OWN RENDERED CONDITION, read from the world (so: today), still gates on
+      // something -- an empty condition would run the job unconditionally and hide the closed route.
+      && rendered_wait_if.length() > 0
+      }
+    }
+    }
+  }
+}
+
+// WHY THE NARROWED POLICY IS A WALL AND NOT AN INCONVENIENCE. The branch account holds the BMC credential
+// and the reader key, and NOT the fleet automation key -- but the argument "so a branch cannot read
+// fleet-wide material" rests on what the job does with a missing read. It fails CLOSED, and it fails
+// CLOSED BEFORE ANY HOST MUTATION: the boot job materializes the fleet key (a pinned SM version read,
+// `curl -sSf` under `set -euo pipefail`) earlier in the step list than the step that talks to the BMC at
+// all. So an account that cannot read the key ends the job before hold, SOL, attach, CD handoff or
+// release -- no power change, no media change, nothing to roll back. Asserted as ordering, because
+// ordering is the model's fact; that a denied read fails the step is the script's, recorded in
+// gunbc.fleet.fleet_workflow_steps ci_fleet_key_agent_step_when.
+fn step_named_index(steps: List<Step>, prefix: String) -> Int {
+  step_named_index_from(steps: steps, prefix: prefix, i: 0)
+}
+
+fn step_named_index_from(steps: List<Step>, prefix: String, i: Int) -> Int {
+  if i >= steps.length() {
+    0 - 1
+  } else {
+    // INDEXING YIELDS AN OPTIONAL here, so an out-of-range read walks on instead of panicking -- which is
+    // why the claim below checks the index it gets back rather than trusting a hit.
+    match steps[i] {
+      Absent => step_named_index_from(steps: steps, prefix: prefix, i: i + 1)
+      Present { value: st } =>
+        if string_contains(s: step_name_text(step: st), pattern: prefix) {
+          i
+        } else {
+          step_named_index_from(steps: steps, prefix: prefix, i: i + 1)
+        }
+    }
+  }
+}
+
+fn step_name_text(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+test fn the_branch_account_meets_the_bmc_only_after_the_fleet_key_step() -> Bool {
+  match filter(fleet_converge_jobs(), j => j.id == (fleet_converge_mode_job_id(mode: MtCollins1Boot) as String)).first() {
+    // THE BOOT JOB MUST EXIST: its absence is red, not a pass.
+    Absent => false
+    Present { value: j } => {
+      let key = step_named_index(steps: j.steps, prefix: "Materialize fleet key in-run")
+      let boot = step_named_index(steps: j.steps, prefix: "Mt. Collins unit 1 diskless boot")
+      // BOTH STEPS PRESENT (index >= 0) and the key read strictly earlier
+      key >= 0 && boot >= 0 && key < boot
+    }
+  }
 }

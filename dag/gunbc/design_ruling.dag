@@ -558,11 +558,26 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 }
 
 
+// 2026-10-28 (work item node://adhoc-0abea207-7ec, gunbc#15287): the permission that lets a
+// same-repository BRANCH dispatch boot mtcollins1 without an approval. It sat in `//` comments until
+// review 87627 called that out — DESIGN §4c puts a ruling in a typed carrier, and DESIGN §3 refuses a
+// citation whose home does not resolve. The operator's words are here, verbatim, and
+// `gunbc.auth.privileged_effect_census mtcollins1_branch_boot_operator_ruling_text` reads them from
+// this row; `gunbc.auth.mtcollins1_branch_boot_trust` is the only module that acts on them, and a claim
+// in `gunbc.test.claim.auth.branch_run_grant_witness` ties the census row to this one.
+data mtcollins1_branch_boot_is_approval_free: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_branch_boot_is_approval_free"),
+  decided: "2026-10-23",
+  section: "3",
+  provenance: "Operator, 2026-10-22: an mtcollins1 boot \"is not sensitive\". Operator, 2026-10-23: merry-fox-82 is the dedicated mtcollins1 lane, with \"permission to boot it endlessly\", and booting from a non-main integration branch \"shouldn't need an approval\". These EXTEND the 2026-09-23 and 2026-09-25 rulings already cited in gunbc.auth.privileged_effect_census, which removed the approval for main-dispatched mtcollins1_boot and host_reset_return, to same-repository branch dispatches of mtcollins1_boot. Scope is that one mode: host_reset_return and every other mode keep their grant. The admitted shape is a selection row — TrustedBranchBootIdentity in gunbc.auth.branch_dispatch_federation, selected under the unit maintenance hold — and never workflow text, because a branch can rewrite its own workflow file; the IAM-side trust is what admits it. Against one_approval_route_for_every_privileged_action: a BMC power operation is neither MintsHostRootReach nor an effect a human is expected to attend, so this is a no-approval selection and not a second approval route. Classified at gunbc.auth.privileged_effect_census site branch_boot_credential_effect_approval_free.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
+    mtcollins1_branch_boot_is_approval_free,
     native_claim_route_admits_the_docker_cli,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,

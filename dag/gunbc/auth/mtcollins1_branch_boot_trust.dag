@@ -1,0 +1,705 @@
+module gunbc.auth.mtcollins1_branch_boot_trust
+
+import std.types { Bool, List, Map, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.oidc_claim_pins {
+  OidcClaimPin, OidcPresentedClaim, claim_pins_attribute_condition, claim_pins_admit, oidc_equals, oidc_equals_any,
+  oidc_starts_with, presented_from_pins, with_presented_value, workflow_dispatch_event_name,
+  fleet_converge_workflow_ref_heads_prefix,
+}
+import gunbc.repository { gunbc_repository_numeric_identity }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
+import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of, ManagedHostBootFederation }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import gunbc.host.boot_medium_reader_key {
+  BootMediumReaderKeyState, BootMediumReaderKeyFault,
+  boot_medium_reader_key_state, boot_medium_reader_key_is_minted, boot_medium_reader_key_fault,
+  boot_medium_reader_key_minted_reference,
+  boot_medium_reader_ssh_privkey_secret,
+}
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+// ONE HOME FOR THE BMC CREDENTIAL'S ID: the provisioned reference, read for its .secret exactly the way the
+// fleet key's and the reader key's references are read above (review 87659; DESIGN section 3).
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+
+// ── THE APPROVAL-FREE mtcollins1 BOOT FROM A SAME-REPOSITORY BRANCH (operator rulings 2026-10-22/23) ──
+// WHAT WAS RULED, in the operator's own words, in this lane on 2026-10-23 -- and the 2026-10-22 ruling
+// that a mtcollins1 boot "is not sensitive". These EXTEND the 2026-09-23 and 2026-09-25 rulings already
+// cited in gunbc.auth.privileged_effect_census, which removed the approval for main-dispatched
+// mtcollins1_boot and host_reset_return:
+//   "permission to boot it endlessly"; booting from a non-main integration branch "shouldn't need an
+//   approval"; merry-fox-82 is the dedicated mtcollins1 lane.
+//
+// THE TRUST IS IAM-SIDE, AND THAT IS THE WHOLE DESIGN. A branch can rewrite its own workflow file, so a
+// check inside fleet-converge.yml would be a bypass wearing a gate's clothes. Nothing here reads
+// workflow text: what admits a run is GCP evaluating this provider's attribute condition against claims
+// the GitHub OIDC issuer signed -- the repository by NUMERIC identity (a fork is a different number),
+// the fleet-converge workflow file on a heads ref, a workflow_dispatch event, the git ref equal to a
+// rostered branch, and the job's `environment` equal to the boot environment's NAME. That name reaches
+// the job from the code-declared federation names in gunbc.auth.managed_host_boot_federation, never
+// from the file a branch edits. A branch that rewrites fleet-converge.yml, renames its `environment:`,
+// or invents a branch name mints no claim this admits. What a branch CAN do -- and gunbc.design_ruling
+// mtcollins1_branch_boot_is_approval_free says so out loud -- is push a rostered ref carrying the boot's
+// own environment name: the roster decides who drives this BMC, and no workflow text a branch writes can
+// widen past it or sneak under it.
+//
+// WHY A POOL, PROVIDER AND ACCOUNT OF ITS OWN, AND NOT A WIDENING OF WHAT EXISTS. Three facts about
+// this corpus make the obvious routes impossible rather than merely unwise:
+//   1. GcpIamEffect has CreateProvider and NO UpdateProvider (gunbc.auth.gcp_iam_converge): a provider's
+//      condition and attribute mapping are write-once. The branch trust must reason over the git REF and
+//      the job ENVIRONMENT, and the dispatch pool's provider maps neither -- it cannot be taught.
+//   2. The classifier reads a pool and requires EXACTLY ONE provider (gunbc.auth.heal_publisher_provision
+//      providers_reasons: "the pool holds N providers; exactly one is declared"), compared against the
+//      one the federation declares. Adding a second provider to github-fleet-converge-dispatch would
+//      make every federation naming that pool refuse to classify -- the run-scoped accounts of the modes
+//      that DO keep a grant (run_scoped_modes: hetzner_cloud_server_read, plan, apply) would stop
+//      converging, including modes that have nothing to do with this host.
+//   3. Widening the standing binding on the EXISTING mtcollins1-boot-run account is refused by that
+//      account's own doctrine (gunbc.auth.heal_publisher_provision): a run-scoped federation "binds
+//      nothing standing -- its pool admits branch dispatches, so a standing binding would hand the
+//      account to unreviewed code -- and a run gains the account only through a time-conditioned cell
+//      naming that run's id, written after the operator approves that exact run". mtcollins1-boot-run
+//      is that account, and host_reset_return still depends on it staying that way.
+// So this route gets its own pool, its own provider with its own condition, and its own account,
+// reached from no other provider. The dispatch pool, its provider, the run-scoped accounts, the broker
+// and the per-run grant are all UNTOUCHED -- which is what keeps every other mode on its grant. The
+// pool and account are created by iam-bootstrap's delta from this declaration (a target's pool and
+// account are DeltaOwned: gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner), and the
+// provider by gcp_iam_converge. NOTHING HERE IS APPLIED BY HAND.
+//
+// WHY THIS IS NOT A SECOND APPROVAL ROUTE (gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). That ruling binds a privileged effect "that a human
+// can attend" to the one approval-broker route, and lets the administrator edge survive only for an
+// UNATTENDED MintsHostRootReach. A BMC power cycle is neither attended -- the operator gave STANDING
+// consent out of band for this one mode, the same consent the 2026-09-23/25 rulings recorded for the
+// main-dispatched twin, moved to the branch case -- nor does it mint host root. So there is no second
+// broker, no second consent object, and nothing here asks a human to attend: it is a no-approval
+// SELECTION. Every other row of run_scoped_modes() keeps its per-run grant, issued only after operator
+// approval; host_reset_return has no row in that table and this module changes nothing about it.
+//
+// WHAT IT WIDENS, SAID PLAINLY (the PR body says it in these terms): anyone who can push to a rostered
+// branch of gunb-ai/gunbc can drive mtcollins1's BMC -- power-cycle it and mount its virtual CD -- with
+// no per-run approval. The gate is the roster; the ability to push is the credential. It is confined to
+// this host and this mode; the unit maintenance hold still stops a boot on a held unit from any ref.
+// WHAT THE ACCOUNT MAY READ IS TWO CELLS AND NOTHING ELSE, and the absence is checked rather than
+// asserted: the BMC's own secret at the pinned version the admitted boot federation declares (its
+// published cd_version), and the boot-medium reader keypair once it is minted -- a key authorized on the
+// export host's fleet-automation account with a FORCED COMMAND, so it produces one sha256sum line of one
+// fixed path and nothing else (gunbc.host.boot_medium_reader_key). It is NOT the fleet automation key,
+// which logs in as the fleet's bootstrap principal with root on every runner host
+// (gunbc.fleet.fleet_bootstrap_principal): the main boot's account holds that key and this one must not,
+// and mtcollins1_boot_branch_policy_excludes_the_fleet_key fails the build if a refactor re-mirrors the
+// boot's grants. Neither cell is an authorized_keys entry on mtcollins1, so no host root comes of it.
+
+// THE ROSTER OF BRANCHES HELD TO CARRY THE APPROVAL-FREE BOOT. A roster and not a prefix, on purpose:
+// a new branch earns the route by landing a change to THIS list in a reviewed PR, which is what keeps
+// "anyone with branch push" from quietly becoming "anyone with branch push plus a name they just made
+// up". Deliberately the dedicated lane's own boot branch, and nothing else.
+data mtcollins1_boot_trusted_branches: List<NonEmptyStr> = [
+  "session/merry-fox-82-mc1-boot-branch",
+]
+
+fn mtcollins1_boot_trusted_branch_ref(branch: String) -> String {
+  join(["refs/heads/", branch], "")
+}
+
+// THE CLOSED LIST OF ADMITTED REFS. EqualsAny, never a starts_with: an unlisted branch is refused
+// exactly as an unequal claim is, and the alternative -- a prefix -- is the widening the 2026-10-10
+// split-identity ruling in gunbc.auth.oidc_claim_pins refuses for privileged identities.
+//
+// OPTIONAL, BECAUSE AN EMPTY ROSTER IS ABSENCE, NOT A VALUE (review 87673; DESIGN section 5: every path
+// succeeds fully or fails with a typed, located diagnostic, and no plausible output is fabricated). An
+// earlier draft answered an empty roster with a real pin on the made-up value
+// "__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__". It admitted nothing, so it looked safe -- but the safety
+// of that design lived in GitHub never sending a string, which is a property of the outside world rather
+// than of this code, and it put a well-formed provider condition in GCP whose emptiness was legible only
+// to someone who had read this function. Now there is no pin, so there is no condition to converge: the
+// refusal that explains WHY is mtcollins1_boot_branch_route_refusal_cause, which names the empty roster.
+fn mtcollins1_boot_trusted_ref_pin() -> OidcClaimPin? {
+  match mtcollins1_boot_trusted_branches.first() {
+    Present { value: b } =>
+      Present { value: oidc_equals_any(
+        claim: "ref",
+        value: mtcollins1_boot_trusted_branch_ref(branch: b as String),
+        alternatives: map(mtcollins1_boot_trusted_branches.skip(n: 1), x => mtcollins1_boot_trusted_branch_ref(branch: x as String)),
+      ) }
+    Absent => none
+  }
+}
+
+// THE GITHUB ENVIRONMENT THE BOOT JOB DECLARES, read from the admitted boot federation's own names
+// rather than restated: it is the same string the job's `environment:` key renders from. What this
+// conjunct buys, stated without overselling it: it refuses a dispatch that asks for the boot mode while
+// standing in some OTHER job's environment, which is the shape behind gunbc.fleet.fleet_converge_workflow's
+// 18c3e1d0 revert -- "a fail-open: it lets ANY job on ANY repo trigger the boot". It does NOT refuse a
+// rostered branch that copies the boot's environment name into its own job: the workflow file belongs to
+// the branch, so that string is the branch's to write. This conjunct narrows WHICH job may reach the BMC,
+// never WHO -- who is decided by the ref roster above, which is exactly what gunbc.design_ruling
+// mtcollins1_branch_boot_is_approval_free concedes and what a unit maintenance hold still overrides.
+// No branch route can exist without a provisioned boot identity to name that environment.
+fn mtcollins1_boot_trusted_environment() -> String? {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Present { value: f } => Present { value: f.names.environment as String }
+    Absent => none
+  }
+}
+
+// THE ENVIRONMENT PIN, POISONED BY DEFAULT. This is the fail-closed half of the route, and it belongs
+// HERE -- in the pin list -- rather than in the caller that assembles it, because the pins are the whole
+// membership rule and they have TWO PROJECTIONS (gunbc.auth.oidc_claim_pins): the CEL GCP stores and the
+// admission this corpus evaluates are both folds over this one list. A caller cannot be trusted to add
+// the pin, because the provider is not built through the guarded path: mtcollins1_boot_branch_provider()
+// reads mtcollins1_boot_branch_claim_pins() directly, and so does the workflow's credential renderer, so
+// anything that guarded this only in mtcollins1_boot_branch_federation() would leave the converged
+// PROVIDER admitting more than the federation describes.
+//
+// So an unknown environment is NOT "no environment pin" -- a condition with the conjunct silently dropped
+// would make the provider LESS restrictive than the route it stands for, which is fail-open in the one
+// place the brief said the wall must be (that was merry-fox-82's REQUEST_CHANGES at 18c3e1d0, and the Absent
+// arm of the old match returning `base` is exactly how it happened). Nor is it a made-up value pinned into
+// GCP and left to be never matched (review 87673). It is ABSENCE, typed: no environment pin, therefore no
+// pin set, therefore no provider, therefore no route -- and mtcollins1_boot_branch_route_refusal_cause
+// names the unnameable environment as the reason. The fail-closed half of this design is that the absence
+// is carried up through every projection of the pin list (the stored CEL, the evaluated admission, the
+// converged provider and the workflow renderer), so no caller can obtain a pin list with a conjunct missing.
+fn mtcollins1_boot_trusted_environment_pin() -> OidcClaimPin? {
+  match mtcollins1_boot_trusted_environment() {
+    Present { value: e } => Present { value: oidc_equals(claim: "environment", value: e) }
+    Absent => none
+  }
+}
+
+data mtcollins1_boot_branch_wif_pool_id: NonEmptyStr = "github-mtcollins1-boot-branch"
+
+data mtcollins1_boot_branch_wif_pool_display_name: NonEmptyStr = "MtCollins1 boot branch"
+
+// 25 characters, inside the 4..32 upstream constrains: a 35-character id once failed this fleet's
+// converge at CreateWorkloadIdentityPoolProvider with 400 INVALID_ARGUMENT, and the check here is the
+// shape of that lesson.
+data mtcollins1_boot_branch_wif_provider_id: NonEmptyStr = "mtcollins1-boot-branch"
+
+data mtcollins1_boot_branch_service_account_id: NonEmptyStr = "mtcollins1-boot-branch"
+
+data mtcollins1_boot_branch_service_account: ServiceAccountEmail =
+  "mtcollins1-boot-branch@gunbai-secrets.iam.gserviceaccount.com"
+
+// THE MAPPED CLAIMS. The ref and the environment are what the condition reasons over, so they are
+// asserted attributes of THIS provider; nothing else is mapped, because a mapping no condition reads is
+// reach without use.
+data mtcollins1_boot_branch_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref",
+  "attribute.ref": "assertion.ref",
+  "attribute.environment": "assertion.environment"
+}
+
+// THE PINS, as data. repository_id and repository_owner_id are the numeric identity, not the slug: a
+// fork of this repository has this slug and a DIFFERENT number, and the 2026-10-10 split-identity
+// ruling in gunbc.auth.oidc_claim_pins makes a fork's refusal turn on the number for exactly that
+// reason. workflow_ref pins the fleet-converge file on any heads ref; the ref pin then closes the set
+// to the roster.
+// OPTIONAL, AND ALL-OR-NOTHING. Both membership pins above are optional, and this function refuses if
+// EITHER is absent -- it never drops one conjunct and returns the rest, which is the exact defect
+// merry-fox-82 caught at 18c3e1d0 (an Absent arm returning `base`). A caller therefore cannot get a pin
+// list that is missing the ref roster or the environment: the answer to "what does this provider admit"
+// is either the whole rule or nothing.
+// THE RULE, AS A FUNCTION OF ITS TWO MEMBERSHIP PINS. Taking them as arguments rather than reading them
+// is what makes the fail-closed arm testable: in the live world the boot federation DOES name its
+// environment, so `Absent => none` and the old `Absent => base` produce byte-identical output there and no
+// world-reading claim can tell the two apart. A claim can hand this builder a missing pin and watch it
+// refuse, which is the difference the review at 18c3e1d0 was about.
+fn mtcollins1_boot_branch_claim_pins_with(
+  ref_pin: OidcClaimPin?,
+  environment_pin: OidcClaimPin?,
+) -> List<OidcClaimPin>? {
+  let base = [
+    oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
+    oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
+    oidc_starts_with(claim: "workflow_ref", value: fleet_converge_workflow_ref_heads_prefix()),
+    oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
+  ]
+  match ref_pin {
+    Absent => none
+    Present { value: admitted_ref } => match environment_pin {
+      Absent => none
+      Present { value: named_environment } =>
+        Present { value: concat(concat(base, [admitted_ref]), [named_environment]) }
+    }
+  }
+}
+
+// THE SAME DECISION, READ FROM THE WORLD. Every projection of the rule -- the CEL GCP stores, the
+// admission this corpus evaluates, the converged provider, the workflow's credential renderer -- folds
+// THIS, so none of them can be handed a list with a conjunct missing.
+fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin>? {
+  mtcollins1_boot_branch_claim_pins_with(
+    ref_pin: mtcollins1_boot_trusted_ref_pin(),
+    environment_pin: mtcollins1_boot_trusted_environment_pin(),
+  )
+}
+
+fn mtcollins1_boot_branch_attribute_condition() -> String? {
+  match mtcollins1_boot_branch_claim_pins() {
+    Absent => none
+    Present { value: pins } => Present { value: claim_pins_attribute_condition(pins: pins) }
+  }
+}
+
+// THE ADMISSION THIS CORPUS CAN EVALUATE, over presented claims: the same pin list read as a predicate
+// rather than as CEL, so a RED can ask "does THIS run's claim set reach the approval-free boot" and be
+// answered against the provisioned condition itself.
+fn mtcollins1_boot_branch_admits(claims: List<OidcPresentedClaim>) -> Bool {
+  match mtcollins1_boot_branch_claim_pins() {
+    // NO PIN LIST IS THE STRICTEST ANSWER: with no rule there is nothing a token can satisfy, so the
+    // route admits nothing -- which is the same direction the missing pin refuses in.
+    Absent => false
+    Present { value: pins } => claim_pins_admit(pins: pins, claims: claims)
+  }
+}
+
+// THE CLAIMS A DISPATCH OF THIS BRANCH, IN THIS ENVIRONMENT, PRESENTS -- everything the pins name, at
+// the values a real dispatch signs, so a RED states a scenario instead of a fixture.
+fn mtcollins1_boot_branch_presented_claims(branch: String, environment: String) -> List<OidcPresentedClaim>? {
+  match mtcollins1_boot_branch_claim_pins() {
+    Absent => none
+    Present { value: pins } =>
+      Present { value: with_presented_value(
+        claims: with_presented_value(claims: presented_from_pins(pins: pins), claim: "ref", value: mtcollins1_boot_trusted_branch_ref(branch: branch)),
+        claim: "environment",
+        value: environment,
+      ) }
+  }
+}
+
+// IS THIS BRANCH HELD TO CARRY THE APPROVAL-FREE BOOT? The selection authority asks this; the provider's
+// condition enforces the same list independently in GCP, and a run must satisfy both.
+fn mtcollins1_boot_branch_is_trusted(branch: String) -> Bool {
+  any(mtcollins1_boot_trusted_branches, b => (b as String) == branch)
+}
+
+// THE PRINCIPAL SET, IN THE FORM GCP ACTUALLY ACCEPTS. A `principalSet://` member is scoped to a whole
+// pool, to a group, or to an attribute -- there is no provider-scoped principalSet, and an invented
+// `.../provider/<provider>/*` would be rejected or match nothing, leaving the branch account with no
+// grant and this whole route dead (review 87964). So this is the shape the rest of the repository already
+// builds -- gunbc.auth.managed_host_boot_federation boot_federation_principal_set and
+// dag/extdeps/cloud/gcp/gcp.dag wif_pool_resource both produce `pool/*`, and a claim asserts this one
+// equals that shape.
+//
+// The pool-wide form is NOT a widening here, and the reason is the pool's own dedication rather than the
+// member string: this route was given a workload identity pool of its own,
+// mtcollins1_boot_branch_wif_pool_id, into which mtcollins1_boot_branch_provider is the only provider
+// converged. So "every identity in the pool" is exactly "the identities this provider's attribute_condition
+// admitted" -- which is what the sibling pool earns by the same argument. The narrowing lives in that
+// condition (ref + environment conjuncts), not here; and dedication is checked, not assumed: a claim
+// asserts this member differs from the main boot's, so the branch account can never be reached by a token
+// minted into the boot federation's pool.
+fn mtcollins1_boot_branch_principal_set() -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtcollins1_boot_branch_wif_pool_id as String),
+    "/*"
+  ], "")
+}
+
+// OPTIONAL, LIKE ITS CONDITION. A WIF provider whose attribute_condition admits nothing is still a real
+// cloud object: it exists, it is nameable, and someone auditing the project has to reason about it. With
+// no pin set there is no rule to store, so there is no provider -- which is also what keeps a half-built
+// route from being convergable by a caller that reaches past mtcollins1_boot_branch_federation_with.
+fn mtcollins1_boot_branch_provider() -> WifProvider? {
+  match mtcollins1_boot_branch_attribute_condition() {
+    Absent => none
+    Present { value: condition } =>
+      Present { value: WifProvider {
+        name: mtcollins1_boot_branch_wif_provider_id,
+        pool: mtcollins1_boot_branch_wif_pool_id,
+        issuer_uri: github_wif_issuer_uri,
+        attribute_mapping: Present { value: mtcollins1_boot_branch_attribute_mapping },
+        attribute_condition: Present { value: condition },
+      } }
+  }
+}
+
+fn mtcollins1_boot_branch_provider_resource() -> String? {
+  match mtcollins1_boot_branch_provider() {
+    Absent => none
+    Present { value: p } => Present { value: wif_provider_resource(project_number: fleet_secrets_project_number, provider: p) }
+  }
+}
+
+// THE FEDERATION, or none. Four states refuse it, each named so a witness can ask about the one it
+// cares about: an EMPTY ROSTER (no branch may federate this identity), an UNPROVISIONED BOOT identity (the
+// same refusal the run-scoped route uses, so a host with no admitted boot identity gets no branch route
+// either), an UNNAMEABLE ENVIRONMENT (the fail-open guard below), and AN INCOMPLETE POLICY (a branch boot
+// that could not read its BMC credential, or could not do the readback it advertises -- see
+// mtcollins1_boot_branch_secret_grants). Refusing means NO pool, NO provider and NO service account: the
+// route disappears from gunbc.auth.gcp_iam_converge_targets rather than existing with a policy nobody
+// accounted for.
+fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
+  mtcollins1_boot_branch_federation_with(state: boot_medium_reader_key_state())
+}
+
+// WHY THIS ROUTE DOES NOT EXIST -- A CLOSED SUM, NOT A SET OF SENTENCES (review 88050; DESIGN.md §4c: "an
+// invariant, receipt, event, ruling, citation, status, count or dissolution condition belongs in a typed
+// carrier"; §5: every path "succeeds fully or fails with a typed, located diagnostic"). The five causes were
+// five English strings, so a witness could only ask whether SOME sentence came back -- nothing could match on
+// WHICH cause fired, and a refactor that swapped one cause for another would keep every claim green. The
+// prose is now produced by mtcollins1_boot_branch_route_refusal_text, which is presentation and may be
+// reworded without touching the law. The reader-key case carries the key's OWN typed fault rather than a
+// sentence about it, so naming that fault stays at gunbc.host.boot_medium_reader_key.
+type BootBranchRouteRefusal
+  = BootIdentityUnprovisioned
+  | NoRosteredBranch
+  | EnvironmentUnnamed
+  | ReaderKeyUnusable { fault: BootMediumReaderKeyFault }
+  | NoBmcCredential
+
+// WHAT THE ROUTE WAS FOUND ABLE TO BE: the boot it narrows, the condition its provider must carry, and the
+// exact cells its account may hold -- produced TOGETHER, by one derivation
+// (mtcollins1_boot_branch_route_standing), and carried into the federation record by reference. This is what
+// deletes the builder's two "this cannot happen" arms: they existed only because the refusal and the builder
+// each read the standing separately, and a check restating a constraint the model already carries is a second
+// representation of it (DESIGN.md §5). Dead arms that "cannot be reached unless the two reads disagree" are
+// not safety; they are the drift they claim to catch, made writable.
+type BootBranchRouteAdmission {
+  boot: ManagedHostBootFederation
+  attribute_condition: String
+  secret_grants: List<SecretAccessGrant>
+}
+
+type BootBranchRouteStanding
+  = Refused { cause: BootBranchRouteRefusal }
+  | Admitted { facts: BootBranchRouteAdmission }
+
+// THE ONE DERIVATION OF THE ROUTE'S STANDING. Ordered so the first thing wrong is the thing named, and every
+// step yields either its cause or the material the federation is built from -- never a placeholder standing
+// in for a missing one (DESIGN.md §5: "no plausible output is fabricated").
+// THE STANDING AS A FUNCTION OF EVERYTHING IT DEPENDS ON -- boot identity, roster, conjunct list, key state,
+// admitted cells -- with the world-reading wrapper below supplying all five. The parameterization is not
+// decoration: four of the five refusal arms are unreachable in the live world (the host IS provisioned, the
+// roster IS non-empty, the environment IS named, the BMC cell IS admitted), so while the standing read the
+// world directly, a claim could not drive any of them and swapping one cause for another -- the very failure
+// review 88050 was about, only now inside a typed sum -- would have kept every claim green. An arm no claim can
+// reach is not a refusal, it is a comment. Production consumers call the wrapper; only counterfactual claims
+// call this, so "the list checked here IS the list published" still holds on every path that converges
+// anything.
+fn mtcollins1_boot_branch_route_standing_with(
+  boot: ManagedHostBootFederation?,
+  rostered_branches: List<NonEmptyStr>,
+  pins: List<OidcClaimPin>?,
+  key_state: BootMediumReaderKeyState,
+  grants: List<SecretAccessGrant>,
+) -> BootBranchRouteStanding {
+  match boot {
+    Absent => Refused { cause: BootIdentityUnprovisioned }
+    Present { value: provided_boot } =>
+      // THE ROSTER IS THE PERMISSION, so this asks what the roster HOLDS -- not whether one named entry is
+      // trusted, which is true by construction for an entry taken from the roster itself and would read as a
+      // trust check while being an emptiness check.
+      if rostered_branches.length() == 0 {
+        Refused { cause: NoRosteredBranch }
+      } else {
+        // THE PINS DECIDE THE ENVIRONMENT QUESTION, so there is no separate emptiness probe left to drift:
+        // an environment the boot federation does not name is exactly what makes the conjunct list absent,
+        // and mirroring the rule WITHOUT its environment conjunct would make the provider less restrictive
+        // than the route it stands for (the fail-open caught at 18c3e1d0). The roster was ruled out above,
+        // which is what licenses naming this cause EnvironmentUnnamed rather than a shrug.
+        match pins {
+          Absent => Refused { cause: EnvironmentUnnamed }
+          Present { value: admitted_pins } => match boot_medium_reader_key_fault(state: key_state) {
+            // THE KEY'S OWN FAULT, CARRIED NOT RESTATED: both-cells-or-nothing -- a route reopened on a
+            // half-landed mint would converge an account against a credential whose public half nobody can
+            // check. See mtcollins1_boot_branch_secret_grants for why the reader cell is not optional here.
+            Present { value: fault } => Refused { cause: ReaderKeyUnusable { fault: fault } }
+            Absent => {
+              // ONE COMPUTATION DECIDES BOTH whether the route exists and what it holds, so the guard cannot
+              // be satisfied by a set other than the one converged -- the list checked here IS the list
+              // published below.
+              if grants.length() == 0 {
+                // A Minted key reaching here means the BOOT federation itself carries no admitted cell for
+                // this host's BMC (mtcollins1_boot_branch_bmc_grant selects by EXCLUSION of the fleet key,
+                // never by index). That is the host's own row being wrong, and it says so rather than
+                // borrowing the reader key's refusal.
+                Refused { cause: NoBmcCredential }
+              } else {
+                // THE CONDITION IS THESE PINS, FOLDED ONCE -- not a later re-read of the world that could
+                // have moved since the refusal asked.
+                Admitted {
+                  facts: BootBranchRouteAdmission {
+                    boot: provided_boot,
+                    attribute_condition: claim_pins_attribute_condition(pins: admitted_pins),
+                    secret_grants: grants,
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE STANDING AS THE WORLD ACTUALLY IS: the one place that reads the host's boot federation, the roster, the
+// pins and the admitted cells, and hands them to the derivation above. Every projection of the route --
+// federation, provider, refusal, converged IAM -- goes through here, so none of them can be handed a standing
+// that differs from another's.
+fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> BootBranchRouteStanding {
+  let boot = provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1))
+  let cells = match boot {
+    Absent => []
+    Present { value: provided_boot } => mtcollins1_boot_branch_secret_grants_with(f: provided_boot, state: state)
+  }
+  mtcollins1_boot_branch_route_standing_with(
+    boot: boot,
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: mtcollins1_boot_branch_claim_pins_with(
+      ref_pin: mtcollins1_boot_trusted_ref_pin(),
+      environment_pin: mtcollins1_boot_trusted_environment_pin(),
+    ),
+    key_state: state,
+    grants: cells,
+  )
+}
+
+// WHY THE ROUTE DOES NOT EXIST, OR NONE WHEN IT DOES -- now a projection of the one derivation above rather
+// than a second reading of the world.
+fn mtcollins1_boot_branch_route_refusal_cause_with(state: BootMediumReaderKeyState) -> BootBranchRouteRefusal? {
+  match mtcollins1_boot_branch_route_standing(state: state) {
+    Refused { cause: cause } => Present { value: cause }
+    Admitted { facts: _ } => none
+  }
+}
+
+// THE OPERATOR-SENTENCE RENDERER -- PRESENTATION, NOT THE LAW. Which cause fires is decided by the typed sum;
+// these sentences may be reworded without changing what is admitted, which is the point of putting them here
+// instead of inline in the decision. Each names what to DO. The reader-key pair points at the credential's
+// home symbol and at the mint that installs it, so the remedy is a thing an operator can go run -- not a
+// number that only makes sense while this PR is open.
+fn mtcollins1_boot_branch_route_refusal_text(cause: BootBranchRouteRefusal) -> NonEmptyStr {
+  match cause {
+    BootIdentityUnprovisioned =>
+      "the host's own boot identity is unprovisioned, so there is no boot policy for a branch to be narrowed from" as NonEmptyStr
+    NoRosteredBranch =>
+      "no branch is rostered for the approval-free boot, so the route is not declared at all" as NonEmptyStr
+    EnvironmentUnnamed =>
+      "the boot federation names no environment, so its environment pin cannot be mirrored without dropping the conjunct" as NonEmptyStr
+    ReaderKeyUnusable { fault: fault } => match fault {
+      NotMinted =>
+        "the boot medium reader key is not minted, so the branch account could only be given an incomplete policy (the BMC credential without the key the served-medium readback runs over); mint it through the fleet_keypair_mint converge mode (arm FleetKeypairMint of type FleetConvergeWorkflowMode in gunbc.fleet.fleet_converge_workflow, subject row gunbc.host.fleet_keypair_mint boot_medium_reader_keypair_mint_subject), over gunbc.host.boot_medium_reader_key boot_medium_reader_ssh_privkey_secret, to open this route" as NonEmptyStr
+      PartlyMinted { why: w } =>
+        // THE STATE'S OWN REASON INSIDE THE SENTENCE: "not yet minted" and "minted without its public half"
+        // are different faults a single generic sentence would flatten, so the why is carried verbatim --
+        // while both point the operator at the one place to act.
+        concat("the boot medium reader key's mint landed only part of its receipt, so the branch route stays closed; finish the mint through the fleet_keypair_mint converge mode (arm FleetKeypairMint of type FleetConvergeWorkflowMode in gunbc.fleet.fleet_converge_workflow, subject row gunbc.host.fleet_keypair_mint boot_medium_reader_keypair_mint_subject): ", w) as NonEmptyStr
+    }
+    NoBmcCredential =>
+      "the host's boot federation carries no admitted credential for this host's BMC, so the branch account could only be given a policy that cannot boot it" as NonEmptyStr
+  }
+}
+
+// THE SAME, FOR THE ROUTE AS IT ACTUALLY STANDS, in the words an operator reads.
+fn mtcollins1_boot_branch_route_refusal_cause() -> NonEmptyStr? {
+  match mtcollins1_boot_branch_route_refusal_cause_with(state: boot_medium_reader_key_state()) {
+    Absent => none
+    Present { value: cause } => Present { value: mtcollins1_boot_branch_route_refusal_text(cause: cause) }
+  }
+}
+
+// THE FEDERATION, OR NONE. FOUR STATES REFUSE IT and each is named by the typed sum above, so a refusal can
+// never name a reason that is not the reason: an UNPROVISIONED BOOT identity (the same refusal the run-scoped
+// route uses), an EMPTY ROSTER (no branch may federate this identity), an UNNAMEABLE ENVIRONMENT (the
+// fail-open guard), an UNUSABLE READER KEY, and NO ADMITTED BMC CREDENTIAL. Refusing means NO pool, NO
+// provider and NO service account: the route disappears from gunbc.auth.gcp_iam_converge_targets rather than
+// existing with a policy nobody accounted for. There is no arm here for "the refusal said one thing and the
+// builder found another", because there is no second reading left to disagree.
+fn mtcollins1_boot_branch_federation_with(state: BootMediumReaderKeyState) -> DedicatedFederation? {
+  match mtcollins1_boot_branch_route_standing(state: state) {
+    Refused { cause: _ } => none
+    Admitted { facts: facts } =>
+      Present { value: DedicatedFederation {
+        label: "mtcollins1 boot from a trusted gunbc branch (approval-free, per the operator rulings 2026-10-22/23)",
+        pool_id: mtcollins1_boot_branch_wif_pool_id,
+        pool_display_name: mtcollins1_boot_branch_wif_pool_display_name,
+        provider_id: mtcollins1_boot_branch_wif_provider_id,
+        attribute_mapping: mtcollins1_boot_branch_attribute_mapping,
+        // FOLDED FROM THE PINS THE STANDING BUILT, in the same breath as the refusal that tested them.
+        attribute_condition: facts.attribute_condition,
+        // THE ARM'S ONLY FIELD, and that is the whole point of it: the binding's ROLE is fixed by
+        // standing_impersonation_cell, so a federation cannot widen what its pool may impersonate.
+        impersonation: StandingPoolImpersonation {
+          principal_set: mtcollins1_boot_branch_principal_set(),
+        },
+        service_account: mtcollins1_boot_branch_service_account,
+        service_account_id: mtcollins1_boot_branch_service_account_id,
+        service_account_display_name: "Mt. Collins boot from a trusted branch (WIF-only, no keys)",
+        service_account_member: federated_service_account_member(email: mtcollins1_boot_branch_service_account),
+        // NOT f.secret_grants, and NOT re-derived: the list the standing checked. Why the boot's own two
+        // cells must not be mirrored onto this account -- the fleet automation key is fleet-wide and this
+        // route has no reviewed job text behind it -- is argued once, at
+        // mtcollins1_boot_branch_secret_grants below, rather than restated at each use.
+        secret_grants: facts.secret_grants,
+      } }
+  }
+}
+// ── THE BRANCH ACCOUNT'S POLICY: TWO CELLS, OR THE ROUTE DOES NOT EXIST ──────────────────────
+// WHY THE MIRROR WAS A DEFECT. The boot federation carries TWO cells (this module's own source,
+// managed_host_boot_federation admit_boot_federation:171-174): this host's pinned BMC credential AND
+// fleet_automation_ssh_privkey_secret. That second cell is FLEET-WIDE -- one private key that
+// authenticates as the automation principal to every enrolled host, which is why
+// gunbc.fleet.fleet_ssh_access models it as the fleet's own credential rather than a host's. The main
+// boot identity earns it because the reviewed main boot job uses it for the census served-medium
+// readback: mtcollins1_boot_run:2577 and :3231 call boot_medium_served_readback, which ssh's to the
+// store host over the agent the job materializes.
+//
+// Copying f.secret_grants onto the branch account therefore handed an identity that UNREVIEWED CODE can
+// federate at will -- a rostered branch authors its own fleet-converge.yml, and the workflow_ref pin is a
+// heads-prefix starts_with, not an equality (review 87197) -- the key that opens the fleet. Nobody ruled
+// that. The operator's words cover the BMC of ONE machine; they do not cover ssh into every machine.
+//
+// THE CENSUS ROW WAS WRONG BECAUSE OF IT. branch_boot_credential_effect_approval_free claims
+// MintsResourceScopedCredential. A token that unlocks a project-wide-usable ssh key is not
+// resource-scoped, so the row recorded a reach narrower than the credential actually minted -- rung
+// inflation in DESIGN.md section 4b's exact sense ("the reported rung equals the rung established by
+// executed evidence"; "rung inflation is worse than sitting low"). Narrowing the policy is what makes the
+// row true again; the row is not being re-labelled to match a wider account.
+// THE HOST'S BMC CREDENTIAL ID, READ FROM ITS HOME -- never written down a second time. DESIGN section 3:
+// minimization holds only if each fact lives in exactly one place; section 2: net concepts must not grow by
+// re-invention. The provisioned reference is gunbc.secret_provision mtcollins1_bmc_gunbc_secret_ref -- the
+// same symbol the boot federation's cell speaks of and the one gunbc.test.claim.auth.gcp_secret_access_witness
+// checks. Spelling "bmc-mtcollins1-gunbc" here again gave the branch policy a second source that can drift:
+// rename the secret in secret_provision and a literal here would silently disagree about which credentials
+// the branch account may hold, which is a decision, not a label. (An earlier draft both spelled this literal
+// AND matched on it -- see mtcollins1_boot_branch_bmc_grant, which now selects by EXCLUSION of the fleet key
+// and never compares to this.) It remains read by mtcollins1_boot_branch_policy_excludes_the_fleet_key and
+// asserted equal to the derived cell's id by a claim, so a rotation is a red claim, not a quiet widening.
+data mtcollins1_boot_branch_bmc_secret_id: NonEmptyStr = mtcollins1_bmc_gunbc_secret_ref.secret
+
+// THE BMC CELL, TAKEN FROM THE ADMITTED BOOT FEDERATION RATHER THAN RE-DERIVED: the same secret, the
+// same pinned version, the same version-condition expression. One pin, two identities -- a rotation moves
+// both together and a branch boot cannot read an unpinned or older version.
+//
+// DERIVED, NEVER LOOKED UP -- by EXCLUSION of the fleet automation key, which is the one cell this account
+// must not have. Both are wrong alternatives to what is written here: an index-0 grab would be a silent
+// fleet-key handover the first time someone reorders the cells, and matching on a hard-coded id compares
+// against a string this module does not own (the BMC cell's id comes from the host's BMC standing, at
+// managed_host_boot_federation.dag:171 -- `target: r.secret`). So the rule is structural: the boot
+// federation's cells are the BMC credential and the fleet key (admit_boot_federation, :170-174), and what
+// is left when the fleet key is excluded IS the BMC cell.
+//
+// EXACTLY ONE, OR NO ROUTE. A second non-fleet cell is a boot policy this module has not been told about,
+// and the safe reading is that the branch account must not inherit it: the route closes with a named refusal
+// rather than widening. That is a loud failure (mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted
+// and the post-mint shape claims both go red), not a silent one.
+fn mtcollins1_boot_branch_bmc_grants(f: ManagedHostBootFederation) -> List<SecretAccessGrant> {
+  filter(f.secret_grants, g => g.target.secret != (fleet_automation_ssh_privkey_secret.secret as String))
+}
+
+fn mtcollins1_boot_branch_bmc_grant(f: ManagedHostBootFederation) -> SecretAccessGrant? {
+  let bmc = mtcollins1_boot_branch_bmc_grants(f: f)
+  if bmc.length() != 1 {
+    none
+  } else {
+    match bmc.first() {
+      Present { value: g } => Present { value: g }
+      Absent => none
+    }
+  }
+}
+
+// READ OVER THE READER KEY, NOT THE FLEET KEY -- AND THE CORPUS ASKED FOR THIS FIRST.
+// gunbc.host.boot_medium_served_readback:269-272 already names this change: "the branch account narrowed
+// to the BMC credential and THIS KEY -- which is the third change of the mtcollins1 approval-free branch
+// boot plan (work item adhoc-0abea207-7ec)". The reader key is forced-command to one sha256sum of one
+// served-link path, with no agent forwarding, no pty and no port forwarding
+// (boot_medium_reader_key.boot_medium_reader_restrictions): on the store host it can read the digest of
+// one path, which is exactly what the readback needs and nothing more.
+//
+// IT IS NOT MINTED YET, AND THE ROUTE REFUSES FOR THAT REASON, NOT DESPITE IT.
+// boot_medium_reader_ssh_key is none and boot_medium_reader_ssh_privkey_secret is version "pending"; the
+// module says so in its own header (boot_medium_reader_key:31-34): "until then there is no authorized
+// entry to converge and no readback over this key, and both refuse by that name rather than fall back to
+// the fleet key." Minting it is a wet action through the approval route -- not mine to take.
+//
+// WHY NOT JUST GIVE IT THE BMC CELL AND LET THE READBACK FAIL? It would fail closed (remote_answer_of
+// yields exit 255 -> boot_medium_served_refusal_before_attach, media attach and power untouched), so
+// nothing unsound would happen -- but the model would be advertising an approval-free boot that cannot
+// complete, and a capability that is advertised and then refused at the evidence step is the same
+// dishonesty as a rung reported above its evidence. Refusing at SELECTION, with a named cause, before any
+// runner is occupied, is the honest shape.
+// THE KEY'S STATE DECIDES, NOT A VERSION STRING. Whether the branch account gets this cell is one lookup on
+// gunbc.host.boot_medium_reader_key.BootMediumReaderKeyState -- Minted, or not. review 87627 found this
+// consumer comparing `version == "pending"` (and a second consumer doing the same): an in-band tag standing in
+// for a state that was never declared, so "the mint wrote something other than the word pending" was a way to
+// open a security-relevant gate by accident. Now the only states that yield a grant is the one the key's own
+// module can call a receipt.
+fn mtcollins1_boot_branch_reader_grant_over(state: BootMediumReaderKeyState) -> SecretAccessGrant? {
+  // ONE LOOKUP AT THE KEY'S HOME, which owns both questions -- which states are usable and what the usable
+  // one's reference is. This module matching the states itself to reach the reference was the second copy of
+  // the minted rule (review 88050).
+  match boot_medium_reader_key_minted_reference(state: state) {
+    Absent => none
+    Present { value: r } => Present { value: secret_accessor_grant(target: r) }
+  }
+}
+
+fn mtcollins1_boot_branch_reader_grant() -> SecretAccessGrant? {
+  mtcollins1_boot_branch_reader_grant_over(state: boot_medium_reader_key_state())
+}
+
+// BOTH CELLS OR NO ROUTE. Neither cell is optional, so there is no reachable state in which the branch
+// identity exists with a SUBSET of this policy -- a partially-provisioned policy is how an account ends up
+// holding a credential nobody accounted for, or booting without the evidence it claims to have. An empty
+// list makes mtcollins1_boot_branch_federation return none, which drops the route from
+// gunbc.auth.gcp_iam_converge_targets entirely: no pool, no provider, no service account, and
+// boot_credential_source_from_branch_selection refuses by name. Nothing is created half-way.
+// THE LAW, WITH THE READER CREDENTIAL AS AN INPUT. The reader standing is a parameter rather than a
+// global read so BOTH sides of this law are assertable: today, with the key unminted, and after the fleet_keypair_mint mode lands it
+// converges the mint. mtcollins1_boot_branch_secret_grants below is the only caller that matters -- it
+// feeds the real standing in -- and the witnesses pass a standing they construct. A law that can only be
+// evaluated in the state the world happens to be in is a law that cannot be tested at its boundary.
+fn mtcollins1_boot_branch_secret_grants_with(f: ManagedHostBootFederation, state: BootMediumReaderKeyState) -> List<SecretAccessGrant> {
+  match mtcollins1_boot_branch_bmc_grant(f: f) {
+    Absent => []
+    Present { value: bmc } => match mtcollins1_boot_branch_reader_grant_over(state: state) {
+      Absent => []
+      Present { value: r } => [bmc, r]
+    }
+  }
+}
+
+fn mtcollins1_boot_branch_secret_grants(f: ManagedHostBootFederation) -> List<SecretAccessGrant> {
+  mtcollins1_boot_branch_secret_grants_with(f: f, state: boot_medium_reader_key_state())
+}
+
+// WHY THE POLICY IS NARROWER THAN THE BOOT'S, AS A PREDICATE THE WITNESSES CAN ASK. The fleet key must be
+// ABSENT from the branch account's cells while PRESENT in the boot's -- so if a refactor re-mirrors
+// f.secret_grants, or someone "helpfully" adds the fleet key because the main boot has it, this fails
+// instead of converging.
+fn mtcollins1_boot_branch_policy_excludes_the_fleet_key(f: ManagedHostBootFederation) -> Bool {
+  let branch_secrets = map(mtcollins1_boot_branch_secret_grants(f: f), g => g.target.secret as String)
+  let boot_secrets = map(f.secret_grants, g => g.target.secret as String)
+  !any(branch_secrets, sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+    && any(boot_secrets, sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+    && all(branch_secrets, sec => sec == (mtcollins1_boot_branch_bmc_secret_id as String)
+      || sec == (boot_medium_reader_ssh_privkey_secret.secret as String))
+}
+
+// THE ROUTE IS CLOSED UNTIL THE READER KEY EXISTS. True today, because the keypair is unminted; a witness
+// asserts it so that the closure is a stated property and not an accident, and so that minting the key is
+// the ONLY thing that can open the route.
+fn mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted() -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    Absent => true
+    Present { value: _ } => boot_medium_reader_key_is_minted()
+  }
+}
+
+fn mtcollins1_boot_branch_federations() -> List<DedicatedFederation> {
+  match mtcollins1_boot_branch_federation() {
+    Present { value: f } => [f]
+    Absent => []
+  }
+}

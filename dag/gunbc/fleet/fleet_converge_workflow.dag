@@ -13,7 +13,16 @@ import gunbc.auth.branch_dispatch_federation {
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
+  TrustedBranchBootIdentity, boot_grant_required_at_ref, boot_grant_required_at_ref_with,
 }
+// THE READER KEY'S STATE, AS A TYPE. The grant term's ONE exception depends on whether the branch boot route
+// exists, and the route exists exactly when that key is minted (gunbc.host.fleet_keypair_mint). So the ref-aware rules below take
+// the state as an input: the render path reads the world (and today renders NO exception, because the route is
+// closed and every branch boot still waits for its grant), while a witness can stand on the far side of the
+// mint and ask the same function what it would render. Two implementations of "does this ref need a grant" --
+// one honest, one for tests -- is how the workflow and the auth rule drift apart, so there is one.
+import gunbc.host.boot_medium_reader_key { BootMediumReaderKeyState, boot_medium_reader_key_state }
+import gunbc.auth.mtcollins1_branch_boot_trust { mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_provider_resource, mtcollins1_boot_branch_service_account }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
@@ -5012,6 +5021,19 @@ fn fleet_converge_boot_credential_source_provider(source: BootCredentialSource) 
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_provider_resource()
     RunScopedApprovedGrant => branch_dispatch_provider_resource()
+    TrustedBranchBootIdentity =>
+      // THE BRANCH PROVIDER IS OPTIONAL, because the rule it federates under is: with an empty roster or a
+      // boot identity that cannot name its environment there is no provider at all (review 87673 -- the
+      // alternative was a well-formed condition comparing claims to a string nobody could send). The
+      // selection cannot hand this arm to us in that state -- it refuses the route first, in
+      // gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_refusal_cause_with -- so this
+      // is the total-match obligation, and it answers with the token BootCredentialSourceRefused already
+      // emits below. A match arm that ever became reachable by accident then fails the auth step, instead
+      // of naming some pool that exists.
+      match mtcollins1_boot_branch_provider_resource() {
+        Absent => boot_credential_source_emit_refused_poison
+        Present { value: resource } => resource
+      }
   }
 }
 
@@ -5019,6 +5041,24 @@ fn fleet_converge_boot_credential_source_account(source: BootCredentialSource) -
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_service_account()
     RunScopedApprovedGrant => mtcollins1_boot_run_scoped_service_account as String
+    TrustedBranchBootIdentity => mtcollins1_boot_branch_service_account as String
+  }
+}
+
+// THREE ALTERNATIVES OF A CREDENTIAL EXPRESSION, THE MIDDLE ONE OPTIONAL. The boot's WIF source renders as
+//   (reviewed main -> main source) OR (a rostered branch ref -> the branch identity) OR (otherwise ->
+// run-scoped source). The middle arm exists only while the branch route exists; when no ref may federate
+// that identity the arm is DROPPED, not guarded by an expression that can never match. An earlier draft
+// filled such a slot with `github.ref == '__GUNBC_MTCOLLINS1_BOOT_NO_TRUSTED_BRANCH__'` (review 87673): it
+// admitted nothing, so it looked safe, but that safety was a fact about what GitHub never sends rather than
+// about this code, and it left a sentinel in generated workflow text that only this file explains. Dropping
+// the arm gives the same admitted set with nothing fabricated in it -- DESIGN section 5: no plausible output
+// is fabricated. (The algebra has no boolean arm, which is why "drop the alternative" is the honest move
+// rather than "write false".)
+fn fleet_converge_credential_source_alternatives(main_arm: Expression, branch_arm: Expression?, other_arm: Expression) -> Expression {
+  match branch_arm {
+    Absent => LogicalOr { left: main_arm, right: other_arm }
+    Present { value: b } => LogicalOr { left: main_arm, right: LogicalOr { left: b, right: other_arm } }
   }
 }
 
@@ -5036,24 +5076,71 @@ fn fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialStandin
   }
 }
 
+// A DISPATCH IS ON ONE OF THE ROSTERED BRANCHES, as a GitHub condition. It picks WHICH BOOT IDENTITY the
+// job federates as -- and it is not the wall. The wall is the provider's own attribute condition, which
+// GCP evaluates over issuer-signed claims (gunbc.auth.mtcollins1_branch_boot_trust); this expression only
+// chooses which of the three admitted sources to ask for. A branch that edits this file and asks for the
+// approval-free account gets a token its provider refuses, because its ref, its repository id and its
+// environment are not what that condition admits.
+// WHICH REFS MAY federate the branch boot identity: each roster entry asked ON ITS OWN -- is this ref
+// trusted, and does the selection at THIS ref name the approval-free source. Never one entry's answer
+// applied to the whole roster: a second entry added later is judged on its own ref, and an entry the
+// selection refuses drops out of the expression instead of borrowing its neighbour's approval.
+// WHICH REFS MAY ASK FOR THE BRANCH IDENTITY, OR NONE -- optional for the same reason the trust module's
+// pins are optional (mtcollins1_boot_trusted_ref_pin): an empty set is ABSENCE, not a value no one will
+// ever present. Each entry is judged on its own ref, never one representative standing in for the roster.
+fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression? {
+  let allowed = filter(mtcollins1_boot_trusted_branches, b =>
+    mtcollins1_boot_branch_is_trusted(branch: b as String)
+      && !boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
+  let terms = map(allowed, b => Equals {
+    left: ContextAccess { context: Github, path: ["ref"] },
+    right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
+  })
+  match terms.first() {
+    Absent => none
+    Present { value: t } => Present { value: fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x }) }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
-  interpolate(expression: LogicalOr {
-    left: LogicalAnd {
+  interpolate(expression: fleet_converge_credential_source_alternatives(
+    main_arm: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
-  })
+    // THE ROUTE'S OWN IDENTITY, named by the trust module: one pool, provider and account are declared for
+    // this route, so this is not a credential computed from a representative branch. WHICH refs may ask for
+    // it is the ref guard beside it, decided per entry; when none may, the arm is absent and dispatches take
+    // the run-scoped source.
+    branch_arm: match fleet_converge_mtcollins1_boot_ref_is_trusted_branch() {
+      Absent => none
+      Present { value: guard } =>
+        Present { value: LogicalAnd {
+          left: guard,
+          right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
+        } }
+    },
+    other_arm: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  ))
 }
 
 fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
-  interpolate(expression: LogicalOr {
-    left: LogicalAnd {
+  interpolate(expression: fleet_converge_credential_source_alternatives(
+    main_arm: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
-  })
+    branch_arm: match fleet_converge_mtcollins1_boot_ref_is_trusted_branch() {
+      Absent => none
+      Present { value: guard } =>
+        Present { value: LogicalAnd {
+          left: guard,
+          right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialSourceSelected { source: TrustedBranchBootIdentity }) },
+        } }
+    },
+    other_arm: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  ))
 }
 
 fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
@@ -5776,18 +5863,101 @@ fn fleet_converge_grant_required(mode: FleetConvergeWorkflowMode, on_reviewed_ma
   }
 }
 
+// IS THIS THE MODE THE ROSTER OPENS? A question about the MODE ALONE -- mtcollins1_boot and nothing else,
+// host_reset_return included. Which REFS of it are approval-free is the per-ref question below; nothing
+// here asks the selection of one branch and applies the answer to the rest, because the roster is a set
+// and a second entry must not inherit the first entry's answer.
+fn fleet_converge_mode_is_the_approval_free_boot(mode: FleetConvergeWorkflowMode) -> Bool {
+  // THE VARIANT, NOT ITS WIRE SPELLING (review 88129). This is a question about which arm of the sum the
+  // dispatch carries, and it was asked by comparing fleet_converge_workflow_mode_wire's output against the
+  // string gunbc.auth.branch_dispatch_federation mtcollins1_boot_mode_name writes into a workflow_input.
+  // That couples the IDENTITY of the policy to the transport name of the mode: renaming the wire value --
+  // a workflow-contract change, not a policy change -- would have quietly closed the approval-free route,
+  // with every genuine wire consumer still working and no claim going red. The wire name keeps its one home
+  // for the places that really are identified by it (the run-scoped mode row, the dispatch input).
+  match mode {
+    MtCollins1Boot => true
+    _ => false
+  }
+}
+
+// IS A GRANT REQUIRED FOR THIS MODE AT THIS EXACT REF? THE ONE REF-AWARE RULE, and the only consumer of
+// the roster's per-entry selection: the wait-job term below is BUILT from this question, asked once per
+// roster entry, so there is no second copy of the rule beside the one that runs. A rostered branch
+// dispatch of mtcollins1_boot needs no grant (operator rulings 2026-10-22/23), and that is also what keeps
+// the boot off the srv1 slot while a grant run waits (the 2026-10-23 deadlock): a boot that never waits
+// cannot hold the only srv1 runner against the job that must converge its grant. Every other ref, and
+// every other mode at every ref, still requires the grant and still waits for it.
+fn fleet_converge_grant_required_at_ref(mode: FleetConvergeWorkflowMode, branch: String) -> Bool {
+  fleet_converge_grant_required_at_ref_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch)
+}
+
+// THE SAME RULE, ASKED OF A GIVEN READER KEY STATE. See the import above for why this is an input at all.
+// Both sides are asserted by gunbc.test.claim.auth.branch_run_grant_witness: with the key unminted the
+// rostered ref is NOT an exception (a closed route is degraded, never approval-free), and with a minted
+// receipt it is. Today the render path takes the world's answer, which is why the committed workflow text
+// carries no ref exclusion -- it appears, by derivation, when the mint lands.
+fn fleet_converge_grant_required_at_ref_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode, branch: String) -> Bool {
+  fleet_converge_grant_required(mode: mode, on_reviewed_main: false)
+    && !(fleet_converge_mode_is_the_approval_free_boot(mode: mode)
+      && mtcollins1_boot_branch_is_trusted(branch: branch)
+      && !boot_grant_required_at_ref_with(state: state, on_reviewed_main: false, branch: branch))
+}
+
 fn fleet_converge_on_branch_expression() -> Expression {
   NotEquals { left: ContextAccess { context: Github, path: ["ref"] }, right: StringLiteral { value: concat("refs/heads/", gunbc_default_branch_name) } }
 }
 
 // ONE TERM PER MODE: the mode at every ref, at a branch only, at main only, or not at all.
+// OFF MAIN, DOES THIS MODE STILL REQUIRE A GRANT? Every run-scoped mode at every branch does -- except
+// the one effect the operator's 2026-10-22/23 rulings opened: a same-repository mtcollins1_boot dispatch at
+// a rostered ref. For that one case the term drops the rostered refs, so the wait job is SKIPPED there and
+// the boot job's own gate admits the skip. That is also the deadlock fix for the modes that do keep the
+// grant: a boot that never waits cannot hold the only srv1 runner against the grant run queued for it.
+fn fleet_converge_off_main_grant_required_term_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode) -> Expression? {
+  let base = LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: fleet_converge_on_branch_expression() }
+  if fleet_converge_mode_is_the_approval_free_boot(mode: mode) {
+    // ONE TERM PER ROSTER ENTRY, each from its own answer to the ref-aware question. Folded, not
+    // represented: an entry's exclusion is dropped exactly when ITS ref still requires a grant, so an
+    // entry added to the roster is judged on its own ref and never inherits another's answer.
+    let excluded = filter(mtcollins1_boot_trusted_branches, b => !fleet_converge_grant_required_at_ref_with(state: state, mode: mode, branch: b as String))
+    if excluded.length() == 0 {
+      Present { value: base }
+    } else {
+      let terms = map(excluded, b => Equals {
+        left: ContextAccess { context: Github, path: ["ref"] },
+        right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
+      })
+      // terms is non-empty here (excluded.length() != 0 above), so the Absent arm is unreachable; it
+      // answers base -- grant required for every branch, rostered ones included -- rather than filling the
+      // fold with a ref no dispatch can carry. Same meaning if the guard above and this fold ever disagree,
+      // and nothing fabricated reaches the rendered text.
+      match terms.first() {
+        Absent => Present { value: base }
+        Present { value: t } =>
+          Present { value: LogicalAnd {
+            left: base,
+            right: LogicalNot { operand: fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x }) },
+          } }
+      }
+    }
+  } else {
+    Present { value: base }
+  }
+}
+
+// THE RENDER PATH: the world's reader key state, read once.
+fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
+  fleet_converge_off_main_grant_required_term_with(state: boot_medium_reader_key_state(), mode: mode)
+}
+
 fn fleet_converge_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
   let at_main = fleet_converge_grant_required(mode: mode, on_reviewed_main: true)
   let off_main = fleet_converge_grant_required(mode: mode, on_reviewed_main: false)
   if at_main && off_main {
     Present { value: fleet_converge_dispatch_mode_is(mode: mode) }
   } else if off_main {
-    Present { value: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: fleet_converge_on_branch_expression() } }
+    fleet_converge_off_main_grant_required_term(mode: mode)
   } else if at_main {
     Present { value: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: LogicalNot { operand: fleet_converge_on_branch_expression() } } }
   } else {
@@ -5858,6 +6028,29 @@ fn fleet_converge_grant_wait_admits(mode: FleetConvergeWorkflowMode, on_reviewed
   match result {
     GrantWaitSucceeded => true
     GrantWaitSkipped => !fleet_converge_grant_required(mode: mode, on_reviewed_main: on_reviewed_main)
+    GrantWaitFailed => false
+    GrantWaitCancelled => false
+  }
+}
+
+// THE WAIT'S ADMISSION AT AN EXACT REF. The class-level question above answers "does this mode require a
+// grant off main, generally" -- true for the boot, because most branches do. But Change 2 made a SKIP
+// legitimate for one mode at one ref, so the admission has to be asked at the ref it is decided on, or the
+// model would forbid what the rendered pipeline does: the wait job skips at a rostered boot ref, and only
+// the ref-aware rule says that skip is admitted rather than a missing authorization.
+fn fleet_converge_grant_wait_admits_at_ref(mode: FleetConvergeWorkflowMode, branch: String, result: GrantWaitResult) -> Bool {
+  fleet_converge_grant_wait_admits_at_ref_with(state: boot_medium_reader_key_state(), mode: mode, branch: branch, result: result)
+}
+
+// THE SAME ADMISSION, FOR A GIVEN READER KEY STATE. Closed today, a skip at the rostered boot ref is NOT
+// admitted -- the boot must wait for its grant, and a pipeline that skipped there is a run missing its
+// authorization. Minted, the skip is what the rendered pipeline does and is admitted. Asserting BOTH is the
+// point: a claim that only asserted the minted side would be satisfied by a rule that made skips admitted
+// unconditionally, which is the fail-open this whole gate exists to catch.
+fn fleet_converge_grant_wait_admits_at_ref_with(state: BootMediumReaderKeyState, mode: FleetConvergeWorkflowMode, branch: String, result: GrantWaitResult) -> Bool {
+  match result {
+    GrantWaitSucceeded => true
+    GrantWaitSkipped => !fleet_converge_grant_required_at_ref_with(state: state, mode: mode, branch: branch)
     GrantWaitFailed => false
     GrantWaitCancelled => false
   }
