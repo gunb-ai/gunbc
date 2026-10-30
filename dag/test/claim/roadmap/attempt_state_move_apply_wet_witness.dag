@@ -53,15 +53,14 @@ fn flat(i: HostDashboardInstance, name: String) -> String {
 }
 
 // The instance with the member directory, one other attempt store file that must stay put, and three flat
-// identity entries -- node a ordinals 1 and 2, node b ordinal 7 -- written by the old layout.
-fn planted(tag: String) -> HostDashboardInstance {
-  let i = fresh_instance(tag: tag)
-  let ok = shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+// identity entries -- node a ordinals 1 and 2, node b ordinal 7 -- written by the old layout. A claim begins
+// with `ready` (plant): a failed plant fails the claim, it never hands back a different instance.
+fn plant(i: HostDashboardInstance) -> Bool {
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
     && Filesystem.Write(path: flat(i: i, name: "a-n1"), content: "minted_at: old\n").success
     && Filesystem.Write(path: flat(i: i, name: "a-n2"), content: "minted_at: old\n").success
     && Filesystem.Write(path: flat(i: i, name: "b-n7"), content: "minted_at: old\n").success
     && Filesystem.Write(path: join([parent_of(i: i), "/belt-last-tick.json"], ""), content: "{}").success
-  if ok { i } else { fresh_instance(tag: "plant-failed-see-claim") }
 }
 
 fn run_move(i: HostDashboardInstance) -> Bool {
@@ -77,11 +76,12 @@ fn run_move(i: HostDashboardInstance) -> Bool {
 // count equal), the highest ordinal (node b, 7) is among them, nothing legacy remains in the parent, and an
 // unrelated store file in the parent stays.
 test fn apply_then_readback_has_the_ordinal_set_equal_and_the_max_preserved() -> Bool {
-  let i = planted(tag: "apply")
+  let i = fresh_instance(tag: "apply")
+  let ready = plant(i: i)
   let applied = run_move(i: i)
   let members = split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")
   let parent = Filesystem.List(path: parent_of(i: i)).entries
-  applied
+  ready && applied
     && length(xs: members) == 3
     && members.any(fn(m) { m == "a-n1.1" }) && members.any(fn(m) { m == "a-n2.1" })
     && members.any(fn(m) { m == "b-n7.1" })
@@ -93,12 +93,13 @@ test fn apply_then_readback_has_the_ordinal_set_equal_and_the_max_preserved() ->
 // ARM 4: the mint is Unready (naming the legacy entries) before the Apply and Ready only after it; the moved
 // ordinals are occupied, so node a continues at 3.
 test fn the_mint_is_unready_before_apply_and_ready_only_after() -> Bool {
-  let i = planted(tag: "mint")
+  let i = fresh_instance(tag: "mint")
+  let ready = plant(i: i)
   let before_unready = match attempt_identity_store(instance: i) {
     AttemptIdentityStoreReady { store: _ } => false
     AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
   }
-  before_unready && run_move(i: i) && match attempt_identity_store(instance: i) {
+  ready && before_unready && run_move(i: i) && match attempt_identity_store(instance: i) {
     AttemptIdentityStoreUnready { detail: _ } => false
     AttemptIdentityStoreReady { store } =>
       match attempt_identity_claim(store: store, node_id: "a", minted_at: "t", ordinal: 1) {
@@ -110,17 +111,19 @@ test fn the_mint_is_unready_before_apply_and_ready_only_after() -> Bool {
 
 // ARM 2: a second run is a Noop.
 test fn a_second_run_is_a_noop_that_changes_nothing() -> Bool {
-  let i = planted(tag: "noop")
+  let i = fresh_instance(tag: "noop")
+  let ready = plant(i: i)
   let first = run_move(i: i)
   let members_after_first = Filesystem.List(path: member_of(i: i)).entries
   let second = run_move(i: i)
-  first && second && Filesystem.List(path: member_of(i: i)).entries == members_after_first
+  ready && first && second && Filesystem.List(path: member_of(i: i)).entries == members_after_first
 }
 
 // ARM 3: a collision is Refused and nothing moves. A refusal-subject claim: it passes whenever the op does
 // not move, so it is not expected to fail under a broken apply step.
 test fn a_collision_is_refused_and_nothing_moves() -> Bool {
-  let i = planted(tag: "collide")
+  let i = fresh_instance(tag: "collide")
+  let ready = plant(i: i)
   let seeded = Filesystem.Write(path: join([member_of(i: i), "/a-n1.1"], ""), content: "held|other").success
   let refused = dashboard_apply_provision_op(
     instance: i,
@@ -128,7 +131,7 @@ test fn a_collision_is_refused_and_nothing_moves() -> Bool {
     temp_bundle: "/unused-bundle" as FilePath,
     temp_verify_repo: "/unused-verify" as FilePath,
   )
-  seeded && !refused.success
+  ready && seeded && !refused.success
     && string_contains(s: refused.stderr, pattern: "already holds entries")
     && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
     && Filesystem.Read(path: join([member_of(i: i), "/a-n1.1"], "")).content == "held|other"
