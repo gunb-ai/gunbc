@@ -7,20 +7,22 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // A PASSIVE ACCELERATOR PLACED WHERE ITS SLOT'S GEOMETRY AND AIRFLOW DO NOT COOL IT. The invalid state
-// is not adjacency: it is a placement whose per-slot geometry (pitch, clearance to the neighbouring
-// card's envelope, the card's own slot width) together with the airflow that reaches that position
-// leaves the card below the cooling its rating assumes, which shows as thermal slowdown, minimum
-// clocks or a GPU leaving the bus. On the H11 that placement was two A16 boards in adjacent slots, so
+// is not adjacency and not zero clearance: it is a placement the chassis airflow reaching that
+// position does not cool, which shows as thermal slowdown, minimum clocks or a GPU leaving the bus.
+// A passive datacenter board is cooled by chassis air driven lengthwise through its own shrouded fin
+// stack, not by side clearance, so geometry decides nothing about cooling without a measurement or a
+// cited vendor clearance requirement, and none is cited here. On the H11 that placement was two A16 boards in adjacent slots, so
 // adjacency was the configuration the incident happened in, not the rule it proves: another chassis
 // with a different slot pitch or airflow can carry two passive cards side by side, and refusing every
-// adjacent pair would forbid more than the evidence supports (operator ruling, 2026-10-30, cited in
-// evidence below). The authority is per-slot geometry and airflow plus the measured thermal behaviour
-// of the installed position; the name keeps the identity the incident was filed under.
+// adjacent pair, or every pair with no clearance, would forbid more than the evidence supports
+// (operator ruling, 2026-10-30, cited in evidence below). The authority is the measured thermal
+// behaviour of the installed position, with slot geometry and airflow as the inputs that decide how
+// strict that measurement must be; the name keeps the identity the incident was filed under.
 
 data adjacent_passive_accelerators_starve_each_other: RecurringFailureMode = RecurringFailureMode {
   identity: "adjacent_passive_accelerators_starve_each_other" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "each host's per-slot geometry (physical order, pitch, clearance to the neighbouring envelope) and the airflow reaching each GPU position are modelled, and the gpu card host program's measurement instrument reads each installed position under load as a required input to seat admission, so a position whose reading shows thermal slowdown, minimum clocks or bus loss refuses admission while an adjacent pair whose slots and airflow hold it is admitted on its reading" } },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "each host's per-slot geometry (physical order, pitch, clearance to the neighbouring envelope) and the airflow reaching each GPU position are modelled, and the gpu card host program's measurement instrument reads each installed position under load as a required input to seat admission, so a position whose reading shows thermal slowdown, minimum clocks or bus loss refuses admission and any other is admitted on its reading, adjacency and zero clearance raising the measurement owed (every GPU position under full load) but refusing nothing by themselves" } },
 
   receipts: [
     "THE INCIDENT, AS EVIDENCE FOR THAT CONFIGURATION: on the H11 host, two NVIDIA A16 boards in adjacent x16-capable slots reached 96 to 99 C under load even at minimum clocks, and one GPU dropped off the PCIe bus. Read by the operator session holding the host, 2026-10-25. It establishes that this slot pitch with this chassis airflow does not cool two adjacent A16 boards; it does not establish that adjacency fails on every host.",
@@ -29,9 +31,9 @@ data adjacent_passive_accelerators_starve_each_other: RecurringFailureMode = Rec
 
     "WHAT THE BOARD ALREADY SAYS: extdeps.boards.supermicro_h11ssl supermicro_h11ssl_pcie_slots lists the slots and their lane counts but not their physical order or pitch, so neither adjacency nor clearance is derivable from the model today. Lane count alone would have admitted the failing placement: both slots were x16.",
 
-    "THE SCOPE, BY OPERATOR RULING (2026-10-30, relayed by keen-otter-392 from calm-moth-166 and proud-raven): adjacent passive cards are not refused as a class. Slot spacing differs between chassis (Butch's is not the H11's), so admission is judged per slot from geometry and airflow plus the measured thermal behaviour of the installed position.",
+    "THE SCOPE, BY OPERATOR RULING (2026-10-30, relayed by keen-otter-392 from calm-moth-166 and proud-raven): adjacent passive cards are not refused as a class. Slot spacing differs between chassis (Butch's is not the H11's), so admission is judged per slot from the measured thermal behaviour of the installed position, geometry and airflow setting how strict that measurement is. A geometric refusal would need a physical reason this row does not have: a cited vendor clearance requirement for the card class, or a blocked intake on an open-fin or fan-cooled card.",
 
-    "THE CEILING: mechanically preventable. Geometry is decidable from upstream and catalog facts, but whether a position is cooled depends on airflow and the measured behaviour of the card in it, so the class is caught by the measurement gating seat admission rather than made unwritable by construction. The residual, a zone whose fans do not follow the card at all, is the class a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it.",
+    "THE CEILING: mechanically preventable. Geometry is decidable from upstream and catalog facts, but whether a position is cooled depends on airflow and the measured behaviour of the card in it, so the class is caught by the measurement gating seat admission rather than made unwritable by construction. A card class with a cited vendor clearance requirement would add a decidable refusal scoped to that class. The residual, a zone whose fans do not follow the card at all, is the class a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it.",
   ],
 
   evidence: [
