@@ -4,23 +4,19 @@ import gunbc.live_deploy.capacity_drain_input { CapacityMigrationApplyRequest }
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
 import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, capacity_cutover_intent_text }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_intent }
-import std.content_hash { Sha256Digest, sha256_hex_of_text }
+import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
 import std.types { Bool, NonEmptyStr, String }
 import std.error_primitives { Ok, Err }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasObservedReadable, CasReadableAbsent }
-import std.content_hash { sha256_hex_digest }
 import extdeps.filesystem.posix { PosixFileIdentity }
 import gunbc.live_deploy.capacity_inhibition_ownership { CapacityInhibitionArtifact }
 import std.optional { Present, Absent }
 import extdeps.systemd.manager { SystemManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityMigrationPopulation }
 import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryRecheckDrain,
-  CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling,
-  CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks,
-  CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, capacity_generation_same_subjects,
-}
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryRecheckDrain, CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling, CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks, CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, capacity_generation_same_subjects }
+
 
 fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGenerationFile? {
   match sha256_hex_digest(hex: digest as String) {

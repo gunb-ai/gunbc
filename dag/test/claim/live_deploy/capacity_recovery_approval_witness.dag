@@ -1,5 +1,6 @@
 module test.claim.live_deploy.capacity_recovery_approval_witness
 
+import gunbc.live_deploy.capacity_recovery_program { CapacityRecoveryProgram, capacity_recovery_program_bind, capacity_recovery_program_run, capacity_recovery_leg_admit }
 import gunbc.auth.privileged_effect_census { capacity_recovery_approval_root, capacity_recovery_root_helper_site, site_verdict }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
 import std.types { Bool, String, NonEmptyStr }
@@ -262,4 +263,72 @@ test fn crash_after_consumption_requires_fresh_approval_of_the_successor() -> Bo
       && admitted.recovery.request.attempt != old.request.attempt }) {
     Ok { value: reached } => reached Err { value: _ } => false
   })
+}
+
+fn recovery_program_fixture(record_after_claim: CapacityCutoverRecord, use_claimed_generation: Bool) -> Result<CapacityRecoveryProgram, String> {
+  let request = match recovery_approval_request(choice: CapacityResume, generation: cas_generation_first(), escalation_id: "program-fixture") {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let observed = recovery_approval_slot(record: recovery_fixture_record(), generation: cas_generation_first())
+  let authorization = match capacity_recovery_claim(request: request,
+    reread: fn() { recovery_approval_observation(record: recovery_fixture_record(), generation: cas_generation_first(), choice: CapacityResume) },
+    authorization: recovery_approval_grant(recovery: request), at: "2026-10-30T00:01:00Z",
+    claim: (subject, attempt, at) => capacity_recovery_consume_journal(subject: subject, observed: observed, attempt: attempt, at: at,
+      commit: verified => cas_decide(attempt: verified.attempt, observed: observed))) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  capacity_recovery_program_bind(authorization: authorization, journal_root: request.subject.journal_root,
+    journal_key: request.subject.journal_key, helper_digest: request.subject.helper_digest,
+    observed: recovery_approval_slot(record: record_after_claim,
+      generation: if use_claimed_generation { authorization.journal_generation } else { request.subject.generation }))
+}
+
+test fn the_consumed_successor_binds_the_exact_recovery_program() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_program_run(program: program,
+      now: fn() { Ok { value: "2026-10-30T00:02:00Z" } }, perform: leg => Ok { value: leg }) {
+      Err { value: _ } => false
+      Ok { value: executed } => executed == program.legs && count(executed) > 0
+    }
+  }
+}
+
+test fn a_pre_consumption_observation_cannot_bind_an_executor() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: false) {
+    Err { value: why } => why == "recovery journal moved after approval consumption"
+    Ok { value: _ } => false
+  }
+}
+
+test fn record_changes_after_consumption_refuse_before_execution() -> Bool {
+  let before = recovery_fixture_record()
+  let after = CapacityCutoverRecord { plan: before.plan, attempt: before.attempt, target_revision: before.target_revision,
+    prior: before.prior, target: before.target, planned_paths: before.planned_paths, created_paths: before.created_paths,
+    artifacts: before.artifacts, phase: CapacityCleanupOnly }
+  match recovery_program_fixture(record_after_claim: after, use_claimed_generation: true) {
+    Err { value: why } => why == "recovery journal moved after approval consumption"
+    Ok { value: _ } => false
+  }
+}
+
+test fn expired_recovery_consent_never_reaches_a_leg_port() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_program_run(program: program,
+      now: fn() { Ok { value: "2026-10-30T02:00:00Z" } }, perform: leg => Ok { value: "effect reached" }) {
+      Err { value: why } => why != "effect reached"
+      Ok { value: _ } => false
+    }
+  }
+}
+
+test fn an_out_of_program_ordinal_cannot_select_an_effect() -> Bool {
+  match recovery_program_fixture(record_after_claim: recovery_fixture_record(), use_claimed_generation: true) {
+    Err { value: _ } => false
+    Ok { value: program } => match capacity_recovery_leg_admit(program: program, ordinal: count(program.legs), at: "2026-10-30T00:02:00Z") {
+      Err { value: why } => why == "recovery leg ordinal is outside the approved program"
+      Ok { value: _ } => false
+    }
+  }
 }

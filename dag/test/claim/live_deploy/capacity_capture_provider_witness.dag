@@ -1,7 +1,7 @@
 module test.claim.live_deploy.capacity_capture_provider_witness
 
 import gunbc.live_deploy.capacity_retained_plan { CapacityRetainedPlan }
-import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text }
+import gunbc.live_deploy.capacity_cutover_intent { capacity_cutover_intent_text, CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 import std.content_hash { Sha256Digest, sha256_hex_of_text }
 import test.claim.live_deploy.capacity_migration_approval_witness { approval_fixture_drain }
 import std.decl_ref { decl_ref }
@@ -14,9 +14,9 @@ import std.durable_compare_and_set { cas_generation_first }
 import gunbc.live_deploy.capacity_capture_provider { capacity_capture_claim_admission, capacity_capture_claim_key, capacity_capture_record_result, capacity_capture_manifest_complete }
 import gunbc.live_deploy.capacity_cutover_recovery { CapacityGenerationFile, CapacityCutoverRecord, CapacityCapturingGeneration, CapacityInstalling, capacity_generation_request }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path }
-import gunbc.live_deploy.capacity_cutover_intent { CapacityCutoverIntent, CapacityCaptureOperation, CapacityGenerationOperation }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
+
 
 fn capture_preparing_record() -> CapacityCutoverRecord {
   let record = recovery_fixture_record()

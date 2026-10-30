@@ -1,5 +1,7 @@
 module test.claim.live_deploy.capacity_cutover_plan_input_witness
 
+import gunbc.live_deploy.capacity_migration_source { capacity_main_cutover_intent, CapacityActivatorProducerMissing, capacity_plan_source_fault_text }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.capacity_migration_approval { capacity_cutover_claim_input }
 import std.types { Bool, String, NonEmptyStr }
 import std.error_primitives { Result, Ok, Err }
@@ -103,5 +105,22 @@ test fn a_v6_plan_with_a_matching_digest_is_incomplete() -> Bool {
       Err { value: why } => why == "plan incomplete: v6 has no retained drain inputs"
       Ok { value: _ } => false
     }
+  }
+}
+
+// One producer inhabitance control: exercise the actual plan builder's missing
+// activator boundary. The other wire controls use supplied resolved values.
+test fn the_v7_plan_builder_refuses_the_unmodeled_live_agent_door() -> Bool {
+  let desired = srv1_lab_desired_deployment()
+  let fixture = plan_input_fixture()
+  match capacity_main_cutover_intent(spec: selected_deployment_spec(row: desired),
+    selected_identity: desired.selected_identity, host: "srv1", revision: fixture.revision, attempt: fixture.attempt,
+    installed: [], runners: Ok { value: [] }, controller_slot: none, operations: [],
+    file_operations: [], captures: [], reloads: [], generations: []) {
+    Err { value: CapacityActivatorProducerMissing { producer: producer, evidence: evidence } } =>
+      producer == "agent-door" && evidence == "live unit observed, no main producer"
+        && capacity_plan_source_fault_text(fault: CapacityActivatorProducerMissing { producer: producer, evidence: evidence })
+          == "activator producer missing: agent-door (live unit observed, no main producer)"
+    _ => false
   }
 }

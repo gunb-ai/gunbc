@@ -3,14 +3,14 @@ module gunbc.live_deploy.capacity_recovery_subject
 import std.types { String, NonEmptyStr, List }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Present, Absent }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, capacity_recovery_plan }
+import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryChoice, CapacityResume, CapacityRollback, capacity_recovery_plan, CapacityRecoveryLeg, CapacityRecoveryRequireApproval, CapacityRecoveryReconcileOwnedInhibition, CapacityRecoveryRecheckDrain, CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, CapacityRecoveryVerifyInhibition, CapacityRecoveryRemoveRecordedLinks, CapacityRecoveryVerifyDischarge, CapacityRecoveryRemoveCaptures, CapacityRecoveryPersistCleanupOnly, CapacityRecoveryCloseRecord, CapacityRecoveryReload }
 import gunbc.live_deploy.capacity_cutover_record { capacity_cutover_record_decode }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction }
 import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
 import gunbc.live_deploy.capacity_root_helper { capacity_root_helper_scope }
-import gunbc.live_deploy.capacity_cutover_recovery { CapacityRecoveryLeg, CapacityRecoveryRequireApproval, CapacityRecoveryReconcileOwnedInhibition, CapacityRecoveryRecheckDrain, CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, CapacityRecoveryVerifyInhibition, CapacityRecoveryRemoveRecordedLinks, CapacityRecoveryVerifyDischarge, CapacityRecoveryRemoveCaptures, CapacityRecoveryPersistCleanupOnly, CapacityRecoveryCloseRecord, CapacityRecoveryReload }
 import std.durable_compare_and_set { CasGeneration, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
 import std.content_hash { Sha256Digest, sha256_hex_of_text, sha256_hex_digest }
+
 
 // The journal address is an identity, never a store capability. Production
 // derives it from the admitted SlotStore; this value cannot open a store.
