@@ -419,7 +419,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
     // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Two rows of
     // one call and home, told apart by their row key (a per-site OnlyOccurrences selection names the key kind's sites):
-    // a Symbol key orders by its lexeme (v2.std.node symbol_total_order), a String key (a lower-hex digest) by the String order.
+    // a Symbol key orders by its lexeme (v2.std.node symbol_total_order), a String key by the String order, a digest key by the digest order.
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/symbol",
@@ -436,7 +436,17 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [],
       head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }
     },
-    RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+    // A digest key (Fnv1a64Structural.digest, a String where lower_hex_16) is its own key kind: its declared order is over
+    // Fnv1a64StructuralDigestHex, which is not String at a typed argument, so it gets its own row and its own order.
+    RosterHeadRow {
+      call: "sort_by",
+      key: "sort_by/digest_hex",
+      import_name: "list_sort_by_key",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }
+    },
+    RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead }
   ]
 }
 

@@ -1,6 +1,7 @@
 module test.claim.list_sort_by_key_witness
 
 import std.types { Bool, Int, String, List }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, fnv1a64_digest_hex_total_order }
 import std.algebra { list_sort_by_key, int_total_order, string_total_order, TotalOrder, Ordering, Less, Equal, Greater, list_map }
 
 // std.algebra list_sort_by_key is the MODELED realization of std.primitives sort_by_contract. Its
@@ -95,4 +96,33 @@ test fn a_reversed_string_order_is_a_discriminating_red() -> Bool {
 test fn hex_digest_keys_order_under_the_declared_string_order() -> Bool {
   list_sort_by_key(xs: ["ff00000000000000", "0a00000000000000", "9000000000000000", "0a00000000000000"], key: fn(h) { h }, order: string_total_order())
     == ["0a00000000000000", "0a00000000000000", "9000000000000000", "ff00000000000000"]
+}
+
+// The REAL digest site shape (v2.std.node bag_hash_digest): records keyed by Fnv1a64Structural.digest, whose K is
+// Fnv1a64StructuralDigestHex (a refined String), so the declared order is over that type and agrees with the host sort.
+data digest_hashes: List<Fnv1a64Structural> = [
+  Fnv1a64Structural { digest: "ff00000000000000" },
+  Fnv1a64Structural { digest: "0a00000000000000" },
+  Fnv1a64Structural { digest: "9000000000000000" },
+  Fnv1a64Structural { digest: "0a00000000000001" }
+]
+
+fn digest_texts(xs: List<Fnv1a64Structural>) -> List<String> {
+  list_map(xs: xs, f: fn(h) { h.digest })
+}
+
+test fn modeled_digest_sort_agrees_with_the_host_sort() -> Bool {
+  digest_texts(xs: list_sort_by_key(xs: digest_hashes, key: fn(h) { h.digest }, order: fnv1a64_digest_hex_total_order()))
+    == digest_texts(xs: digest_hashes |> sort_by(h => h.digest))
+}
+
+fn digest_compare_reversed(a: Fnv1a64StructuralDigestHex, b: Fnv1a64StructuralDigestHex) -> Ordering {
+  if a < b { Greater } else { if a > b { Less } else { Equal } }
+}
+
+data reversed_digest_order: TotalOrder<Fnv1a64StructuralDigestHex> = { compare: digest_compare_reversed }
+
+test fn a_reversed_digest_order_is_a_discriminating_red() -> Bool {
+  digest_texts(xs: list_sort_by_key(xs: digest_hashes, key: fn(h) { h.digest }, order: reversed_digest_order))
+    != digest_texts(xs: digest_hashes |> sort_by(h => h.digest))
 }
