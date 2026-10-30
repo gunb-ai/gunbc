@@ -7,7 +7,9 @@ import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import gunbc.host_state_root { isolated_host_state_tree }
 import gunbc.runner.runner_revision_request_context { revision_request_context }
-import gunbc.runner.runner_revision_request_worker { revision_request_claim }
+import gunbc.runner.runner_revision_request_worker { revision_request_claim, revision_request_claim_is_current, revision_request_claim_wire }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, file_compare_and_set, OwnerOnlyCreateOnly }
+import std.durable_compare_and_set { ExpectSlotGeneration, CasCommitted }
 import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
 import test.claim.durable_handoff_request_witness { request_api_key_fixture_prepare_in }
 import std.process { ProcessExit }
@@ -26,10 +28,26 @@ test fn one_durable_acceptance_allows_only_one_worker_claim() -> Bool {
     HostRequestAccepted { request: value } => value _ => { return false }
   }
   let worker = "worker-a" as NonEmptyStr as DurableHoldOwnerRef
-  let first = revision_request_claim(context: context, request: request, worker: worker)
+  let held = match revision_request_claim(context: context, request: request, worker: worker) {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let fresh = revision_request_claim_is_current(context: context, claim: held) == Ok { value: true }
   let same = revision_request_claim(context: context, request: request, worker: worker)
   let other = revision_request_claim(context: context, request: request, worker: "worker-b" as NonEmptyStr as DurableHoldOwnerRef)
-  (match first { Ok { value: held } => held.request == request Err { value: _ } => false })
+  // Same payload at a successor generation still invalidates the old claim.
+  let verified = match admit_cas_attempt_for_derived_payload(key: held.key,
+    expected: ExpectSlotGeneration { generation: held.generation },
+    proposed: revision_request_claim_wire(request: request, worker: worker)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => { return false }
+    DerivedPayloadAdmitted { verified: value } => value
+  }
+  let advanced = match file_compare_and_set(root: request.root, publication: OwnerOnlyCreateOnly, verified: verified) {
+    CasCommitted { committed: _ } => true _ => false
+  }
+  let stale = match revision_request_claim_is_current(context: context, claim: held) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }
+  fresh && advanced && stale && held.request == request
     && (match same { Err { value: _ } => true Ok { value: _ } => false })
     && (match other { Err { value: _ } => true Ok { value: _ } => false })
 }

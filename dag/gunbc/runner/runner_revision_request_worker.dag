@@ -1,6 +1,6 @@
 module gunbc.runner.runner_revision_request_worker
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool }
 import gunbc.auth.revision_request_authorization { revision_request_select_launch }
 import gunbc.auth.authorization_pattern_selection { AuthorizationPatternSelection, WorkloadIdentityStanding }
 import gunbc.auth.standing_operator_grant { StandingRevisionRequestStart }
@@ -83,10 +83,7 @@ fn revision_request_claim(context: RevisionRequestContext, request: HostAccepted
     _ => { return Err { value: "outstanding request could not be confirmed" } }
   }
   let key = concat("worker-", content_hash_atom(value: host_request_identity_wire(identity: request.identity) as NonEmptyStr).digest as String) as NonEmptyStr
-  let bytes = serialize_json(v: json_object(members: [
-    json_kv(key: "request", value: json_string(s: host_request_wire(identity: request.identity, payload: request.payload))),
-    json_kv(key: "worker", value: json_string(s: worker as String)),
-  ])) as NonEmptyStr
+  let bytes = revision_request_claim_wire(request: request, worker: worker)
   let verified = match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: bytes) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => { return Err { value: "worker claim key refused" } }
     DerivedPayloadAdmitted { verified: value } => value
@@ -101,5 +98,37 @@ fn revision_request_claim(context: RevisionRequestContext, request: HostAccepted
         } else { Err { value: "request execution claim readback mismatch" } }
       _ => Err { value: "request execution claim readback unavailable" }
     }
+  }
+}
+
+fn revision_request_claim_wire(request: HostAcceptedRequest, worker: DurableHoldOwnerRef) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "request", value: json_string(s: host_request_wire(identity: request.identity, payload: request.payload))),
+    json_kv(key: "worker", value: json_string(s: worker as String)),
+  ])) as NonEmptyStr
+}
+
+// A sealed acquisition is historical evidence, not a permanently fresh reading.
+// The launch/settlement owner must call this under its execution interlock. This
+// observer does not authorize or start anything, and does not release the slot.
+fn revision_request_claim_is_current(context: RevisionRequestContext,
+  claim: RevisionRequestClaim) -> Result<Bool, String> {
+  if (context.request_root != claim.request.root) { return Err { value: "request claim belongs to another store" } }
+  match host_request_user_read(root: claim.request.root, principal: claim.request.identity.principal,
+    observed: observe_cas_slot_state(root: claim.request.root, key: host_request_user_key(principal: claim.request.identity.principal))) {
+    HostRequestPresent { request: current } => {
+      if (current.identity != claim.request.identity || current.payload != claim.request.payload) {
+        return Err { value: "request is no longer the user's outstanding responsibility" }
+      }
+    }
+    _ => { return Err { value: "outstanding request could not be confirmed" } }
+  }
+  let bytes = revision_request_claim_wire(request: claim.request, worker: claim.worker)
+  match observe_cas_slot_state(root: claim.request.root, key: claim.key) {
+    CasObservedReadable { readable: CasReadablePresent { version: observed } } =>
+      if (observed.generation == claim.generation && observed.value == bytes) {
+        Ok { value: true }
+      } else { Err { value: "request execution claim has changed" } }
+    _ => Err { value: "request execution claim is unavailable" }
   }
 }
