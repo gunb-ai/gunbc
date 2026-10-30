@@ -37,8 +37,11 @@ import v2.compiler.dependency_demand { RequirementClass, RequiresNone, RequiresR
 // statement of a derivable fact is the fork DESIGN 2 forbids). Rows are owed only at OPAQUE
 // operation boundaries: the declarations std.primitive_projection projects as HostRealizedSeam (and
 // the capability members the demand census synthesizes by path under std.resources). A row on a
-// TRANSPARENT fn is refused by v2.std.operation_declaration_seam_free, and a transparent fn carries
-// no row.
+// TRANSPARENT fn carries no row: the claim every_declaration_row_is_a_projected_host_seam
+// (test.claim.compiler.operation_declaration_seam) holds every row's declaration to a
+// HostRealizedSeam projection, so a row on a transparent fn reddens it. That is a claim over the
+// live roster, not a refusal at construction; a data row cannot refuse, so the rung is
+// mechanically preventable, not structurally guaranteed.
 //
 // ABSENCE NEVER DEFAULTS. An operation projected host-realized with no row here answers
 // OperationDeclarationAbsent in every consumer, and that arm BLOCKS -- exactly as
