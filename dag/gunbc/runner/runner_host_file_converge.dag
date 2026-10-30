@@ -3,12 +3,12 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append }
+import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list, string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
-import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
+import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
@@ -35,7 +35,7 @@ import gunbc.host.host_axis_caps {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
 import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -75,7 +75,7 @@ import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
-  ObservationArm, OverTransport, entry_presence,
+  ObservationArm, OverTransport, entry_presence, path_basename,
 }
 import gunbc.typed_remote_file_write {
   RemoteFileMode,
@@ -2822,10 +2822,22 @@ fn runner_host_cap_files_state(subject: RunnerHostFileSubject, context: FleetSsh
   let refused = filter(map(planned, r => match r.planned.action { HostFileActionRefused { reason: why } => concat(r.planned.file.path as String, concat(": ", why)) HostFileLeaveInPlace => "" HostFileWrite => "" }), c => c != "")
   if length(refused) > 0 {
     CapFilesUnreadable { cause: join(refused, "; ") }
-  } else if any(planned, r => match r.planned.action { HostFileLeaveInPlace => false HostFileWrite => true HostFileActionRefused { reason: _ } => true }) {
-    CapFilesDiffer
   } else {
-    CapFilesSettled
+    // One partition: a file either differs or contributes nothing, and the nonempty carrier is built at
+    // that split, so a difference with no named file cannot be written.
+    let differing: FreeSemigroup<NonEmptyStr>? = fold(planned, init: none, f: (acc, r) =>
+      match r.planned.action {
+        HostFileWrite => {
+          let one = non_empty_singleton(item: r.planned.file.path as NonEmptyStr)
+          match acc { Absent => Present { value: one } Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) } }
+        }
+        HostFileLeaveInPlace => acc
+        HostFileActionRefused { reason: _ } => acc
+      })
+    match differing {
+      Absent => CapFilesSettled
+      Present { value: ps } => CapFilesDiffer { paths: ps }
+    }
   }
 }
 
@@ -2859,16 +2871,17 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_uni
   }
 }
 
-// An inert owed reload is admitted ONLY for a unit the bracket never touches: activation unmasks, enables
-// and starts every unit in the bracket's set, so there a masked unit stops being inert mid-bracket and its
-// pending change would load onto a live cgroup. Fabric members are outside that set by construction
-// (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
+// An inert owed reload contributes nothing for a unit the bracket never touches. Inside the bracket's set it
+// is kept, typed as inert: the bracket's activation unmasks, enables and starts every unit in that set, so
+// there a masked unit stops being inert mid-bracket and its pending change would load onto a live cgroup;
+// host_cap_plan withholds the bracket arm on it and nothing else. Fabric members are outside that set by
+// construction (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
 fn slot_reload_pending_kind(status: SlotReloadStatus, reach: SlotReloadReach, in_bracket: Bool) -> PendingReloadKind? {
   match status {
     SlotReloadNotPending => none
     SlotReloadOwed => match reach {
       ReachesLiveCgroup => Present { value: PendingReloadOwed }
-      ReloadInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
+      ReloadInert => if in_bracket { Present { value: PendingReloadOwedInertUntilActivated } } else { none }
     }
     SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
@@ -2958,6 +2971,7 @@ fn run_runner_host_cap_phase(
               slots: map(subject.desired_units, u => SlotCapsLeftInPlace { unit: u }),
               certified: [],
             }
+            HostCapsWriteInPlace { paths: ps } => write_runner_host_caps_in_place_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, units: affected, differing: ps)
             HostCapsDrainWriteRestart =>
               match actions_variable_read(name: runner_host_cap_step_budget_env_name) {
                 ActionsVariableAbsent { variable: v, detail: d } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: the enclosing step did not declare its budget (", v, " ", d, ")"], "") }
@@ -2974,6 +2988,126 @@ fn run_runner_host_cap_phase(
           }
         }
       }
+  }
+}
+
+// THE IN-PLACE CAP WRITE (HostCapsWriteInPlace). The plan admitted it on this run's live readings: every
+// slot's loaded caps at desired, nothing pending that reaches a running slot. What the plan cannot see is
+// whether the written value is the one a reload loads: systemd applies a unit's drop-ins in file-name
+// order across the template and instance directories, so a drop-in sorting at or after a written file
+// that sets one of its keys would win. Each affected unit's loaded drop-ins are read, and the write
+// refuses if any such file sets a key the write sets, or if that cannot be read. Then the files are
+// written, the manager reloaded once, and every affected slot read back live: only a read-back at desired
+// leaves it in place.
+type CapDropinOverrideReading
+  = CapDropinsNoLaterSetter
+  | CapDropinsLaterSetter { files: FreeSemigroup<NonEmptyStr> }
+  | CapDropinsUnread { cause: String }
+
+// THE KEYS A DROP-IN SETS, as grep fixed strings `Key=`: every `Key=value` line, skipping section headers
+// and comments. Read from the content this converge renders, so the keys are the write's own.
+fn cap_dropin_setting_keys(content: String) -> List<NonEmptyStr> {
+  list_flat_map(map(split(s: content, delimiter: "\n"), l => trim(s: l)), l =>
+    if l == "" || starts_with(s: l, prefix: "#") || starts_with(s: l, prefix: ";") || starts_with(s: l, prefix: "[") || !string_contains(s: l, pattern: "=") { [] }
+    else { [concat(trim(s: list_head_or(xs: split(s: l, delimiter: "="), fallback: "")), "=") as NonEmptyStr] })
+}
+
+fn list_head_or(xs: List<String>, fallback: String) -> String {
+  match list_head(xs: xs) { Present { value: x } => x Absent => fallback }
+}
+
+// THE LOADED DROP-INS THAT COULD WIN OVER A WRITTEN FILE: every distinct loaded path other than a written
+// one whose file name sorts at or after the written file's (an equal name in an instance directory
+// replaces the template's file outright).
+fn cap_dropins_that_could_override(written: List<NonEmptyStr>, loaded: List<String>) -> List<NonEmptyStr> {
+  let candidates = filter(loaded, p => trim(s: p) != "" && !any(written, w => (w as String) == p) && any(written, w => path_basename(path: p) >= path_basename(path: w as String)))
+  map(fold(candidates, init: [], f: (acc, p) => if any(acc, a => a == p) { acc } else { concat(acc, [p]) }), p => p as NonEmptyStr)
+}
+
+// `systemctl show --property=DropInPaths` over N units prints one `DropInPaths=` line per unit (empty
+// after the `=` when the unit has none). Fewer lines than units is an incomplete read, never "no drop-ins".
+fn parse_loaded_dropin_paths(show_stdout: String, unit_count: Int) -> List<String>? {
+  let lines = filter(map(split(s: show_stdout, delimiter: "\n"), l => trim(s: l)), l => starts_with(s: l, prefix: "DropInPaths="))
+  if length(lines) != unit_count { none } else {
+    Present { value: list_flat_map(lines, l => filter(split(s: substring(s: l, start: string_length(s: "DropInPaths="), end: string_length(s: l)), delimiter: " "), p => p != "")) }
+  }
+}
+
+// grep -l: exit 1 is no candidate setting a key; exit 0 names the files that do; anything else is unread.
+fn classify_cap_dropin_override(candidates: List<NonEmptyStr>, exit_code: Int, stdout: String) -> CapDropinOverrideReading {
+  if length(candidates) == 0 { CapDropinsNoLaterSetter }
+  else if exit_code == 1 { CapDropinsNoLaterSetter }
+  else if exit_code == 0 {
+    let named: FreeSemigroup<NonEmptyStr>? = fold(filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != ""), init: none, f: (acc, l) => {
+      let one = non_empty_singleton(item: l as NonEmptyStr)
+      match acc { Absent => Present { value: one } Present { value: xs } => Present { value: non_empty_append(left: xs, right: one) } }
+    })
+    match named {
+      Absent => CapDropinsUnread { cause: "grep -l exited 0 and named no file" }
+      Present { value: fs } => CapDropinsLaterSetter { files: fs }
+    }
+  } else { CapDropinsUnread { cause: join(["grep -l exited ", to_string(exit_code)], "") } }
+}
+
+fn read_cap_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>, written: List<FleetHostFileDesired>) -> CapDropinOverrideReading {
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: [DropInPathsProperty])) {
+    TypedArgvExecRefused { reason: r } => CapDropinsUnread { cause: concat("systemctl show DropInPaths: ", r) }
+    TypedArgvExecConverged { result: shown } =>
+      if shown.exit_code != 0 { CapDropinsUnread { cause: join(["systemctl show DropInPaths exited ", to_string(shown.exit_code)], "") } }
+      else {
+        match parse_loaded_dropin_paths(show_stdout: shown.stdout, unit_count: length(units)) {
+          Absent => CapDropinsUnread { cause: "systemctl show returned fewer DropInPaths lines than units" }
+          Present { value: loaded } => {
+            let candidates = cap_dropins_that_could_override(written: map(written, f => f.path as NonEmptyStr), loaded: loaded)
+            let keys = list_flat_map(written, f => cap_dropin_setting_keys(content: f.content))
+            if length(candidates) == 0 { CapDropinsNoLaterSetter } else {
+              match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: grep_files_with_fixed_strings_argv(patterns: keys, paths: candidates)) {
+                TypedArgvExecRefused { reason: r } => CapDropinsUnread { cause: concat("grep over the later drop-ins: ", r) }
+                TypedArgvExecConverged { result: g } => classify_cap_dropin_override(candidates: candidates, exit_code: g.exit_code, stdout: g.stdout)
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn cap_in_place_readback_outcome(x: SlotCapUnitStanding) -> SlotCapOutcome {
+  match x.standing {
+    SlotCapsAtDesired => SlotCapsLeftInPlace { unit: x.unit }
+    SlotCapsStopped => SlotCapsLeftInPlace { unit: x.unit }
+    SlotCapsNeedRestart { detail: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+    SlotCapsReadingsDisagree { detail: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+    SlotCapsUnread { cause: _ } => SlotCapsRefused { unit: x.unit, step: "in-place-readback", reason: slot_cap_standing_wire(unit: x.unit, s: x.standing) }
+  }
+}
+
+fn write_runner_host_caps_in_place_over(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+  desired: RunnerSlotDesired,
+  units: List<NonEmptyStr>,
+  differing: FreeSemigroup<NonEmptyStr>,
+) -> RunnerHostCapPhase
+{
+  let written = filter(runner_host_cap_files(), f => any(non_empty_to_list(xs: differing), d => (d as String) == (f.path as String)))
+  let named = join(map(non_empty_to_list(xs: differing), d => d as String), " ")
+  match read_cap_dropin_override_over(subject: subject, context: context, units: units, written: written) {
+    CapDropinsUnread { cause: c } => CapPhaseWithheld { cause: join(["host untouched: the in-place cap write (", named, ") could not read whether a later-sorting drop-in sets a key it sets: ", c], "") }
+    CapDropinsLaterSetter { files: fs } => CapPhaseWithheld { cause: join(["host untouched: a later-sorting drop-in sets a key the in-place cap write (", named, ") sets, so the written value might not be the one a reload loads: ", join(map(non_empty_to_list(xs: fs), f => f as String), " ")], "") }
+    CapDropinsNoLaterSetter => {
+      let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
+      let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+      let written_ok = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+      CapPhaseRan {
+        files: files,
+        reload: reload,
+        slots: if written_ok { map(read_host_cap_standings_over(target: subject.target, context: context, units: units, desired: desired), x => cap_in_place_readback_outcome(x: x)) } else { map(units, u => SlotCapsRefused { unit: u, step: "write", reason: "the in-place cap drop-ins did not converge or the manager reload did not settle; no slot was drained, so none is left masked" }) },
+        certified: [],
+      }
+    }
   }
 }
 

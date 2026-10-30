@@ -325,6 +325,17 @@ fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }
 
+// readlink OVER MANY PATHS, IN ONE INVOCATION, WITH -v. MEASURED on coreutils 9.7 (the version this
+// repository's toolchain pins): readlink accepts one operand per path and prints one line per operand it
+// COULD read, in operand order, with no label naming which path a line belongs to. Without -v an operand it
+// could not read produces NO output at all and the exit status becomes 1, so a missing line cannot be
+// attributed. -v / --verbose makes it report each failed operand on stderr as `readlink: <path>: <strerror>`
+// (exit status still 1), which is what lets a caller tell a vanished operand (No such file or directory) from
+// any other failure. `--` guards a leading dash.
+fn readlink_links_command(paths: List<String>) -> ArgvCommand {
+  argv_command(program: readlink_program(), arguments: concat(["-v", "--"], paths))
+}
+
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
 // here are the ones that manual defines: -d creates each named directory, -m sets the mode,
 // -o and -g set owner and group at creation. Owner-at-creation is why this repository installs

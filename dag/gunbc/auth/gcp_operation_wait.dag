@@ -8,6 +8,7 @@ import extdeps.cloud.gcp.gcp {
   WifOperationSubject, WifPoolOperation, WifProviderOperation, WifOperationName, WifOperationNamed, WifOperationNameMismatch, wif_operation_name_parse,
 }
 import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.iam_deny
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 
@@ -48,6 +49,12 @@ fn gcp_operation_poll_ticks() -> Int {
 
 fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
   second_count(s: gcp_operation_poll_budget) <= second_count(s: iam_converge_token_lifetime)
+}
+
+// A DERIVED QUOTA WAIT is still bounded by the same allowance as the operation wait: a daily window
+// reopening hours away is a refusal to rerun after it, never a block of the ceremony.
+fn gcp_quota_wait_fits_actuation_allowance(wait: Second) -> Bool {
+  second_count(s: wait) <= second_count(s: gcp_operation_poll_budget)
 }
 
 // ── ONE READ, and the pure decision after it ─────────────────────────────────────────────────────
@@ -168,6 +175,67 @@ fn wif_create_operation_outcome(token: Secret, subject: WifOperationSubject, ope
         WifOperationNameMismatch { reason: r } => OperationWaitNameUnparsed { reason: r }
         WifOperationNamed { operation_id: id } =>
           wif_operation_wait_ticks(remaining: gcp_operation_poll_ticks(), token: token, subject: subject, operation_id: id, operation_name: operation_name)
+      }
+  }
+}
+
+// ── THE IAM v2 DENY POLICY CREATE'S OPERATION (google.aip.dev/151) ─────────────────────────────────
+// CreatePolicy answers a google.longrunning.Operation, not the policy: the policy is read back once
+// `done` is true, polled through iam v2 operations.get. The wait is the same shared fold as the WIF
+// waits above (operation_wait_step / operation_wait_after_pace); only the name parse and the wet read
+// are the deny policy's own.
+type IamDenyOperationName
+  = IamDenyOperationNamed { operation_id: String }
+  | IamDenyOperationNameMismatch { reason: String }
+
+// The operation must name the policy just created: policies/{attachment_point}/denypolicies/{policy_id}/operations/{id}.
+fn iam_deny_operation_name_parse(name: String, attachment_point: String, policy_id: String) -> IamDenyOperationName {
+  let parts = split(s: name, delimiter: "/")
+  let prefix = ["policies", attachment_point, "denypolicies", policy_id, "operations"]
+  if parts.length() != prefix.length() + 1 {
+    IamDenyOperationNameMismatch { reason: concat("deny operation name does not have the shape of the policy just created: ", name) }
+  } else if join(parts.take(n: prefix.length()), "/") != join(prefix, "/") {
+    IamDenyOperationNameMismatch { reason: concat("deny operation name does not name the policy just created: ", name) }
+  } else {
+    match parts.skip(n: prefix.length()).first() {
+      Present { value: id } => if id == "" { IamDenyOperationNameMismatch { reason: concat("deny operation name has an empty operation id: ", name) } } else { IamDenyOperationNamed { operation_id: id } }
+      Absent => IamDenyOperationNameMismatch { reason: concat("deny operation name has no operation id: ", name) }
+    }
+  }
+}
+
+fn read_iam_deny_operation(token: Secret, attachment_point: String, policy_id: String, operation_id: String) -> OperationReading
+{
+  match gcp.IamDeny.GetPolicyOperation(access_token: token, attachment_point: attachment_point as NonEmptyStr, policy_id: policy_id as NonEmptyStr, operation_id: operation_id as NonEmptyStr) {
+    RestAnswered { answer: a } => OperationRead { returned_name: a.operation_name, standing: gcp_operation_standing(done: a.done, error: a.error) }
+    RestRefused { refusal } => OperationUnreadable { refusal: refusal }
+  }
+}
+
+fn iam_deny_operation_wait_ticks(remaining: Int, token: Secret, attachment_point: String, policy_id: String, operation_id: String, operation_name: String) -> OperationWaitOutcome
+{
+  match operation_wait_step(operation_name: operation_name, reading: read_iam_deny_operation(token: token, attachment_point: attachment_point, policy_id: policy_id, operation_id: operation_id), remaining: remaining) {
+    OperationWaitReturn { outcome: o } => o
+    OperationWaitSleepAndContinue { next_remaining: n } => {
+      let paced = sleep_delay_seconds_second_carrier_projection(duration: gcp_operation_poll_cadence)
+      match operation_wait_after_pace(operation_name: operation_name, paced: paced, next_remaining: n) {
+        OperationWaitReturn { outcome: o } => o
+        OperationWaitSleepAndContinue { next_remaining: m } => iam_deny_operation_wait_ticks(remaining: m, token: token, attachment_point: attachment_point, policy_id: policy_id, operation_id: operation_id, operation_name: operation_name)
+      }
+    }
+  }
+}
+
+fn iam_deny_create_operation_outcome(token: Secret, attachment_point: String, policy_id: String, operation_name: String, done: Bool?, error: GoogleRpcStatus?) -> OperationWaitOutcome
+{
+  match gcp_operation_standing(done: done, error: error) {
+    OperationDone => OperationWaitDone
+    OperationFailed { code: c, message: m } => OperationWaitFailed { operation_name: operation_name, code: c, message: m }
+    OperationRunning =>
+      match iam_deny_operation_name_parse(name: operation_name, attachment_point: attachment_point, policy_id: policy_id) {
+        IamDenyOperationNameMismatch { reason: r } => OperationWaitNameUnparsed { reason: r }
+        IamDenyOperationNamed { operation_id: id } =>
+          iam_deny_operation_wait_ticks(remaining: gcp_operation_poll_ticks(), token: token, attachment_point: attachment_point, policy_id: policy_id, operation_id: id, operation_name: operation_name)
       }
   }
 }
