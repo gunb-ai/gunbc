@@ -1,6 +1,10 @@
 module test.claim.auth.gcp_iam_bootstrap_witness
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, EpochSecs, List, NonEmptyStr, String }
+import std.optional { Present }
+import std.measure { second_count }
+import std.algebra { string_contains }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
@@ -17,6 +21,7 @@ import gunbc.auth.gcp_iam_converge {
 }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, journal_object_name }
 import gunbc.auth.gcp_iam_bootstrap {
+  iam_bootstrap_quota_wait_plan, QuotaPlanRetryNow, QuotaPlanSleep, QuotaPlanRefused,
   custody_container_step, custody_after_create, custody_journal_of, custody_records_of,
   CustodyOperationRecords, CustodyJournalRead, CustodyJournalUnreadable,
   CustodyCreateJournal, CustodyContainerStep, CustodyAfterCreate,
@@ -422,4 +427,22 @@ test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
     && all(gcp_iam_converge_grant_set_secrets(), g => !any(bare, s => s == (g as String)))
     && !any(bare, s => s == "hetzner-cloud-default-read-api-key")
     && any(iam_bootstrap_delta_bindings(), d => match d.resource { BootstrapSecret { secret } => (secret as String) == "bmc-mtjade1-gunbc"  BootstrapProject => false  BootstrapPool { pool: _ } => false  BootstrapAccount { account: _ } => false  BootstrapBucket { bucket: _ } => false })
+}
+
+// THE QUOTA WAIT'S DECISION AT ITS BOUNDARY: the refusal, the clock's reading and the instant reduction are
+// SUPPLIED ("T0" is epoch 1000, quota 1/min). Sleep carries exactly window_start+window-now; a rolled window
+// retries now; every missing fact (no ErrorInfo, no clock, a window beyond the allowance) refuses typed.
+data quota_429_body: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_limit_value\":\"10\",\"quota_unit\":\"1/min\",\"window_start_time\":\"T0\"}}]}}"
+data quota_429_daily_body: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_limit_value\":\"10\",\"quota_unit\":\"1/d\",\"window_start_time\":\"T0\"}}]}}"
+
+fn quota_fake_epoch(s: String) -> EpochSecs? { if s == "T0" { Present { value: 1000 } } else { none } }
+
+test fn the_quota_wait_plan_sleeps_the_derived_wait_and_refuses_each_missing_fact() -> Bool {
+  let limited = RestStatusRefused { status: 429, body: quota_429_body }
+  (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanSleep { wait } => second_count(s: wait) == 50  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisObserved { millis: 1060000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRetryNow => true  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: limited, clock: ClockUnixMillisRefused { detail: "no clock" }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "needs the clock")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestStatusRefused { status: 429, body: "slow down" }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "without a derivable wait")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestStatusRefused { status: 429, body: quota_429_daily_body }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "actuation allowance")  _ => false })
+    && (match iam_bootstrap_quota_wait_plan(refusal: RestTransportRefused { cause: "x" }, clock: ClockUnixMillisObserved { millis: 1010000 }, to_epoch_secs: quota_fake_epoch) { QuotaPlanRefused { text } => string_contains(s: text, pattern: "no body")  _ => false })
 }

@@ -293,6 +293,25 @@ data export_host_rows_beside_unlanded_host_file_adapter: DivergenceReason = Dive
   dissolution: unbound_dissolution(description: "an authority adapter, registered against gunbc.auth.approval_broker redeem_capability, that applies a FleetHostFileDesired row set and its sshd validate/reload/readback/rollback fold under a redeemed ApprovalCapability bound to the rows' digest, so the converge requests the capability (gunbc.auth.access_request) instead of running on the dispatch alone. NOT satisfied by an environment reviewer gate" as NonEmptyStr),
 }
 
+// THE LIVE READER PROBE (gunbc.host.boot_medium_reader_probe): the reader account authenticates with its own
+// forced-command key and runs ONLY sha256sum of the pinned file -- anything else reaches nothing, which is the
+// RED the receipt must show -- and the probe then asks, in that same session, what the account can reach
+// (sudo -n true, a read of /srv/bmc) and expects those refusals. It writes nothing on the host; its one cloud
+// read is the reader key's pinned version, held by the fleet identity through the accessor row. EveryOperator
+// Request: each dispatch is a request, and the reading is a fresh one.
+fn boot_medium_reader_probe_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "on the BMC export host, as the unprivileged boot-medium-reader account through its forced-command key: authenticate, run the forced sha256sum, and test in that session what the account can reach -- sudo -n true and a read of /srv/bmc -- expecting both to refuse" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names an SSH login as an unprivileged fleet account; the fleet principal reads the reader key version under the accessor grant, and the account itself is the subject of the observation" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 fn export_host_reader_rows_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "on the BMC export host, as its administrator: create the unprivileged boot-medium-reader account, write its root-owned authorized_keys file forced to one sha256sum, add an sshd_config.d AuthorizedKeysFile drop-in, validate with sshd -t and sshd -T, reload ssh, read back a fresh fleet-automation login, and roll the drop-in back if that login fails" as NonEmptyStr,
@@ -1510,6 +1529,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: export_host_reader_rows_effect(),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: export_host_rows_beside_unlanded_host_file_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.boot_medium_reader_probe", decl_name: "boot_medium_reader_probe_wet"),
+    effect: boot_medium_reader_probe_effect(),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_mint_wet"),
