@@ -290,7 +290,9 @@ data gpu_board_01_asset: PhysicalAsset = PhysicalAsset {
 }
 
 // The operator's two Radeon AI PRO R9700 cards (2026-10-30). Owned, not installed: their host is the
-// plan's operator decision D3. Their partner SKU and serials are unread, so they bind AMD's board row.
+// plan's operator decision D3, still open ("will probably go in a new host", operator 2026-10-30, so no
+// host row exists for them to be contained in). Their partner SKU and serials are unread, so they bind
+// AMD's board row.
 data gpu_board_02_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_02,
   catalog: DeclarationRef {

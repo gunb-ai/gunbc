@@ -7,7 +7,7 @@ import extdeps.network.mac { Eui48Address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac }
-import gunbc.host.host_memory_qualification { CausalExperimentReceipt, ExperimentInconclusive }
+import gunbc.host.host_memory_qualification { CausalExperimentReceipt, ExperimentInconclusive, HypothesisRefuted }
 import gunbc.fleet.fleet_fan_wiring {
   FanHeaderWiring, DrivenFanCountOperatorDeclared, FanModelUnobserved, FanModelOperatorDeclaredPart,
   TachCarriedByDrivenFan, TachRepresentationUnobserved,
@@ -114,16 +114,15 @@ fn supermicro_h11ssl_unit1_dimmh1_standing() -> H11sslSlotTrainingStanding {
 }
 
 // WHAT HAS BEEN TRIED, as a receipt so the verdict can be re-judged against the intervention. The
-// operator's account on 2026-10-30 is "we already tried the part", which does not say whether a
-// different module went into H1 (which would clear the module and implicate the slot, the channel or the
-// socket) or the H1 module went into another slot (which would implicate the module if the fault
-// followed it). Until it says which, the receipt cannot carry a verdict either way.
+// operator stated the procedure on 2026-10-30: a different module went into H1 and the slot is still
+// disabled on later boots, so the module is cleared. What remains implicated is the slot itself, memory
+// channel H, or the CPU socket's contacts for that channel; no intervention here yet separates those.
 data supermicro_h11ssl_unit1_dimmh1_experiments: List<CausalExperimentReceipt> = [
   CausalExperimentReceipt {
     hypothesis: "The module fitted in DIMMH1 is defective",
-    intervention: "Operator: 'we already tried the part' (2026-10-30); the procedure is not stated",
+    intervention: "A different module fitted in DIMMH1 (operator, 2026-10-30: 'a different stick went into h1 - we already ruled out a failed stick')",
     observation: "DIMMH1 is still disabled on 5 of 12 recorded boots, including the 2026-10-30T16:31Z reboot; the SEL records the slot disabled since 2026-05-01",
-    verdict: ExperimentInconclusive { reason: "The intervention is not stated: a different module in H1 and the H1 module in another slot discriminate opposite hypotheses, and the receipt does not say which was done." },
+    verdict: HypothesisRefuted,
     observed_at: 1793378400000,
   },
   CausalExperimentReceipt {
