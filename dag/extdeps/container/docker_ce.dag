@@ -58,12 +58,6 @@ data docker_ce_engine_packages: List<NonEmptyStr> = [
 
 data docker_ce_packages: List<NonEmptyStr> = append(docker_ce_engine_packages, items: docker_ce_rootless_prerequisite_packages)
 
-// THE PREREQUISITES A PACKAGE SET DOES NOT CARRY, so a set that installs the engine and omits them is a
-// non-empty answer rather than a host that fails at unit start. Empty means the set is sufficient.
-fn docker_ce_rootless_prerequisites_missing(packages: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  filter(docker_ce_rootless_prerequisite_packages, p => !packages.any(q => q == p))
-}
-
 fn docker_ce_apt_source_line(repo: DockerCeAptRepo) -> String {
   join(
     [
