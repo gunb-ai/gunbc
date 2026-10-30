@@ -2945,7 +2945,7 @@ fn roster_occ_twin_rows() -> List<RosterHeadRow> {
   let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
   [
     RosterHeadRow { call: "map_get", key: "map_get/first", import_name: "map_lookup", home: algebra, labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"] } },
-    RosterHeadRow { call: "map_get", key: "map_get/second", import_name: "map_probe", home: algebra, labels: [], head: RenameHead { to: "map_probe", positional: ["m", "key"] } }
+    RosterHeadRow { call: "map_get", key: "map_get/second", import_name: "map_contains_key", home: algebra, labels: [], head: RenameHead { to: "map_contains_key", positional: ["m", "key"] } }
   ]
 }
 
@@ -2958,7 +2958,7 @@ fn roster_occ_twin_outcome(row_key: String, keys: List<String>, text: String, pr
 fn roster_occ_two_rows_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_get(m, k)\n  map_get(m, k)\n}\n"
   let first = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_get(m, k)\n  map_lookup(m: m, key: k)\n}\n"
-  let second = "module c.rename\n\nimport std.algebra { Cons, map_probe }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_probe(m: m, key: k)\n  map_get(m, k)\n}\n"
+  let second = "module c.rename\n\nimport std.algebra { Cons, map_contains_key }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  let a = map_contains_key(m: m, key: k)\n  map_get(m, k)\n}\n"
   let scope_a = match roster_applied(before: before, outcome: roster_occ_twin_outcome(row_key: "map_get/first", keys: ["control/rename.dag:7:3"], text: before, prepared: prepared, lex: lex)) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL occurrences-two-rows: first row refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c } => if c == first { "" } else { "CONTROL-FAIL occurrences-two-rows: first row wrote " + c + "\n" }
