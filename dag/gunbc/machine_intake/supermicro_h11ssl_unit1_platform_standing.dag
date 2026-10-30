@@ -5,7 +5,9 @@ import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import extdeps.network.mac { Eui48Address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import std.measure { Millimeter, millimeter }
 import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac }
 import gunbc.host.host_memory_qualification { CausalExperimentReceipt, ExperimentInconclusive, HypothesisRefuted }
 import gunbc.fleet.fleet_fan_wiring {
@@ -162,19 +164,58 @@ data supermicro_h11ssl_unit1_fan_headers: List<FanHeaderWiring> = [
   },
 ]
 
-// WHERE THE FANS SIT AND WHICH WAY THEY BLOW is a fact of this build that no reading here can supply:
-// rpm says a fan turns, not where it is or which face it pushes from. Owed by the operator.
-data supermicro_h11ssl_unit1_fan_orientation_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "For each of the three P12 Pro Reverse fans on FANB and the CPU fan on FAN3: its mounting position in the chassis (front, rear, side, GPU duct) and whether it pushes air into or out of the chassis, as the operator sees it.",
+// WHERE THE FANS SIT AND WHICH WAY THEY BLOW, which no reading here can supply (rpm says a fan turns, not
+// where or which way), so it is the operator's declaration, typed as one. The three P12 Pro Reverse fans
+// sit in the chassis's front fan wall, the three 120 mm positions behind the front panel in the listing
+// photo below, and "they all currently blow IN/out the back of the chassis" (operator 2026-10-30): in at the
+// front, out through the rear, across the card slots. The CPU fan is on the CPU cooler (FAN3).
+type ChassisAirflow = IntakeFrontExhaustRear | IntakeRearExhaustFront
+
+type ChassisFanPlacement {
+  header: NonEmptyStr
+  position: NonEmptyStr
+  airflow: ChassisAirflow
+  declared: NonEmptyStr
 }
 
-// ---- Chassis. The operator names it "RackChoice 3U rackmount Server Chassis Support Liquid Cooling
-// Compatibility up to Elevated 360mm Radiator Support SFX PSU/ATX/MicroATX/Mini-ITX MB". Listings under
-// that title disagree on bays, included fans and depth (they read as several SKUs), so no
-// extdeps.chassis.types ChassisCatalogRow is minted: its counts are not optional, and filling them would
-// be guessing one SKU's figures.
-data supermicro_h11ssl_unit1_chassis_named: NonEmptyStr = "RackChoice 3U rackmount server chassis (360 mm radiator, SFX/ATX PSU, ATX/MicroATX/Mini-ITX)"
+data supermicro_h11ssl_unit1_fan_placements: List<ChassisFanPlacement> = [
+  ChassisFanPlacement {
+    header: "FANB",
+    position: "front fan wall, three 120 mm positions behind the front panel",
+    airflow: IntakeFrontExhaustRear,
+    declared: "operator 2026-10-30: 'they all currently blow IN/out the back of the chassis'",
+  },
+]
+
+// ---- Chassis. Amazon ASIN B0CPTBMQVB, "RackChoice 3U rackmount Server Chassis Support Liquid Cooling
+// Compatibility up to Elevated 360mm Radiator Support SFX PSU/ATX/MicroATX/Mini-ITX MB" (operator,
+// 2026-10-30). The listing's photo states eight expansion slots and a card length of at most 320 mm with
+// fans only, 305 mm with an AIO, and shows three 120 mm fan positions in a front fan wall and one internal
+// drive cage. The bay counts and the included fans are not stated anywhere read, and
+// extdeps.chassis.types ChassisCatalogRow does not let them be left out, so no catalog row is minted until
+// they are read; the figures that are stated are carried here with the photo as their authority.
+data supermicro_h11ssl_unit1_chassis_named: NonEmptyStr = "RackChoice 3U rackmount server chassis, ASIN B0CPTBMQVB"
+
+data rackchoice_b0cptbmqvb_listing_photo: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "m.media-amazon.com/images/I/71-PiVZjCbL._AC_SL1500_.jpg" }
+}
+
+type ListingStatedChassisFigures {
+  expansion_slots: Nat
+  max_card_length_fans_only: Millimeter
+  max_card_length_with_aio: Millimeter
+  front_fan_positions: Nat
+  standing: CitedFigureStanding
+}
+
+data supermicro_h11ssl_unit1_chassis_figures: ListingStatedChassisFigures = ListingStatedChassisFigures {
+  expansion_slots: 8,
+  max_card_length_fans_only: millimeter(320),
+  max_card_length_with_aio: millimeter(305),
+  front_fan_positions: 3,
+  standing: CitedToAuthority { authority: rackchoice_b0cptbmqvb_listing_photo },
+}
 
 data supermicro_h11ssl_unit1_chassis_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "The exact RackChoice SKU (the listing's ASIN or the model on the chassis label), from which a ChassisCatalogRow in a new extdeps.chassis.rackchoice module can cite its bays, slots and included fans.",
+  read_obligation: "The 3.5-inch, 2.5-inch and 5.25-inch bay counts and the fans included with ASIN B0CPTBMQVB, from the listing's details table or the chassis itself, so a ChassisCatalogRow in a new extdeps.chassis.rackchoice module can carry them.",
 }

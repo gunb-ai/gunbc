@@ -14,6 +14,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing {
   SlotTrainedEveryRecordedBoot, SlotTrainsIntermittently, SlotDisabledEveryRecordedBoot, SlotTrainingUnrecorded,
   supermicro_h11ssl_slot_training_standing, supermicro_h11ssl_unit1_dimmh1_standing, supermicro_h11ssl_unit1_dimmh1_boots,
   h11_dimmh1_trained, h11_dimmh1_disabled, supermicro_h11ssl_unit1_fan_headers,
+  supermicro_h11ssl_unit1_fan_placements, IntakeFrontExhaustRear, IntakeRearExhaustFront,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -82,4 +83,11 @@ test fn witness_fan_headers_bind_the_declared_part_and_no_more() -> Bool {
     && header_selects(h: fanb, catalog: "arctic_p12_pro_reverse_catalog")
     && header_is_declared_not_inventory(h: fanb)
     && header_selects_nothing(h: fan3)
+}
+
+// EVERY DECLARED FAN PLACEMENT NAMES A HEADER THAT IS WIRED, and the chassis fans blow front to rear.
+test fn witness_fan_placements_join_wired_headers() -> Bool {
+  supermicro_h11ssl_unit1_fan_placements.length() == 1
+    && supermicro_h11ssl_unit1_fan_placements.all(p => supermicro_h11ssl_unit1_fan_headers.any(w => w.header == p.header))
+    && supermicro_h11ssl_unit1_fan_placements.all(p => match p.airflow { IntakeFrontExhaustRear => true  IntakeRearExhaustFront => false })
 }
