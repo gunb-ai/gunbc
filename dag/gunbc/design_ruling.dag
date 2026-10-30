@@ -47,6 +47,8 @@ data installed_cards_converge_first: DesignRuling = DesignRuling {
   decided: "2026-10-30",
   section: "6",
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 for the serving consolidation rows of gunbc.plans.serving_fleet_program (gunbc#15439): the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1, before any card still to be installed.",
+}
+
 data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
   decided: "2026-10-30",
