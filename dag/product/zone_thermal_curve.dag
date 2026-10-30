@@ -76,3 +76,22 @@ fn zone_duty_percent(d: ZoneDuty) -> Percent {
     ZoneFollowsCurve { hottest: _, duty: p } => p
   }
 }
+
+// A ZONE WITH A LOADED AND AN IDLE CURVE (the accelerator zone). Loaded applies while the last
+// loaded sample is younger than hold_secs, so the zone steps down only hold_secs after the last
+// loaded sample and there is no temperature hysteresis: a16-fan.sh sets busy_until = now + 60 on a loaded
+// sample and applies the loaded curve while now < busy_until. What counts as loaded (power or
+// utilisation thresholds) is a reading's meaning, supplied by the realization, not this policy.
+type ZoneLoadCurves {
+  loaded: ZoneCurve
+  idle: ZoneCurve
+  hold_secs: Int
+}
+
+// `secs_since_loaded` is absent when no loaded sample has been seen, which is idle.
+fn zone_curve_for_load(curves: ZoneLoadCurves, secs_since_loaded: Int?) -> ZoneCurve {
+  match secs_since_loaded {
+    Absent => curves.idle
+    Present { value: s } => if s < curves.hold_secs { curves.loaded } else { curves.idle }
+  }
+}

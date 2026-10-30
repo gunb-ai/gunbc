@@ -2,7 +2,8 @@ module test.claim.zone_thermal_curve_witness
 
 import std.types { Bool, Int, List }
 import std.measure { celsius, percent, percent_count }
-import product.zone_thermal_curve { ZoneCurve, zone_duty, zone_duty_percent }
+import std.optional { Absent, Present }
+import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, zone_curve_for_load, zone_duty, zone_duty_percent }
 
 // SUPPLIED: readings. EXECUTED: the real zone_duty fold. The curves are the two live h11 zone curves
 // (a16-fan.sh, read 2026-10-30): CPU zone 20% to 60 C, 100% at 85 C; GPU idle 20% to 75 C, 100% at 88 C.
@@ -42,4 +43,24 @@ test fn witness_hottest_of_set_drives_zone() -> Bool {
 // is 20+5*80/13 = 50 (30.77 truncated), which a rounding or ceil realization would answer 51.
 test fn witness_interior_truncates_like_the_live_script() -> Bool {
   duty_at(curve: cpu_curve(), temps: [70]) == 52 && duty_at(curve: gpu_idle_curve(), temps: [80]) == 50
+}
+
+// THE LIVE GPU ZONE, a16-fan.sh: loaded 25% to 70 C, idle 20% to 75 C, both 100 at 88 C, hold 60 s.
+fn gpu_curves() -> ZoneLoadCurves {
+  ZoneLoadCurves {
+    loaded: ZoneCurve { floor: percent(25), flat_until: celsius(70), full_at: celsius(88) }
+    idle: gpu_idle_curve()
+    hold_secs: 60
+  }
+}
+
+fn load_duty(since: Int?, t: Int) -> Int {
+  duty_at(curve: zone_curve_for_load(curves: gpu_curves(), secs_since_loaded: since), temps: [t])
+}
+
+// STEPS DOWN ONLY AFTER 60 s: at 72 C loaded answers 25+2*75/18 = 33, idle 20; 59 s is still loaded,
+// 60 s is idle (now < busy_until is strict), and no loaded sample is idle.
+test fn witness_loaded_steps_down_only_after_the_hold() -> Bool {
+  load_duty(since: Present { value: 0 }, t: 72) == 33 && load_duty(since: Present { value: 59 }, t: 72) == 33
+    && load_duty(since: Present { value: 60 }, t: 72) == 20 && load_duty(since: Absent, t: 72) == 20
 }
