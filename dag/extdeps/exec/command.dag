@@ -236,11 +236,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
+    // getent shadow <login>: the same read-only identity-database lookup as its sibling above, on a
+    // different database, admitted for the same reason -- it names a database the utility resolves itself and
+    // neither a path nor an account. Its caller is the boot medium reader probe, which reads whether the
+    // reader account's password field is ACTUALLY locked instead of inferring that from `useradd --system`.
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_shadow_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_links_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
@@ -287,6 +293,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_symbolic_link_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
+    // `test -r <path>`: the same utility, the same shape of argument, the opposite question of its -w
+    // sibling above -- READABLE rather than writable. Admitted for the same reason the sibling is: it names
+    // no privilege, no account and no destination, only a path and an operand POSIX defines.
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_readable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),

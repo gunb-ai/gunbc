@@ -29,7 +29,7 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
 import std.logic { Bool }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int, String }
 import std.algebra { trim, string_contains }
 import std.measure { second_count }
 
@@ -66,6 +66,19 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerProvisionMapClear,
   GpuContainerProvisionMapMappedFromRange,
   GpuContainerProvisionMapUnreadableRow,
+  GpuContainerProvisionMapNamespaceUnreadable,
+  GpuContainerProvisionNamespaceScope,
+  GpuContainerProvisionNamespaceInitial,
+  GpuContainerProvisionNamespaceChild,
+  GpuContainerProvisionNamespaceUnreadable,
+  GpuContainerProvisionNamespaceLinkRead,
+  GpuContainerProvisionNamespaceLinkUnreadable,
+  GpuContainerProvisionNamespaceBatch,
+  GpuContainerProvisionNamespaceBatchAligned,
+  GpuContainerProvisionNamespaceBatchUnreadable,
+  gpu_container_provision_namespace_scope,
+  gpu_container_provision_namespace_scan_pid_limit,
+  gpu_container_provision_namespace_batch_reading,
   gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
   gpu_container_provision_subordinate_lock_wait,
   gpu_container_provision_subordinate_lock_conflict_exit_code,
@@ -1119,47 +1132,151 @@ test fn the_subordinate_write_carries_the_render_and_the_bytes_it_was_made_again
 // namespace mapped out of the range being moved". These rows are /proc/<pid>/uid_map as the kernel writes
 // them -- right-aligned columns, which is why the reader tokenizes instead of splitting on one space.
 
-test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     100000      65536", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => true
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
+// LITERAL NAMESPACE LINKS, as readlink(1) prints them. The host's own namespace is the reference every
+// other link is compared against; the child is a different inode.
+fn host_user_namespace() -> String { "user:[4026531837]" }
+
+fn child_user_namespace() -> String { "user:[4026532871]" }
+
+fn child_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: child_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn initial_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: host_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn map_scan_verdict(scope: GpuContainerProvisionNamespaceScope, text: String) -> String {
+  match gpu_container_provision_map_scan(scope: scope, text: text, first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => "clear"
+    GpuContainerProvisionMapMappedFromRange { row: _ } => "mapped"
+    GpuContainerProvisionMapUnreadableRow { row: _ } => "unreadable-row"
+    GpuContainerProvisionMapNamespaceUnreadable { cause: _ } => "unreadable-namespace"
   }
+}
+
+test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000      65536") == "mapped"
 }
 
 // ADJACENCY IS NOT OVERLAP: a namespace on the range ABOVE (165536+) shares no id with the range being
 // moved (100000..165535). A check that refused this would refuse every real host, because /etc/subuid on
 // these machines stacks its rows contiguously.
 test fn an_adjacent_namespace_range_is_clear() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     165536      65536", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => true
-    GpuContainerProvisionMapMappedFromRange { row: _ } => false
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
-  }
+  map_scan_verdict(scope: child_scope(), text: "         0     165536      65536") == "clear"
 }
 
 // EVERY ROW IS READ, not the first. The overlapping mapping is the third line here: a scan that stopped at
 // the first clear row -- or read only line 1, where the root's own mapping always sits -- would certify a
 // container that is live on the range being moved.
 test fn every_row_of_a_map_is_read_and_not_just_the_first() -> Bool {
-  match gpu_container_provision_map_scan(
-    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536",
-    first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => true
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
-  }
+  map_scan_verdict(
+    scope: child_scope(),
+    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536") == "mapped"
 }
 
 // A ROW THIS MODEL CANNOT READ IS A REFUSAL, NOT A SKIP. /proc/<pid>/uid_map is written by the kernel; a
 // row whose columns are not integers is a kernel this model does not describe, and "I could not read it"
 // must never be reported as "nothing is mapped from that range".
 test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     100000    notanumber", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => false
-    GpuContainerProvisionMapUnreadableRow { row: _ } => true
+  map_scan_verdict(scope: child_scope(), text: "         0     100000    notanumber") == "unreadable-row"
+}
+
+// THE srv3 CASE, VERBATIM (fleet-converge run 40843061056): ubuntu pid 4116, a systemd --user in the host's
+// own user namespace, whose uid_map is the initial namespace's identity row. Its ns/user link equals
+// /proc/1/ns/user, so it maps nothing from any subordinate range.
+test fn a_process_in_the_initial_user_namespace_is_clear_whatever_its_identity_row_overlaps() -> Bool {
+  map_scan_verdict(scope: initial_scope(), text: "         0          0 4294967295") == "clear"
+}
+
+// THE SAME ROW IN A CHILD NAMESPACE IS NOT CLEAR: the discriminator is namespace identity, not the shape of
+// the row. A child namespace whose outside column covers the whole parent id space reaches the range.
+test fn the_identity_row_in_a_child_namespace_still_overlaps() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0          0 4294967295") == "mapped"
+}
+
+// A CHILD NAMESPACE WHOSE OUTSIDE RANGE IS DISJOINT FROM THE RANGE BEING MOVED is clear.
+test fn a_child_namespace_with_a_disjoint_outside_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0       1000          1") == "clear"
+}
+
+// AN UNREADABLE NAMESPACE LINK REFUSES: not knowing which namespace a process is in is not evidence that it
+// maps nothing -- even when its rows would have been clear.
+test fn an_unreadable_namespace_link_is_refused_rather_than_read_as_the_host() -> Bool {
+  map_scan_verdict(
+    scope: gpu_container_provision_namespace_scope(
+      link: GpuContainerProvisionNamespaceLinkUnreadable { path: "/proc/4116/ns/user", cause: "exit 1 Permission denied" },
+      init_namespace: host_user_namespace()),
+    text: "         0          0 4294967295") == "unreadable-namespace"
+}
+
+// THE PID BOUND IS DERIVED, NOT TRANSCRIBED: half of execve(2)'s per-argument ceiling (32 pages of 4096 =
+// 131072 bytes) over the 22-byte word of the largest admissible pid (`/proc/4194304/ns/user` plus a space),
+// which is 65536 / 22 = 2978. It must admit the live session host that refused at 556 processes (run
+// 40837033922) and must not exceed what one argument can carry.
+test fn the_pid_bound_is_half_the_argument_ceiling_over_the_longest_word_and_admits_the_srv1_host() -> Bool {
+  gpu_container_provision_namespace_scan_pid_limit == 2978 && gpu_container_provision_namespace_scan_pid_limit >= 556
+}
+
+// THE BATCH READING, against literal readlink -v output. Gone pids are named on stderr and left out; the
+// stdout lines pair in order with the pids that remain.
+fn batch_namespaces_of(pids: List<Int>, exit_code: Int, stdout: String, stderr: String) -> String {
+  match gpu_container_provision_namespace_batch_reading(
+    reference: host_user_namespace(), pids: pids, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns, gone: g } =>
+      join(["aligned gone=", to_string(g), " ", join(map(ns, n => join([to_string(n.pid), "=", n.target], "")), ",")], "")
+    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => "unreadable"
   }
+}
+
+test fn a_complete_batch_report_pairs_every_pid_with_its_namespace() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 0,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n", stderr: "")
+    == "aligned gone=0 10=user:[4026531837],20=user:[4026532871]"
+}
+
+// A VANISHED PID is named on stderr, left out, and the lines pair with the pids that REMAIN -- even when a
+// child namespace is among them, so the child is attributed to its own pid and not guessed.
+test fn a_vanished_pid_is_named_and_the_rest_stay_attributed() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20, 30], exit_code: 1,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n",
+    stderr: "readlink: /proc/20/ns/user: No such file or directory\n")
+    == "aligned gone=1 10=user:[4026531837],30=user:[4026532871]"
+}
+
+// A LIVE PID WHOSE LINK COULD NOT BE READ IS NOT A VANISHED PID: a permission denial names the pid but not
+// as No-such-file, so the scan refuses rather than reading the pid as host-namespace.
+test fn a_live_pid_whose_link_is_denied_is_refused_not_counted_as_gone() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1,
+    stdout: "user:[4026531837]\n",
+    stderr: "readlink: /proc/20/ns/user: Permission denied\n") == "unreadable"
+}
+
+// A MISSING LINE WITH NOTHING NAMED ON STDERR cannot be attributed to anything: refused.
+test fn a_missing_line_that_stderr_does_not_name_is_refused() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1, stdout: "user:[4026531837]\n", stderr: "") == "unreadable"
+}
+
+// A pid number that is a PREFIX of another's must not be mistaken for it: pid 2 vanished, pid 20 did not.
+test fn a_vanished_pid_is_matched_by_its_whole_path() -> Bool {
+  batch_namespaces_of(
+    pids: [2, 20], exit_code: 1,
+    stdout: "user:[4026532871]\n",
+    stderr: "readlink: /proc/2/ns/user: No such file or directory\n")
+    == "aligned gone=1 20=user:[4026532871]"
+}
+
+// NOTHING BACK for pids still present is a refusal, not a clear.
+test fn an_empty_batch_report_is_refused() -> Bool {
+  batch_namespaces_of(pids: [10], exit_code: 0, stdout: "", stderr: "") == "unreadable"
 }
 
 // THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order

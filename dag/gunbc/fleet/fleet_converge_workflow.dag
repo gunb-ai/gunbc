@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.host.export_host_reader_converge { export_host_reader_receipt_path }
+import gunbc.host.boot_medium_reader_probe { boot_medium_reader_probe_receipt_path }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject, fleet_keypair_mint_subject_rows }
 import gunbc.fleet.flex_pass_run { flex_pass_receipt_path }
 import product.fabric.flex_vast_template_control { flex_vast_template_receipt_path }
@@ -57,7 +58,7 @@ import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
-import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name }
+import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
@@ -382,6 +383,10 @@ type FleetConvergeWorkflowMode
   | R2CacheObjectReadMint
   | HetznerCloudServerRead
   | ExportHostReaderConverge
+  // THE LIVE READER PROBE (gunbc.host.boot_medium_reader_probe, B2c): the READ of the reader account's
+  // privileges through the account's own forced-command credential, with the two open facts (locked --system
+  // login under UsePAM, /srv/bmc readability) read for real and the forced-command RED checked.
+  | BootMediumReaderProbe
   | FleetKeypairMint
   | FlexPass
   | FlexTemplateEnsure
@@ -471,6 +476,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2CacheObjectReadMint => "r2_cache_object_read_mint"
     HetznerCloudServerRead => "hetzner_cloud_server_read"
     ExportHostReaderConverge => "export_host_reader_converge"
+    BootMediumReaderProbe => "boot_medium_reader_probe"
     FleetKeypairMint => "fleet_keypair_mint"
     FlexPass => "flex_pass"
     FlexTemplateEnsure => "flex_template_ensure"
@@ -527,7 +533,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -588,6 +594,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     R2CacheObjectReadMint => SixteenBinaryPack
     HetznerCloudServerRead => SixteenBinaryPack
     ExportHostReaderConverge => SixteenBinaryPack
+    BootMediumReaderProbe => SixteenBinaryPack
     FleetKeypairMint => SixteenBinaryPack
     FlexPass => SixteenBinaryPack
     FlexTemplateEnsure => SixteenBinaryPack
@@ -713,6 +720,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2CacheObjectReadMint => none
     HetznerCloudServerRead => none
     ExportHostReaderConverge => none
+    BootMediumReaderProbe => none
     FleetKeypairMint => none
     FlexPass => none
     FlexTemplateEnsure => none
@@ -867,6 +875,11 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2CacheObjectReadMint => FleetSshKeyNotConsumed
     HetznerCloudServerRead => FleetSshKeyNotConsumed
     ExportHostReaderConverge => FleetSshKeyConsumed
+    // THE PROBE CONSUMES NO FLEET SSH KEY. Its agent holds the READER key, loaded by the agent stage
+    // from the reader secret the accessor row grants; the fleet automation key stays in its own custody,
+    // which is the property PR-C's BMC-only branch cell keeps asserting -- an approval-free cell that can
+    // name the fleet SSH key refuses, and this mode never needs to.
+    BootMediumReaderProbe => FleetSshKeyNotConsumed
     FleetKeypairMint => FleetSshKeyNotConsumed
     FlexPass => FleetSshKeyNotConsumed
     FlexTemplateEnsure => FleetSshKeyNotConsumed
@@ -1790,6 +1803,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2CacheObjectReadMint => ExecutorDomain
     HetznerCloudServerRead => ExecutorDomain
     ExportHostReaderConverge => SubjectDomain { group: concat(fleet_host_mutation_group_prefix, operator_host_srv2 as String) }
+    BootMediumReaderProbe => SubjectDomain { group: concat(fleet_host_mutation_group_prefix, operator_host_srv2 as String) }
     FleetKeypairMint => ExecutorDomain
     FlexPass => SubjectDomain { group: fleet_converge_flex_vast_account_group }
     FlexTemplateEnsure => SubjectDomain { group: fleet_converge_flex_vast_account_group }
@@ -2299,7 +2313,7 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_runner_host_file_converge_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
 }
 
@@ -2324,7 +2338,7 @@ fn fleet_converge_runner_host_withdraw_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_runner_host_withdraw_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
 }
 
@@ -2418,7 +2432,7 @@ fn fleet_converge_runner_host_cap_release_step() -> Step {
     working_directory: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
+    timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
   }
 }
 
@@ -3037,9 +3051,21 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
 // (gunbc.ci.ci_spec gunbc_ci_sm_max_time; the prelude's other lines are local file writes) and the probe's
 // declared bound; for the always() release, the owned release alone. The flat aux budget
 // is what killed a probe's first wet run while it was still typechecking.
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
-  let secs = fold(phases, gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, (acc, p) => acc + (second_count(s: p) as Int))
+// A GUNBC RUN STEP'S TIMEOUT, ONE RULE: its startup (the resolve of its entry's closure) plus the phases it
+// runs after it, rounded up to whole minutes. The callers differ only in which startup budget they name.
+fn fleet_converge_step_timeout_minutes(startup_seconds: Int, phases: List<Second>) -> Int {
+  let secs = fold(phases, startup_seconds, (acc, p) => acc + (second_count(s: p) as Int))
   (secs + 59) / 60
+}
+
+// A RUNNER-HOST STEP'S TIMEOUT: its closure's resolve budget (gunbc.runner.runner_host_cap_bracket
+// runner_host_closure_resolve_budget, not the generic resolve figure) plus the phases it runs after it.
+fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int {
+  fleet_converge_step_timeout_minutes(startup_seconds: second_count(s: runner_host_closure_resolve_budget) as Int, phases: phases)
+}
+
+fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
+  fleet_converge_step_timeout_minutes(startup_seconds: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, phases: phases)
 }
 
 // THE REAL KVM OBSERVER AGAINST THE REAL BMC, NO BOOT (gunbc.machine_intake.mtcollins1_kvm_observer_observe):
@@ -5271,6 +5297,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_hetzner_cloud_server_read_receipt_upload_step(),
         fleet_converge_export_host_reader_converge_step(),
         fleet_converge_export_host_reader_converge_receipt_upload_step(),
+        fleet_converge_boot_medium_reader_probe_step(),
+        fleet_converge_boot_medium_reader_probe_receipt_upload_step(),
         fleet_converge_flex_pass_step(),
         fleet_converge_flex_pass_receipt_upload_step(),
         fleet_converge_flex_template_ensure_step(),
@@ -5584,6 +5612,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2CacheObjectReadMint => fleet_converge_shared_job_id
     HetznerCloudServerRead => fleet_converge_shared_job_id
     ExportHostReaderConverge => fleet_converge_shared_job_id
+    BootMediumReaderProbe => fleet_converge_shared_job_id
     FleetKeypairMint => fleet_converge_fleet_keypair_mint_job_id
     FlexPass => fleet_converge_shared_job_id
     FlexTemplateEnsure => fleet_converge_shared_job_id
@@ -6118,6 +6147,46 @@ fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
 }
 
 data fleet_converge_export_host_reader_converge_step_if: String = fleet_converge_mode_step_if(mode: ExportHostReaderConverge)
+
+// THE LIVE READER PROBE (gunbc.host.boot_medium_reader_probe). The step runs the probe's wet entry; the run
+// itself does the agent stage (prepare_fleet_ssh_agent_context loads the READER key the accessor row grants,
+// prepare_ssh_agent_context pins it by fingerprint before any leg), walks the seven stages, and writes the
+// receipt the step then uploads -- including on refusal, because the refusal's stage and cause are the
+// finding. No dispatch input selects the target: the probe's subject is operator_host_srv2, fixed by the
+// lane, and its verification is the receipt the artifact carries.
+data fleet_converge_boot_medium_reader_probe_step_if: String = fleet_converge_mode_step_if(mode: BootMediumReaderProbe)
+
+fn fleet_converge_boot_medium_reader_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "Boot medium reader probe (srv2): reader login, forced-command RED, /srv/bmc read, locked-account and UsePAM facts" },
+    id: Present { value: "boot_medium_reader_probe" },
+    run: gunbc_ci_boot_medium_reader_probe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_boot_medium_reader_probe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_boot_medium_reader_probe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload boot medium reader probe receipt" },
+    id: Present { value: "boot_medium_reader_probe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "boot-medium-reader-probe-receipt")),
+      kv(key: "path", value: yaml_string(s: boot_medium_reader_probe_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_boot_medium_reader_probe_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 // THE BMC EXPORT HOST'S READER ROWS (gunbc.host.export_host_reader_converge): the export host is the
 // TARGET, reached over fleet SSH as its administrator from whichever runner executes; it is never the

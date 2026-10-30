@@ -9,6 +9,7 @@ import gunbc.machine_intake.ethernet {
   ConnectorIdentityUnobserved,
   DistinctConnectors,
   FunctionIdentityUnobserved,
+  FunctionObserved,
   FunctionUnobserved,
   FunctionsOnDistinctConnectors,
   EthernetFunctionBinding,
@@ -74,8 +75,8 @@ data other_unit_same_labels: PhysicalEthernetPort = PhysicalEthernetPort {
 
 test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
   match ethernet_port_may_carry_multiple_functions(
-    a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
-    b: EthernetFunctionBinding { port: jade_upper_left, function: BmcNcsi },
+    a: EthernetFunctionBinding { port: jade_upper_left, function: FunctionObserved { function: HostData } },
+    b: EthernetFunctionBinding { port: jade_upper_left, function: FunctionObserved { function: BmcNcsi } },
   ) {
     ObservedMultipleFunctions => true
     ObservedSingleFunction => false
@@ -83,8 +84,8 @@ test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
     ConnectorFunctionUnobserved { discriminator: _ } => false
   }
     && match ethernet_port_may_carry_multiple_functions(
-      a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
-      b: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
+      a: EthernetFunctionBinding { port: jade_upper_left, function: FunctionObserved { function: HostData } },
+      b: EthernetFunctionBinding { port: jade_upper_left, function: FunctionObserved { function: HostData } },
     ) {
       ObservedSingleFunction => true
       ObservedMultipleFunctions => false
@@ -96,7 +97,7 @@ test fn w_one_port_can_bind_host_data_and_bmc_ncsi() -> Bool {
 
 test fn w_unobserved_function_is_not_a_second_function() -> Bool {
   match ethernet_function_identity(
-    a: HostData,
+    a: FunctionObserved { function: HostData },
     b: FunctionUnobserved { discriminator: "fixture: function unobserved" },
   ) {
     FunctionIdentityUnobserved { discriminator: _ } => true
@@ -104,7 +105,7 @@ test fn w_unobserved_function_is_not_a_second_function() -> Bool {
     ObservedDistinctFunctions => false
   }
     && match ethernet_port_may_carry_multiple_functions(
-      a: EthernetFunctionBinding { port: jade_upper_left, function: HostData },
+      a: EthernetFunctionBinding { port: jade_upper_left, function: FunctionObserved { function: HostData } },
       b: EthernetFunctionBinding {
         port: jade_upper_left,
         function: FunctionUnobserved { discriminator: "fixture: function unobserved" },
@@ -192,8 +193,8 @@ test fn w_matching_unobserved_unit_prose_is_not_unit_identity() -> Bool {
       DistinctConnectors => false
     }
     && match ethernet_port_may_carry_multiple_functions(
-      a: EthernetFunctionBinding { port: unobserved_bmc_a, function: HostData },
-      b: EthernetFunctionBinding { port: unobserved_bmc_same_labels, function: BmcNcsi },
+      a: EthernetFunctionBinding { port: unobserved_bmc_a, function: FunctionObserved { function: HostData } },
+      b: EthernetFunctionBinding { port: unobserved_bmc_same_labels, function: FunctionObserved { function: BmcNcsi } },
     ) {
       ConnectorFunctionUnobserved { discriminator: _ } => true
       ObservedMultipleFunctions => false
