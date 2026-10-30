@@ -21,7 +21,7 @@ type ServingFleetRowId
   | SfpD1 | SfpD2 | SfpD3 | SfpD4 | SfpD5 | SfpD6 | SfpD7 | SfpD8
   | SfpE0 | SfpE1 | SfpE2 | SfpE3 | SfpE4
   | SfpF1
-  | SfpG1 | SfpG2 | SfpG3 | SfpG4 | SfpG5 | SfpG6 | SfpG7
+  | SfpG1 | SfpG2 | SfpG3 | SfpG4 | SfpG5 | SfpG6 | SfpG7 | SfpG8
 
 type ServingFleetSection = SfpSupply | SfpRouter | SfpMeasurement | SfpPolicy
 
@@ -77,6 +77,7 @@ fn sfp_row_label(id: ServingFleetRowId) -> String {
     SfpG5 => "G5"
     SfpG6 => "G6"
     SfpG7 => "G7"
+    SfpG8 => "G8"
   }
 }
 
@@ -294,7 +295,7 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   ServingFleetRow {
     id: SfpG1, section: SfpSupply, title: "One serving profile, not one launch per host",
     owner: SfpOwnedBy { symbol: "product.fabric.serving_recipe::ServingRecipe" },
-    summary: "How a checkpoint is served on hardware is written three times today: the srv1 launch in `gunbc.serving.srv1_serving_launch::srv1_serving_launch`, the srv3 Strata cell, and the retired Spark arm, whose checkpoint, runtime and topology factoring in `gunbc.spark.serving_arm::ServingCheckpoint`, `gunbc.spark.serving_arm::ServingRuntime` and `gunbc.spark.serving_arm::ServingTopology` is the family to generalise rather than re-invent. The consolidated profile is a value with five parts: the checkpoint as an explicit input, never hard-coded; a placement of observed devices with their grouping; a per-device usable-memory budget, proved the way `gunbc.spark.arm_memory_fit::ArmMemoryFitPhase` proves it, over usable rather than nominal memory and never summed across devices; the user-visible endpoint, with any hardware-forced context cap stated; and per-axis expectations typed estimated or measured through `extdeps.external_authority::CitedFigureStanding`. It extends the recipe home, so no parallel authority is created.",
+    summary: "How a checkpoint is served on hardware is written three times today: the srv1 launch in `gunbc.serving.srv1_serving_launch::srv1_serving_launch`, the srv3 Strata cell, and the retired Spark arm, whose checkpoint, runtime and topology factoring in `gunbc.spark.serving_arm::ServingCheckpoint`, `gunbc.spark.serving_arm::ServingRuntime` and `gunbc.spark.serving_arm::ServingTopology` is the family to generalise rather than re-invent. The consolidated profile is a value with five parts: the checkpoint as an explicit input, never hard-coded; a placement of observed devices with their grouping; a per-device usable-memory budget, proved the way `gunbc.spark.arm_memory_fit::ArmMemoryFitPhase` proves it, over usable rather than nominal memory and never summed across devices; the user-visible endpoint, with any hardware-forced context cap stated; and per-axis expectations typed estimated or measured through `extdeps.external_authority::CitedFigureStanding`. It extends the recipe home, so no parallel authority is created. Operator ruling of 2026-10-30, D3: one context cap for every engine, aligned with the daily agent harness, which launches against the flash-next alias with a 229,376-token context window, the minimum across engines today; the profile holds that cap once and every adapter renders it.",
     standing: SfpUnstarted, standing_note: "", pr: "unstarted",
     done: "the profile type lives in the recipe home, the srv1 launch is expressed as one profile value, and a witness shows that two devices of equal nominal memory but different usable memory admit different profiles.",
     depends_on: [], related: [SfpB1, SfpC1]
@@ -302,7 +303,7 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   ServingFleetRow {
     id: SfpG2, section: SfpSupply, title: "Engine adapters own what is engine-specific",
     owner: SfpUnowned { obligation: "no engine-adapter declaration exists; it is a modeling obligation inside the profile home of G1, with vLLM as the first adapter and the second engine unselected." },
-    summary: "The common contract is engine-neutral: checkpoint, placement and group, memory and capacity intent, endpoint, and qualification. Each adapter owns its build pin, its capability check against the kernel arms the checkpoint needs, launch-flag construction and readback, and its own KV, memory and cache sizing. Switching engines preserves the deployment intent and recomputes everything engine-dependent; identical flags and transferable runtime KV are never assumed. vLLM is the first adapter. A second engine is a later selection, not part of this row.",
+    summary: "The common contract is engine-neutral: checkpoint, placement and group, memory and capacity intent, endpoint, and qualification. Each adapter owns its build pin, its capability check against the kernel arms the checkpoint needs, launch-flag construction and readback, and its own KV, memory and cache sizing. Switching engines preserves the deployment intent and recomputes everything engine-dependent; identical flags and transferable runtime KV are never assumed. vLLM is the first adapter. A second engine is a later selection, not part of this row. Operator ruling of 2026-10-30, D1, is still open: whether AMD cards are in the first contract has not been decided, and the recorded advice is to defer it unless those cards go into an x86-64 host, since the AMD GPU userspace is x86-64 only upstream.",
     standing: SfpUnstarted, standing_note: "", pr: "unstarted",
     done: "the vLLM adapter builds the srv1 launch from a profile, and a witness shows an engine switch recomputing memory sizing rather than copying it.",
     depends_on: [SfpG1], related: [SfpC2]
@@ -314,6 +315,14 @@ data serving_fleet_rows: List<ServingFleetRow> = [
     standing: SfpUnstarted, standing_note: "", pr: "unstarted",
     done: "the srv1 launch renders byte-identically from its profile and the srv1-only refusal is gone, with no live redeploy needed.",
     depends_on: [SfpG1, SfpG2], related: [SfpB1]
+  },
+  ServingFleetRow {
+    id: SfpG8, section: SfpSupply, title: "One context cap rendered into both engines",
+    owner: SfpUnowned { obligation: "the shared cap is held as the requirement of the profile in G1; no declaration carries it yet." },
+    summary: "Operator ruling of 2026-10-30, D3: one context cap for every engine, the 229,376 tokens the daily agent harness uses. srv1 serves a 262,144-token window today with no recorded reason. This is a derived step that follows G3 rather than a part of it, so that G3 keeps its byte-identical control and the cap change is reviewed as its own visible difference: only the maximum model length moves.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "both engines render the same cap from the one requirement, and the srv1 launch differs from its G3 rendering only in its maximum model length.",
+    depends_on: [SfpG3], related: [SfpG1]
   },
   ServingFleetRow {
     id: SfpG4, section: SfpPolicy, title: "A profile is selected for an observed card",
@@ -382,8 +391,8 @@ fn serving_fleet_program_body() -> List<MarkdownBlock> {
       ", with ", sfp_row_ref(id: SfpA2), " needing only its own Plan pass. ", sfp_row_ref(id: SfpE4),
       " comes before any selection trusts a throughput, and ", sfp_row_ref(id: SfpF1), " after it. ",
       sfp_refs_text(ids: [SfpB1, SfpE2]),
-      " join through the same router once the card powers on. The profile consolidation opens at ", sfp_refs_text(ids: [SfpG1, SfpG5]),
-      ", moves srv1 onto it through ", sfp_refs_text(ids: [SfpG2, SfpG3]), ", selects by observed card in ", sfp_row_ref(id: SfpG4),
+      " join through the same router once the card powers on. Operator ruling of 2026-10-30, D2: the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1. The profile consolidation opens at ", sfp_refs_text(ids: [SfpG1, SfpG5]),
+      ", moves srv1 onto it through ", sfp_refs_text(ids: [SfpG2, SfpG3, SfpG8]), ", selects by observed card in ", sfp_row_ref(id: SfpG4),
       ", and reaches the first new hardware in ", sfp_row_ref(id: SfpG6), " with the acceptance of ", sfp_row_ref(id: SfpG7), ". Each row is updated by its own PR, and this plan is retired when every row is closed or has moved to its owner's declarations."
     ], "")),
 
