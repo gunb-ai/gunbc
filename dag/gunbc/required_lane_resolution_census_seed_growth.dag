@@ -6,8 +6,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that realizes the three compiler queries the
 // required-lane resolution census (gunbc.required_lane_resolution_census_live, `gunbc test
-// //gunbc/instruments:required-lane-resolution-census`) consumes. Same shape and owner as
-// gunbc.primitive_egress_census_seed_growth, whose builtins are this change's precedent.
+// //gunbc/instruments:required-lane-resolution-census`) consumes. Same shape and owner as the
+// retired primitive-egress census growth row.
 //
 // PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The census asks, for every module the
 // source-root ingestion admits, whether a required lane hands its source to compile_to_resolved.

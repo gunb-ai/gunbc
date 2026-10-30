@@ -23,9 +23,8 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 //
 // THE GAP IS TWO FACTS. (1) the capability: a claim run by the seed evaluates no native code.
 // gunbc.documentary_refs waits on the same capability. (2) DeclarationIdentity carries qualified_name
-// and name only; the host identity also carries rel_path and kind, which gunbc.primitive_egress.qualification
-// (kind) and v1_complexity_capability_census_resolution (rel_path) read, so those two consumers need
-// the identity widened or the fact joined from another authority before they can migrate.
+// and name only; the host identity also carries rel_path, which v1_complexity_capability_census_resolution reads, so
+// that consumer needs the identity widened or the fact joined from another authority before they can migrate.
 data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall = GuaranteeStall {
   subject: "a DeclarationRef citation resolves through ONE authority, the native v2.std.decl_ref_resolution over a ResolutionContext, and v2.std.decl_ref_resolution_host does not exist",
   current: Mitigatable,
@@ -38,8 +37,6 @@ data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall
       "dag/gunbc/doc_graph_roots",
       "dag/gunbc/generated_artifact_producer_coverage",
       "dag/gunbc/namespace_cut/namespace_cut_subject_observation",
-      "dag/gunbc/primitive_egress/census",
-      "dag/gunbc/primitive_egress/qualification (reads kind)",
       "dag/test/claim/decl_ref_keyed_read_agreement_witness",
       "dag/test/claim/documentary_refs_witness",
       "dag/test/claim/generated_artifact_producer_coverage_witness",

@@ -730,8 +730,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "project_roadmap_acceptance_event_history_from_authority_text_host",
     "toolchain_home_interference_probe",
     "type_ref_hit_ne_bind_measure_active",
-    "builtin_function_registry_keys",
-    "compile_dag_primitive_call_edges",
     "compile_dag_operation_requires",
     "source_root_ingest_module_identities",
     "required_floor_nominal_subject_module_identities",
