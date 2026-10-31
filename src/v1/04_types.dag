@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -1848,6 +1848,16 @@ fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: 
   }
 }
 
+// A type variable is instantiation-blind at this rung: an operand that is one keeps the operand-algebra reading
+// (gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall names the climb); any other operand with
+// no carrier beside one that has a carrier is refused, never typed from the operand that happens to be on the left.
+fn operand_is_type_variable(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: env) {
+    TypeReferenceIsTypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 // The one reading of the carrier an arithmetic operator lands in, from the operands' DECLARATIONS: a
 // candidate is an operand's carrier or one an implicit-safe injection (conversion_plan_rows InjectionPhase)
 // reaches from it, kept when its algebra profile defines the field. Absent means an operand names no resolved
@@ -1855,7 +1865,16 @@ fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: 
 // algebra row are ArithmeticNoCarrier (refused), never the left operand's typing; the ambiguity arm is refused by the caller.
 fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
   match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
-    Absent => none
+    Absent =>
+      match right_type {
+        Absent => none
+        Present { value: rt } =>
+          match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
+            Absent => none
+            Present { value: r } =>
+              if carrier_in_algebra_table(carrier: r) && !operand_is_type_variable(n: left_type, source_indices: source_indices, env: env) { Present { value: ArithmeticNoCarrier } } else { none }
+          }
+      }
     Present { value: left } =>
       let rows = conversion_plan_rows
       let right = match right_type {
@@ -1869,7 +1888,8 @@ fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: N
       let right_outside = match right { Absent => false  Present { value: r } => !carrier_in_algebra_table(carrier: r) }
       let pair_differs = match right { Absent => false  Present { value: r } => !declaration_ref_eq(a: left, b: r) }
       let one_outside = match right { Absent => false  Present { value: r } => right_outside || !carrier_in_algebra_table(carrier: left) }
-      if pair_differs && one_outside { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_in_algebra_table(carrier: left) { none } else {
+      let right_blind = match right_type { Absent => false  Present { value: rt } => operand_is_type_variable(n: rt, source_indices: source_indices, env: env) }
+      if (right_missing && carrier_in_algebra_table(carrier: left) && !right_blind) || (pair_differs && one_outside) { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_in_algebra_table(carrier: left) { none } else {
         let named = match right { Absent => [left]  Present { value: r } => [left, r] }
         let candidates = concat(named, named |> flat_map(d => injection_targets(rows: rows, from: d, preserved: requirement.preserved)))
         let definers = candidates |> filter(d => carrier_defines_field(carrier: d, field: requirement.field))
