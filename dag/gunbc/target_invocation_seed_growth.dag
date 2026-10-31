@@ -454,26 +454,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.behavioral_receipt_host",
-      decl_name: "BehavioralHostTermination",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.behavioral_receipt_host",
-      decl_name: "BehavioralHostOutcome",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.behavioral_receipt_host",
-      decl_name: "run_census",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.behavioral_receipt_host",
-      decl_name: "run_selftest",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
       module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "CgroupMemoryRead",
       field: WholeDeclaration
@@ -501,11 +481,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "read_cgroup_memory",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.behavioral_receipt_host",
-      decl_name: "run_plan",
       field: WholeDeclaration
     },
     DeclarationRef {

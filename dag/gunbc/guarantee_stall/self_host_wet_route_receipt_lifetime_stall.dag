@@ -16,9 +16,8 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // serial route happens to fit is not a repair: the age axis bounds unmodeled executor and toolchain
 // drift, so weakening it would turn an expired external observation into current evidence.
 //
-// THE CENSUSES ARE ENTRY POINTS, NOT MEMBERS. The complete derivability census is produced by
-// `gunbc test //gunbc/instruments:behavioral-receipt-census`; it supplies context for the possible
-// self-host surface but is not this row's denominator. The affected population below is exactly
+// THE CENSUSES ARE NOT MEMBERS. The derivability census that once supplied context for the
+// possible self-host surface has been removed and was never this row's denominator. The affected population below is exactly
 // the route_gap_held identity set emitted by the activation-revision run of
 // `claim_executor --required-floor --source-root dag --source-root src/v2`. It is enumerated rather
 // than replaced by either producer's name. A later activation must re-derive the set and update

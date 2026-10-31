@@ -38,9 +38,6 @@ type TargetProducer
   = SelfHostProducer
   | RequiredFloorProducer
   | BazelProducer
-  | BehavioralReceiptPlanProducer
-  | BehavioralReceiptCensusProducer
-  | BehavioralReceiptSelftestProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
@@ -80,9 +77,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     SelfHostProducer {} => optional_absent()
     RequiredFloorProducer {} => optional_absent()
     BazelProducer {} => optional_absent()
-    BehavioralReceiptPlanProducer {} => optional_absent()
-    BehavioralReceiptCensusProducer {} => optional_absent()
-    BehavioralReceiptSelftestProducer {} => optional_absent()
     HeadsReadingDifferentialProducer {} => optional_absent()
     CompileCleanDiagnosticCensusProducer {} => optional_absent()
     V2NativeCliProducer {} => optional_absent()
@@ -273,65 +267,8 @@ fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBind
 }
 
 // PRODUCER OBSERVATIONS KEEP COMPLETION APART FROM WHAT WAS OBSERVED. None of these types decides
-// whether an observation blocks an aggregate. The four instruments are deliberately outside
+// whether an observation blocks an aggregate. These instruments are deliberately outside
 // //:required, so that policy has no honest row to add here.
-type BehavioralReceiptPlanObservation
-  = BehavioralReceiptAgreed
-  | BehavioralReceiptDiverged
-
-type BehavioralReceiptPlanRefusalCause
-  = ReceiptPlanMergeBaseUnresolvable
-  | ReceiptPlanChangedAuthoritySetUnreadable
-  | ReceiptPlanModuleCorpusUnreadable
-  | ReceiptPlanExecutionRefused
-
-type BehavioralReceiptPlanStanding
-  = BehavioralReceiptPlanCompleted { observation: BehavioralReceiptPlanObservation }
-  | BehavioralReceiptPlanNoSubject { head: String }
-  | BehavioralReceiptPlanRefused { cause: BehavioralReceiptPlanRefusalCause }
-
-type BehavioralReceiptCensusObservation {
-  modules_planned: Int
-  modules_in_population: Int
-  modules_out_of_scope: List<String>
-  functions_parsed: Int
-  functions_derivable: Int
-  functions_refused: Int
-  derived_calls: Int
-}
-
-type BehavioralReceiptCensusRefusalCause
-  = ReceiptCensusSourceCorpusUnreadable
-  | ReceiptCensusModuleParseRefused
-  | ReceiptCensusTypeReadRefused
-
-// Census constructs its subject from the source-root corpus supplied to the producer. There is no
-// external diff subject that can be absent: failure to construct or read that corpus is one of the
-// typed producer refusals below, while a completed partial census carries its out-of-scope
-// population in the observation rather than reporting subject absence.
-type BehavioralReceiptCensusStanding
-  = BehavioralReceiptCensusCompleted { observation: BehavioralReceiptCensusObservation }
-  | BehavioralReceiptCensusRefused { cause: BehavioralReceiptCensusRefusalCause }
-
-type BehavioralReceiptSelftestObservation
-  = BehavioralReceiptArmsDiscriminate
-  | BehavioralReceiptArmsDoNotDiscriminate
-
-type BehavioralReceiptSelftestRefusalCause
-  = ReceiptSelftestFixtureAuthorityUnreadable
-  | ReceiptSelftestFixturePlanningRefused
-  | ReceiptSelftestFixturePreconditionUnsatisfied
-  | ReceiptSelftestCandidateUnreadable
-  | ReceiptSelftestExecutionRefused
-
-// Selftest owns a fixed authored fixture and two fixed candidate arms, so it likewise has no
-// caller-selected subject that can be absent. An unreadable fixture, an underived discriminating
-// input, or an execution failure is a typed producer refusal; a completed control whose arms no
-// longer discriminate remains an observation.
-type BehavioralReceiptSelftestStanding
-  = BehavioralReceiptSelftestCompleted { observation: BehavioralReceiptSelftestObservation }
-  | BehavioralReceiptSelftestRefused { cause: BehavioralReceiptSelftestRefusalCause }
-
 type HeadsReadingDifferentialObservation {
   modules_compared: Int
   divergent: List<String>

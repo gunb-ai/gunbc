@@ -876,9 +876,9 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
 // sweep, the regen first-generation comparison, and the witness floor. The fixed point left the
 // required mode with the four other cut phases, and the in-memory digest handoff that justified
 // collapsing it went with it -- so the paragraph above describes the step ladder this replaced,
-// and the digest sentence is history rather than a live mechanism. The cut capabilities keep their
-// standalone entry points (`--required-regen-fixed-point`, `--behavioral-receipt-*`); what ended
-// is their enrolment.
+// and the digest sentence is history rather than a live mechanism. The regen capability keeps its
+// standalone entry point (`--required-regen-fixed-point`); the `--behavioral-receipt-*` entry points
+// were removed; what ended for the rest is enrolment.
 //
 // THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric.fabric_witness_run`
 // `floor_run_command`, the same ArgvCommand the fabric authorizes, rendered for this transport by
@@ -1961,9 +1961,8 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // invocation exists.
 //
 // WHAT THAT MEANS FOR COVERAGE, kept because the fact outlives the mechanism: no required run now
-// compares a changed authority against its committed mirror. The comparison survives as
-// `--behavioral-receipt-plan` / `--behavioral-receipt-selftest` / `--behavioral-receipt-census`,
-// which have no automated consumer, so it is run deliberately or not at all. A declared scope
+// compares a changed authority against its committed mirror. The comparison had standalone
+// `--behavioral-receipt-*` entry points; they were removed, so it is not taken at all. A declared scope
 // narrowing, not a climb; naming it here keeps its absence from reading as coverage.
 
 fn witness_floor_lane_needs() -> List<String> { [] }
