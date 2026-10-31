@@ -300,6 +300,24 @@ fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints:
   }
 }
 
+// The receipt a selection mints, so a witness can compare receipts across a held-fixed question whose
+// only change is the policy arm or its parameters.
+fn receipt_for(field: List<ParetoEntry>, pol: SelectionPolicy) -> SelectionReceipt? {
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: field,
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: pol,
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: _, receipt: r } => Present { value: r }
+    _ => Absent
+  }
+}
+
 test fn a_hard_constraint_failure_excludes_before_unread_axes_are_requested() -> Bool {
   let forbidden = entry_over_cap_missing_tput(id: id_a, label: "over cap missing tput" as NonEmptyStr, power: 200)
   let feasible = entry(id: id_b, label: "under cap" as NonEmptyStr, tput: 10, power: 50)
@@ -845,10 +863,12 @@ test fn usesep_single_survivor_wins_even_when_not_preferred() -> Bool {
   }
 }
 
-// BRANCH 2 — a genuine tie (two survivors) that INCLUDES the preferred identity selects the preferred.
-// id_a wins tput, id_b wins power: neither dominates, so both survive; preferred id_b is selected.
+// BRANCH 2 — several nondominated ALTERNATIVES (a tradeoff, not an equality) that INCLUDE the preferred
+// identity select the preferred. id_a wins tput, id_b wins power: neither dominates, so both survive;
+// the preferred id_b is selected. This records a preference among incomparable alternatives — it does
+// NOT assert id_a and id_b are equal on any axis.
 // RED: swap the policy to UniqueSurvivorRequired — two survivors is not one, so it returns
-// SelectionNeedsPolicy and never selects id_b. The "else prefer" branch is what resolves the tie.
+// SelectionNeedsPolicy and never selects id_b. The "else prefer" branch is what resolves the tradeoff.
 test fn usesep_tie_including_preferred_selects_preferred() -> Bool {
   let tput_winner = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
   let power_winner = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
@@ -867,8 +887,9 @@ test fn usesep_tie_including_preferred_selects_preferred() -> Bool {
   }
 }
 
-// BRANCH 3 — a genuine tie that EXCLUDES the preferred identity stays SelectionNeedsPolicy, never a
-// silent refusal or a fallthrough. id_a and id_b both survive; the preferred id_c is not in the field.
+// BRANCH 3 — several nondominated alternatives that EXCLUDE the preferred identity stay
+// SelectionNeedsPolicy, never a silent refusal or a fallthrough. id_a and id_b both survive; the
+// preferred id_c is not in the field.
 // RED: swap the policy to PreferSurvivor { preferred: id_c } — id_c is not a survivor, so PreferSurvivor
 // returns RealizationSelectionRefused. The new arm defers instead of refusing an unresolved field.
 test fn usesep_tie_excluding_preferred_needs_policy_not_refused() -> Bool {
@@ -893,9 +914,12 @@ test fn usesep_tie_excluding_preferred_needs_policy_not_refused() -> Bool {
 }
 
 // BRANCH 4 — no survivors (the only candidate violates a hard constraint) is NoFeasibleRealization,
-// matching the existing arms.
-// RED: drop the count == 0 guard so an empty survivor set falls into the tie branch — any([], ...) is
-// false, so it would return SelectionNeedsPolicy { survivors: [] } instead of NoFeasibleRealization.
+// matching the existing arms. NOTE (corrected coverage): a hard-constraint exclusion empties the
+// remaining field at scan_feasibility, which short-circuits to NoFeasibleRealization BEFORE apply_policy
+// runs, so this end-to-end case does NOT exercise the arm's own count == 0 branch and is not a
+// discriminating red for it. It is kept as an end-to-end check that the arm agrees with the existing
+// arms on an all-infeasible field; the arm's count == 0 branch is reachable only when the Pareto fold
+// yields an empty survivor set from a non-empty feasible field, which no current input produces.
 test fn usesep_no_survivors_is_no_feasible_not_needs_policy() -> Bool {
   let forbidden = entry(id: id_a, label: "over cap" as NonEmptyStr, tput: 10, power: 200)
   match select_realization(
@@ -935,5 +959,65 @@ test fn usesep_undecided_dominance_stays_needs_evidence_never_a_tie() -> Bool {
     SelectedWithin { candidate: _, receipt: _ } => false
     SelectionNeedsPolicy { survivors: _ } => false
     _ => false
+  }
+}
+
+// RECEIPT CONTROL — change the policy ARM, hold the question and the selected candidate fixed: the
+// receipts must differ. id_a strictly dominates id_b, so both policies select id_a; only the arm differs.
+// RED: if the receipt recorded only the authority reference (not the applied policy), the two receipts
+// would be receipts_eq and this witness would go red.
+test fn usesep_receipt_distinguishes_a_change_of_arm() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorRequired { identity: id_policy_usesep }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+        Absent => false
+        Present { value: r2 } =>
+          declaration_ref_eq(a: r1.selected_identity, b: id_a)
+            && declaration_ref_eq(a: r2.selected_identity, b: id_a)
+            && !receipts_eq(a: r1, b: r2)
+      }
+  }
+}
+
+// RECEIPT CONTROL — change the PREFERRED parameter, same arm, same selection: the receipts must differ.
+// id_a is the unique survivor under both, so the selection is identical; only the preferred parameter
+// differs, and it must still be visible in the receipt.
+// RED: if policy_equality ignored the preferred parameter, the two receipts would be receipts_eq -> red.
+test fn usesep_receipt_distinguishes_a_change_of_preferred_parameter() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_c }) {
+        Absent => false
+        Present { value: r2 } =>
+          declaration_ref_eq(a: r1.selected_identity, b: id_a)
+            && declaration_ref_eq(a: r2.selected_identity, b: id_a)
+            && !receipts_eq(a: r1, b: r2)
+      }
+  }
+}
+
+// RECEIPT CONTROL — repeat the IDENTICAL policy: the receipts must be equal. Guards against
+// over-discrimination (comparing the policy by reference rather than by structure).
+// RED: if policy_equality compared policies by identity/reference rather than structurally, the two
+// receipts would differ -> red.
+test fn usesep_receipt_is_stable_under_a_repeated_identical_policy() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+        Absent => false
+        Present { value: r2 } => receipts_eq(a: r1, b: r2)
+      }
   }
 }
