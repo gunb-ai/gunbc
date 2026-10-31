@@ -1,5 +1,7 @@
 module test.claim.runner.runner_capacity_plan_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+
 import std.logic { Bool }
 import std.nat { Nat, nat_range_inclusive }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
@@ -122,7 +124,7 @@ fn first_width_above_the_fabric_carve() -> Int {
 }
 
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
     srv3_width: committed_width_of(host: operator_host_srv3) + 1,
     srv4_width: committed_width_of(host: operator_host_srv4) + 1,
     roster: incident_2026_08_06_managed_roster_fixture()
@@ -190,7 +192,7 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   let roster = incident_2026_08_06_managed_roster_fixture()
   let width = first_width_above_the_fabric_carve()
-  let plan = runner_capacity_plan(srv3_width: width, srv4_width: width, roster: roster)
+  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, srv3_width: width, srv4_width: width, roster: roster)
   match plan {
     PlanReady { hosts: _ } =>
       added_indices(actions: addition_actions(
@@ -228,7 +230,7 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // then resolves and the row is re-derived by the change that re-establishes srv2, not by editing the
 // 2026-08-06 rows to fit the fleet of the day.
 test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() -> Bool {
-  match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
+  match runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
     PlanReady { hosts: _ } => false
     PlanRefused { reason: r } =>
       string_contains(s: r, pattern: "srv2-01")
@@ -355,7 +357,7 @@ test fn the_same_widening_differs_by_purpose_across_a_carved_and_an_uncarved_hos
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
-  match runner_capacity_plan(
+  match runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
     srv3_width: 6,
     srv4_width: 6,
     roster: RosterReadUnavailable { reason: "503" }
@@ -531,7 +533,7 @@ fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
 }
 
 fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRosterEvidence) -> Bool {
-  match plan_runner_capacity_host(host: host, requested_width: width, roster: roster) {
+  match plan_runner_capacity_host(receipt: ReceiptAbsent, host: host, requested_width: width, roster: roster) {
     HostCapacityPlanRefused { reason: _ } => true
     HostCapacityPlanReady { plan: _ } => false
   }

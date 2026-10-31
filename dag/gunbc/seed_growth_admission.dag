@@ -4,8 +4,6 @@ import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_addr
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
-import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
-import gunbc.native_process_memory_census_seed_growth { native_process_memory_census_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
 import gunbc.native_product_cache_seed_growth { native_product_cache_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
@@ -71,7 +69,6 @@ import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.native_census_verb_seed_growth { native_census_verb_seed_growth_justification }
-import gunbc.namespace_wave_binding_diff_seed_growth { namespace_wave_binding_diff_seed_growth_justification }
 import gunbc.self_host_frontier_seed_growth { self_host_frontier_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
@@ -338,7 +335,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
     native_census_verb_seed_growth_justification,
-    namespace_wave_binding_diff_seed_growth_justification,
     self_host_frontier_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
@@ -401,8 +397,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     operation_requires_query_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
-    type_declaration_use_census_seed_growth_justification,
-    native_process_memory_census_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     native_cache_root_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,

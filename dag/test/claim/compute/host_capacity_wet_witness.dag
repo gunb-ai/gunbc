@@ -5,10 +5,13 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.algebra { trim }
 import product.capacity.event_chain { PartitionId }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import std.types { FilePath }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
+  ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeNothingToRelease, ComputeReleased, ComputeReleaseRefused,
@@ -60,17 +63,28 @@ fn fresh_root() -> String {
 // real observation route is kept by the_real_reservation_route_admits_exactly_what_the_reading_backs.
 data supplied_host: Kibibyte = kibibyte(count: 67108864)
 
-fn reserve_with_room(subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeReservation {
-  compute_reserve_against(subject: subject, reference: reference, term_seconds: 60, total: supplied_host, available: supplied_host)
+fn reserve_with_room(subject: ComputeCapacitySubject, appropriation: Kibibyte, request: Kibibyte, reference: NonEmptyStr) -> ComputeReservation {
+  compute_reserve_against(subject: subject, appropriation: appropriation, request: request, reference: reference, term_seconds: 60, total: supplied_host, available: supplied_host)
 }
 
-fn subject_at(root: String, appropriation_kib: Int, request_kib: Int) -> ComputeCapacitySubject {
-  ComputeCapacitySubject {
-    root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
-    partition: "compute-memory-wet-witness" as PartitionId,
-    appropriation: kibibyte(count: appropriation_kib),
-    request: kibibyte(count: request_kib),
-  }
+// THE SUBJECT IS MINTED OVER AN ISOLATED INSTANCE, NEVER BUILT OVER A PATH: the witness residual
+// isolated_dashboard_instance names (no rung is claimed for it). Appropriation and request are the arithmetic inputs.
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "host-capacity-wet" as NonEmptyStr),
+    instance_id: "host-capacity-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: trim(s: root) as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18096,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn subject_at(root: String) -> ComputeCapacitySubject {
+  host_capacity_subject_in(requesting: instance_at(root: root), host_instance: instance_at(root: root), pool: ComputeBuildPool).subject
 }
 
 fn reserved_amount(r: ComputeReservation) -> Int {
@@ -142,14 +156,16 @@ fn standing_committed(s: ComputeCapacityStanding) -> Int {
 // reservation is admitted, so this cell goes red for the reason it names rather than for any
 // property of the store.
 test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool {
-  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
-  let first = reserve_with_room(subject: subject, reference: "wet-first" as NonEmptyStr)
-  let second = reserve_with_room(subject: subject, reference: "wet-second" as NonEmptyStr)
-  let full = reserve_with_room(subject: subject, reference: "wet-third" as NonEmptyStr)
-  let at_capacity = compute_capacity_standing_on(subject: subject)
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: one_gibibyte_in_kibibytes * 2)
+  let req = kibibyte(count: one_gibibyte_in_kibibytes)
+  let first = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-first" as NonEmptyStr)
+  let second = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-second" as NonEmptyStr)
+  let full = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-third" as NonEmptyStr)
+  let at_capacity = compute_capacity_standing_on(subject: subject, appropriation: app)
   let back = compute_release(reservation: first, reason: "witness completion" as NonEmptyStr)
-  let after_release = compute_capacity_standing_on(subject: subject)
-  let readmitted = reserve_with_room(subject: subject, reference: "wet-fourth" as NonEmptyStr)
+  let after_release = compute_capacity_standing_on(subject: subject, appropriation: app)
+  let readmitted = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-fourth" as NonEmptyStr)
   reserved_amount(r: first) == one_gibibyte_in_kibibytes
     && reserved_amount(r: second) == one_gibibyte_in_kibibytes
     && is_capacity_full(r: full)
@@ -167,8 +183,10 @@ test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_cap
 test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
   let available = kibibyte(count: 4 * one_gibibyte_in_kibibytes)
-  let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
-  match compute_reserve_against(subject: subject, reference: "wet-floor" as NonEmptyStr, term_seconds: 60, total: total, available: available) {
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: 52 * one_gibibyte_in_kibibytes)
+  let req = kibibyte(count: 26 * one_gibibyte_in_kibibytes)
+  match compute_reserve_against(subject: subject, appropriation: app, request: req, reference: "wet-floor" as NonEmptyStr, term_seconds: 60, total: total, available: available) {
     ComputeHostBelowFloor { requested: rq, available: av } =>
       kibibyte_count(k: rq) == 26 * one_gibibyte_in_kibibytes && kibibyte_count(k: av) == 4 * one_gibibyte_in_kibibytes
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
@@ -182,8 +200,10 @@ test fn a_request_the_machine_cannot_back_refuses_below_the_live_floor() -> Bool
 // because a share that was never backed is wrong whatever this instant's availability happens to be.
 test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting() -> Bool {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
-  let subject = subject_at(root: fresh_root(), appropriation_kib: 64 * one_gibibyte_in_kibibytes + 1, request_kib: one_gibibyte_in_kibibytes)
-  match compute_reserve_against(subject: subject, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60, total: total, available: total) {
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: 64 * one_gibibyte_in_kibibytes + 1)
+  let req = kibibyte(count: one_gibibyte_in_kibibytes)
+  match compute_reserve_against(subject: subject, appropriation: app, request: req, reference: "wet-oversized" as NonEmptyStr, term_seconds: 60, total: total, available: total) {
     ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "never backed by the machine")
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
     ComputeCapacityFull { wire: _ } => false
@@ -198,12 +218,12 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
 test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  match compute_capacity_subject(instance: live, request: compute_memory_ceiling(instance: live)) {
+  match compute_capacity_subject(instance: live) {
     ComputeSubjectHostUnresolved { host: _ } => false
-    ComputeSubjectResolved { subject: a } =>
-      match compute_capacity_subject(instance: lab, request: compute_memory_ceiling(instance: lab)) {
+    ComputeSubjectResolved { subject: a, appropriation: a_app } =>
+      match compute_capacity_subject(instance: lab) {
         ComputeSubjectHostUnresolved { host: _ } => false
-        ComputeSubjectResolved { subject: b } =>
+        ComputeSubjectResolved { subject: b, appropriation: b_app } =>
           (live.instance_id as String) != (lab.instance_id as String)
             && (live.instance_root as String) != (lab.instance_root as String)
             && (live.host_identity as String) == (lab.host_identity as String)
@@ -211,13 +231,14 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
             && (a.root as String) == (b.root as String)
             && string_contains(s: a.partition as String, pattern: live.host_identity as String)
             && !string_contains(s: a.partition as String, pattern: lab.instance_id as String)
-            && (a.root as String) == join([compute_root(instance: live) as String, "/capacity"], "")
-            && kibibyte_count(k: a.appropriation) == kibibyte_count(k: a.request) * 2
-            && kibibyte_count(k: a.request) > 0
+            && (a.root as String) == compute_capacity_root(host_instance: live) as String
+            && (a.root as String) == join([compute_root(instance: live) as String, "/", compute_capacity_slots.member as String], "")
+            && kibibyte_count(k: a_app) == kibibyte_count(k: b_app)
+            && kibibyte_count(k: a_app) == kibibyte_count(k: compute_memory_ceiling(instance: live)) * 2
+            && kibibyte_count(k: compute_memory_ceiling(instance: live)) > 0
       }
   }
 }
-
 
 // A LEDGER REFUSAL IS NOT A CAPACITY REFUSAL, and this cell exists because the two were conflated in
 // production and the conflation was only visible on a real host. The reservation reference names one
@@ -229,10 +250,12 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
 // The pool here has room for BOTH requests, so nothing about capacity can explain the second
 // answer: if this cell ever reports ComputeCapacityFull again, the conflation is back.
 test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool() -> Bool {
-  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 4, request_kib: one_gibibyte_in_kibibytes)
-  let first = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
-  let again = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
-  let other = reserve_with_room(subject: subject, reference: "wet-other-reference" as NonEmptyStr)
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: one_gibibyte_in_kibibytes * 4)
+  let req = kibibyte(count: one_gibibyte_in_kibibytes)
+  let first = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-same-reference" as NonEmptyStr)
+  let again = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-same-reference" as NonEmptyStr)
+  let other = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-other-reference" as NonEmptyStr)
   reserved_amount(r: first) == one_gibibyte_in_kibibytes
     && is_ledger_refusal(r: again)
     && !is_capacity_full(r: again)
@@ -253,14 +276,16 @@ test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool
 test fn two_requests_summing_past_the_observed_headroom_cannot_both_admit() -> Bool {
   let total = kibibyte(count: 64 * one_gibibyte_in_kibibytes)
   let available = kibibyte(count: 30 * one_gibibyte_in_kibibytes)
-  let subject = subject_at(root: fresh_root(), appropriation_kib: 52 * one_gibibyte_in_kibibytes, request_kib: 26 * one_gibibyte_in_kibibytes)
-  let first = compute_reserve_against(subject: subject, reference: "wet-headroom-a" as NonEmptyStr, term_seconds: 60, total: total, available: available)
-  let second = compute_reserve_against(subject: subject, reference: "wet-headroom-b" as NonEmptyStr, term_seconds: 60, total: total, available: available)
-  kibibyte_count(k: subject.request) <= kibibyte_count(k: available)
-    && kibibyte_count(k: subject.request) * 2 > kibibyte_count(k: available)
-    && kibibyte_count(k: subject.appropriation) >= kibibyte_count(k: subject.request) * 2
-    && kibibyte_count(k: subject.appropriation) <= kibibyte_count(k: total)
-    && reserved_amount(r: first) == kibibyte_count(k: subject.request)
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: 52 * one_gibibyte_in_kibibytes)
+  let req = kibibyte(count: 26 * one_gibibyte_in_kibibytes)
+  let first = compute_reserve_against(subject: subject, appropriation: app, request: req, reference: "wet-headroom-a" as NonEmptyStr, term_seconds: 60, total: total, available: available)
+  let second = compute_reserve_against(subject: subject, appropriation: app, request: req, reference: "wet-headroom-b" as NonEmptyStr, term_seconds: 60, total: total, available: available)
+  kibibyte_count(k: req) <= kibibyte_count(k: available)
+    && kibibyte_count(k: req) * 2 > kibibyte_count(k: available)
+    && kibibyte_count(k: app) >= kibibyte_count(k: req) * 2
+    && kibibyte_count(k: app) <= kibibyte_count(k: total)
+    && reserved_amount(r: first) == kibibyte_count(k: req)
     && is_capacity_full(r: second)
 }
 
@@ -291,13 +316,15 @@ test fn the_real_observation_reads_this_machine() -> Bool {
 // is what rules out the opposite error -- an arm that reported success by releasing the seat AGAIN
 // would show the committed figure moving, and it does not.
 test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -> Bool {
-  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
-  let held = reserve_with_room(subject: subject, reference: "wet-double" as NonEmptyStr)
-  let while_held = compute_capacity_standing_on(subject: subject)
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: one_gibibyte_in_kibibytes * 2)
+  let req = kibibyte(count: one_gibibyte_in_kibibytes)
+  let held = reserve_with_room(subject: subject, appropriation: app, request: req, reference: "wet-double" as NonEmptyStr)
+  let while_held = compute_capacity_standing_on(subject: subject, appropriation: app)
   let first = compute_release(reservation: held, reason: "the producer finished" as NonEmptyStr)
-  let after_first = compute_capacity_standing_on(subject: subject)
+  let after_first = compute_capacity_standing_on(subject: subject, appropriation: app)
   let second = compute_release(reservation: held, reason: "recovery got here too" as NonEmptyStr)
-  let after_second = compute_capacity_standing_on(subject: subject)
+  let after_second = compute_capacity_standing_on(subject: subject, appropriation: app)
   reserved_amount(r: held) == one_gibibyte_in_kibibytes
     && standing_committed(s: while_held) == one_gibibyte_in_kibibytes
     && released(r: first)
@@ -314,9 +341,11 @@ test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -
 // refused below the floor or as unobserved -- never reported as a full pool, since the ledger is
 // empty and its appropriation is twice the request.
 test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bool {
-  let subject = subject_at(root: fresh_root(), appropriation_kib: 2048, request_kib: 1024)
+  let subject = subject_at(root: fresh_root())
+  let app = kibibyte(count: 2048)
+  let req = kibibyte(count: 1024)
   let reading = observe_host_memory()
-  let reserved = compute_reserve_on(subject: subject, reference: "wet-live-route" as NonEmptyStr, term_seconds: 60)
+  let reserved = compute_reserve_on(subject: subject, appropriation: app, request: req, reference: "wet-live-route" as NonEmptyStr, term_seconds: 60)
   match reading {
     HostMemoryUnobserved { detail: _ } =>
       match reserved {

@@ -105,7 +105,6 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "field_access_field_is_boxed"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_decl_type"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type"),
-      decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_fn_sig_type_applied_binding"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_rust_type_without_applied_binding"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_field_carrier_final_type"),
       decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_leaf_admission"),
