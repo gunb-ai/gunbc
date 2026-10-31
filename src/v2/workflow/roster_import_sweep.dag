@@ -212,6 +212,8 @@ type RosterRefusalReason
   // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
   | RefusalScopeSelectsNoRow { home: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
+  | RefusalAppendedCalleeUncovered { row: String, callee: String }
+  | RefusalAppendedCalleeUncovered { row: String, callee: String }
   // A RenameHead row's call whose arguments the row's positional labels cannot place: EXACT ARITY is required (a different
   // number of positional arguments than the row declares refuses); an argument already named with the label the row declares
   // AT ITS POSITION is retained as authored, while a mismatched or reordered label refuses (the rewrite never reorders
@@ -274,6 +276,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
+    RefusalAppendedCalleeUncovered { row: k, callee: c } => "appended-callee-uncovered row=" + k + " callee=" + c
+    RefusalAppendedCalleeUncovered { row: k, callee: c } => "appended-callee-uncovered row=" + k + " callee=" + c
     RefusalScopeSelectsNoRow { home: h, selection: sel } => "scope-selects-no-row home=" + h + " " + sel
     RefusalScopeSelectsSeveralRows { home: h, call: c, count: n } => "scope-selects-several-rows home=" + h + " call=" + c + " rows=" + int_to_decimal_string(value: n)
     RefusalRenameCallArity { call: c } => "rename-call-arity call=" + c
@@ -448,6 +452,11 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }
     },
     RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead }
+    // string_total_order is declared in std.algebra beside list_sort_by_key: the row covers the sort_by/string appended callee.
+    RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+    // The Symbol order is declared in v2.std.node, where every sort_by/symbol site lives: this row covers the appended callee
+    // (the import pass binds nothing there, the call being a local declaration).
+    RosterHeadRow { call: "symbol_total_order", key: "symbol_total_order", import_name: "symbol_total_order", home: qualified_name_from_dotted_string(dotted: "v2.std.node"), labels: [], head: KeepHead }
   ]
 }
 
@@ -625,6 +634,37 @@ fn roster_rows_for_scope_in(table: List<RosterHeadRow>, scope: RosterHomeScope) 
 // table defect the wave cannot resolve. AllHomes names no row and selects the table as it is. Pure over the supplied table so
 // the several-rows arm has an authorable RED (the production table holds no duplicate).
 fn roster_scope_selection_refusal_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
+  match roster_scope_rows_refusal_in(table: table, scope: scope) {
+    Present { value: r } => Present { value: r }
+    Absent => roster_appended_callee_refusal(table: table, selected: roster_rows_for_scope_in(table: table, scope: scope))
+  }
+}
+
+// AN APPENDED ARGUMENT'S CALLEE MUST RESOLVE AT THE SITE (review 89019). The rename and the callee's import are separate
+// passes, so nothing else guarantees the spliced `order: f()` resolves: a selected RenameHead row whose appended text names a
+// callee that no table row declares (a row of that call, whose own pass imports it or whose home is where the site lives)
+// refuses here, before any read or splice.
+fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
+  fold_list(xs: selected, empty: Absent, cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.head {
+          KeepHead => Absent
+          RenameHead { to: _, positional: _, appended: args } =>
+            fold_list(xs: args, empty: Absent, cons: fn(a2, arg) {
+              match a2 {
+                Present { value: _ } => a2
+                Absent =>
+                  if any_list(xs: table, pred: fn(t) { starts_with(s: arg.text, prefix: t.call + "(") }) { Absent } else { Present { value: RefusalAppendedCalleeUncovered { row: r.key, callee: arg.text } } }
+              }
+            })
+        }
+    }
+  })
+}
+
+fn roster_scope_rows_refusal_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
   let selected = roster_rows_for_scope_in(table: table, scope: scope)
   match scope {
     AllHomes => Absent
@@ -2909,6 +2949,8 @@ fn roster_rename_control_names() -> List<String> {
     "appended-argument-symbol-order",
     "appended-argument-string-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
+    "appended-callee-uncovered-refuses",
+    "appended-callee-covered-admitted",
     "occurrences-byte-column-after-multibyte-text",
     "occurrences-scalar-column-after-multibyte-text-refuses",
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
@@ -3033,6 +3075,8 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "appended-argument-string-order", fail: roster_sort_expect(name: "appended-argument-string-order", row_key: "sort_by/string", elem: "String", order: "string_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "appended-argument-digest-order", fail: roster_sort_expect(name: "appended-argument-digest-order", row_key: "sort_by/digest_hex", elem: "Fnv1a64StructuralDigestHex", order: "fnv1a64_digest_hex_total_order()", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "sort-by-undeclared-order-refuses", fail: roster_sort_undeclared_order_control()),
+    roster_control_verdict(name: "appended-callee-uncovered-refuses", fail: roster_appended_callee_red()),
+    roster_control_verdict(name: "appended-callee-covered-admitted", fail: roster_appended_callee_green()),
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control())
@@ -3129,6 +3173,33 @@ fn roster_sort_undeclared_order_control() -> String {
   match roster_scope_selection_refusal_in(table: roster_rename_production_row(), scope: scope) {
     Present { value: r } => if roster_refusal_text(reason: r) == "scope-selects-no-row home=std.algebra row=sort_by/float call=sort_by" { "" } else { "CONTROL-FAIL sort-by-undeclared-order-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
     Absent => "CONTROL-FAIL sort-by-undeclared-order-refuses: a key kind with no declared order was admitted\n"
+  }
+}
+
+// AN APPENDED CALLEE NO ROW COVERS REFUSES (review 89019), and the same row beside its callee's row is admitted.
+fn roster_ghost_rename_row() -> RosterHeadRow {
+  RosterHeadRow { call: "sort_by", key: "sort_by/ghost", import_name: "list_sort_by_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "ghost_total_order()" }] } }
+}
+
+fn roster_ghost_callee_row() -> RosterHeadRow {
+  RosterHeadRow { call: "ghost_total_order", key: "ghost_total_order", import_name: "ghost_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+}
+
+fn roster_ghost_scope() -> RosterHomeScope {
+  OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "sort_by" } }
+}
+
+fn roster_appended_callee_red() -> String {
+  match roster_scope_selection_refusal_in(table: [roster_ghost_rename_row()], scope: roster_ghost_scope()) {
+    Present { value: r } => if roster_refusal_text(reason: r) == "appended-callee-uncovered row=sort_by/ghost callee=ghost_total_order()" { "" } else { "CONTROL-FAIL appended-callee-uncovered-refuses: refused " + roster_refusal_text(reason: r) + "\n" }
+    Absent => "CONTROL-FAIL appended-callee-uncovered-refuses: an uncovered appended callee was admitted\n"
+  }
+}
+
+fn roster_appended_callee_green() -> String {
+  match roster_scope_selection_refusal_in(table: [roster_ghost_rename_row(), roster_ghost_callee_row()], scope: roster_ghost_scope()) {
+    Present { value: r } => "CONTROL-FAIL appended-callee-covered-admitted: refused " + roster_refusal_text(reason: r) + "\n"
+    Absent => ""
   }
 }
 
