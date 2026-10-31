@@ -620,6 +620,7 @@ type FlexCarryLine
   | FlexCarryAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
   | FlexCarryLost { machine_id: Int, ask_id: Int }
   | FlexCarryRefused { machine_id: Int, ask_id: Int }
+  | FlexCarryHeader
   | FlexCarryLineUnread { text: String }
 
 type FlexCarryNums { first: Int?, second: Int?, third: Int? }
@@ -652,7 +653,9 @@ fn flex_carry_nums(line: String) -> FlexCarryNums {
 
 fn flex_carry_line(line: String) -> FlexCarryLine {
   let nums = flex_carry_nums(line: line)
-  if starts_with(s: line, prefix: flex_carry_prefix_sightings_complete) {
+  if starts_with(s: line, prefix: flex_carry_header) {
+    FlexCarryHeader
+  } else if starts_with(s: line, prefix: flex_carry_prefix_sightings_complete) {
     FlexCarrySightingsBasis { basis: FlexSightingsBaselineComplete }
   } else if starts_with(s: line, prefix: flex_carry_prefix_sightings_incomplete) {
     FlexCarrySightingsBasis { basis: FlexSightingsBaselineIncomplete }
@@ -731,6 +734,15 @@ type FlexCarryReading
   = FlexCarryLoaded { carry: FlexCarry }
   | FlexCarryUnread { reason: NonEmptyStr }
 
+// What the pass may conclude from its carry. An unread reading makes the create gate refuse: the standing
+// of the last ask is unknown, and unknown is not "nothing in flight".
+fn flex_carry_trust(reading: FlexCarryReading) -> FlexCarryTrust {
+  match reading {
+    FlexCarryLoaded { carry: _ } => FlexCarryTrusted
+    FlexCarryUnread { reason: r } => FlexCarryUntrusted { reason: r }
+  }
+}
+
 fn flex_carry_cooldown(reading: FlexCarryReading) -> FlexRentCooldown? {
   match reading {
     FlexCarryLoaded { carry: c } => c.cooldown
@@ -794,9 +806,59 @@ fn flex_carry_read(path: String) -> FlexCarryReading {
   if !read.success {
     FlexCarryUnread { reason: "the carry file could not be read" as NonEmptyStr }
   } else {
-    FlexCarryLoaded {
-      carry: fold(
-        split(s: read.content, delimiter: "\n"),
+    flex_carry_gate(content: read.content)
+  }
+}
+
+// TRUE when a line failed to parse. A named function, because a match inside a call argument does not
+// parse in this grammar.
+fn flex_carry_line_unread(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarryLineUnread { text: _ } => true
+    _ => false
+  }
+}
+
+// THE GATE BEFORE THE FOLD. A carry is LOADED only when its first line is the declared header AND every
+// line parsed; anything else is the typed unread standing, COUNTED. Two reasons, both from review 89192:
+// the header was written but never checked, so a file in some other format read as valid v1; and a line
+// the parser could not read was dropped silently, so a truncated file or a changed line format made the
+// standing of the last create read as none - which is not "no ask in flight", it is "the pass cannot
+// tell", and reading it as the first authorizes the second rent the carry exists to prevent. DESIGN 5: a
+// failure arm refuses, never widens, and every degradation is typed, located and countable.
+fn flex_carry_gate(content: String) -> FlexCarryReading {
+  // A blank line is a separator, not a record: the writer's trailing newline must not read as an
+  // unreadable record and refuse a carry that is fine. Every NON-BLANK line still has to parse, or the
+  // whole carry reads unread -- that is the part that keeps a truncated write from reading as "no ask in
+  // flight", which is the widening that authorizes a second rent on top of a card being paid for.
+  let lines = filter(split(s: content, delimiter: "\n"), l => length(l) > 0)
+  let parsed = map(lines, flex_carry_line)
+  let unread = length(filter(parsed, flex_carry_line_unread))
+  match first(lines) {
+    Absent => FlexCarryUnread { reason: "the carry file is empty" as NonEmptyStr }
+    Present { value: head } =>
+      if !starts_with(s: head, prefix: flex_carry_header) {
+        FlexCarryUnread { reason: concat("the carry header is not ", flex_carry_header) as NonEmptyStr }
+      } else if unread > 0 {
+        FlexCarryUnread {
+          reason: concat(
+            int_to_decimal_string(value: unread),
+            " carry line(s) the pass could not parse",
+          ) as NonEmptyStr,
+        }
+      } else {
+        flex_carry_loaded(lines: lines)
+      }
+  }
+}
+
+// The fold, reached only through the gate above. The unread arm stays because the TYPE admits it; the gate
+// has already refused that case, and the arm's answer is "contribute nothing" rather than a guess about
+// what an unread line meant.
+fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
+  FlexCarryLoaded {
+    carry: fold(
+      lines,
         init: FlexCarry {
           cooldown: none,
           basis: FlexSightingsBaselineIncomplete,
@@ -805,6 +867,7 @@ fn flex_carry_read(path: String) -> FlexCarryReading {
         },
         f: (acc, line) =>
           match flex_carry_line(line: line) {
+            FlexCarryHeader => acc
             FlexCarrySightingsBasis { basis: basis } =>
               FlexCarry { cooldown: acc.cooldown, basis: basis, sightings: acc.sightings, standing: acc.standing }
             FlexCarryCooldown { asked_at: asked_at, until: until } =>
@@ -846,7 +909,6 @@ fn flex_carry_read(path: String) -> FlexCarryReading {
           },
       ),
     }
-  }
 }
 
 fn flex_carry_render(carry: FlexCarry) -> String {
@@ -950,7 +1012,19 @@ fn flex_reconcile_wire(reading: FlexCarryReading, roster: FlexInstancesStanding)
 }
 
 // ---- THE PASS.
-fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> String uses net: Network {
+// Whether the pass managed to record what the NEXT pass needs. A create that lands while its ask goes
+// unrecorded is the double-rent hazard: the next pass reads a stale carry, concludes nothing is in flight,
+// and rents again on top of a card the account is already paying for. So a failed carry write is a typed
+// failure the dispatch sees, not a word inside the receipt (review 89192): the effect the pass already
+// performed stays in the receipt, and the run itself stops failing.
+type FlexCarryWrite
+  = FlexCarryWritten
+  | FlexCarryWriteSkipped { because: NonEmptyStr }
+  | FlexCarryWriteFailed { error: String }
+
+type FlexPassReport { receipt: String, carry: FlexCarryWrite }
+
+fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> FlexPassReport uses net: Network {
   let instance_walk = flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
   let instances = flex_instances_standing(walk: instance_walk)
   let filter = vast_ai_charges_day_filter(range: VastAiChargesDayRange { gte: flex_trial_charges_from / milliseconds_per_second(), lte: now / milliseconds_per_second() })
@@ -968,11 +1042,11 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   )
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent =>
-      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], "")
+      FlexPassReport { receipt: join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], ""), carry: FlexCarryWriteSkipped { because: "the pass made no decision to carry: the instance walk refused" as NonEmptyStr } }
     Present { value: query } =>
   match flex_search(key: key, q: query) {
     FlexOffersRefused { cause: c } =>
-      join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], "")
+      FlexPassReport { receipt: join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=refused ", c], ""), carry: FlexCarryWriteSkipped { because: "the pass made no decision to carry: the offers refused" as NonEmptyStr } }
     FlexOffersAnswered { offers: offers, hosts: hosts } =>
       let screened = map(offers, o => FlexScreenedOffer {
         offer: o,
@@ -988,6 +1062,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
           gates: FlexWetGates { key: FlexKeyLive { route: FlexKeyFromSecretManager { resolved_version: resolved_version } } },
           now: now,
           cooldown: flex_carry_cooldown(reading: carry),
+          carry: flex_carry_trust(reading: carry),
           observation: FlexPassObservation { roster: instances, charges: charges },
           cards: flex_cards_list(c: cards),
           allocations: [],
@@ -1023,12 +1098,17 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
         now: now,
       )
       let carry_written = Filesystem.Write(path: flex_pass_carry_path, content: flex_carry_render(carry: carry_out))
-      let carry_write_word = if carry_written.success {
-        concat("written ", flex_pass_carry_path)
+      let carry_write = if carry_written.success {
+        FlexCarryWritten
       } else {
-        concat("WRITE FAILED: ", carry_written.error)
+        FlexCarryWriteFailed { error: carry_written.error }
       }
-      join([
+      let carry_write_word = match carry_write {
+        FlexCarryWritten => concat("written ", flex_pass_carry_path)
+        FlexCarryWriteSkipped { because: b } => concat("skipped: ", b)
+        FlexCarryWriteFailed { error: e } => concat("WRITE FAILED: ", e)
+      }
+      FlexPassReport { receipt: join([
         "key=live secret_manager version=", resolved_version as String, "\n",
         flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n",
         flex_charges_wire(s: charges), flex_walk_refusal_wire(refused: charge_walk.refused), "\n",
@@ -1039,7 +1119,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
         "selection=", flex_selection_wire(s: selection), "\n",
         "outcome=", flex_pass_outcome_wire(outcome: outcome), "\n",
         "carry=", carry_write_word,
-      ], "")
+      ], ""), carry: carry_write }
   }
   }
 }
@@ -1051,12 +1131,20 @@ fn pass() -> ProcessExit uses net: Network {
       match flex_vast_key() {
         FlexVastKeyRefused { cause: cause } => exit_failure(reason: cause as String)
         FlexVastKeyReady { key: key, resolved_version: v } => {
-          let text = flex_pass_with_key(key: key, resolved_version: v, now: observer_instant_millis(instant: at))
-          let written = Filesystem.Write(path: flex_pass_receipt_path, content: text)
+          let report = flex_pass_with_key(key: key, resolved_version: v, now: observer_instant_millis(instant: at))
+          let written = Filesystem.Write(path: flex_pass_receipt_path, content: report.receipt)
           if !written.success {
             exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
           } else {
-            ExitSuccess
+            // The receipt is written either way, so the effect the pass performed is on record. But a pass
+            // that could not record its OWN carry must not report success: the next pass would read a stale
+            // carry and treat an ask that may still land as no ask at all. Failing the run is the typed
+            // refusal; proceeding would be the escape hatch DESIGN 5 forbids.
+            match report.carry {
+              FlexCarryWriteFailed { error: e } =>
+                exit_failure(reason: concat("THE PASS COULD NOT RECORD ITS CARRY: ", e))
+              _ => ExitSuccess
+            }
           }
         }
       }
