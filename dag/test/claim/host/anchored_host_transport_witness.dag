@@ -19,12 +19,16 @@ import gunbc.host.anchored_host_transport {
   AnchoredBindingAnchorNotForRow,
   AnchoredBindingAnchorAbsent,
   AnchoredBindingPresentedKeyMismatch,
+  AnchoredBindingPinFromAnotherBoot,
   AnchoredBindingRefused,
   mtcollins1_anchored_host_row,
   anchored_host_row_for,
   anchored_host_trusted_row,
   anchored_host_transport_of,
   anchored_host_transport_against,
+  anchored_host_transport_per_boot,
+  per_boot_pin_from_console_line,
+  PerBootHostPin,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,
   anchored_host_key_readback_go_step,
@@ -73,6 +77,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fleet_locus_ssh_target over the managed-host join, wrapped whole into the fleet arm. The address is
 // what binds (gunbc.host.host_bound_transport), so nothing here hand-names a host the binding does not.
 fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unanchored_host_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
@@ -127,6 +132,7 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
     Present { value: t } =>
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", wrong_public_key_base64], "")) {
         AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
           expected != observed
           && string_contains(s: observed, pattern: wrong_public_key_base64)
@@ -141,6 +147,7 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
 
 // (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
 fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
@@ -179,6 +186,7 @@ test fn an_empty_presented_line_never_binds() -> Bool {
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: "") {
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: observed } => observed == ""
         AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
@@ -200,6 +208,7 @@ test fn an_unanchored_host_refuses_the_transport() -> Bool {
         AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "not the endpoint of any managed host")
         AnchoredBindingBound { bound: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
@@ -223,6 +232,7 @@ test fn no_anchor_refuses_the_transport() -> Bool {
               AnchoredBindingAnchorNotForRow { cause: _ } => false
               AnchoredBindingBound { bound: _ } => false
               AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+              AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
               AnchoredBindingNotTheAnchoredHost { cause: _ } => false
               AnchoredBindingRefused { cause: _ } => false
             }
@@ -245,6 +255,7 @@ test fn matching_presented_key_binds_the_anchored_host() -> Bool {
       match outcome {
         AnchoredBindingBound { bound: _ } => anchored_host_binding_refusal_reason(b: outcome) == "bound; not a refusal"
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
@@ -271,6 +282,7 @@ test fn a_transport_to_another_machine_never_binds_the_anchored_host() -> Bool {
         AnchoredBindingNotTheAnchoredHost { cause: cause } => string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
         AnchoredBindingBound { bound: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
       }
@@ -285,6 +297,7 @@ test fn a_local_shell_refuses_before_any_key_is_read() -> Bool {
     AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "local shell")
     AnchoredBindingBound { bound: _ } => false
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
     AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
@@ -358,6 +371,7 @@ test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
         AnchoredBindingAnchorNotForRow { cause: _ } => false
         AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingRefused { cause: _ } => false
       }
       let address_sibling_binds = match anchored_host_transport_against(row: row, anchor: address_sibling, transport: t, presented_key_line: known_hosts_line(k: address_sibling)) {
@@ -366,6 +380,7 @@ test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
         AnchoredBindingAnchorNotForRow { cause: _ } => false
         AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingRefused { cause: _ } => false
       }
       // And the host case additionally proves the refusal cannot be a key mismatch masquerading as one:
@@ -393,6 +408,7 @@ fn anchored_pairing_refused(b: AnchoredHostBinding) -> Bool admit_callers: [
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
     AnchoredBindingRefused { cause: _ } => false
   }
 }
@@ -409,6 +425,7 @@ test fn the_private_key_never_appears_in_argv_or_rendered_text() -> Bool {
     anchored_host_binding_refusal_reason(b: AnchoredBindingAnchorAbsent { cause: "anchor absent" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingNotTheAnchoredHost { cause: "not the anchored host" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingRefused { cause: "binding refused" }),
+    anchored_host_binding_refusal_reason(b: AnchoredBindingPinFromAnotherBoot { pinned_boot: "boot-a", expected_boot: "boot-b" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingPresentedKeyMismatch { expected_line: "exp", observed_line: "obs" }),
     anchored_host_key_scan_effect(host: operator_host_mtcollins1).subject as String,
   ], "\n")
@@ -460,7 +477,7 @@ fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
 }
 
 test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
-  count(anchored_host_transport_frontier_rows) == 4
+  count(anchored_host_transport_frontier_rows) == 6
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
   && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
@@ -619,4 +636,72 @@ test fn the_mint_is_a_declared_scaffold_and_a_fleet_once_step() -> Bool {
     NoDischargeSiteModeled => true
     _ => false
   }
+}
+
+// ── THE PER-BOOT PIN (S4: the image generates its host key each boot and prints the PUBLIC line on SOL) ──
+//
+// The console line is a supplied value at this boundary. NO PRODUCER EXISTS YET: the pairing obligation
+// (the real image prints exactly this shape) is an open declared frontier, the per_boot_console_marker
+// row in anchored_host_transport_frontier_rows, with its trigger. What is pinned here is the fleet's side: a pin binds only
+// its own boot, only the key it carries, and only from a well-formed console read.
+
+data per_boot_fixture_fingerprint: String = "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0"
+
+fn per_boot_console_line(boot_id: String, key_b64: String) -> String {
+  join(["GUNBC-HOST-KEY boot_id=", boot_id, " ssh-ed25519 ", key_b64, " ", per_boot_fixture_fingerprint], "")
+}
+
+fn per_boot_binding_kind(b: AnchoredHostBinding) -> String {
+  match b {
+    AnchoredBindingBound { bound: _ } => "bound"
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => "not-the-anchored-host"
+    AnchoredBindingAnchorNotForRow { cause: _ } => "anchor-not-for-row"
+    AnchoredBindingAnchorAbsent { cause: _ } => "anchor-absent"
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => "presented-key-mismatch"
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => "pin-from-another-boot"
+    AnchoredBindingRefused { cause: _ } => "refused"
+  }
+}
+
+// the binding for a pin parsed from `console`, acting on `expected_boot` and presented `key_b64`
+fn per_boot_binding(console: String, expected_boot: NonEmptyStr, key_b64: String) -> String {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => "no-transport"
+    Present { value: t } => per_boot_binding_kind(b: anchored_host_transport_per_boot(
+      transport: t,
+      expected_boot_id: expected_boot,
+      pin: per_boot_pin_from_console_line(row: row, line: console),
+      presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", key_b64], ""),
+    ))
+  }
+}
+
+// POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
+test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "bound"
+}
+
+// RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
+// is compared -- a per-boot key vouches for its own boot only.
+test fn a_pin_from_another_boot_refuses() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-b" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "pin-from-another-boot"
+}
+
+// RED: right boot, but the sshd presents a different key than the console printed.
+test fn a_mismatched_key_under_a_per_boot_pin_refuses() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
+}
+
+// RED: no pin (nothing read from the console) refuses; so does every malformed read.
+test fn no_per_boot_pin_refuses_and_so_does_every_malformed_console_read() -> Bool {
+  let key = fixture_public_key.material as String
+  let ok = per_boot_console_line(boot_id: "boot-a", key_b64: key)
+  per_boot_binding(console: "", expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["x", ok], " "), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join([ok, "extra"], " "), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id= ssh-ed25519 ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a=b ssh-ed25519 ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-ed25519 ", key], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-rsa ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
 }
