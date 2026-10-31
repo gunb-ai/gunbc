@@ -28,9 +28,10 @@ import extdeps.external_authority {
 import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
 import std.frame_boundary { boundary_grade_meet }
 import std.nat { nat_compare }
-import std.algebra { Equal, Less, Greater, Ordering, TotalOrder, list_sort_by_key, zip_eq }
+import std.algebra { Equal, Ordering, TotalOrder, list_sort_by_key, zip_eq }
 import std.pareto {
   AxisGoal,
+  axis_goal_compare,
   HigherIsBetter,
   LowerIsBetter,
   AxisComparison,
@@ -1191,13 +1192,6 @@ fn scopes_eq(a: DecisionScope, b: DecisionScope) -> Bool {
     && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
 }
 
-fn axis_goal_eq(a: AxisGoal, b: AxisGoal) -> Bool {
-  match a {
-    HigherIsBetter => match b { HigherIsBetter => true LowerIsBetter => false }
-    LowerIsBetter => match b { HigherIsBetter => false LowerIsBetter => true }
-  }
-}
-
 fn valued_measure_eq(a: ValuedObjectiveMeasure, b: ValuedObjectiveMeasure) -> Bool {
   match a {
     NetValue => match b { NetValue => true CostPerAcceptedUnit { unit: _ } => false }
@@ -1206,23 +1200,10 @@ fn valued_measure_eq(a: ValuedObjectiveMeasure, b: ValuedObjectiveMeasure) -> Bo
   }
 }
 
-fn term_valuation_eq(a: TermValuation, b: TermValuation) -> Bool {
-  declaration_ref_eq(a: a.term, b: b.term)
-    && (match nat_compare(a: money_amount_micro_count(m: a.scale_micro), b: money_amount_micro_count(m: b.scale_micro)) { Equal => true _ => false })
-    && axis_goal_eq(a: a.goal, b: b.goal)
-}
-
-// A lawful TOTAL ORDER on TermValuation, extending the structural DeclarationRef order with scale_micro
-// (nat_compare) and then the axis goal. Law: term_valuation_compare(a, b) == Equal exactly when
-// term_valuation_eq(a, b) — order and equality agree, which is what makes "sort both, compare
-// elementwise" a correct multiset comparison.
-fn axis_goal_compare(a: AxisGoal, b: AxisGoal) -> Ordering {
-  match a {
-    HigherIsBetter => match b { HigherIsBetter => Equal LowerIsBetter => Less }
-    LowerIsBetter => match b { HigherIsBetter => Greater LowerIsBetter => Equal }
-  }
-}
-
+// The TermValuation total order is the SINGLE source for both ordering and equality of a valuation: the
+// structural DeclarationRef order, then scale_micro (nat_compare), then the AxisGoal order (which lives
+// in std.pareto, beside the type). term_valuation_eq is defined from it, so order-equality and equality
+// are one fact (DESIGN 3) and the multiset comparison below is correct by construction, not by a comment.
 fn term_valuation_compare(a: TermValuation, b: TermValuation) -> Ordering {
   let t = declaration_ref_compare(a: a.term, b: b.term)
   match t {
@@ -1239,6 +1220,10 @@ fn term_valuation_compare(a: TermValuation, b: TermValuation) -> Ordering {
 
 fn term_valuation_total_order() -> TotalOrder<TermValuation> {
   TotalOrder { compare: term_valuation_compare }
+}
+
+fn term_valuation_eq(a: TermValuation, b: TermValuation) -> Bool {
+  match term_valuation_compare(a: a, b: b) { Equal => true _ => false }
 }
 
 // Occurrence-sensitive, order-independent comparison of two valuation lists: equal as a MULTISET, so

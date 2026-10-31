@@ -1141,12 +1141,13 @@ test fn policy_equality_orders_by_structure_not_display_key() -> Bool {
   same_display && structurally_distinct && order_separates && !policy_equality(a: p, b: q)
 }
 
-// LAW — the total order agrees with the equality: term_valuation_compare(a, b) == Equal exactly when
-// term_valuation_eq(a, b). This is what makes sort-then-compare a correct multiset comparison. The pairs
-// cover equal valuations, differing scale, differing goal, differing field variant, and the display-key
-// collision.
-// RED: if the order and the equality diverged on any axis (e.g. the order ignored the goal that the
-// equality checks, or vice versa), one of these pairs would break the law -> red.
+// LAW + DISCRIMINATION — term_valuation_eq is defined as term_valuation_compare == Equal, so the law
+// "compare == Equal iff eq" holds by construction. What this witness actually pins is that the ORDER
+// discriminates every axis: it returns Equal only for genuinely equal valuations, and non-Equal for a
+// differing scale, a differing goal, a differing DeclField variant, and the display-key collision. The
+// derived term_valuation_eq is asserted true/false on each pair to make that concrete.
+// RED: if the order failed to discriminate an axis (e.g. ignored the goal, or compared refs by display
+// key so the collision collapsed), the corresponding term_valuation_eq assertion would flip -> red.
 test fn term_valuation_order_agrees_with_equality() -> Bool {
   let m = "test.claim.realization_selection_witness"
   let a_hi = tv_with(term: id_a, scale: 10, goal: HigherIsBetter)

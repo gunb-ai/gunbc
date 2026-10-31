@@ -1,7 +1,7 @@
 module std.decl_ref
 
 import std.types { NonEmptyStr, List }
-import std.algebra { collection_concat_shape, TotalOrder, Ordering, int_compare_canonical, string_compare_canonical }
+import std.algebra { collection_concat_shape, Ordering, int_compare_canonical, string_compare_canonical }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -88,41 +88,9 @@ fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: St
   }
 }
 
-fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
-  match a {
-    WholeDeclaration =>
-      match b {
-        WholeDeclaration => true
-        NamedField { field_name: _ } => false
-        TypeParameter { name: _ } => false
-      }
-    NamedField { field_name: fa } =>
-      match b {
-        WholeDeclaration => false
-        NamedField { field_name: fb } => fa == fb
-        TypeParameter { name: _ } => false
-      }
-    TypeParameter { name: pa } =>
-      match b {
-        WholeDeclaration => false
-        NamedField { field_name: _ } => false
-        TypeParameter { name: pb } => pa == pb
-      }
-  }
-}
-
-fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  a.module_path == b.module_path
-    && a.decl_name == b.decl_name
-    && decl_field_eq(a: a.field, b: b.field)
-}
-
-// A STRUCTURAL TOTAL ORDER on DeclarationRef, living beside the type and its equality (single authority,
-// DESIGN 3). Lexicographic over module_path, then decl_name, then the DeclField variant and its payload.
-// It is deliberately NOT the display key: distinct refs can share a display key (decl_name "n::x" with
-// WholeDeclaration renders "m::n::x", the same string as decl_name "n" with NamedField "x"), so ordering
-// by the display key could collapse distinct refs into Equal. This compares the variant tag and payload
-// structurally. Law: declaration_ref_compare(a, b) == Equal exactly when declaration_ref_eq(a, b).
+// The DeclField total order is the SINGLE source for both ordering and equality of a DeclField: the
+// variant tag first (WholeDeclaration < NamedField < TypeParameter), then the payload. decl_field_eq is
+// defined from it, so ordering and equality can never drift apart (DESIGN 3: one fact, one place).
 fn decl_field_rank(f: DeclField) -> Int {
   match f {
     WholeDeclaration => 0
@@ -149,6 +117,16 @@ fn decl_field_compare(a: DeclField, b: DeclField) -> Ordering {
   }
 }
 
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match decl_field_compare(a: a, b: b) { Equal => true _ => false }
+}
+
+// The DeclarationRef total order is the SINGLE source for both ordering and equality of a ref:
+// lexicographic over module_path, then decl_name, then the DeclField order. It is deliberately NOT the
+// display key: distinct refs can share a display key (decl_name "n::x" with WholeDeclaration renders
+// "m::n::x", the same string as decl_name "n" with NamedField "x"), so ordering by the display key could
+// collapse distinct refs into Equal. This compares the variant tag and payload structurally.
+// declaration_ref_eq is defined from the order, so order-equality and equality are one fact (DESIGN 3).
 fn declaration_ref_compare(a: DeclarationRef, b: DeclarationRef) -> Ordering {
   let m = string_compare_canonical(a: a.module_path as String, b: b.module_path as String)
   match m {
@@ -163,8 +141,8 @@ fn declaration_ref_compare(a: DeclarationRef, b: DeclarationRef) -> Ordering {
   }
 }
 
-fn declaration_ref_total_order() -> TotalOrder<DeclarationRef> {
-  TotalOrder { compare: declaration_ref_compare }
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  match declaration_ref_compare(a: a, b: b) { Equal => true _ => false }
 }
 
 fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
