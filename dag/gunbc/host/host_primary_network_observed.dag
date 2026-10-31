@@ -81,6 +81,14 @@ data srv1_x550_port0_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, oct
 data srv1_x550_port1_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 234)
 data srv1_bmc_usb_nic_mac: Eui48Address = mac_address(octet1: 170, octet2: 122, octet3: 19, octet4: 218, octet5: 115, octet6: 211)
 
+// THE LAN ROUTER, DECLARED ONCE. srv1's DHCP lease (below) names this address as BOTH its gateway and its
+// sole DNS server, read on 2026-10-25; the router is therefore also the only resolver on the LAN, which is
+// why the naming module (gunbc.host.host_name_resolution) reads its resolver from here rather than spelling
+// the four octets again. One literal, in the module that OBSERVED it: two spellings of one address are two
+// chances to drift, and a resolver that drifts from the lease that named it silently invalidates every read
+// cited against it (§3, "each fact lives in exactly one place").
+data lan_router_ipv4: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)
+
 // The files as `sudo cat` printed them. 50-cloud-init.yaml is unchanged since install (cloud-init has
 // been disabled by its marker since then, so nothing regenerated it); 60-enP3p6s0.yaml is the hand
 // change's file.
@@ -105,9 +113,9 @@ data srv1_primary_network_receipt_2026_10_25: HostPrimaryNetworkReceipt = HostPr
     holder: srv1_i210_mac,
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 203),
     prefix: 24,
-    gateway: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1),
+    gateway: lan_router_ipv4,
     route_metric: 200,
-    dns: [ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)],
+    dns: [lan_router_ipv4],
   },
   mtu: byte_size(count: 1500),
   cloud_init: CloudInitDisabledByMarkerFile { path: cloud_init_disabled_marker_path, reason: ubuntu_live_installer_disable_marker_text },
