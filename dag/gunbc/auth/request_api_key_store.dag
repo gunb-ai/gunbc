@@ -59,14 +59,30 @@ fn request_api_key_store_read(store: RequestApiKeyStore, digest: NonEmptyStr) ->
   slot_observe(store: store.slots, key: digest)
 }
 
+type RequestApiKeyStanding = ApiKeyActive | ApiKeyRevoked
+
+fn request_api_key_standing_wire(standing: RequestApiKeyStanding) -> String {
+  match standing {
+    ApiKeyActive => "active"
+    ApiKeyRevoked => "revoked"
+  }
+}
+
+fn request_api_key_standing_parse(wire: String) -> Result<RequestApiKeyStanding, String> {
+  match wire {
+    "active" => Ok { value: ApiKeyActive }
+    "revoked" => Ok { value: ApiKeyRevoked }
+    _ => Err { value: "invalid API key standing" }
+  }
+}
+
 // Operator provisioning only; the native request door never calls this. Directory
 // ownership denies its service principal writes. Revocation is a new CAS generation,
 // not replacement of an old record. All effects run here, never supplied outcomes.
 fn request_api_key_store_commit(store: RequestApiKeyStore, digest: NonEmptyStr,
-  expected: CasExpectation, user: NonEmptyStr, state: NonEmptyStr) -> Result<NonEmptyStr, String> {
-  if state != "active" && state != "revoked" { return Err { value: "invalid API key standing" } }
+  expected: CasExpectation, user: NonEmptyStr, state: RequestApiKeyStanding) -> Result<NonEmptyStr, String> {
   let value = serialize_json(v: json_object(members: [json_kv(key: "user", value: json_string(s: user as String)),
-    json_kv(key: "state", value: json_string(s: state as String))])) as NonEmptyStr
+    json_kv(key: "state", value: json_string(s: request_api_key_standing_wire(standing: state)))])) as NonEmptyStr
   match admit_cas_attempt_for_derived_payload(key: digest, expected: expected, proposed: value) {
     DerivedPayloadAdmitted { verified: verified } => match slot_commit(store: store.slots, publication: store.publication, verified: verified) {
       CasCommitted { committed: committed } => match slot_observe(store: store.slots, key: digest) {

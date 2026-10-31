@@ -1,6 +1,9 @@
 module gunbc.instruments.revision_request_fixture
 
-import std.types { String, NonEmptyStr, CommitSha }
+import std.types { String, NonEmptyStr, CommitSha, List }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.optional { Present, Absent }
 import std.error_primitives { Ok, Err }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
@@ -14,6 +17,16 @@ import gunbc.durable_handoff_rest { host_request_response }
 import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+// The seed registry still repeats the modeled label-to-producer binding.
+// This is a bounded host-adapter deferral, not a second request implementation.
+data revision_request_native_registry_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instrument_targets", decl_name: "revision_request_native_binding"),
+    reason: "target_invocation_host.rs instrument_registry contains one hand-written revision-request-native NativeServeProgram row so the seed can dispatch this modeled native fixture. The request handler and probe remain declared in the corpus; no scaffold path was deleted by adding the row.",
+    dissolution: unbound_dissolution(description: "TRIGGER: the host target registry is derived from gunbc.instrument_targets TargetBinding values, including NativeServeProgramProducer. Delete the hand-written revision-request-native row in that cutover. CONTROL: changing/removing revision_request_native_binding changes/refuses dispatch without editing Rust; the native HTTP fixture still emits, builds and executes through the declared producer." as NonEmptyStr)
+  ),
+]
 
 // A separate fixture entry, never the production service. The harness supplies
 // one isolated host-state tree to the process; the same declarations derive both

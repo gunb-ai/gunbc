@@ -3,7 +3,7 @@ module test.claim.durable_handoff_request_witness
 import gunbc.auth.request_api_key { RequestApiKeyUser, request_api_key_digest, request_api_key_read }
 import std.types { String, NonEmptyStr, Bool, FilePath }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
-import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store, request_api_key_store_path, request_api_key_store_read, request_api_key_store_commit }
+import gunbc.auth.request_api_key_store { RequestApiKeyStanding, ApiKeyActive, ApiKeyRevoked, request_api_key_standing_parse, request_api_key_standing_wire, RequestApiKeyStore, request_api_key_store, request_api_key_store_path, request_api_key_store_read, request_api_key_store_commit }
 import gunbc.runner.runner_revision_request_context { revision_request_context, revision_request_store_path }
 import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
 import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, CasReadableAbsent, ExpectSlotAbsent, ExpectSlotGeneration }
@@ -172,7 +172,7 @@ test fn a_published_result_alone_does_not_release_the_user_slot() -> Bool {
 }
 
 fn request_api_key_fixture_put_in(tree: HostStateTree, digest: NonEmptyStr,
-  user: NonEmptyStr, state: NonEmptyStr) -> Bool {
+  user: NonEmptyStr, state: RequestApiKeyStanding) -> Bool {
   let store = match request_api_key_store(tree: tree) { Err { value: _ } => { return false } Ok { value: store } => store }
   let expected = match request_api_key_store_read(store: store, digest: digest) {
     CasObservedReadable { readable: CasReadableAbsent } => ExpectSlotAbsent
@@ -206,7 +206,10 @@ fn request_api_key_fixture_prepare() -> Bool {
 fn request_api_key_fixture_put(digest: NonEmptyStr, user: NonEmptyStr, state: NonEmptyStr) -> Bool {
   match request_api_key_fixture_tree() {
     Absent => false
-    Present { value: tree } => request_api_key_fixture_put_in(tree: tree, digest: digest, user: user, state: state)
+    Present { value: tree } => match request_api_key_standing_parse(wire: state as String) {
+      Err { value: _ } => false
+      Ok { value: standing } => request_api_key_fixture_put_in(tree: tree, digest: digest, user: user, state: standing)
+    }
   }
 }
 
@@ -217,8 +220,8 @@ test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool 
   let prepared = request_api_key_fixture_prepare_in(tree: tree)
   let a = match request_api_key_digest(authorization: "Bearer fixture-key-a") { Err { value: _ } => { return false } Ok { value: value } => value }
   let b = match request_api_key_digest(authorization: "Bearer fixture-key-b") { Err { value: _ } => { return false } Ok { value: value } => value }
-  let first = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: "active")
-  let second = request_api_key_fixture_put_in(tree: tree, digest: b, user: "alice", state: "active")
+  let first = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: ApiKeyActive)
+  let second = request_api_key_fixture_put_in(tree: tree, digest: b, user: "alice", state: ApiKeyActive)
   let store = match request_api_key_store(tree: tree) { Err { value: _ } => { return false } Ok { value: store } => store }
   let same = match request_api_key_read(store: store, authorization: "Bearer fixture-key-a") {
     Err { value: _ } => false
@@ -227,7 +230,7 @@ test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool 
       Ok { value: two } => one.user == "alice" && one.user == two.user
     }
   }
-  let revoked = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: "revoked")
+  let revoked = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: ApiKeyRevoked)
   let refused = match request_api_key_read(store: store, authorization: "Bearer fixture-key-a") { Err { value: _ } => true _ => false }
   let kept = match request_api_key_read(store: store, authorization: "Bearer fixture-key-b") { Ok { value: user } => user.user == "alice" _ => false }
   let removed = shell.Remove.RecursiveForce(path: root as String)
@@ -242,7 +245,7 @@ test fn a_verified_user_cannot_cross_key_store_placements() -> Bool {
   let prepared_a = request_api_key_fixture_prepare_in(tree: a)
   let prepared_b = request_api_key_fixture_prepare_in(tree: b)
   let digest = match request_api_key_digest(authorization: "Bearer fixture-bound-key") { Err { value: _ } => { return false } Ok { value: value } => value }
-  let put = request_api_key_fixture_put_in(tree: a, digest: digest, user: "alice", state: "active")
+  let put = request_api_key_fixture_put_in(tree: a, digest: digest, user: "alice", state: ApiKeyActive)
   let context_a = match revision_request_context(tree: a) { Err { value: _ } => { return false } Ok { value: value } => value }
   let context_b = match revision_request_context(tree: b) { Err { value: _ } => { return false } Ok { value: value } => value }
   let verified = match request_api_key_read(store: context_a.keys, authorization: "Bearer fixture-bound-key") { Err { value: _ } => { return false } Ok { value: value } => value }
@@ -332,4 +335,17 @@ test fn acceptance_before_history_is_recovered_from_pending() -> Bool {
   }
   let removed = shell.Remove.RecursiveForce(path: root as String)
   linked.success && history_absent && observed && retry && repaired && removed.success
+}
+
+
+test fn api_key_standing_wire_is_closed_and_round_trips() -> Bool {
+  (match request_api_key_standing_parse(wire: request_api_key_standing_wire(standing: ApiKeyActive)) {
+    Ok { value: ApiKeyActive } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: request_api_key_standing_wire(standing: ApiKeyRevoked)) {
+    Ok { value: ApiKeyRevoked } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: "revokd") {
+    Err { value: _ } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: "") {
+    Err { value: _ } => true _ => false
+  })
 }
