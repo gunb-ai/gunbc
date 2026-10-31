@@ -3,7 +3,7 @@ module gunbc.serving.serving_layout
 import std.types { String, NonEmptyStr, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.work { identity_frame }
@@ -269,13 +269,14 @@ fn serving_device_fault(g: ServingResourceGrant, b: ServingBackendProfile) -> Se
   })
 }
 
-fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutRefusal? {
-  if r.min_retained_per_replica == 0 { Absent } else {
-    fold(groups, init: Absent, f: (acc, gr) => match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if gr.devices.length() > b.max_devices_with_retention { Present { value: ServingLayoutBackendCannotRetain { group: gr.name, devices: gr.devices.length(), most: b.max_devices_with_retention } } } else { Absent }
-    })
-  }
+// The backend's retention limit binds every group, whatever the requirement's minimum: serving_allocate deals
+// RAM left over as retained conversations to every replica, so a minimum of zero still allocates retention
+// and is no licence to span more devices than the backend retains across.
+fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendProfile) -> ServingLayoutRefusal? {
+  fold(groups, init: Absent, f: (acc, gr) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if gr.devices.length() > b.max_devices_with_retention { Present { value: ServingLayoutBackendCannotRetain { group: gr.name, devices: gr.devices.length(), most: b.max_devices_with_retention } } } else { Absent }
+  })
 }
 
 // What one replica needs beside its retention budget: its base, its active slots, and the free headroom the
@@ -365,7 +366,7 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
         if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
           ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
         } else {
-          match serving_retention_fault(groups: groups, b: b, r: r) {
+          match serving_retention_fault(groups: groups, b: b) {
             Present { value: f } => ServingLayoutRefused { refusal: f }
             Absent => match serving_device_fault(g: g, b: b) {
               Present { value: f } => ServingLayoutRefused { refusal: f }
@@ -400,19 +401,37 @@ fn serving_configuration_identity(replicas: List<ServingReplicaConfig>) -> Strin
     fold(replicas, init: "", f: (acc, c) => concat(acc, identity_frame(label: "replica", value: serving_replica_identity(c: c)))))
 }
 
-// THE WHOLE CONFIGURATION a receipt is bound to: the host, the backend (its release and model as the profile
+// The grant facts the derived caps stand on: usable RAM, overhead, each shared artifact, the charging
+// assumptions, and every selected device's board and VRAM. Two grants that derive equal caps from different
+// hardware are different configurations: a receipt taken on 15,356 MiB devices says nothing about 24,576 MiB
+// ones, nor about another board under the same device name.
+fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplicaConfig>) -> String {
+  concat(identity_frame(label: "usable-ram", value: to_string(serving_grant_ram(g: g))),
+    concat(identity_frame(label: "overhead", value: to_string(serving_grant_overhead(g: g))),
+    concat(identity_frame(label: "shared", value: to_string(g.shared.length())),
+    concat(fold(g.shared, init: "", f: (acc, a) => concat(acc, concat(identity_frame(label: "artifact", value: a.name as String), concat(identity_frame(label: "artifact-bytes", value: to_string(byte_size_count(b: a.bytes))), identity_frame(label: "artifact-owner", value: a.owner as String))))),
+    concat(identity_frame(label: "charging", value: to_string(g.charging.length())),
+    concat(fold(g.charging, init: "", f: (acc, c) => concat(acc, identity_frame(label: "assumption", value: c as String))),
+      fold(replicas, init: "", f: (acc, c) => concat(acc, fold(c.devices, init: "", f: (inner, d) => concat(inner, match serving_device_named(g: g, name: d) {
+        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: declaration_ref_display_key(ref: dv.board)), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
+        Absent => identity_frame(label: "selected-device-ungranted", value: d as String)
+      }))))))))))
+}
+
+// THE WHOLE CONFIGURATION a receipt is bound to: the host, the grant facts the caps stand on, the backend (its release and model as the profile
 // names them, the snapshot cost its KV settings produce, its park headroom and launched ceiling) and every
 // replica. Two hosts, or two backends, deriving the same numbers are different configurations, so a receipt
 // taken on one never qualifies the other. The launch row's complete argv is not yet a carrier; it joins this
 // identity when the launch row renders from the layout (serving_layout_consumer_frontier).
 fn serving_layout_identity(g: ServingResourceGrant, b: ServingBackendProfile, replicas: List<ServingReplicaConfig>) -> String {
   concat(identity_frame(label: "host", value: g.host as String),
+    concat(identity_frame(label: "grant", value: serving_grant_identity(g: g, replicas: replicas)),
     concat(identity_frame(label: "backend", value: b.backend as String),
     concat(identity_frame(label: "snapshot-fixed", value: to_string(byte_size_count(b: b.retention.fixed))),
     concat(identity_frame(label: "snapshot-per-token", value: to_string(byte_size_count(b: b.retention.per_token))),
     concat(identity_frame(label: "park-floor", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor)))),
     concat(identity_frame(label: "backend-max-context", value: to_string(token_count_value(t: b.max_context))),
-      serving_configuration_identity(replicas: replicas)))))))
+      serving_configuration_identity(replicas: replicas))))))))
 }
 
 // A receipt qualifies the derived configuration only if it was taken on exactly this configuration. A changed

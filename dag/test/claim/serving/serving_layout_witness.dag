@@ -256,3 +256,43 @@ test fn witness_duplicate_group_names_refuse() -> Bool {
     b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   match sl_refusal(r: twice) { Present { value: ServingLayoutDuplicateGroupName { group: g } } => g == "x"  _ => false }
 }
+
+// A ZERO MINIMUM IS NOT A RETENTION-FREE LAYOUT: the allocator still deals leftover RAM as retained
+// conversations, so the two-device group h11's release cannot retain across refuses under a minimum of zero
+// exactly as under one, and a backend that does retain across two runs it with retention dealt.
+test fn witness_zero_minimum_does_not_bypass_the_retention_limit() -> Bool {
+  let pair = [ServingDeviceGroup { name: "pair" as NonEmptyStr, devices: ["a16-85", "a16-87"] }]
+  let zero = ServingRequirement { max_context: serving_context_ceiling_requirement.max_context, min_retained_per_replica: 0 }
+  let strata = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: strata_iq3_s_a16_profile, r: zero)
+  let spanning = serving_layout_derive(g: host_6ce85c_grant, groups: pair, b: sl_profile_retaining_across(b: strata_iq3_s_a16_profile, most: 2), r: zero)
+  (match sl_refusal(r: strata) { Present { value: ServingLayoutBackendCannotRetain { group: gr, devices: n, most: m } } => gr == "pair" && n == 2 && m == 1  _ => false })
+    && sl_replicas(r: spanning).length() == 1
+    && sl_admitted_total(r: spanning) > 0
+}
+
+fn sl_grant_devices(g: ServingResourceGrant, devices: List<ServingDevice>) -> ServingResourceGrant {
+  ServingResourceGrant { host: g.host, usable_ram: g.usable_ram, overhead: g.overhead, shared: g.shared, swap_bound: g.swap_bound, devices: devices, charging: g.charging }
+}
+
+fn sl_with_selected_device(g: ServingResourceGrant, name: String, vram: ByteSize, other_board: Bool) -> ServingResourceGrant {
+  sl_grant_devices(g: g, devices: map(g.devices, d => if d.device == name {
+    ServingDevice {
+      device: d.device,
+      board: if other_board { decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_catalog") } else { d.board },
+      vram: ServingMemoryRead { bytes: vram, provenance: "witness fixture" as NonEmptyStr },
+    }
+  } else { d }))
+}
+
+// A RECEIPT IS BOUND TO THE SELECTED HARDWARE: a selected device whose VRAM reads 24,576 MiB instead of
+// 15,356 MiB, or whose board is another one under the same name, passes the same per-device minimum and
+// derives the same caps and counts, and today's receipt is NOT carried onto either.
+test fn witness_selected_device_change_with_equal_numbers_requires_requalification() -> Bool {
+  let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: sl_configuration(r: host_6ce85c_layout) }
+  let bigger = serving_layout_with_qualification(result: serving_layout_derive(g: sl_with_selected_device(g: host_6ce85c_grant, name: "a16-85", vram: mebibyte_to_byte_size(m: mebibyte(count: 24576)), other_board: false), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
+  let reboarded = serving_layout_with_qualification(result: serving_layout_derive(g: sl_with_selected_device(g: host_6ce85c_grant, name: "a16-85", vram: mebibyte_to_byte_size(m: mebibyte(count: 15356)), other_board: true), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
+  serving_configuration_identity(replicas: sl_replicas(r: bigger)) == serving_configuration_identity(replicas: sl_replicas(r: host_6ce85c_layout))
+    && serving_configuration_identity(replicas: sl_replicas(r: reboarded)) == serving_configuration_identity(replicas: sl_replicas(r: host_6ce85c_layout))
+    && (match bigger { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+    && (match reboarded { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+}
