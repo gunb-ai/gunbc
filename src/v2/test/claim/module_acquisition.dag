@@ -1,7 +1,7 @@
 module v2.test.claim.module_acquisition
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
-import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused }
+import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquireImportClosure, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules }
@@ -1185,4 +1185,55 @@ test fn a_permitted_v2_to_v2_acquisition_advances() -> Bool {
         AcquisitionStepRefused { refusal: _, state: _ } => false
       }
   }
+}
+
+// THE IMPORT-DEPTH READ (AcquireImportClosure, the sweep's cycle verdict). It demands only the import graph, so it must
+// request exactly the imports the full read requests and none of the member or reference requests -- and it must refuse
+// what the full read refuses, never answer for a text the front end would have refused. Each control varies the depth alone.
+
+fn import_depth_env(prepared: PreparedGrammar) -> AcquisitionEnv {
+  let full = member_env(prepared: prepared)
+  AcquisitionEnv { layout: full.layout, bindings: full.bindings, lex: full.lex, grammar: full.grammar, header_tail: full.header_tail, depth: AcquireImportClosure {} }
+}
+
+// The imports a read requested, and whether it requested anything beside them.
+fn depth_read_text(read: AcquisitionMemberRead) -> String {
+  match read {
+    AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
+      let bare = length(xs: requests.members) == 0 && length(xs: requests.references) == 0
+      concat("read|", join(requests.imports, ","), if bare { "|imports-only" } else { "|more-than-imports" })
+    AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
+  }
+}
+
+fn depth_text_at(content: String, import_depth: Bool) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      depth_read_text(read: member_read_under(env: if import_depth { import_depth_env(prepared: prepared) } else { member_env(prepared: prepared) }, content: content))
+  }
+}
+
+fn depth_subject() -> String {
+  "module v2.test.subject\nimport std.types { Bool }\n\nfn subject(x: Bool) -> Bool {\n  v2.std.text.x_probe(y: x)\n}\n"
+}
+
+test fn the_import_depth_read_requests_the_imports_and_nothing_beside_them() -> Bool {
+  depth_text_at(content: depth_subject(), import_depth: true) != depth_text_at(content: depth_subject(), import_depth: false)
+    && ends_with(s: depth_text_at(content: depth_subject(), import_depth: true), suffix: "|imports-only")
+    && ends_with(s: depth_text_at(content: depth_subject(), import_depth: false), suffix: "|more-than-imports")
+    && starts_with(s: depth_text_at(content: depth_subject(), import_depth: true), prefix: "read|std.types")
+}
+
+test fn the_import_depth_read_refuses_a_malformed_import_line() -> Bool {
+  starts_with(
+    s: depth_text_at(content: "module v2.test.subject\nimport \nfn subject() -> Bool { true }\n", import_depth: true),
+    prefix: refused_member_prefix()
+  )
+}
+
+test fn the_import_depth_read_refuses_a_member_that_declares_another_module_exactly_as_the_full_read_does() -> Bool {
+  let other = "module v2.test.other\nfn subject() -> Bool { true }\n"
+  depth_text_at(content: other, import_depth: true) == depth_text_at(content: other, import_depth: false)
+    && !starts_with(s: depth_text_at(content: other, import_depth: true), prefix: "read|")
 }
