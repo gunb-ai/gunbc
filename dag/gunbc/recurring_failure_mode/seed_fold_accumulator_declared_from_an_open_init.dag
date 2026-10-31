@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.seed_fold_accumulator_declared_from_an_open_init
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data seed_fold_accumulator_declared_from_an_open_init: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_fold_accumulator_declared_from_an_open_init" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a fold whose init is open (`none`, `[]`, `empty_map()`) and whose step reaches an effect is emitted by the seed as `let mut __fold_acc = None;` with no type, because the effectful loop has no closure for rustc to infer the payload from. HARM: E0282 at cargo build of the emitted crate (gunbc_durable_cas_file_store.rs:510:20, cas_observe_window, calm-crab-645 q-58d6eab), blocking #15310; loud, but only after emission.",
+    "REPAIR AT THE BOUNDARY: v1.compiler.emit_rust rust_fold_declarable_acc_type is the one rule for what an accumulator may be declared as (init type, else the fold's resolved result type, else left open); it replaced predicates inlined in emit_rust_fold_method_call. RED/control: native_emission_controls open_init_fold_red_absent_reads_answer_absent and open_init_fold_control_typed_init_answers_absent.",
+    "RUNG FOUND AT: 1. CEILING: 3 (the emitter refuses to emit an undeclared accumulator rather than leaving it to rustc). NEXT TRIGGER (can climb after one execution): the RED builds green on srv1; unexecuted at this writing. UNOBSERVED: whether the fold's result type is itself open when only the lambda body fixes it.",
+    "RECOGNITION RULE: E0282 `type annotations needed` on `let mut __fold_acc`; source `fold(xs, init: <none|[]|empty_map()>, f: ...)` with an effectful step."
+  ],
+
+  evidence: [],
+}
