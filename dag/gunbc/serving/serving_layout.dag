@@ -3,10 +3,11 @@ module gunbc.serving.serving_layout
 import std.types { String, NonEmptyStr, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.work { identity_frame }
+import gunbc.repository_census_observation { census_declaration_ref_identity }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
@@ -404,7 +405,9 @@ fn serving_configuration_identity(replicas: List<ServingReplicaConfig>) -> Strin
 // The grant facts the derived caps stand on: usable RAM, overhead, each shared artifact, the charging
 // assumptions, and every selected device's board and VRAM. Two grants that derive equal caps from different
 // hardware are different configurations: a receipt taken on 15,356 MiB devices says nothing about 24,576 MiB
-// ones, nor about another board under the same device name.
+// ones, nor about another board under the same device name. A board is framed by its STRUCTURAL identity
+// (module, declaration and field arm each tagged), never its display key: "m" + "b::c" and "m::b" + "c"
+// display alike and are different references.
 fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplicaConfig>) -> String {
   concat(identity_frame(label: "usable-ram", value: to_string(serving_grant_ram(g: g))),
     concat(identity_frame(label: "overhead", value: to_string(serving_grant_overhead(g: g))),
@@ -413,7 +416,7 @@ fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplica
     concat(identity_frame(label: "charging", value: to_string(g.charging.length())),
     concat(fold(g.charging, init: "", f: (acc, c) => concat(acc, identity_frame(label: "assumption", value: c as String))),
       fold(replicas, init: "", f: (acc, c) => concat(acc, fold(c.devices, init: "", f: (inner, d) => concat(inner, match serving_device_named(g: g, name: d) {
-        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: declaration_ref_display_key(ref: dv.board)), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
+        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: census_declaration_ref_identity(reference: dv.board).digest), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
         Absent => identity_frame(label: "selected-device-ungranted", value: d as String)
       }))))))))))
 }

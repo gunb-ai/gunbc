@@ -4,7 +4,8 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_display_key }
+import gunbc.repository_census_observation { census_declaration_ref_identity }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import gunbc.host.host_memory_observation { HostUsableRamMeasured }
 import gunbc.serving.serving_host_memory {
@@ -275,10 +276,14 @@ fn sl_grant_devices(g: ServingResourceGrant, devices: List<ServingDevice>) -> Se
 }
 
 fn sl_with_selected_device(g: ServingResourceGrant, name: String, vram: ByteSize, other_board: Bool) -> ServingResourceGrant {
+  sl_with_selected_board(g: g, name: name, vram: vram, board: if other_board { Present { value: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_catalog") } } else { Absent })
+}
+
+fn sl_with_selected_board(g: ServingResourceGrant, name: String, vram: ByteSize, board: DeclarationRef?) -> ServingResourceGrant {
   sl_grant_devices(g: g, devices: map(g.devices, d => if d.device == name {
     ServingDevice {
       device: d.device,
-      board: if other_board { decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_catalog") } else { d.board },
+      board: match board { Present { value: b } => b  Absent => d.board },
       vram: ServingMemoryRead { bytes: vram, provenance: "witness fixture" as NonEmptyStr },
     }
   } else { d }))
@@ -295,4 +300,29 @@ test fn witness_selected_device_change_with_equal_numbers_requires_requalificati
     && serving_configuration_identity(replicas: sl_replicas(r: reboarded)) == serving_configuration_identity(replicas: sl_replicas(r: host_6ce85c_layout))
     && (match bigger { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
     && (match reboarded { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+}
+
+fn sl_live_after_board(board: DeclarationRef, receipt_board: DeclarationRef) -> ServingLayoutResult {
+  let a16 = mebibyte_to_byte_size(m: mebibyte(count: 15356))
+  let before = serving_layout_derive(g: sl_with_selected_board(g: host_6ce85c_grant, name: "a16-85", vram: a16, board: Present { value: receipt_board }), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
+  let receipt = ServingLiveQualified { receipt: "witness receipt" as NonEmptyStr, configuration: sl_configuration(r: before) }
+  serving_layout_with_qualification(result: serving_layout_derive(g: sl_with_selected_board(g: host_6ce85c_grant, name: "a16-85", vram: a16, board: Present { value: board }), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement), q: receipt)
+}
+
+// A BOARD IS IDENTIFIED BY ITS PARTS, NOT ITS DISPLAY KEY: module "m" with declaration "b::c", module "m::b"
+// with declaration "c", and module "m" declaration "b" field "c" all display as "m::b::c", and are three
+// different references. Their identities differ, and a receipt taken with one of them as a selected device's
+// board is not carried onto another; the same reference keeps the receipt.
+test fn witness_boards_with_one_display_key_are_different_qualifications() -> Bool {
+  let inner = decl_ref(module_path: "m", decl_name: "b::c")
+  let outer = decl_ref(module_path: "m::b", decl_name: "c")
+  let field = decl_field_ref(module_path: "m", decl_name: "b", field_name: "c")
+  declaration_ref_display_key(ref: inner) == declaration_ref_display_key(ref: outer)
+    && declaration_ref_display_key(ref: inner) == declaration_ref_display_key(ref: field)
+    && census_declaration_ref_identity(reference: inner).digest != census_declaration_ref_identity(reference: outer).digest
+    && census_declaration_ref_identity(reference: inner).digest != census_declaration_ref_identity(reference: field).digest
+    && census_declaration_ref_identity(reference: outer).digest != census_declaration_ref_identity(reference: field).digest
+    && (match sl_live_after_board(board: outer, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+    && (match sl_live_after_board(board: field, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
+    && (match sl_live_after_board(board: inner, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveStandingQualified { receipt: _ } => true  _ => false }  _ => false })
 }
