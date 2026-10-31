@@ -12482,11 +12482,72 @@ fn present_value_expected_from_optional(type_name: String, field_name: String, v
 // declares no fields, so `SingleAuthority { reason: "..." }` supplies one that does not exist. The
 // ambiguity guard is shared with MissingField for the same reason it exists there -- an ambiguous
 // name has not been resolved to a type, so neither half may judge its fields.
+// AN ANONYMOUS LITERAL AT AN EXPECTED RECORD IS THAT RECORD'S LITERAL (DESIGN §5, §6b). The corpus
+// writes a typed list as `data xs: List<Spec> = [{ a: 1, b: 2 }]` without repeating the nominal, and
+// the expected type reaches the literal (infer_item's data arm -> the ExprListLit element expectation
+// -> infer_record_lit). The anonymous arm used to drop it: every roster read below keys on the
+// literal's own name, so with no name the field types, MissingField and FieldNotFound were all
+// skipped and the literal typed as an anonymous product -- a missing, extra or mistyped field was
+// accepted silently, and the declared List<Spec> read as List<<anon>> to every later judgment
+// (declared_type_conformance_note class 3). This reads the roster of the declaration the EXPECTED
+// node resolves to, by identity (lookup_type_for, never a spelling lookup in this module), so an
+// anonymous literal is judged by the same roster rule as a named one. It answers only for a required
+// record; an optional, a coproduct, an alias or an uninstantiated generic keeps the anonymous
+// reading exactly as before.
+type AnonymousRecordExpectation {
+  declared: Node
+  label: String
+  roster: List<Node>
+}
+
+fn anonymous_record_literal_expectation(type_name: String?, expected: Node?, scope: InferScope) -> AnonymousRecordExpectation? {
+  match type_name {
+    Present { value: _ } => none
+    Absent =>
+      match expected {
+        Absent => none
+        Present { value: exp } =>
+          // The expected node arrives in two shapes: a type reference (a data annotation, a declared
+          // return) resolved here by identity, or the record declaration itself (a list element's
+          // expectation is read through child_type_node, which hands back the resolved declaration).
+          let expected_declaration = if (exp.connective == NoConnective) {
+            lookup_type_for(env: scope.type_env, node: exp)
+          } else if (exp.connective == Conj) { Present { value: exp } } else { none }
+          if exp.return_cardinality == CardOptional || node_is_std_optional(n: exp, scope: scope) {
+            none
+          } else {
+            match expected_declaration {
+              Absent => none
+              Present { value: decl } =>
+                if decl.connective != Conj || (decl.children |> count) == 0 {
+                  none
+                } else {
+                  let label = authored_name_at(source_indices: scope.type_env.source_indices, node: exp)
+                  let roster = if (decl.params |> count) == 0 {
+                    Present { value: decl.children }
+                  } else {
+                    record_lit_instantiated_fields(type_name: Present { value: label }, expected: expected, scope: scope)
+                  }
+                  match roster {
+                    Present { value: fields } => Present { value: AnonymousRecordExpectation { declared: exp, label: label, roster: fields } }
+                    Absent => none
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
 fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
-  let expected_struct_fields = if instantiated_struct_fields == none {
-    record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
-  } else { none }
+  let anonymous_expectation = anonymous_record_literal_expectation(type_name: type_name, expected: expected, scope: scope)
+  let expected_struct_fields = if instantiated_struct_fields != none { none } else {
+    match anonymous_expectation {
+      Present { value: ae } => Present { value: ae.roster }
+      Absent => record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
+    }
+  }
   let expected_variant_node = if instantiated_struct_fields == none && expected_struct_fields == none {
     match type_name {
       Present { value: _ } => record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope)
@@ -12545,8 +12606,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   }
   let si_presence = scope.type_env.source_indices
   let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
+  let roster_label = if tn_str != "" { tn_str } else {
+    match anonymous_expectation {
+      Present { value: ae } => ae.label
+      Absent => ""
+    }
+  }
   let presence_fields = if tn_str == "" {
-    []
+    match anonymous_expectation {
+      Present { value: ae } => ae.roster
+      Absent => []
+    }
   } else {
     match presence_variant_owner {
       Present { value: variant_owner } =>
@@ -12582,7 +12652,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       [make_error_node(diagnostic: AmbiguousReference { name: tn_str, candidates: strict_cands, span: name_span }, module_name: scope.module_name)]
     } else { [] }
   } else { [] }
-  let construction_field_names = if tn_str == "" || presence_name_is_ambiguous {
+  let construction_field_names = if roster_label == "" || presence_name_is_ambiguous {
       none
     } else if (presence_fields |> count) > 0 {
       Present { value: presence_fields |> map(sf => authored_name_at(source_indices: si_presence, node: sf)) }
@@ -12636,7 +12706,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       )]
     Absent => []
   }
-  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
+  let missing_field_diags = if roster_label == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
       []
     } else {
       presence_fields
@@ -12646,7 +12716,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         |> map(sf => make_error_node(
           diagnostic: MissingField {
             field: authored_name_at(source_indices: si_presence, node: sf),
-            type_name: tn_str,
+            type_name: roster_label,
             span: name_span
           },
           module_name: scope.module_name
@@ -12673,7 +12743,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         if names |> any(n => n == fi_name) {
           []
         } else {
-          [make_error_node(diagnostic: FieldNotFound { field: fi_name, type_name: tn_str, span: fi.span }, module_name: scope.module_name)]
+          [make_error_node(diagnostic: FieldNotFound { field: fi_name, type_name: roster_label, span: fi.span }, module_name: scope.module_name)]
         }
       Absent => []
     }
@@ -12865,10 +12935,14 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
-    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
+    let literal_type = match anonymous_expectation {
+      Present { value: ae } => ae.declared
+      Absent => anon_node
+    }
+    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: literal_type } }, span: span)
     InferResult {
       typed: texpr,
-      emissions: infer_emissions_concat(left: fi_emissions, right: infer_emissions_of_diagnostics(diagnostics: alias_struct_diags))
+      emissions: infer_emissions_concat(left: fi_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(alias_struct_diags, missing_field_diags)))
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
