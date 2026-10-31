@@ -3533,6 +3533,38 @@ fn roster_import_sweep_group_a_prefix4_exit() -> ProcessExit {
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
+// ORDER ENTRIES of group a: the same 8 controls with closure_inhabited FIRST vs LAST, to tell state retained across calls from a pairwise interaction.
+fn roster_import_sweep_group_a_closure_first_exit() -> ProcessExit {
+  let report = match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_closure_inhabited()
+        + roster_control_homonym(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
+  }
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_import_sweep_group_a_others_exit() -> ProcessExit {
+  let report = match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_homonym(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
+  }
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
 // The whole control set is the concatenation of its groups; each group has its own bounded entry (roster_import_sweep_controls_group_<a-e>_exit).
 fn roster_controls_report() -> String {
   roster_controls_group_a() + roster_controls_group_b() + roster_controls_group_c() + roster_controls_group_d() + roster_controls_group_e()
