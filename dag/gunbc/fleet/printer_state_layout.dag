@@ -104,11 +104,13 @@ fn legacy_target(tree: HostStateTree, name: String) -> String? {
 
 // THE HOLD'S ENTRIES, LISTED AFTER THE OLD HOLD WAS PROVEN FREE: acquiring and releasing it wrote new generations
 // into the parent, so the list taken before the proof is stale and moving only it would leave those behind.
-fn fresh_hold_names(tree: HostStateTree) -> List<String> {
+type FreshHoldNames = FreshHoldNamesListed { names: List<String> } | FreshHoldNamesUnreadable { detail: String }
+
+fn fresh_hold_names(tree: HostStateTree) -> FreshHoldNames {
   match printer_starts_legacy_scan(tree: tree, owns: n => printer_execution_hold_legacy_entry(name: n)) {
-    PrinterStartsLegacyEntries { names: fresh } => fresh
-    PrinterStartsClean => []
-    PrinterStartsUnreadable { detail: _ } => []
+    PrinterStartsLegacyEntries { names: fresh } => FreshHoldNamesListed { names: fresh }
+    PrinterStartsClean => FreshHoldNamesListed { names: [] }
+    PrinterStartsUnreadable { detail: d } => FreshHoldNamesUnreadable { detail: d }
   }
 }
 
@@ -121,10 +123,13 @@ fn retire_hold(tree: HostStateTree) -> List<String> {
     HoldFenceBegun { fence: f } => {
       let parent = printer_starts_path(tree: tree) as String
       let fence_entry = printer_execution_hold_fence_entry(fence: f)
-      let copy_causes = fresh_hold_names(tree: tree).flat_map(n => match legacy_target(tree: tree, name: n) {
-        Present { value: to } => match copy_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
-        Absent => [join(["no store claims ", n], "")]
-      })
+      let copy_causes = match fresh_hold_names(tree: tree) {
+        FreshHoldNamesUnreadable { detail: d } => [join(["the hold generations could not be listed: ", d], "")]
+        FreshHoldNamesListed { names: names } => names.flat_map(n => match legacy_target(tree: tree, name: n) {
+          Present { value: to } => match copy_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+          Absent => [join(["no store claims ", n], "")]
+        })
+      }
       let fence_copied = if Filesystem.Read(path: join([printer_execution_hold_path(tree: tree) as String, "/", fence_entry], "")).success { [] } else { [join(["the fence generation ", fence_entry, " was not copied"], "")] }
       let all_copy_causes = append(copy_causes, items: fence_copied)
       if count(all_copy_causes) != 0 { all_copy_causes } else {
