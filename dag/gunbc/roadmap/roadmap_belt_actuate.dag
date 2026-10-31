@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_log_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
@@ -5844,7 +5844,7 @@ fn belt_provider_event_projection_observe_for_instance(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_external_path(store: store, member: AttemptWorkerEvents),
       )
   }
 }
@@ -6357,7 +6357,7 @@ fn belt_workflow_attempt_evidence_for_key(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_external_path(store: store, member: AttemptWorkerEvents),
       )
   }
   let spawn_failure = attempt_state_read_at(instance: instance, node: attempt.node_id, attempt_key: current_key, member: AttemptSpawnFailure)
