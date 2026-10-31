@@ -12,6 +12,7 @@ import gunbc.fleet.print_record_stores { print_request_store, PrintRequestStoreR
 import gunbc.fleet.printer_actuation { printer_start_claims, PrinterStartClaimsReady, PrinterStartClaimsUnready, printer_start_claim_path }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_fence, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused, printer_execution_hold_fence_entry, printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready, printer_execution_hold_path, hold_key }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready, cassette_inventory_path }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
 import gunbc.fleet.printer_state_layout { printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
 import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, print_runtime_path, cad_environments_member, legacy_lock_suffix }
 import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_digest }
@@ -23,7 +24,7 @@ import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_di
 fn tree_with_members() -> HostStateTree? {
   let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_printer_layout.XXXXXX").path
   let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
-  let made = [printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
+  let made = [start_evidence_path(tree: tree) as String, printer_starts_path(tree: tree) as String, print_request_path(tree: tree) as String, print_completion_path(tree: tree) as String, printer_start_claim_path(tree: tree) as String, printer_execution_hold_path(tree: tree) as String, cassette_inventory_path(tree: tree) as String]
   if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
 }
 
@@ -37,6 +38,7 @@ fn completions_unready(tree: HostStateTree) -> Bool { match print_completion_sto
 fn hold_unready(tree: HostStateTree) -> Bool { match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: _ } => false PrinterExecutionHoldStoreUnready { detail: _ } => true } }
 fn inventory_unready(tree: HostStateTree) -> Bool { match cassette_inventory_store(tree: tree) { CassetteInventoryStoreReady { store: _ } => false CassetteInventoryStoreUnready { detail: _ } => true } }
 fn claims_ready(tree: HostStateTree) -> Bool { !claims_unready(tree: tree) }
+fn evidence_ready(tree: HostStateTree) -> Bool { match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: _ } => true StartEvidenceStoreUnready { detail: _ } => false } }
 
 // RED: while a claim-store entry of the flat layout remains, the claim mint refuses and no other store's does (each
 // mint refuses on its own store's entries only); POSITIVE CONTROL: every mint over the clean tree is Ready.
@@ -105,12 +107,13 @@ test fn w_representative_srv1_patterns_move_per_store_while_the_held_hold_refuse
         FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
         FileHoldKeyNotSlotAddressable { slot_key: _ } => false
       }
-      let before = claims_unready(tree: tree) && completions_unready(tree: tree) && inventory_unready(tree: tree) && hold_unready(tree: tree) && !requests_unready(tree: tree)
+      let before = !evidence_ready(tree: tree) && claims_unready(tree: tree) && completions_unready(tree: tree) && inventory_unready(tree: tree) && hold_unready(tree: tree) && !requests_unready(tree: tree)
       let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: c } => string_contains(s: c, pattern: "execution hold was not moved") }
       let claims = printer_start_claim_path(tree: tree) as String
       let moved = carried(dir: claims, name: "printer-start-aa.1", content: claim)
         && carried(dir: claims, name: "printer-start-aa.claimed.before-start.json", content: "b1")
-        && carried(dir: claims, name: "printer-start-aa.claimed.after-start-1.json", content: "a1")
+        && carried(dir: start_evidence_path(tree: tree) as String, name: "printer-start-aa.after-start-1.json", content: "a1")
+        && !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-aa.claimed.after-start-1.json"], "")).success
         && carried(dir: claims, name: "printer-start-aa.claimed.batch-report.json", content: "r1")
         && carried(dir: claims, name: "printer-start-aa.claimed.receipt.json", content: "c1")
         && carried(dir: claims, name: "batch-attempt-bb.1", content: "batch-claim")
@@ -119,7 +122,7 @@ test fn w_representative_srv1_patterns_move_per_store_while_the_held_hold_refuse
         && carried(dir: cassette_inventory_path(tree: tree) as String, name: "cassette-prototype-inventory.1", content: "inv1")
         && carried(dir: print_request_path(tree: tree) as String, name: "deadbeef.request.json", content: "req1")
       let hold_stays = Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/fleet-print-controller.1"], "")).success
-      let after = claims_ready(tree: tree) && !completions_unready(tree: tree) && !inventory_unready(tree: tree) && !requests_unready(tree: tree) && hold_unready(tree: tree)
+      let after = evidence_ready(tree: tree) && claims_ready(tree: tree) && !completions_unready(tree: tree) && !inventory_unready(tree: tree) && !requests_unready(tree: tree) && hold_unready(tree: tree)
       planted && held && before && refused && moved && hold_stays && after
     }
   }

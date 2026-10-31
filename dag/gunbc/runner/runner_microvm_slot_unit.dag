@@ -6,6 +6,10 @@ import gunbc.workspace_commissioning_start_identity { workspace_commissioning_su
 import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 
 import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_create_new, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SliceUnitFile, SystemdServiceDirective,
@@ -172,7 +176,133 @@ fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
 // file per unit incarnation. It is declared here beside the unit because the deploy that writes
 // the unit is what makes the directory exist, and the controller that runs from the unit is what
 // fills it; a directory declared only in the controller (review 69796) was created by nothing.
-data microvm_slot_controller_receipt_dir: String = "/var/lib/gunbc/microvm-slot-controller"
+//
+// SEALED (cohort C-createonce): the directory is the ONE declaration below, a member of the host-state
+// tree (gunbc.host_state_root), and the receipts are reached only through MicrovmReceiptStore. The
+// layout is UNCHANGED (/var/lib/gunbc/microvm-slot-controller, one <prefix><InvocationID>.txt file per
+// incarnation), so no legacy entry exists and no cutover is owed. No retention: receipts are never
+// removed, as before.
+type MicrovmReceiptDeclaration { member: NonEmptyStr }
+
+data microvm_receipt_slots: MicrovmReceiptDeclaration = MicrovmReceiptDeclaration {
+  member: "microvm-slot-controller" as NonEmptyStr,
+}
+
+// THE ROOT, DERIVED: the tree's path plus this store's member. The provisioning step that creates the
+// directory (gunbc.host.host_effect_realize) takes this same value, never a second literal.
+fn microvm_receipt_store_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", microvm_receipt_slots.member as String], "") as NonEmptyStr
+}
+
+type MicrovmReceiptStore sole_constructor {
+  root: NonEmptyStr
+}
+
+type MicrovmReceiptStoreReading
+  = MicrovmReceiptStoreReady { store: MicrovmReceiptStore }
+  | MicrovmReceiptStoreUnready { detail: String }
+
+// THE ONE MINT, a pure observer over the sealed tree: it lists the derived directory and refuses when it
+// cannot be listed. The directory is created by the install (a demanded provisioning directory), never
+// by a mint or a write.
+fn microvm_receipt_store(tree: HostStateTree) -> MicrovmReceiptStoreReading {
+  let root = microvm_receipt_store_path(tree: tree)
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      MicrovmReceiptStoreUnready { detail: join(["the microVM receipt store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      MicrovmReceiptStoreUnready { detail: join(["the microVM receipt store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => MicrovmReceiptStoreReady { store: MicrovmReceiptStore { root: root } }
+  }
+}
+
+// WHO WRITES: a closed pair, and it alone fixes the filename prefix inside this module. The controller's
+// receipts are keyed on its slot instance, the reserve broker's carry the literal word reserve.
+type MicrovmReceiptWriter
+  = ControllerReceipts { instance: String }
+  | ReserveReceipts
+
+fn microvm_receipt_file(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter, invocation_id: NonEmptyStr) -> String {
+  let prefix = match writer {
+    ControllerReceipts { instance: i } => join([i, "-"], "")
+    ReserveReceipts => "reserve-"
+  }
+  join([store.root as String, "/", prefix, invocation_id as String, ".txt"], "")
+}
+
+type MicrovmReceiptRecording
+  = MicrovmReceiptRecorded { path: String }
+  | MicrovmReceiptAlreadyRecorded { path: String }
+  | MicrovmReceiptRecordRefused { path: String, cause: String }
+
+// CREATE-ONCE: an incarnation's receipt is written once and never overwritten (the InvocationID systemd
+// minted is unique to the incarnation). The effect and its readback run here; a collision is a typed
+// arm, never a success.
+fn microvm_receipt_record(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter, invocation_id: NonEmptyStr, content: String) -> MicrovmReceiptRecording
+{
+  let path = microvm_receipt_file(store: store, writer: writer, invocation_id: invocation_id)
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  match filesystem_create_new(path: w.path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreateTargetOccupied { path: _ } => MicrovmReceiptAlreadyRecorded { path: path }
+    FilesystemCreateRefused { path: _, kind: _, error: e } => MicrovmReceiptRecordRefused { path: path, cause: e }
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: e } => MicrovmReceiptRecordRefused { path: path, cause: join([o, ": ", e], "") }
+    FilesystemCreated { path: _ } => {
+      let back = Filesystem.Read(path: path)
+      if back.success && back.content == content { MicrovmReceiptRecorded { path: path } }
+      else { MicrovmReceiptRecordRefused { path: path, cause: "did not read back as written" } }
+    }
+  }
+}
+
+type MicrovmReceiptReading
+  = MicrovmReceiptRead { path: String, text: String }
+  | MicrovmReceiptUnreadable { path: String, detail: String }
+
+fn microvm_receipt_read(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter, invocation_id: NonEmptyStr) -> MicrovmReceiptReading
+{
+  let path = microvm_receipt_file(store: store, writer: writer, invocation_id: invocation_id)
+  let r = Filesystem.Read(path: path)
+  if !r.success { MicrovmReceiptUnreadable { path: path, detail: r.error } }
+  else { MicrovmReceiptRead { path: path, text: r.content } }
+}
+
+type MicrovmReceiptHistory
+  = MicrovmReceiptHistoryRead { texts: List<String> }
+  | MicrovmReceiptHistoryRefused { detail: String }
+
+// EVERY RECEIPT A CONTROLLER INSTANCE EVER WROTE, in root custody or refused: the directory and each
+// selected file must be root-owned, and the contents are returned for the caller's own judgement.
+fn microvm_receipt_history(store: MicrovmReceiptStore, instance: String) -> MicrovmReceiptHistory
+{
+  match read_store_ownership(path: store.root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => {
+      let names = Filesystem.List(path: store.root as String)
+      if !names.success { MicrovmReceiptHistoryRefused { detail: "slot controller receipt history could not be enumerated" } }
+      else {
+        let prefix = concat(instance, "-")
+        let selected = filter(split(s: names.entries, delimiter: "\n"), name => starts_with(s: name, prefix: prefix))
+        fold(selected, init: MicrovmReceiptHistoryRead { texts: [] }, f: (prior, name) => match prior {
+          MicrovmReceiptHistoryRefused { detail: _ } => prior
+          MicrovmReceiptHistoryRead { texts: so_far } => {
+            let path = join([store.root as String, "/", name], "")
+            match read_store_ownership(path: path) {
+              OwnershipRead { ownership: StoreRootOwned } => {
+                let read = Filesystem.Read(path: path)
+                if !read.success { MicrovmReceiptHistoryRefused { detail: "a slot controller receipt is unreadable" } }
+                else { MicrovmReceiptHistoryRead { texts: concat(so_far, [read.content]) } }
+              }
+              OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => MicrovmReceiptHistoryRefused { detail: "a slot controller receipt is not root-authoritative" }
+              OwnershipUnread { reason: _ } => MicrovmReceiptHistoryRefused { detail: "a slot controller receipt is not root-authoritative" }
+            }
+          }
+        })
+      }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => MicrovmReceiptHistoryRefused { detail: "slot controller history is absent, unreadable or outside root custody" }
+    OwnershipUnread { reason: _ } => MicrovmReceiptHistoryRefused { detail: "slot controller history is absent, unreadable or outside root custody" }
+  }
+}
 
 // WHERE THE START STEP WRITES ITS OWN RECEIPT, beside the controller's. It lives with the unit's
 // on-host layout rather than in gunbc.runner.runner_microvm_slot_start so the workflow emitter and ci_spec can
@@ -382,18 +512,8 @@ data microvm_slot_reserve_entry_file: String = "dag/gunbc/runner/runner_microvm_
 
 data microvm_slot_reserve_entry_function: String = "microvm_slot_reserve_main"
 
-// THE BROKER'S RECEIPT SITS BESIDE THE CONTROLLER'S, in the root-owned directory the install creates,
-// under a prefix of its own and keyed on the InvocationID systemd minted for that start, so a starter
-// reads the receipt of ITS start and never an earlier one.
-fn microvm_slot_reserve_receipt_prefix() -> String {
-  join([microvm_slot_controller_receipt_dir, "/reserve-"], "")
-}
-
-// ONE SPELLING OF "THE RECEIPT OF THIS INCARNATION" for every unit that runs from the locus: the
-// unit's receipt prefix followed by the InvocationID systemd minted for that start.
-fn microvm_unit_receipt_path(prefix: String, invocation_id: NonEmptyStr) -> String {
-  join([prefix, invocation_id as String, ".txt"], "")
-}
+// THE BROKER'S RECEIPT SITS BESIDE THE CONTROLLER'S in the one receipt store (ReserveReceipts), keyed on the
+// InvocationID systemd minted for that start, so a starter reads the receipt of ITS start and never an earlier one.
 
 data microvm_slot_reserve_receipt_path: String = "target/microvm-slot-reserve-receipt.txt"
 

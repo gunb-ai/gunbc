@@ -1,0 +1,91 @@
+module test.claim.sealed_createonce_stores_witness
+
+import extdeps.shell
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.process { ProcessExit }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready, start_evidence_record, StartEvidenceRecorded, StartEvidenceAlreadyRecorded, StartEvidenceRecordRefused }
+import gunbc.runner.runner_microvm_slot_unit { microvm_receipt_store_path, microvm_receipt_store, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_record, microvm_receipt_read, MicrovmReceiptRecorded, MicrovmReceiptAlreadyRecorded, MicrovmReceiptRecordRefused, MicrovmReceiptRead, MicrovmReceiptUnreadable, ControllerReceipts, ReserveReceipts }
+
+// THE CREATE-ONCE RECORD STORES (cohort C-createonce) over throwaway host-state trees: a record is written once, a
+// second write for the same key refuses without touching the first, and bytes planted in the old layout read back.
+
+fn fresh_tree() -> HostStateTree? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_createonce.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let made = [start_evidence_path(tree: tree) as String, microvm_receipt_store_path(tree: tree) as String]
+  if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
+}
+
+test fn the_start_evidence_is_written_once_and_a_rerun_does_not_clobber() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => match start_evidence_store(tree: tree) {
+      StartEvidenceStoreUnready { detail: _ } => false
+      StartEvidenceStoreReady { store: s } => {
+        let key = "printer-attempt-k1" as NonEmptyStr
+        let first = match start_evidence_record(store: s, claim_key: key, read: 1, content: "first") { StartEvidenceRecorded { path: _ } => true StartEvidenceAlreadyRecorded { path: _ } => false StartEvidenceRecordRefused { path: _, cause: _ } => false }
+        let second = match start_evidence_record(store: s, claim_key: key, read: 1, content: "second") { StartEvidenceRecorded { path: _ } => false StartEvidenceAlreadyRecorded { path: _ } => true StartEvidenceRecordRefused { path: _, cause: _ } => false }
+        let next = match start_evidence_record(store: s, claim_key: key, read: 2, content: "other") { StartEvidenceRecorded { path: _ } => true StartEvidenceAlreadyRecorded { path: _ } => false StartEvidenceRecordRefused { path: _, cause: _ } => false }
+        let kept = Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-attempt-k1.after-start-1.json"], ""))
+        first && second && next && kept.success && kept.content == "first"
+      }
+    }
+  }
+}
+
+test fn a_legacy_after_start_entry_makes_the_evidence_mint_unready() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = Filesystem.WriteCreateNew(path: join([printer_starts_path(tree: tree) as String, "/printer-attempt-k1.claimed.after-start-1.json"], ""), content: "old").success
+      let _dir = shell.Mkdir.Parents(path: printer_starts_path(tree: tree) as String as FilePath)
+      planted && match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: _ } => false StartEvidenceStoreUnready { detail: _ } => true }
+    }
+  }
+}
+
+test fn a_controller_receipt_is_written_once_and_old_bytes_read_back() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => match microvm_receipt_store(tree: tree) {
+      MicrovmReceiptStoreUnready { detail: _ } => false
+      MicrovmReceiptStoreReady { store: s } => {
+        let inv = "inv-123" as NonEmptyStr
+        let writer = ControllerReceipts { instance: "slot1" }
+        let old = Filesystem.WriteCreateNew(path: join([microvm_receipt_store_path(tree: tree) as String, "/slot1-inv-123.txt"], ""), content: "exit 0")
+        let read_old = match microvm_receipt_read(store: s, writer: writer, invocation_id: inv) { MicrovmReceiptRead { path: _, text: t } => t == "exit 0" MicrovmReceiptUnreadable { path: _, detail: _ } => false }
+        let again = match microvm_receipt_record(store: s, writer: writer, invocation_id: inv, content: "new") { MicrovmReceiptRecorded { path: _ } => false MicrovmReceiptAlreadyRecorded { path: _ } => true MicrovmReceiptRecordRefused { path: _, cause: _ } => false }
+        let fresh = match microvm_receipt_record(store: s, writer: ReserveReceipts, invocation_id: inv, content: "r") { MicrovmReceiptRecorded { path: _ } => true MicrovmReceiptAlreadyRecorded { path: _ } => false MicrovmReceiptRecordRefused { path: _, cause: _ } => false }
+        old.success && read_old && again && fresh
+      }
+    }
+  }
+}
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+data evidence_forged_source: String = "module probe_evidence_forged\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }\nfn forge() -> StartEvidenceStore { StartEvidenceStore { root: \"/tmp/x\" as NonEmptyStr } }\n"
+
+data microvm_forged_source: String = "module probe_microvm_forged\nimport std.types { NonEmptyStr }\nimport gunbc.runner.runner_microvm_slot_unit { MicrovmReceiptStore }\nfn forge() -> MicrovmReceiptStore { MicrovmReceiptStore { root: \"/tmp/x\" as NonEmptyStr } }\n"
+
+data grant_forged_source: String = "module probe_grant_forged\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.work_provider_local { GrantExceededStore }\nfn forge(i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: \"/tmp/x\" as NonEmptyStr, instance: i } }\n"
+
+test fn a_forged_start_evidence_store_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_microvm_receipt_store_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_grant_exceeded_store_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 1 }))
+}
