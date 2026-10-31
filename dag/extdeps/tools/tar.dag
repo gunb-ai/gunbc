@@ -53,6 +53,24 @@ fn tar_extract_command(archive: String, into_directory: String, strip_components
   )
 }
 
+// EXTRACT INTO A DIRECTORY THE CALLER ALREADY MADE, LEAVING THAT DIRECTORY AS THE CALLER MADE IT. GNU tar
+// restores an existing directory's metadata from the archive's entry for it unless told not to: a release
+// tarball's leading `./` entry (the actions/runner archives carry one at drwxr-xr-x) re-applies its own
+// mode to the -C directory. --no-overwrite-dir is "Preserve metadata of existing directories" (GNU tar
+// manual, Option Summary), so a destination created at a mode keeps it. tar_extract_command keeps the
+// default for callers whose destination carries no mode of its own.
+fn tar_extract_into_existing_directory_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: [
+      "xf", archive,
+      "-C", into_directory,
+      concat("--strip-components=", to_string(strip_components)),
+      "--no-overwrite-dir",
+    ],
+  )
+}
+
 // A REPRODUCIBLE ARCHIVE OF ONE DIRECTORY: the same files produce the same bytes. GNU tar's
 // --sort=name fixes member order, and --mtime/--owner/--group/--numeric-owner fix the metadata a
 // second run would otherwise vary, so a content digest over the archive names its content.

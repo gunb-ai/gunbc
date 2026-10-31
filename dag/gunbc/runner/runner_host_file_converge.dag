@@ -7,7 +7,7 @@ import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_si
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
@@ -148,7 +148,7 @@ import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
 import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename, actions_runner_state_paths }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_into_existing_directory_command }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
@@ -1305,8 +1305,26 @@ fn slot_load_state_has_no_unit_file(load: String) -> Bool {
   }
 }
 
-// NO UNIT FILE (LoadState Masked or NotFound only), INACTIVE, NO CGROUP -- all three read
-// from the unit's own block; any key missing is not inert.
+// NO UNIT FILE (LoadState Masked or NotFound only), STOPPED, NO CGROUP -- all three read
+// from the unit's own block; any key missing is not inert. Stopped is ActiveState inactive OR failed: a
+// unit whose last run failed has no process either, and with a blank ControlGroup a reload reaches nothing.
+// Inactive alone read srv1-02 (masked after crash-looping, ActiveState=failed, no cgroup) as reaching a
+// live cgroup, which withheld the cap phase, which barred the reload its own role drop-in needed (L2 run
+// 41154097819, 2026-10-31). Activating, deactivating and reloading are not stopped, whatever the cgroup.
+fn slot_active_state_is_stopped(active: String) -> Bool {
+  match parse_systemd_unit_active_state(raw: active) {
+    Absent => false
+    Present { value: st } => match st {
+      Inactive => true
+      Failed => true
+      Active => false
+      Activating => false
+      Deactivating => false
+      Reloading => false
+    }
+  }
+}
+
 fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
   fold(split(s: show_stdout, delimiter: "\n\n"), init: false, f: (acc, b) => {
     let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
@@ -1324,7 +1342,7 @@ fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
                 Present { value: act } =>
                   match show_block_value(lines: lines, property: ControlGroup) {
                     Absent => false
-                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && trim(s: act) == "inactive" && trim(s: cg) == ""
+                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && slot_active_state_is_stopped(active: trim(s: act)) && trim(s: cg) == ""
                   }
               }
           }
@@ -2240,13 +2258,16 @@ fn deploy_slot_runner_stage_fetch_commands(stage: String, url: String, tarball: 
   ]
 }
 
+// The extract leaves the tree's own mode alone (extdeps.tools.tar tar_extract_into_existing_directory_command):
+// the runner archive's `./` entry carries 0755, and a default extract re-applied it to the 0700 tree
+// (gunbc.recurring_failure_mode an_archive_extract_reapplies_its_directory_mode_to_the_destination).
 fn deploy_slot_tree_rebuild_commands(slot_dir: String, stage: String, tarball: String) -> List<ArgvCommand> {
   [
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: slot_dir as NonEmptyStr }),
     executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
       path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: runner_slot_job_role_tree_mode(role: DeployJobSlot),
     }),
-    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
+    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_into_existing_directory_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
   ]
 }
