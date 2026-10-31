@@ -1,0 +1,21 @@
+module gunbc.sort_by_migration_frontier
+
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
+
+// THE sort_by -> list_sort_by_key MIGRATION'S DECLARED FRONTIER (#15426): the four src/v2/std/node.dag sites are generator
+// output; these six N7-closure sites are not yet migrated. Sweeping them exceeds the generator's 16G envelope on
+// infer.dag (pass sort_by/symbol, keys 4361:15 4362:16, was killed EXIT=137 at 1h41m), and the cap is not raised.
+// Rows sort_by/symbol and sort_by/string exist in roster_import_sweep; sort_by/int and the string/int order KeepHeads are added with the sites.
+data sort_by_migration_frontier_rows: List<FrontierRow> = [
+  frontier_row_path(
+    path: "src/v2/compiler/infer.dag",
+    reason: "four bare sort_by sites remain: 4361:15 and 4362:16 (Symbol keys, row sort_by/symbol, order symbol_total_order()) and 4398:16 and 6214:12 (Int keys, row sort_by/int, order int_total_order()); the OnlyOccurrences sweep over infer.dag exceeded MemoryMax=16G (EXIT=137)",
+    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope (zesty-badger-599's sweep-cost fix), so the infer.dag passes run to completion as generator output and no bare sort_by remains in the file")
+  ),
+  frontier_row_path(
+    path: "src/v2/compiler/source_authority.dag",
+    reason: "one bare sort_by site remains: 1683:48 (String key, row sort_by/string, order string_total_order()); not swept, because the sweep-cost fix that unblocks infer.dag gates the chain",
+    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope (zesty-badger-599's sweep-cost fix), so the source_authority.dag pass runs as generator output and no bare sort_by remains in the file")
+  ),
+]
