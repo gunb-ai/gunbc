@@ -1,0 +1,84 @@
+module extdeps.gpu.amd
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gpu.types {
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Rocm, RatedBoardPower,
+  PcieAddInBoard, ActiveThermalSolution,
+}
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen5, PcieLink }
+import extdeps.vendor.amd { amd }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// AMD'S OWN GPU AND BOARD ROWS (gunbc.plans.gpu_card_host_program row N12d, "the R9700 catalog row, with
+// every figure cited"). The device and the card are separate rows, as in extdeps.gpu.nvidia_a2: a GPU is a
+// device row, a card is a board row.
+//
+// EVERY FIGURE HERE IS TRANSCRIBED, NOT YET CITED, and the plan says so in advance ("R9700 catalog figures
+// remain read obligations until cited"). AMD's product page did not serve its specification table on
+// 2026-10-30 (two fetches timed out; a search tool saw only the render). The figures are the ones partner
+// and retailer listings agree on: 32 GB GDDR6, 640 GB/s, RDNA 4, PCIe 5.0 x16, about 300 W, a blower cooler.
+// No figure on which the listings disagree is carried: boost clock (2350 to 2920 MHz across partner
+// boards) and AMD's stated total board power. Until AMD's table is read, figure_citations stay empty and
+// r9700_figures_standing says what is owed; a consumer that needs a cited figure refuses on that, rather
+// than this row borrowing a retailer as its authority.
+
+data r9700_product_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/graphics/workstations/radeon-ai-pro/ai-9000-series/amd-radeon-ai-pro-r9700.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.amd", decl_name: "amd_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: r9700_product_page_authority,
+  further_citations: []
+}
+
+data r9700_figures_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read AMD's Radeon AI PRO R9700 specification table (memory size and type, memory bandwidth, architecture, PCIe interface, total board power, cooling) and cite each figure to it in figure_citations, in place of the partner and retailer transcription.",
+}
+
+data amd_radeon_ai_pro_r9700_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: amd,
+  model: "Radeon AI PRO R9700",
+  microarchitecture: "RDNA 4",
+  execution_lane_count: none,
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 640000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Rocm],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [],
+  dense_tensor_throughput: [],
+}
+
+// The reference board. Partner boards (PowerColor, Sapphire, Gigabyte AI TOP) share the GPU row and differ
+// in clocks and coolers; the operator's two cards' partner SKU is not yet read, so they bind this row.
+data amd_radeon_ai_pro_r9700_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: amd,
+  model: "Radeon AI PRO R9700",
+  gpu: amd_radeon_ai_pro_r9700_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+  board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
+  zero_power: none,
+  thermal: Present { value: ActiveThermalSolution },
+  pci_device_id: none,
+  driver_listed_name: none,
+  figure_citations: [],
+}
+
+data amd_radeon_ai_pro_r9700_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: amd_radeon_ai_pro_r9700_board_facts)
+
+// Every board this module declares, in declaration order: this module's model-scope subject.
+data amd_board_catalogs: List<GpuBoardAdmission> = [amd_radeon_ai_pro_r9700_board_catalog]
