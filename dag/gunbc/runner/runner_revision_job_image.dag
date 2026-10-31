@@ -10,7 +10,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.posix.test_utility { test_executable_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -86,7 +86,7 @@ fn revision_job_image_tree_commands(root: String, rust_dist_dir: String, toolcha
     mkdir_parents_command(path: tree),
     unsquashfs_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), into_directory: tree),
   ] + toolchain + [
-    tar_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), into_directory: rust_dist_dir, strip_components: 0),
+    tar_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), into_directory: rust_dist_dir, strip_components: 0, existing_directories: TarOverwriteDir),
     rust_standalone_install_command(unpacked_dir: join([rust_dist_dir, "/", revision_job_rust_dist_unpacked_dir()], ""), prefix: concat(tree, "/usr/local")),
     mkdir_parents_command(path: concat(tree, "/work")),
     mkdir_parents_command(path: unit_wants),

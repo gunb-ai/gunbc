@@ -155,8 +155,8 @@ test fn an_empty_leg_list_is_ok() -> Bool {
 // claim must FAIL rather than wave it through.
 //
 // THE BOUND, AND WHY IT IS NOT JUST A COUNT. >= count(units) is the floor the projection must clear
-// (each unit fans out to three argv legs -- revert, MemoryMax, MemoryHigh -- plus CPUQuota for the
-// sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
+// (each unit fans out to its set-property residue removals, one reload and a set-property per
+// property, with CPUQuota on the sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
 // NONE of unit 2's, and by one that emits one leg per unit while dropping two per unit. So the total is
 // pinned to the upstream producer the real fold enumerates over -- host_axis_caps
 // .slice_control_converge_argvs_for_unit, the same leaf test.claim.host.sessions_slice_cpu_witness reads

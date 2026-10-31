@@ -753,6 +753,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         deploy_account: HostHasNoDeploySlot,
         deploy_trees: [],
         superseded: [],
+        deploy_readings: [],
       }
     }
   }

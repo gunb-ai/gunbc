@@ -69,7 +69,7 @@ import gunbc.fabric.fabric_allocation_store_substrate {
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir, RunnerSlotMember }
-import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_host_has_deploy_slot }
+import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_instance_tree_mode, runner_host_has_deploy_slot }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
@@ -494,6 +494,7 @@ fn runner_slot_member_install_operations(deploy: RunnerHostDeploy, members: List
   flat_map(members, m => runner_slot_install_operations(
     slot_dirs: [m.slot_dir],
     slot_owner: runner_instance_job_user(host: deploy.host_label as HostIdentity, instance_name: m.instance_name, ci_job_user: deploy.job_user),
+    slot_mode: runner_instance_tree_mode(host: deploy.host_label as HostIdentity, instance_name: m.instance_name),
   ))
 }
 

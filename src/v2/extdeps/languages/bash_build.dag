@@ -536,6 +536,24 @@ fn bash_build_if_from_stmts(cond: Node, then_stmts: List<Node>) -> Node {
   )
 }
 
+// THE SAME SHAPE FOR THE ELSE ARM. `bash_build_if` and `bash_build_if_else` take BODIES that are
+// statement-list nodes -- the fold reads a body node's spine and refuses anything else -- so a
+// caller holding STATEMENTS has to build the spine. `bash_build_if_from_stmts` did that for the
+// then-only form and there was no twin for the else arm, so an if/else caller hand-built the node
+// and passed a bare statement as a body: the fold refused it and the emitter substituted its
+// marker, silently dropping the statement. This is the constructor that shape was missing.
+fn bash_build_if_else_from_stmts(
+  cond: Node,
+  then_stmts: List<Node>,
+  else_stmts: List<Node>
+) -> Node {
+  bash_build_if_else(
+    cond: cond,
+    then_body: bash_build_stmt_list_from_nodes(stmts: then_stmts),
+    else_body: bash_build_stmt_list_from_nodes(stmts: else_stmts)
+  )
+}
+
 fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
   bash_build_subshell(body: bash_build_stmt_list_from_nodes(stmts: stmts))
 }

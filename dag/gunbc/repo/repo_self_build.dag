@@ -14,7 +14,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_exit,
   bash_build_if,
-  bash_build_if_else_from_stmts,
+  bash_build_if_else,
   bash_build_or_else,
   bash_build_stmt_list_from_nodes,
   bash_build_subshell_from_stmts,
@@ -385,7 +385,6 @@ fn repo_self_build_env_stmts() -> List<Node> {
       command(argv: ["export", "GUNBC_SEED_TARGET"]),
       command(argv: ["export", "GUNBC_SEED_CARGO_HOME"]),
       command(argv: ["export", "GUNBC_SEED_SYSROOT"]),
-      assign_cmd(name: "GUNBC_SEED_TRACKED_STATUS", argv: ["git", "status", "--porcelain=1", "--untracked-files=no"]),
       tracked_tree_identity_stmt(),
     ],
     []
@@ -446,20 +445,16 @@ fn non_empty_test(name: String) -> Node {
 }
 
 // NAME=$SOURCE when SOURCE is set, NAME=<fallback> when it is not -- the grammar's spelling of a
-// parameter default. The two arms are STATEMENTS, and they are handed to the ONE builder that
-// builds the statement-list shape the serializer's if/else arms read: a bare assign standing where a
-// statement list is expected is three positional children and is refused by the fold, which is what
-// //dag/test/claim/live_deploy/apply_no_refused_marker_witness claims.
+// parameter default. The two arms are STATEMENTS, so they go through the constructor that builds
+// the statement-list spine: passing a bare statement as a body is the shape the fold refuses.
 fn default_from(name: String, source: String, fallback: List<Node>) -> Node {
   bash_build_if_else_from_stmts(
     cond: non_empty_test(name: source),
     then_stmts: [bash_build_assign(name: name, value: bash_build_word_var(name: source))],
-    else_stmts: [
-      bash_build_assign(
-        name: name,
-        value: bash_build_word_concat_from_nodes(parts: fallback)
-      )
-    ]
+    else_stmts: [bash_build_assign(
+      name: name,
+      value: bash_build_word_concat_from_nodes(parts: fallback)
+    )]
   )
 }
 
@@ -484,10 +479,7 @@ fn tracked_tree_identity_stmt() -> Node {
       ]),
       right: bash_build_test_bracket(words: [
         bash_build_word_lit(text: "-z"),
-        // read into a variable first: an assignment's right side is not word-split, whereas an
-        // unquoted `$(git status ...)` splits a dirty tree's one-line-per-file output into many
-        // `[` operands and the pin would be decided by a `[` arity error.
-        bash_build_word_var(name: "GUNBC_SEED_TRACKED_STATUS"),
+        bash_build_word_cmdsubst(body: command(argv: ["git", "status", "--porcelain=1", "--untracked-files=no"])),
       ])
     ),
     body: bash_build_stmt_list_from_nodes(stmts: [
