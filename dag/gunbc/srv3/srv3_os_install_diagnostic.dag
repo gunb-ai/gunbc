@@ -1522,8 +1522,12 @@ fn parse_observe_iso_sha256_observed(stdout: String) -> NonEmptyStr? {
   if parts.length() <= 1 {
     none
   } else {
-    let tail = parts.skip(n: 1).first()
-    let line = split(s: tail, delimiter: "\n").first()
+    match parts.skip(n: 1).first() {
+      Absent => none
+      Present { value: tail } =>
+    match split(s: tail, delimiter: "\n").first() {
+      Absent => none
+      Present { value: line } =>
     match get(xs: split(s: line, delimiter: " "), index: 0) {
       Absent => none
       Present { value: token } =>
@@ -1532,6 +1536,8 @@ fn parse_observe_iso_sha256_observed(stdout: String) -> NonEmptyStr? {
         } else {
           Present { value: token as NonEmptyStr }
         }
+    }
+    }
     }
   }
 }
@@ -1655,11 +1661,17 @@ fn parse_elapsed_boot_once_ms_observation(stdout: String) -> Milliseconds? {
   match parts.length() <= 1 {
     true => Absent
     false => {
-      let tail = parts.skip(n: 1).first()
-      let token = split(s: tail, delimiter: "\n").first()
-      match parse_int(s: token) {
-        Present { value: n } => Present { value: n }
+      match parts.skip(n: 1).first() {
         Absent => Absent
+        Present { value: tail } =>
+          match split(s: tail, delimiter: "\n").first() {
+            Absent => Absent
+            Present { value: token } =>
+              match parse_int(s: token) {
+                Present { value: n } => Present { value: n }
+                Absent => Absent
+              }
+          }
       }
     }
   }

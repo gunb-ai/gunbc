@@ -509,7 +509,10 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
   if list_length(items: fields) != 7 {
     RequiredBuildCellLifetimeSampleUndecodable
   } else {
-    match parse_int(s: fields.skip(n: 1).first()) {
+    match fields.skip(n: 1).first() {
+      Absent => RequiredBuildCellLifetimeSampleUndecodable
+      Present { value: generation_text } =>
+    match parse_int(s: generation_text) {
       Absent => RequiredBuildCellLifetimeSampleUndecodable
       Present { value: generation } =>
         match lifetime_sample_field_content_hash(fields: fields, n: 3) {
@@ -551,6 +554,7 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
                 }
             }
         }
+    }
     }
   }
 }

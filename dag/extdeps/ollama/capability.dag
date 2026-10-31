@@ -133,19 +133,28 @@ fn ollama_semantic_version_from_wire_text(raw: String) -> OllamaSemanticVersion?
   let fields = split(s: bare, delimiter: ".")
   if fields.length() != 3 { none }
   else {
-    match parse_int(s: fields.first()) {
+    match fields.first() {
+      Absent => none
+      Present { value: sa } => match parse_int(s: sa) {
       Absent => none
       Present { value: major } =>
-        match parse_int(s: fields.skip(n: 1).first()) {
+        match fields.skip(n: 1).first() {
+      Absent => none
+      Present { value: sb } => match parse_int(s: sb) {
           Absent => none
           Present { value: minor } =>
-            match parse_int(s: fields.skip(n: 2).first()) {
+            match fields.skip(n: 2).first() {
+      Absent => none
+      Present { value: sc } => match parse_int(s: sc) {
               Absent => none
               Present { value: patch } =>
                 if major < 0 || minor < 0 || patch < 0 { none }
                 else { Present { value: ollama_semantic_version(major: major, minor: minor, patch: patch) } }
             }
+            }
         }
+        }
+    }
     }
   }
 }
