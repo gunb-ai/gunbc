@@ -187,11 +187,22 @@ type FlexRentCooldown {
   until: EpochMs
 }
 
+// WHAT THE PASS KNOWS ABOUT THE CARRY THE PREVIOUS PASS LEFT. The carry is what stops a pass renting on
+// top of an ask it cannot see: the standing of the last create, and the cooldown it recorded. When the
+// file cannot be read, the header is not the declared one, or a line cannot be parsed, that standing is
+// UNKNOWN - and unknown must never read as "nothing in flight", because "nothing in flight" authorizes a
+// create (DESIGN 5: a failure arm refuses, never widens). The reason is carried so the receipt says which
+// kind of cannot it is.
+type FlexCarryTrust
+  = FlexCarryTrusted
+  | FlexCarryUntrusted { reason: NonEmptyStr }
+
 type FlexPassInput {
   policy: FlexPolicy
   gates: FlexWetGates
   now: EpochMs
   cooldown: FlexRentCooldown?
+  carry: FlexCarryTrust
   observation: FlexPassObservation
   cards: List<FlexOwnedCard>
   allocations: List<RentedServingAllocation>
@@ -500,6 +511,7 @@ type FlexPassRefusal
   | FlexPassCreateRefused { refusal: FlexCreateRefusal }
   | FlexPassNoAllocationForCard { id: NonEmptyStr }
   | FlexPassCooldownActive { until: EpochMs }
+  | FlexPassCarryUnread { reason: NonEmptyStr }
   | FlexPassNotAWritePlan
 
 type FlexPassPlan
@@ -600,14 +612,22 @@ fn flex_plan_release_or_create(input: FlexPassInput, decision: FlexWriteDecision
           match input.intent {
             Absent => FlexPlanIdle
             Present { value: intent } =>
-              match input.cooldown {
-                Present { value: c } =>
-                  if input.now < c.until {
-                    FlexPlanRefused { refusal: FlexPassCooldownActive { until: c.until } }
-                  } else {
-                    flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+              // FIRST: does this pass know what the last one asked for? An unread carry is not an empty
+              // one. If the standing of the previous ask is unknown, creating here can double-rent a card
+              // the account is already paying for - the exact failure the carry exists to prevent. The
+              // refusal is typed and names the reason; it does not fall through to the cooldown arm.
+              match input.carry {
+                FlexCarryUntrusted { reason: r } => FlexPlanRefused { refusal: FlexPassCarryUnread { reason: r } }
+                FlexCarryTrusted =>
+                  match input.cooldown {
+                    Present { value: c } =>
+                      if input.now < c.until {
+                        FlexPlanRefused { refusal: FlexPassCooldownActive { until: c.until } }
+                      } else {
+                        flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+                      }
+                    Absent => flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
                   }
-                Absent => flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
               }
           }
       }
@@ -805,6 +825,8 @@ fn flex_pass_refusal_wire(r: FlexPassRefusal) -> String {
     FlexPassCreateRefused { refusal: c } => concat("create-refused ", flex_create_refusal_wire(r: c))
     FlexPassNoAllocationForCard { id: id } => concat("no-allocation-for-card ", id as String)
     FlexPassCooldownActive { until: u } => concat("cooldown-active until_ms=", int_to_decimal_string(value: u))
+    FlexPassCarryUnread { reason: r } =>
+      concat("carry-unread reason=", r, " (the standing of the last ask is unknown, so no create is authorized)")
     FlexPassNotAWritePlan => "not-a-write-plan"
   }
 }

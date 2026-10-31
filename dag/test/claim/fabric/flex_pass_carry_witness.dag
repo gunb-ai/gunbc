@@ -13,10 +13,11 @@ import gunbc.fleet.flex_pass_run {
   flex_reconcile_wire, FlexCarryCooldown, FlexCarryLoading, FlexCarryAnswered, FlexCarryLost,
   FlexCarryRefused, FlexCarryLineUnread, FlexCarrySightingsBasis,
   FlexCarryReading, FlexCarryLoaded, FlexCarryUnread, flex_carry_wire, flex_carry_basis_word,
+  flex_carry_gate, flex_carry_trust, flex_carry_header,
   flex_carry_cooldown, flex_carry_sightings, flex_carry_standing,
 }
 import product.fabric.flex_vast_loop {
-  FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated,
+  FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated, FlexCarryTrusted, FlexCarryUntrusted,
 }
 import product.fabric.flex_vast_shadow {
   FlexLoadingSighting, FlexSightingsUnread, FlexSightingsKnown, FlexSightingsBaselineComplete,
@@ -95,8 +96,12 @@ test fn an_incomplete_baseline_round_trips_and_makes_absent_ids_read_unread() ->
 // line, and the header itself all read as unread; the header is not a record and is skipped, which is what
 // makes the format versionable.
 test fn a_carry_line_the_pass_cannot_read_is_reported_unread_and_never_guessed_at() -> Bool {
+  // Three of the four lines carry no readable record and stay typed-unread rather than guessed at: a
+  // loading line with no first-seen instant, a cooldown line with no numbers, and a line with no known
+  // prefix. The fourth is the header, which DOES parse -- so the gate's demand that line 1 be the header
+  // does not make every carry unreadable.
   let lines = map(["flex-carry v1", "loading 42", "not-a-record 1 2 3", "cooldown x 5"], l => flex_carry_line(line: l))
-  length(lines) == 4 && length(filter(lines, l => match l { FlexCarryLineUnread { text: _ } => true  _ => false })) == 4
+  length(lines) == 4 && length(filter(lines, l => match l { FlexCarryLineUnread { text: _ } => true  _ => false })) == 3
 }
 
 // A MISSING INTEGER IS A MISSING RECORD, NOT A ZERO. "loading 42" has an id and no instant: the sighting is
@@ -326,4 +331,30 @@ test fn the_receipt_names_the_reconcile_it_did() -> Bool {
     ),
     pattern: "already-held instance=1001",
   )
+}
+
+// THE CARRY REFUSES RATHER THAN WIDENS, AND THE DEGRADATION IS COUNTABLE. Three spellings of the same
+// boundary, all through the reader the pass actually uses: a carry whose first line is not the declared
+// header (the header used to be written and never checked, so any other format read as valid v1); a carry
+// with one line the parser cannot read (a truncated write - the dropped line can be the create standing
+// that stops a second rent); and the good file, which must still load, or the two refusals prove nothing.
+// Each refusal carries its count in the reason, and the unread reading maps to the typed untrusted carry
+// the create gate refuses on.
+test fn a_carry_with_the_wrong_header_or_an_unreadable_line_reads_unread_and_counts_it() -> Bool {
+  let good = concat(flex_carry_header, "\nloading 9001 1792008000000\n")
+  let wrong_header = concat("some other format\n", flex_carry_header, "\n")
+  let truncated = concat(flex_carry_header, "\ncreate lost 42\n")
+  match flex_carry_gate(content: good) {
+    FlexCarryLoaded { carry: c } => length(c.sightings) == 1
+    FlexCarryUnread { reason: _ } => false
+  } && match flex_carry_gate(content: wrong_header) {
+    FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "header is not")
+    FlexCarryLoaded { carry: _ } => false
+  } && match flex_carry_gate(content: truncated) {
+    FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "1 carry line")
+    FlexCarryLoaded { carry: _ } => false
+  } && match flex_carry_trust(reading: flex_carry_gate(content: truncated)) {
+    FlexCarryUntrusted { reason: r } => string_contains(s: r, pattern: "1 carry line")
+    FlexCarryTrusted => false
+  }
 }

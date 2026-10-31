@@ -35,6 +35,7 @@ import product.fabric.flex_vast_loop { flex_vast_destroy_target, flex_vast_rente
   FlexPassInput, FlexCreateRequest, FlexTemplateHashRow, FlexPassPlan,
   FlexPlanRefused, FlexPlanIdle, FlexPlanDryCreate, FlexPlanDryDestroy, FlexPlanCreate, FlexPlanDestroy,
   FlexPassRefusal, FlexPassRosterNotComplete, FlexPassCreateRefused, FlexPassNoAllocationForCard, FlexPassCooldownActive,
+  FlexPassCarryUnread, FlexCarryTrusted, FlexCarryUntrusted,
   FlexRefusedEntryEstimated, FlexRefusedEntryExcluded, FlexRefusedQuoteNotEstablished,
   FlexRefusedAdmissionNotAdmitted, FlexRefusedTemplateHashUnread, FlexRefusedChargesUnreadable,
   FlexRefusedBudgetCeiling, FlexRefusedKeyNotLive,
@@ -142,7 +143,7 @@ fn w_input(mode: ApplyMode, gates: FlexWetGates, roster: FlexInstancesStanding, 
     },
     gates: gates,
     now: 1792008000000,
-    cooldown: none,
+    cooldown: none, carry: FlexCarryTrusted,
     observation: FlexPassObservation { roster: roster, charges: charges },
     cards: [],
     allocations: [w_acquired()],
@@ -212,7 +213,7 @@ test fn dry_records_the_would_be_create_and_plans_no_write() -> Bool {
 test fn dry_with_a_destroy_due_records_it_and_destroys_nothing() -> Bool {
   let input = FlexPassInput {
     policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
-    gates: w_open, now: 1792008000000, cooldown: none,
+    gates: w_open, now: 1792008000000, cooldown: none, carry: FlexCarryTrusted,
     observation: FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) },
     cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
@@ -263,7 +264,7 @@ test fn the_card_the_roster_builds_is_the_card_the_pass_destroys() -> Bool {
       length(cards) == 1 && length(unread) == 0
         && match flex_plan_pass(input: FlexPassInput {
           policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
-          gates: w_open, now: now, cooldown: none,
+          gates: w_open, now: now, cooldown: none, carry: FlexCarryTrusted,
           observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
           cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
           no_room: false, replacement_serving: false,
@@ -285,7 +286,7 @@ test fn a_loading_card_this_pass_saw_for_the_first_time_is_left_alone() -> Bool 
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
       match flex_plan_pass(input: FlexPassInput {
         policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
-        gates: w_open, now: now, cooldown: none,
+        gates: w_open, now: now, cooldown: none, carry: FlexCarryTrusted,
         observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
         cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
         no_room: false, replacement_serving: false,
@@ -314,7 +315,7 @@ test fn a_loading_card_the_pass_cannot_age_is_left_alone() -> Bool {
         && length(filter(cards, c => match c.loading_age_at_least { Absent => true  Present { value: _ } => false })) == 1
         && match flex_plan_pass(input: FlexPassInput {
           policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
-          gates: w_open, now: now, cooldown: none,
+          gates: w_open, now: now, cooldown: none, carry: FlexCarryTrusted,
           observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
           cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
           no_room: false, replacement_serving: false,
@@ -344,7 +345,7 @@ fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
   }
   FlexPassInput {
     policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
-    gates: w_open, now: 1792008000000, cooldown: none,
+    gates: w_open, now: 1792008000000, cooldown: none, carry: FlexCarryTrusted,
     observation: FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2)]), charges: w_charges(units: 1) },
     cards: [stuck], allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
     no_room: false, replacement_serving: false,
@@ -368,11 +369,11 @@ test fn a_wet_destroy_binds_the_card_to_its_allocation_and_a_card_without_one_st
   let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
   let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
   let with_both = FlexPassInput {
-    policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: observation,
     cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
   let without = FlexPassInput {
-    policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: observation,
     cards: w_two_cards(), allocations: [], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
   match flex_plan_pass(input: without) {
@@ -386,7 +387,7 @@ test fn a_wet_destroy_is_held_by_the_closed_gates() -> Bool {
   let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
   let base = w_input(mode: Apply, gates: w_closed, roster: observation.roster, charges: observation.charges, intent: none)
   let p = flex_plan_pass(input: FlexPassInput {
-    policy: base.policy, gates: w_closed, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_closed, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: observation,
     cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   })
   match w_refusal_of(p: p) {
@@ -404,7 +405,7 @@ fn w_estimated(member: Bool) -> FlexShadowFieldEntry {
 fn w_wet_refusal(entry: FlexShadowFieldEntry, admitted: Bool, gates: FlexWetGates, hashes: List<FlexTemplateHashRow>) -> FlexPassRefusal? {
   let base = w_input(mode: Apply, gates: gates, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: entry, admitted: admitted) })
   w_refusal_of(p: flex_plan_pass(input: FlexPassInput {
-    policy: base.policy, gates: gates, now: base.now, cooldown: none, observation: base.observation,
+    policy: base.policy, gates: gates, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: base.observation,
     cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: hashes, no_room: false, replacement_serving: false,
   }))
 }
@@ -578,7 +579,7 @@ test fn a_foreign_card_is_never_planned_for_destroy() -> Bool {
   let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
   let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
   let p = flex_plan_pass(input: FlexPassInput {
-    policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: observation,
     cards: [w_card(owner: "ctrl-bidder", id: "2001" as NonEmptyStr), w_card(owner: "ctrl-pool", id: "2002" as NonEmptyStr)],
     allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   })
@@ -622,17 +623,40 @@ test fn a_refused_create_yields_no_allocation_and_an_answered_one_does() -> Bool
 test fn an_active_cooldown_blocks_the_next_create_and_an_expired_one_does_not() -> Bool {
   let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
   let active = FlexPassInput {
-    policy: base.policy, gates: w_open, now: 1792008000000 + 1000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } },
+    policy: base.policy, gates: w_open, now: 1792008000000 + 1000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } }, carry: FlexCarryTrusted,
     observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
   }
   let expired = FlexPassInput {
-    policy: base.policy, gates: w_open, now: 1792011600000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } },
+    policy: base.policy, gates: w_open, now: 1792011600000, cooldown: Present { value: FlexRentCooldown { asked_at: 1792008000000, until: 1792011600000 } }, carry: FlexCarryTrusted,
     observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
   }
   match flex_plan_pass(input: active) {
     FlexPlanRefused { refusal: FlexPassCooldownActive { until: u } } => u == 1792011600000
     _ => false
   } && (w_plan_create_request(p: flex_plan_pass(input: expired)) != none)
+}
+
+// THE CARRY GATE DISCRIMINATES AT THE CREATE. The same input, the same open gates, the same intent: with
+// a TRUSTED carry the pass plans the create; with an UNTRUSTED one - the standing of the last ask unknown,
+// exactly what a truncated carry file or a wrong header leaves - it refuses, and the refusal names why.
+// Reading an unread carry as "no ask in flight" would let a pass rent a second card on top of one the
+// account is already paying for, which is the failure the carry exists to prevent (review 89122, 89192).
+test fn an_unread_carry_refuses_the_create_where_a_trusted_one_plans_it() -> Bool {
+  let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
+  let untrusted = FlexPassInput {
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryUntrusted { reason: "1 carry line the pass could not parse" as NonEmptyStr },
+    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
+  }
+  let trusted = FlexPassInput {
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryTrusted,
+    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
+  }
+  match flex_plan_pass(input: untrusted) {
+    FlexPlanRefused { refusal: FlexPassCarryUnread { reason: r } } =>
+      string_contains(s: r, pattern: "could not parse")
+        && w_plan_create_request(p: flex_plan_pass(input: trusted)) != none
+    _ => false
+  }
 }
 
 test fn a_lost_create_with_our_instance_observed_reconciles_to_the_allocation_and_no_second_ask() -> Bool {
@@ -691,7 +715,7 @@ fn w_destroy_due_input() -> FlexPassInput {
   let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
   let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
   FlexPassInput {
-    policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: observation,
     cards: w_two_cards(), allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: true,
   }
 }
@@ -779,7 +803,7 @@ test fn the_selected_flex_recipe_has_an_unresolved_template_until_its_served_id_
   let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
   let hashes = [FlexTemplateHashRow { recipe: flex_serving_recipe.id, hash: "witness-template" as NonEmptyStr }]
   match w_refusal_of(p: flex_plan_pass(input: FlexPassInput {
-    policy: base.policy, gates: base.gates, now: base.now, cooldown: none, observation: base.observation,
+    policy: base.policy, gates: base.gates, now: base.now, cooldown: none, carry: FlexCarryTrusted, observation: base.observation,
     cards: [], allocations: base.allocations, intent: base.intent, recipe: flex_serving_recipe, template_hashes: hashes, no_room: false, replacement_serving: false,
   })) {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateUnresolved } } => true
