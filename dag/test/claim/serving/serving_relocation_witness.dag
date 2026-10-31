@@ -10,12 +10,14 @@ module test.claim.serving.serving_relocation_witness
 import std.types { Bool, NonEmptyStr, List }
 import std.optional { Present }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { string_contains }
 import gunbc.serving.serving_relocation {
   decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, excluded_candidate, decide_evacuation,
-  note_source_over_retain_promise, claim_move, attempt_dispatch,
+  note_source_over_retain_promise, claim_move, attempt_dispatch, render_move_intent,
   Move, Stay, DeferredToPolicy, Evacuate, ReconciliationRequired,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
   HandoffRecord, Dispatched, ConversationId, ReconstructFromCompleteRequest,
+  IntentPayload, NoIntent,
 }
 import gunbc.serving.caller_backlog {
   CallerBacklogSnapshot, CallerWorkRecord, WorkWaiting, RecoveryEvent, SeatRef, PartitionId,
@@ -142,5 +144,52 @@ test fn a_source_over_its_retain_promise_is_an_obligation_not_free() -> Bool {
   match note_source_over_retain_promise() {
     ReconciliationRequired { obligation: _ } => true
     _ => false
+  }
+}
+
+// 10. The model RENDERS the /router/relocate payload from a real decision: a dominating move yields an
+//     IntentPayload carrying conversation, revision, destination, method, allowance and the receipt
+//     identities. This is the model's output the falsifier posts. MUTATION: render a literal instead of
+//     running decide_relocation -> the receipt identities are absent -> red.
+test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  match render_move_intent(
+    conversation: "conv-9" as ConversationId,
+    from_launch: "srv3" as NonEmptyStr,
+    current_revision: 7,
+    authorization: "trial-allowance-1" as NonEmptyStr,
+    transition_allowance_micros: 1000000,
+    method: ReconstructFromCompleteRequest,
+    field: [stay_candidate(net: -50), move],
+    closed: true,
+  ) {
+    IntentPayload { payload: p } =>
+      string_contains(s: p, pattern: "conversation=conv-9")
+        && string_contains(s: p, pattern: "revision=7")
+        && string_contains(s: p, pattern: "destination=free-engine")
+        && string_contains(s: p, pattern: "method=reconstruct")
+        && string_contains(s: p, pattern: "allowance_micros=1000000")
+        && string_contains(s: p, pattern: "receipt_selected=")
+        && string_contains(s: p, pattern: "receipt_policy=")
+    NoIntent { reason: _ } => false
+  }
+}
+
+// 11. A stay decision renders NO intent: the router is never told to move when the model stays.
+//     MUTATION: render an intent even on Stay -> a spurious move command -> red.
+test fn render_move_intent_emits_no_intent_when_the_model_stays() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "cold-destination" as NonEmptyStr, net: -903, service_class: 0)
+  match render_move_intent(
+    conversation: "conv-10" as ConversationId,
+    from_launch: "srv3" as NonEmptyStr,
+    current_revision: 2,
+    authorization: "trial-allowance-1" as NonEmptyStr,
+    transition_allowance_micros: 1000000,
+    method: ReconstructFromCompleteRequest,
+    field: [stay_candidate(net: -5), move],
+    closed: true,
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { payload: _ } => false
   }
 }
