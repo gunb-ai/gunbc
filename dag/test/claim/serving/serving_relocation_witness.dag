@@ -11,7 +11,7 @@ import std.types { Bool, NonEmptyStr, List }
 import std.optional { Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.serving.serving_relocation {
-  decide_relocation, move_candidate, stay_candidate, excluded_candidate, decide_evacuation,
+  decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, excluded_candidate, decide_evacuation,
   note_source_over_retain_promise, claim_move, attempt_dispatch,
   Move, Stay, DeferredToPolicy, Evacuate, ReconciliationRequired,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
@@ -24,50 +24,51 @@ import gunbc.serving.caller_backlog {
 
 data w_move_id: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_relocation_witness", decl_name: "w_move_id")
 
-// 1. A ready continuation behind a long turn with another engine free -> MOVE (the move strictly
-//    dominates stay). MUTATION: remove the move candidate / its dominance and it flips to Stay.
+// 1. A ready continuation behind a long turn with another engine free -> MOVE. The incumbent carries
+//    a long-context starvation cost (a ready turn is stuck behind a long turn on the source), so its
+//    net is low; the free engine's move has a high net at equal service-class, so it dominates on the
+//    single net-benefit axis. MUTATION: drop the move candidate (or its net dominance) -> only stay
+//    survives -> Stay -> red.
 test fn a_ready_continuation_behind_a_long_turn_with_a_free_engine_moves() -> Bool {
-  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, gain: 100, transition: 5, harm: 5, age: 5)
-  match decide_relocation(field: [stay_candidate(age: 50), move], closed: true) {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -50), move], closed: true) {
     Move { destination_label: _, receipt: _ } => true
     _ => false
   }
 }
 
 // 2. A near-maximum warm context with a tiny continuation -> STAY, because the source's incremental
-//    work is less than the destination's missing state (the move pays a high transition cost for a
-//    small gain). MUTATION: zero the move's transition cost -> move wins -> red; the discriminating
-//    rule is counting repeated prefill as cost.
+//    work is less than the destination's missing state: staying pays almost nothing (small age cost),
+//    while the move must reconstruct the whole near-max context (transition ~900) for a tiny gain, so
+//    its net is far lower. MUTATION: zero the move's reconstruction cost (net -3) -> move wins -> red;
+//    the discriminating rule is counting repeated prefill as cost.
 test fn a_near_max_warm_context_with_a_tiny_continuation_stays() -> Bool {
-  let move = move_candidate(id: w_move_id, label: "cold-destination" as NonEmptyStr, gain: 2, transition: 900, harm: 5, age: 5)
-  match decide_relocation(field: [stay_candidate(age: 5), move], closed: true) {
+  let move = move_candidate(id: w_move_id, label: "cold-destination" as NonEmptyStr, net: -903, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -5), move], closed: true) {
     Stay => true
     _ => false
   }
 }
 
-// 3. Compaction or a prefix change voids the incumbent's advantage -> MOVE: stay now pays the
-//    reconstruction cost itself (its transition reading rises), so it no longer dominates.
-//    MUTATION: keep stay at transition 0 (pretend the prefix survived) -> Stay -> red.
+// 3. Compaction or a prefix change voids the incumbent's advantage -> MOVE: staying now pays the
+//    reconstruction itself (its net collapses), so the prefix-aligned destination keeps the higher net.
+//    MUTATION: keep the incumbent's warm advantage (stay net -5, pretend the prefix survived) -> stay
+//    wins -> red.
 test fn a_compaction_or_prefix_change_voids_the_incumbent_advantage_moves() -> Bool {
-  let stay_broken_with_cost = move_candidate(id: w_move_id, label: "stay" as NonEmptyStr, gain: 0, transition: 800, harm: 0, age: 5)
-  let move = move_candidate(id: w_move_id, label: "prefix-aligned" as NonEmptyStr, gain: 40, transition: 60, harm: 5, age: 5)
-  // The incumbent's advantage is gone: it now carries the reconstruction cost, so the aligned move
-  // dominates. (A stay that kept transition 0 would have stayed — that is the mutation.)
-  match decide_relocation(field: [stay_broken_with_cost, move], closed: true) {
+  let move = move_candidate(id: w_move_id, label: "prefix-aligned" as NonEmptyStr, net: -25, service_class: 0)
+  match decide_relocation(field: [stay_candidate(net: -800), move], closed: true) {
     Move { destination_label: _, receipt: _ } => true
     _ => false
   }
 }
 
-// 4. Dormant state blocking runnable demand -> DEFER: the two candidates do not dominate and no
-//    policy tiebreak fires (SelectionNeedsPolicy), not a silent first element.
-//    MUTATION: replace PreferSurvivor with a fallthrough-to-first policy -> it picks stay -> red.
+// 4. Dormant state blocking runnable demand -> DEFER: a dormant conversation (awaiting a person) has
+//    no runnable demand at this boundary, so the move is deferred regardless of how attractive its
+//    economics look — re-evaluate at the next event. MUTATION: remove the demand-readiness guard (call
+//    decide_relocation directly) -> the economic decision runs and moves -> red.
 test fn dormant_state_blocking_runnable_demand_defers() -> Bool {
-  // A move that is better on gain but worse on harm: neither dominates stay, and the stay-preference
-  // policy cannot resolve it because the move is not dominated either -> needs policy.
-  let move = move_candidate(id: w_move_id, label: "cross" as NonEmptyStr, gain: 10, transition: 0, harm: 40, age: 0)
-  match decide_relocation(field: [stay_candidate(age: 0), move], closed: true) {
+  let move = move_candidate(id: w_move_id, label: "cross" as NonEmptyStr, net: 90, service_class: 0)
+  match defer_when_demand_not_ready(ready: false, field: [stay_candidate(net: -50), move], closed: true) {
     DeferredToPolicy => true
     _ => false
   }
@@ -124,12 +125,12 @@ test fn a_retry_or_crash_mid_handoff_recovers_the_recorded_attempt() -> Bool {
   }
 }
 
-// 8. Cold prefill beside active decoding -> the move candidate violates a hard constraint and is
-//    EXCLUDED before Pareto, never ranked; only stay remains feasible. MUTATION: raise the bound so
-//    the violating candidate is ranked -> red.
+// 8. Cold prefill beside active decoding -> the move candidate violates the service-class hard bound
+//    and is EXCLUDED before Pareto, never ranked; only stay remains feasible. MUTATION: raise the
+//    service-class bound above the violating reading -> it is ranked and wins on net -> Move -> red.
 test fn cold_prefill_beside_active_decoding_excludes_before_pareto() -> Bool {
-  let move = excluded_candidate(id: w_move_id, label: "cold-prefill-violates-service-class" as NonEmptyStr, harm: 5)
-  match decide_relocation(field: [stay_candidate(age: 0), move], closed: true) {
+  let move = excluded_candidate(id: w_move_id, label: "cold-prefill-violates-service-class" as NonEmptyStr)
+  match decide_relocation(field: [stay_candidate(net: 0), move], closed: true) {
     Stay => true
     _ => false
   }
