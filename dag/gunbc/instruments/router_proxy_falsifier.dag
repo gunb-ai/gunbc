@@ -450,8 +450,10 @@ fn row_key_count(json: String, key: String) -> Int {
 }
 
 // N sequential turns of distinct sessions to one model, joined: the metering cases need a count no other row shares.
-fn turns(n: Int, model: String) -> String {
-  if n <= 0 { "" } else { concat(dev_request(key: "ck-falsifier", session: concat("turn-", to_string(n)), body: model_body(model: model), path: "/v1/chat/completions"), turns(n: n - 1, model: model)) }
+fn turns(n: Int, model: String) -> String { turns_from(n: n, model: model, acc: "") }
+
+fn turns_from(n: Int, model: String, acc: String) -> String {
+  if n <= 0 { acc } else { turns_from(n: n - 1, model: model, acc: concat(acc, dev_request(key: "ck-falsifier", session: concat("turn-", to_string(n)), body: model_body(model: model), path: "/v1/chat/completions"))) }
 }
 
 fn occurrences(s: String, needle: String) -> Int {
