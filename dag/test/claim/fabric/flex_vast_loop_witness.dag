@@ -27,6 +27,8 @@ import product.fabric.flex_vast_shadow { FlexInstancesUnobserved,
   FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   FlexWriteBlockedOverCap, flex_trial_policy, flex_trial_fleet_rate_cap, flex_fold_charge_pages,
   flex_serving_recipe,
+  flex_cards_from_roster, FlexLoadingSighting, FlexLoadingSightings, FlexSightingsKnown, FlexSightingsUnread,
+  FlexRosterCardsBuilt,
 }
 import product.fabric.flex_vast_loop { flex_vast_destroy_target, flex_vast_rented_instance,
   FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
@@ -51,7 +53,7 @@ import gunbc.serving.rented_release { RentedDestroyRequest,
   RentedHostReading, RentedHostSilent, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
   RentedLegDrain, RentedLegOutcomeNotPerformedHostSilent, RentedInstanceReading, RentedInstanceAbsent, RentedAnchorAbsent,
 }
-import test.claim.fabric.flex_vast_shadow_witness { wire_offer, inst_labelled, exhausted, t_charge }
+import test.claim.fabric.flex_vast_shadow_witness { wire_offer, inst_labelled, exhausted, t_charge, our_loading_row }
 import test.claim.fabric.flex_bid_admission_witness {
   t_policy, t_attempt, t_account, t_window, empty_occupancy, t_machine, one_dollar_wire, one_ten, usd_hour,
 }
@@ -244,6 +246,86 @@ test fn a_card_still_inside_the_launch_envelope_is_left_alone_by_the_pass() -> B
   }
 }
 
+// THE CARD THE ROSTER BUILDS IS THE CARD THE PASS DESTROYS. The two halves of the loop meet here: the
+// observation module turns a labelled loading row plus the sighting an EARLIER pass left into a card, and
+// the pass destroys that card. Before this slice the pass ran with cards: [] forever, so it could not
+// destroy anything it had rented however long it sat loading -- the roster was read, and then thrown away.
+test fn the_card_the_roster_builds_is_the_card_the_pass_destroys() -> Bool {
+  let now = 1792008000000
+  let roster = exhausted(rows: [our_loading_row(id: 1001)])
+  match flex_cards_from_roster(
+    ours: flex_owner_label_gunbc_flex,
+    roster: roster,
+    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 1001, first_seen_ms: now - 7260000 }] },
+    now: now,
+  ) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 1 && length(unread) == 0
+        && match flex_plan_pass(input: FlexPassInput {
+          policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
+          gates: w_open, now: now, cooldown: none,
+          observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
+          cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
+          no_room: false, replacement_serving: false,
+        }) {
+          FlexPlanDryDestroy { would: FlexDestroy { id: i, why: FlexCleanupStaleLoading } } => i == "1001"
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// THE FIRST SIGHTING IS NOT A DEAD CARD. The instances row carries no time field, so a loading id the
+// carry has never seen is age 0, and the pass leaves it alone. This is the safe direction of the missing
+// input: the cut is 120 min, so one pass of lag before a card can be aged cannot destroy it.
+test fn a_loading_card_this_pass_saw_for_the_first_time_is_left_alone() -> Bool {
+  let now = 1792008000000
+  let roster = exhausted(rows: [our_loading_row(id: 1001)])
+  match flex_cards_from_roster(ours: flex_owner_label_gunbc_flex, roster: roster, sightings: FlexSightingsKnown { sightings: [] }, now: now) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      match flex_plan_pass(input: FlexPassInput {
+        policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
+        gates: w_open, now: now, cooldown: none,
+        observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
+        cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
+        no_room: false, replacement_serving: false,
+      }) {
+        FlexPlanIdle => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A LOADING CARD THE PASS CANNOT AGE IS LEFT ALONE. The carry file is missing or unreadable, so the age is
+// UNREAD rather than zero, and the loading cut cannot fire: the pass keeps a card it cannot age. This is
+// the case that makes losing the carry safe -- a cargo clean between passes cannot destroy a card.
+test fn a_loading_card_the_pass_cannot_age_is_left_alone() -> Bool {
+  let now = 1792008000000
+  let roster = exhausted(rows: [our_loading_row(id: 1001)])
+  match flex_cards_from_roster(
+    ours: flex_owner_label_gunbc_flex,
+    roster: roster,
+    sightings: FlexSightingsUnread { reason: "the carry file could not be read" as NonEmptyStr },
+    now: now,
+  ) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 1
+        && length(filter(cards, c => match c.loading_age { Absent => true  Present { value: _ } => false })) == 1
+        && match flex_plan_pass(input: FlexPassInput {
+          policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
+          gates: w_open, now: now, cooldown: none,
+          observation: FlexPassObservation { roster: roster, charges: w_charges(units: 1) },
+          cards: cards, allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
+          no_room: false, replacement_serving: false,
+        }) {
+          FlexPlanIdle => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
 // An outbid card is dead whatever its loading age, and the pass destroys it.
 test fn an_outbid_card_is_destroyed_by_the_pass() -> Bool {
   let input = w_dead_input(loading_age: 0, outbid: true)
@@ -258,7 +340,7 @@ fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
     owner: flex_owner_label_gunbc_flex, id: "1001" as NonEmptyStr,
     vram: byte_size(count: 51539607552),
     rate: usd_hour(amount: money_amount_micro(count: 2000000)),
-    held: true, running: false, loading: true, outbid: outbid, loading_age: second(count: loading_age),
+    held: true, running: false, loading: true, outbid: outbid, loading_age: Present { value: second(count: loading_age) },
   }
   FlexPassInput {
     policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
@@ -272,7 +354,7 @@ fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
 fn w_card(owner: String, id: NonEmptyStr) -> FlexOwnedCard {  FlexOwnedCard {
     owner: owner as FlexOwnerLabel, id: id, vram: byte_size(count: 51539607552),
     rate: usd_hour(amount: money_amount_micro(count: 2000000)),
-    held: true, running: true, loading: false, outbid: false, loading_age: second(count: 0),
+    held: true, running: true, loading: false, outbid: false, loading_age: Present { value: second(count: 0) },
   }
 }
 
