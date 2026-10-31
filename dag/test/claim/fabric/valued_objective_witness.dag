@@ -16,6 +16,7 @@ import std.decision {
   SelectionNeedsPolicy,
   NoFeasibleRealization,
   select_realization,
+  policy_identity_of,
   identity_order_pick,
   DecisionVariable,
   ContextParameter,
@@ -176,7 +177,7 @@ fn pick_with_policy(field: List<ParetoEntry>, objective: DemandObjective, constr
     policy: policy,
     evidence_snapshot: id_evidence,
   ) {
-    SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
+    SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: policy_identity_of(policy: r.applied_policy) }
     SelectionNeedsEvidence { needs: _ } => NeedsEvidence
     SelectionNeedsPolicy { survivors: _ } => NeedsPolicy
     NoFeasibleRealization { causes: _, scope: _ } => NoneFeasible
