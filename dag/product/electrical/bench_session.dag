@@ -385,17 +385,22 @@ fn distinct_full_scales(os: List<ResistanceObservation>) -> List<Nat> {
   }
 }
 
+// The judgment is over readings whose range is recorded: an auto-ranging value is a value for the
+// netlist, but it carries no range, so it neither counts as a range nor enters the extrema here; a
+// pair valued only while auto-ranging has no reading on a recorded range.
 fn pair_range_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairRangeStanding {
-  let valued = filter(os, o => observation_reads_pair(o: o, a: a, b: b) && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
-  let ohms = flat_map(valued, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+  let ranged = filter(os, o => observation_reads_pair(o: o, a: a, b: b)
+    && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false }
+    && match recorded_full_scale(o: o) { Present { value: _ } => true, Absent => false })
+  let ohms = flat_map(ranged, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
   match ohms.first() {
     Absent => PairRangeUnread
     Present { value: f } => {
       let lo = fold(ohms, init: f, f: (acc, n) => nat_min(a: acc, b: n))
       let hi = fold(ohms, init: f, f: (acc, n) => nat_max(a: acc, b: n))
-      if count(distinct_full_scales(os: valued)) < 2 { PairValuedOnOneRange { readings: valued } }
-      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
-      else { ReadingHoldsAcrossRanges { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+      if count(distinct_full_scales(os: ranged)) < 2 { PairValuedOnOneRange { readings: ranged } }
+      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: ranged, lowest_ohms: lo, highest_ohms: hi } }
+      else { ReadingHoldsAcrossRanges { readings: ranged, lowest_ohms: lo, highest_ohms: hi } }
     }
   }
 }

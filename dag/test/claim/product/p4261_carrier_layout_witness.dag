@@ -2184,7 +2184,9 @@ fn supplied_pin8_standing(rs: List<ResistanceObservation>) -> PairRangeStanding 
 // terminals and its marking unresolved, the bare footprint below it with two. Supplied on the pin 8
 // pair: 1000 and 1100 ohm on two ranges hold; 1000 and 2001 move, 1000 and 2000 do not (the factor is
 // two, exclusive); a value with its range unrecorded is not counted, so one valued range reads as one;
-// no readings read nothing. U55 is a sixteen-terminal MarkingCandidate for TI's SN74AVC4T774 (RSV): it
+// an auto-ranging value is a value with no range, so it neither counts as a range nor moves the extrema
+// (100 ohm on two recorded ranges beside 1000 ohm auto-ranging holds at 100), and a pair valued only
+// while auto-ranging has no reading on a recorded range; no readings read nothing. U55 is a sixteen-terminal MarkingCandidate for TI's SN74AVC4T774 (RSV): it
 // credits no identified row, and its pins read under the candidate pinout, said so: 13 VCCB and 16 DIR2
 // are supply and control, 7 OE control, 12 B1 and 1 A1 the two ends of channel 1, 17 no pin; U51
 // carries no translator row.
@@ -2218,6 +2220,10 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2001, range: twenty_k)])) == 0
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 9000, range: RangeUnrecorded)])) == 2
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 100, range: twenty_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == 1
+    && range_bounds(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 100, range: twenty_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == [100, 100]
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == 2
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: AutoRanging), supplied_ranged(ohms: 5000, range: AutoRanging)])) == 3
     && range_arm(s: supplied_pin8_standing(rs: [])) == 3
 }
 
