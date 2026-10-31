@@ -20,15 +20,20 @@ Method: `git grep` and source reading only; nothing executed. Not inspected: v2 
 3. **`std.coercion`**: has `CastRule`, `RefinementCastRule`, `ConversionPlan`/`judge_conversion_plan` (the text-crossing instance of a declared conversion with derived endpoints, "the function IS the plan"). No numeric conversion row exists. The embedding row belongs here as the numeric peer of `literal_homomorphism_rows`.
 4. `std.nat` `NatSubtraction` / `nat_sub`: the only declared route *into* Nat from a difference (`NatDifference | NatSubtrahendExceedsMinuend`). It stays the sole non-negativity construction.
 
-New data (the one addition): `numeric_embedding_rows: List<CarrierEmbedding>` in `std.coercion`, with
-`CarrierEmbedding { from: DeclarationRef, to: DeclarationRef, injection: DeclarationRef, preserves: List<AlgebraFieldKind> }`
-and the first row `{ Nat, Int, std.integer.NonNegative, [AlgAdd, AlgMul, AlgCompare] }`. `preserves` is the implicit-safe obligation (total, exact/injective, op-commuting) stated, not assumed: an embedding is admissible for op `o` only if `field(o)` is in `preserves`.
+### Does an EXISTING declaration already carry the Nat->Int embedding? (read, rev f5a8efa09b53)
+
+- `gunbc.structural_realization_bindings` `conversion_plan_rows`: two rows only, `unicode_scalar_unfold` / `unicode_scalar_fold`. Its type `std.coercion` `ConversionPhase` has exactly two arms, `UnfoldPhase` and `InverseUnfoldPhase`, both carrying a `LiteralHomomorphism` (kernel literal -> destination). **No numeric row, and no phase arm that can express a constructor injection.** The *mechanism* (named route function, endpoints derived from the phase, `judge_conversion_plan`, `select_text_crossing_plan` with Several -> refuse) is exactly the declared-conversion-with-uniqueness shape the ruling wants.
+- `std.coercion` `dag_cast_rules` / `grounded_primitive_coproduct_identities` / `refinement_cast_rules`: carry `Int -> Nat` ("a Nat IS an Int", grounding) and the Int->Nat *proof* cast. They state host identity and the refused converse, not a declared injection with an operation-preservation claim; reading the embedding from them is the conflation (b)(2) forbids.
+- `Int.NonNegative` (`std.integer`): **is** the injection structurally (it is why Nat embeds in Int), but nothing reads a constructor as a conversion; it is the route function's body, not the declaration a selector can enumerate.
+- `kernel_grounding_rows`: realization extent, not a conversion.
+
+Verdict: the injection exists only as a constructor; the *declared conversion* does not. So **no new row type and no new table**: the smallest addition is (1) one new `ConversionPhase` arm `InjectionPhase { source: DeclarationRef, target: DeclarationRef, constructor: DeclarationRef }` (endpoints DERIVED from it, as the existing phases do), and (2) one row in the EXISTING `conversion_plan_rows` whose route is a declared function `nat_to_int(n: Nat) -> Int { NonNegative { n: n } }` in `std.integer`. `numeric_embedding_rows` from the first draft is withdrawn. The preservation claim (`add`, `mul`, compare commute) is not a stored list: the fold checks it from the two carriers' profiles (`algebra_carriers`: both define add/mul, and `nat_to_int` is a homomorphism of the semiring), i.e. derived, with the first witness being a claim that `nat_to_int(a+b) == nat_to_int(a)+nat_to_int(b)` on a bounded input.
 
 ## (c) Selection as a fold over those authorities
 
 `arithmetic_result(op, L, R) -> Carrier | Refused(cause)`:
 1. `f = binop_algebra_fields(op)` refined by structure: `Add->add`, `Mul->mul`, `Sub->{add,negate}` (requires an additive inverse), `Neg->negate`.
-2. `up(X) = {X} union {C : embedding X->C in numeric_embedding_rows and f in preserves-or-defined}` (reflexive, one step; transitive closure only when a second row exists).
+2. `up(X) = {X} union {C : a `conversion_plan_rows` InjectionPhase row X->C, and f is defined on both profiles}` (reflexive, one step; transitive closure only when a second row exists).
 3. Candidates `K = {C in up(L) intersect up(R) : profile(C) defines f}`. `profile` = `algebra_carriers`.
 4. `K` empty -> refuse (no carrier defines the op for these operands). Take the **minimal** elements of `K` under "embeds into". Exactly one -> result type. Two or more incomparable -> **refuse as ambiguous** (typed, located; never row order, same discipline as `SubtractionRefinementAmbiguous`).
 5. Unary: `Neg` same fold with `up(X)` only.
@@ -56,7 +61,14 @@ Population: the 10 rows in `std.integer` (`Int8..Int128`, `UInt8..UInt128`, `Com
 
 ## (e) What this lets E1 delete
 
-Read conditionally (E1's text not seen): any hard-coded Nat/Int promotion or "result is the left type" rule in operator typing; `dag_subtraction_refinement` / `subtraction_refinement_of` / `SubtractionRefinement` (and its Rust twin) -- subsumed by the fold, which also removes the misuse of the Int->Nat *proof* cast table as a type-escape oracle; `Neg => operand type`; the `Sub`-only branch in `infer_binop_type_node`. Kept: `grounded_binop`'s guarded narrowing, `NatSubtraction`, `kernel_grounding_rows` (realization only).
+Read conditionally (E1's text not seen): any hard-coded Nat/Int promotion or "result is the left type" rule in operator typing; `dag_subtraction_refinement` / `subtraction_refinement_of` / `SubtractionRefinement` (and its Rust twin, unread) -- subsumed by the fold, which also removes the misuse of the Int->Nat *proof* cast table as a type-escape oracle; `Neg => operand type`; the `Sub`-only branch in `infer_binop_type_node`. Kept: `grounded_binop`'s guarded narrowing, `NatSubtraction`, `kernel_grounding_rows` (realization only).
+
+## v2 side (read: `v2.compiler.infer` `infer_transform_binary_infix`, `infer_unify_transform_operand_types`)
+
+- **v2 does not share the left-operand rule.** Operands must unify to ONE type (`OperandsOneType`); disagreement is `OperandsDisagree` -> refusal. So `Nat + Int` refuses in v2 today (stricter than v1, nothing silently typed). Result type then comes from the carrier's algebra field row (`infer_algebra_field_result_type`), so `Nat + Nat` is Nat by the semiring row.
+- **Subtraction/negation are not typed at all:** `-` canonicalizes to `AlgebraInverseCompose`, for which `infer_canonical_operation_field` returns Absent, so `infer_transform_binary_infix` refuses it as unsupported (the comment at "Unary `-` is NOT this arm's" says so). No wrong answer, no right one: `Nat - Nat : Int` is a v2 gap.
+- **v2 already has the embedding machinery, generically:** `v2.std.coercion` finds a homomorphism witness via `find_witness` with quality `Widened` (`homomorphism_rule_refinement_widening`, `..._refinement_declared_carrier`) and `CanonicalOperation.CoercionCrossing` exists in `v2.std.compilers.target_model`. So in v2 the plan is: promote the mixed-operand case from `OperandsDisagree` to "ask the coercion fold for a unique Widened target common to both operands, then type by the carrier row"; `AlgebraInverseCompose` gets a result typed through the ring/escape rule. I have not checked whether `v2.std.nat.Nat` (Peano) to `v2.std.integer.Int` (`GroupCompletion<Nat>`, frozen) has a candidate set the fold would accept; that is the first thing to execute, as a v2 claim, before any code.
+- Nothing seed-only is carried forward: the v1 fold is specified against `conversion_plan_rows` / `algebra_carriers`, which v2 reads as well (v2.std.coercion mirrors the shape), and the v1 `SubtractionRefinement` path is deleted rather than ported.
 
 ## Risks / unknowns
 
