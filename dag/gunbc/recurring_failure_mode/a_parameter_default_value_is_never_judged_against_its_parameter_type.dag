@@ -22,6 +22,8 @@ data a_parameter_default_value_is_never_judged_against_its_parameter_type: Recur
     "NEXT-RUNG TRIGGER: supply the parameter's declared type as `expected` to the default expression and run the argument obligation on it. RED: the four defaults above; positive control: `3`.",
 
     "SECOND TRIGGER, stated so it is not a silent gap: the repair on q1-param-default-obligation keeps only the default's DIAGNOSTICS; the typed default is not stored back on the param node and emission still reads the untyped default, so a literal introduced at its carrier (Q1b E1b) does not yet reach an emitted default. Visibility is module scope only: stage0 call_function_inner evaluates a default in the caller-supplied env, and v1.compiler.emit_rust fill_default_args / fill_op_default_args splice it at the call site; neither binds a sibling parameter."
+
+    "SIBLING FINDING (Q1b step 2, not this row's fix): String at std.nat Nat reaches declared_type_inhabitance's terminal UnmodeledNoArmDecides, wrong code the RELATION itself should refuse; the kernel-at-structured arm exempts grounded carriers by design. Hypothesis from reading, to be confirmed by the pre-fix probe. The relation fix belongs to Q1b, not to the default position.",
   ],
 
   evidence: [],
