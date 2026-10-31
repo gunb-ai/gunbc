@@ -726,6 +726,21 @@ pub fn v1_freemonoid_filter_hand_written(
     })
 }
 
+pub fn v1_type_expr_carrier_name(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let spelling = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices, type_expr),
+        );
+        match crate::std_types::container_template_algebra(spelling.clone()) {
+            Some(carrier) => carrier.clone(),
+            std::option::Option::None => spelling.clone(),
+        }
+    }
+}
+
 pub fn v1_freemonoid_element_params(
     generic_param_names: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -737,7 +752,7 @@ pub fn v1_freemonoid_element_params(
             if {
                 let mut __found = false;
                 for te in field_type_exprs.iter().cloned() {
-                    if ((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
+                    if ((v1_type_expr_carrier_name(te.clone(), source_indices.clone())
                         == "FreeMonoid".to_string())
                         && {
                             let mut __found = false;
@@ -1007,7 +1022,7 @@ pub fn v1_set_element_params(
             if {
                 let mut __found = false;
                 for te in field_type_exprs.iter().cloned() {
-                    if ((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
+                    if ((v1_type_expr_carrier_name(te.clone(), source_indices.clone())
                         == "Set".to_string())
                         && {
                             let mut __found = false;
