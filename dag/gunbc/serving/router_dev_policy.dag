@@ -870,7 +870,7 @@ fn router_dev_row_is_rented(u: RouterDevUpstream) -> Bool {
 type RouterDevRetention
   = NoRetention
   | RetentionAdmitted { conversations: Nat }
-  | RetentionFrontier { why: String }
+  | RetentionFrontier
   | RetentionUnderivable { group: String }
 
 fn router_dev_layout_retention(group: String) -> RouterDevRetention {
@@ -965,7 +965,7 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
   match r {
     RetentionAdmitted { conversations: n } => [json_kv(key: "retain", value: json_int(n: n as Int))]
     NoRetention => no_members()
-    RetentionFrontier { why: _ } => no_members()
+    RetentionFrontier => no_members()
     RetentionUnderivable { group: _ } => no_members()
   }
 }
@@ -990,8 +990,8 @@ fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<Stri
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
     // Retention is a declared frontier for srv1-vllm and srv3-strata: no layout models their replicas yet.
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier { why: "srv1's vLLM replica has no serving_layout; its retention is not derivable" }, effort_effects: qwen3_effort_rules() },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier { why: "srv3's Strata replica has no serving_layout; its retention is not derivable" }, effort_effects: iq3_s_effort_rules() },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier, effort_effects: qwen3_effort_rules() },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier, effort_effects: iq3_s_effort_rules() },
     router_dev_h11_row(name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"]),
     router_dev_h11_row(name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"]),
     router_dev_h11_row(name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"]),
@@ -1052,7 +1052,7 @@ fn router_dev_underivable_retention(rows: List<RouterDevUpstream>) -> String? {
         RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))  }
         NoRetention => Absent
         RetentionAdmitted { conversations: _ } => Absent
-        RetentionFrontier { why: _ } => Absent
+        RetentionFrontier => Absent
       }
     })
 }
