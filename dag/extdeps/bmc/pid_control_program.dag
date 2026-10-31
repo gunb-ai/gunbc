@@ -200,10 +200,6 @@ fn stepwise_point_count_fits_upstream(count: Int) -> Bool {
   count <= phosphor_stepwise_max_points
 }
 
-fn curve_fits_upstream_stepwise_table(curve: List<DemandCurvePoint>) -> Bool {
-  stepwise_point_count_fits_upstream(count: length(curve))
-}
-
 // HYSTERESIS IS A TEMPERATURE DIFFERENCE AND THE SETPOINT IS A TEMPERATURE, which are different
 // quantities in std.measure and are kept different here. The document writes both as bare numbers.
 type ThermalDemandController {
