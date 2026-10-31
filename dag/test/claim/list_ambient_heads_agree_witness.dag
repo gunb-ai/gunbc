@@ -38,10 +38,10 @@ test fn declared_flat_map_keeps_callback_order_per_element() -> Bool {
   list_flat_map(xs: ordered, f: fn(n) { spread(n: n) }) == [3, 30, 1, 10, 2, 20, 1, 10]
 }
 
-// `first` is NOT in agreement: list_head is total (Optional), the ambient first yields a bare element. The first test is the
+// `first` is NOT proven in agreement: under == the two refuse as different representations (list_head Present vs ambient Int(3)), while a match on the ambient first binds Present { value: 3 }. The first test is the
 // RED that shows the difference (list_head's payload equals the ambient result, so the ambient result is the element, not an
 // Optional); the second probes what the ambient first does on the empty list, where a partial contract must show itself.
-test fn the_ambient_first_is_typed_optional_but_evaluates_to_a_bare_element() -> Bool {
+test fn the_ambient_first_matches_as_an_optional_under_match() -> Bool {
   match first(ordered) {
     Present { value: v } => v == 3
     Absent => false
