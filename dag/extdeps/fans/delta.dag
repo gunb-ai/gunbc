@@ -3,7 +3,7 @@ module extdeps.fans.delta
 import std.types { NonEmptyStr }
 import std.measure { Milliampere, micrometer, millivolt, milliwatt, milliampere, millilitre_per_second, pascal, rpm }
 import extdeps.units.iec_61672 { tenths_dba }
-import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutletCandidates, RadialBlowerRating }
+import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutlet, BlowerDepthEdge, RadialBlowerRating }
 import extdeps.vendor.delta { delta_electronics }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -60,21 +60,29 @@ data delta_bfb1012m_envelope: RadialBlowerEnvelope = RadialBlowerEnvelope {
 
 data delta_bfb1012m_envelope_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
 
-// THE OUTLET AND THE HOLE CENTRES ARE NOT YET ATTRIBUTABLE. The sheet's drawing prints these figures,
-// but its leaders are vector paths that were not rendered, so the text does not say which dimension
-// is which feature. 39.0 x 32.0 is the likely outlet opening, which is a candidate and not a reading;
-// nothing consumes these figures until they are cited.
-data delta_bfb1012m_outlet_candidates: RadialBlowerOutletCandidates = RadialBlowerOutletCandidates {
-  printed_figures: [
-    micrometer(count: 58900), micrometer(count: 45400), micrometer(count: 39000), micrometer(count: 32000),
-    micrometer(count: 52000), micrometer(count: 50000), micrometer(count: 57900), micrometer(count: 53900),
-    micrometer(count: 29300), micrometer(count: 1850), micrometer(count: 2000),
-  ],
+// THE OUTLET, read 2026-10-29 off the same sheet's DIMENSIONS DRAWING, rendered from the digest-pinned
+// copy above (sha256 b04bf73d...; its dimension leaders are vector paths, which is why the sheet's text
+// layer alone could not attribute them). The drawing has a front view of the broad face, 97.2 wide by
+// 94.4 tall, and a side view looking at the face's 94.4 mm edge. That side view carries the outlet:
+// an opening 29.3 wide across the thickness between two 1.85 +/- 0.5 walls (1.85 + 29.3 + 1.85 =
+// 33.0, the housing thickness), and 53.9 long along the 94.4 mm edge, inside a frame 57.9 +/- 0.5 long
+// that starts at the corner shared with the 97.2 mm edge. So the outlet is on the DEPTH edge (the
+// 94.4 mm one), flush to one end of it.
+//
+// The front view also dimensions the impeller centre (50.0 +/- 0.5 from the 94.4 mm edge, 52.0 +/- 0.5
+// from the 97.2 mm edge), the intake (diameter 45.4, ring 58.9) and the two 4.5 mm holes (one 39.0 +/-
+// 0.3 right of and above the centre, one 32.0 +/- 0.3 left of and below it). Nothing in this repository
+// places the blower by its holes or its intake ring yet, so those figures are recorded here and not
+// modelled as rows; the row that first consumes one carries it.
+data delta_bfb1012m_outlet: RadialBlowerOutlet = RadialBlowerOutlet {
+  edge: BlowerDepthEdge,
+  opening_along_edge: micrometer(count: 53900),
+  opening_across_thickness: micrometer(count: 29300),
+  frame_along_edge: micrometer(count: 57900),
+  frame_along_edge_tolerance: micrometer(count: 500),
 }
 
-data delta_bfb1012m_outlet_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Map the BFB1012M outline drawing's leaders, or caliper the received fan: the outlet opening's size and its offset on the housing edge, which edge (97.2 or 94.4 mm) it is on, and the hole centres.",
-}
+data delta_bfb1012m_outlet_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
 
 // THE RATING ROW, read from the same sheet for -R00/-F00. Free-air flow and speed, pressure at zero
 // flow; "function type is optional". The sheet states flow as 0.640 m3/min (22.60 CFM), carried as

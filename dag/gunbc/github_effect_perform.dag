@@ -1,6 +1,6 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes, CommitSha }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -37,7 +37,8 @@ import extdeps.github.git_database
 import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 import extdeps.github.org_actions
 import extdeps.github.org_actions { OrgRunnerGroupWire }
-import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.actions { github_event_name_merge_group }
 import extdeps.github.actions_artifacts
 import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
@@ -403,6 +404,23 @@ fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: N
   }
 }
 
+// THE MERGE-QUEUE RUNS OF ONE REVISION, requested event-scoped: the one acquisition
+// gunbc.fleet.fleet_revision_acceptance accept_required_ci_merge_group_runs judges, which refuses a response that
+// is not merge_group-only or is a partial page.
+type MergeGroupRunsRead sole_constructor {
+  runs: RestResult<WorkflowRunList>
+}
+
+fn read_merge_group_runs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, revision: CommitSha) -> MergeGroupRunsRead uses net: Network {
+  let read = github.WorkflowRuns.ListForRef(auth_token: token.token, owner: owner as String, repo: repo as String, head_sha: revision, event: github_event_name_merge_group)
+  MergeGroupRunsRead {
+    runs: match read {
+      RestAnswered { answer } => RestAnswered { answer: answer.runs }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
+}
+
 type WorkflowAttemptJobsRead sole_constructor {
   jobs: RestResult<WorkflowJobRunList>
 }
@@ -585,7 +603,8 @@ fn stage_key_file(key: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging ad
 
 fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
-  decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key"),
+  decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_keyed"),
 ] {
   match gcp.SecretManager.AccessVersion(
     access_token: wif_access_token,

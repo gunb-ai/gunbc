@@ -1,0 +1,47 @@
+module std.prefixed_line
+
+// HOST-TEXT LOG-LINE PARSING: the marker-prefixed process-log line shape independently versioned
+// upstreams share -- a kit CAPACITY_OK line, a ninfer metric line -- where the line starts with a
+// marker and the last space-separated token is the number. This fact lives HERE, not in
+// std.checked_arithmetic, because it is host-text parsing and the arithmetic seed is not: parsing
+// needs the host-text read (parse_int over the last token), which sits above std.integer, while
+// std.checked_arithmetic sits BELOW std.integer (std.integer -> std.measure/std.induction ->
+// std.checked_arithmetic). Parsing therefore imports the nonnegative crossing UP from the seed
+// (checked_int_to_nat) and never the other way; std.checked_arithmetic carries no host-text use.
+// That ordering is what lets the NAMESPACE-XL parse_int wave give std.checked_arithmetic its
+// std.integer import without roster_import_sweep refusing import-closes-cycle.
+
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.types { String }
+import std.checked_arithmetic { checked_int_to_nat }
+
+// LAST SPACE-SEPARATED TOKEN AS NAT: parse_int then the nonnegative crossing above. Process-log
+// lines in independently versioned upstreams (a kit CAPACITY_OK line, a ninfer metric line) share
+// this shape; the crossing lives once so they cannot drift.
+fn nat_from_last_space_token(line: String) -> Nat? {
+  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+  match parse_int(s: last) {
+    Absent => none
+    Present { value: n } => checked_int_to_nat(n: n)
+  }
+}
+
+// A MARKER-PREFIXED PROCESS-LOG LINE: the line starts with the prefix, then the last space token
+// is a Nat. Contains-match is not this fact — it would mint a reading from an unrelated log line
+// that happened to mention the marker.
+type PrefixedLineNat
+  = PrefixedLineMiss
+  | PrefixedLineNatUnreadable
+  | PrefixedLineNat { value: Nat }
+
+fn prefixed_line_last_space_nat(line: String, prefix: String) -> PrefixedLineNat {
+  if starts_with(s: line, prefix: prefix) {
+    match nat_from_last_space_token(line: line) {
+      Absent => PrefixedLineNatUnreadable
+      Present { value: n } => PrefixedLineNat { value: n }
+    }
+  } else {
+    PrefixedLineMiss
+  }
+}

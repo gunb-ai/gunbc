@@ -1,0 +1,138 @@
+module test.claim.gpu_market_mobile_census_witness
+
+// THE MOBILE CENSUS CLAIMS EVERY MOBILE ROW THE SOURCE CENSUS PARTITIONS TO IT, ONCE, AT ITS ACQUISITION
+// TIER. The population is read off the real pinned pages; supplied rows exercise the arms; the catalogue's
+// laptop GPUs and MXM module are read for the grain they carry (a soldered GPU with a TGP range, a removable
+// module with a link).
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, bandwidth, milliwatt, watt, watt_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.storage.types { Gen3 }
+import extdeps.wikipedia.gpu_spec_table { WikipediaGpuSpecPage, WikipediaGpuSpecRow, WikipediaMemoryCell }
+import extdeps.wikipedia.list_of_nvidia_graphics_processing_units { list_of_nvidia_graphics_processing_units_page }
+import extdeps.wikipedia.list_of_amd_graphics_processing_units { list_of_amd_graphics_processing_units_page }
+import extdeps.gpu.types {
+  GpuBoardCatalogFacts, SolderedBga, MxmModule, SystemDependentTgp, ConfigurableBoardPower,
+  GpuBoardAdmitted, GpuBoardRefused, BoardPowerRangeInverted, admit_gpu_board, gpu_board_admission_facts,
+}
+import extdeps.gpu.nvidia_rtx_pro_laptop { nvidia_rtx_5000_ada_laptop_board_catalog, nvidia_rtx_pro_laptop_board_catalogs }
+import extdeps.gpu.nvidia_tesla_p6 { nvidia_tesla_p6_board_catalog }
+import gunbc.gpu_market.census {
+  CensusSourcePage, CensusRowRef, CensusDisposition, CensusPartitioned, MobileGpuCensus, MobileModuleCensus,
+  census_dispositions, census_row_ref_eq,
+}
+import gunbc.gpu_market.mobile_census {
+  MobileCensusEntry, WholeMobileSystem, RemovableModule,
+  mobile_census_entries, mobile_entry_of, mobile_entries_with_memory_at_least,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_mobile_partition(d: CensusDisposition) -> Bool {
+  match d {
+    CensusPartitioned { row: _, partition: MobileGpuCensus, cause: _ } => true
+    CensusPartitioned { row: _, partition: MobileModuleCensus, cause: _ } => true
+    _ => false
+  }
+}
+
+// EVERY MOBILE OR MODULE ROW THE SOURCE CENSUS PARTITIONS IS CLAIMED HERE, AND NOTHING ELSE IS. The two
+// populations are counted from their own folds, so a row the mobile census drops or invents reddens this.
+test fn w_the_mobile_census_claims_every_mobile_partition_row() -> Bool {
+  let entries = mobile_census_entries()
+  count(entries) > 0 && count(entries) == count(census_dispositions() |> filter(d => is_mobile_partition(d: d)))
+}
+
+fn entry_at(revision: ExternalAuthority, table: Nat, row: Nat) -> MobileCensusEntry? {
+  first(mobile_census_entries() |> filter(e => census_row_ref_eq(a: e.row, b: CensusRowRef { revision: revision, table: table, row: row })))
+}
+
+test fn w_a_mobile_quadro_is_a_whole_system_gpu_with_its_memory() -> Bool {
+  match entry_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 69, row: 6) {
+    Present { value: e } => (match e.tier { WholeMobileSystem => true  RemovableModule => false })
+      && e.memory_per_gpu |> any(m => byte_size_count(b: m) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 8))))
+    Absent => false
+  }
+}
+
+test fn w_the_judged_mxm_module_is_a_removable_module() -> Bool {
+  match entry_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 2) {
+    Present { value: e } => match e.tier { RemovableModule => true  WholeMobileSystem => false }
+    Absent => false
+  }
+}
+
+test fn w_whole_system_gpus_at_the_long_context_floor_exist() -> Bool {
+  count(mobile_entries_with_memory_at_least(tier: WholeMobileSystem, floor: gibibyte_to_byte_size(g: gibibyte(count: 16)))) > 0
+}
+
+data fixture_source: CensusSourcePage = CensusSourcePage {
+  vendor: nvidia,
+  page: WikipediaGpuSpecPage {
+    revision: ExternalAuthority { uri: Uri { scheme: Https, locator: "en.wikipedia.org/w/index.php?title=Fixture&oldid=1" } },
+    html_sha256: "fixture", table_count: 0, tables: [],
+  },
+}
+
+fn fixture_row(model: String) -> WikipediaGpuSpecRow {
+  WikipediaGpuSpecRow {
+    ordinal: 0, model: Present { value: model }, launch_cell: none, launch_year: Present { value: 2024 },
+    memory_cell: none, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } },
+    memory_type_cell: none, bandwidth_cell: none, bandwidth: none, power_cell: none, power: [], bus_cell: none, bus: none,
+  }
+}
+
+// A row in a mobile section is a whole-system GPU here; one in an IGP section belongs to the whole-system
+// census and is not claimed; a desktop card is not claimed.
+test fn w_arm_only_mobile_and_module_partitions_are_claimed() -> Bool {
+  count(mobile_entry_of(src: fixture_source, table: 0, heading: "Mobile GPUs > GeForce 50 series", row: fixture_row(model: "Card"))) == 1
+    && count(mobile_entry_of(src: fixture_source, table: 0, heading: "Desktop GPUs > IGP", row: fixture_row(model: "Card"))) == 0
+    && count(mobile_entry_of(src: fixture_source, table: 0, heading: "Desktop GPUs", row: fixture_row(model: "Card"))) == 0
+}
+
+// ── THE CATALOGUE'S MOBILE GRAINS ───────────────────────────────────────────────────────────────
+
+// A laptop GPU is soldered, and its power is the vendor's TGP range, never one figure.
+test fn w_the_rtx_5000_ada_laptop_gpu_is_soldered_with_its_tgp_range() -> Bool {
+  let f = gpu_board_admission_facts(admission: nvidia_rtx_5000_ada_laptop_board_catalog)
+  (match f.attachment { SolderedBga => true  _ => false })
+    && (match f.board_power {
+      Present { value: SystemDependentTgp { minimum: lo, maximum: hi } } => watt_count(lo) == 80 && watt_count(hi) == 175
+      _ => false
+    })
+    && nvidia_rtx_pro_laptop_board_catalogs |> all(b => match b { GpuBoardAdmitted { row: _ } => true  GpuBoardRefused { facts: _, refusal: _ } => false })
+    && count(nvidia_rtx_pro_laptop_board_catalogs) == 13
+}
+
+test fn w_a_tgp_range_that_is_inverted_has_no_row() -> Bool {
+  let f = gpu_board_admission_facts(admission: nvidia_rtx_5000_ada_laptop_board_catalog)
+  match admit_gpu_board(facts: GpuBoardCatalogFacts {
+      vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: f.gpu_count, attachment: f.attachment,
+      board_power: Present { value: SystemDependentTgp { minimum: watt(count: 175), maximum: watt(count: 80) } },
+      zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
+      figure_citations: f.figure_citations,
+    }) {
+    GpuBoardRefused { facts: _, refusal: BoardPowerRangeInverted } => true
+    _ => false
+  }
+}
+
+// The P6 is a removable MXM 3.1 Type B module presenting PCIe Gen3 x16, 90 W by default and 70 W optional.
+test fn w_the_tesla_p6_is_an_mxm_module_with_its_link() -> Bool {
+  let f = gpu_board_admission_facts(admission: nvidia_tesla_p6_board_catalog)
+  (match f.attachment {
+    MxmModule { variant: v, link: Present { value: l } } => (v.revision as String) == "3.1" && (v.module_type as String) == "Type B"
+      && l.lane_count == 16 && (match l.generation { Gen3 => true  _ => false })
+    _ => false
+  })
+    && (match f.board_power {
+      Present { value: ConfigurableBoardPower { default: Present { value: d }, minimum: lo, maximum: hi, named_points: _ } } =>
+        watt_count(d) == 90 && watt_count(lo) == 70 && watt_count(hi) == 90
+      _ => false
+    })
+}

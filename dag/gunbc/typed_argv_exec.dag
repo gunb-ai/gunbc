@@ -38,6 +38,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
   exec_fleet_remote_leg,
   exec_as_fleet_principal_on_fresh_connection,
+  exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
@@ -237,6 +238,33 @@ fn typed_argv_exec_over_fleet_ssh(
     Present { value: words } =>
       match exec_as_fleet_principal(
         context: context, target: target, words: words,
+        credential: BootstrapCredentialInRunEnvironment,
+      ) {
+        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+      }
+  }
+}
+
+// THE SAME LEG WITH ITS PAYLOAD ON STDIN: the words are admitted exactly as above, and the bytes go to
+// the far side's stdin through exec_as_fleet_principal_with_stdin, the leg typed_remote_file_write
+// already runs against the same principal, so a payload is never a word the far-side shell re-parses.
+fn typed_argv_exec_over_fleet_ssh_with_stdin(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+  stdin_payload: String,
+) -> TypedArgvExecOutcome {
+  match portable_remote_words(raws: argv) {
+    Absent => TypedArgvExecRefused {
+      reason: concat(
+        "remote words are not portable under the far-side shell re-parse, so the leg was NOT attempted for ",
+        ssh_target_wire(target: target) as String,
+      ),
+    }
+    Present { value: words } =>
+      match exec_as_fleet_principal_with_stdin(
+        context: context, target: target, words: words, stdin_payload: stdin_payload,
         credential: BootstrapCredentialInRunEnvironment,
       ) {
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }

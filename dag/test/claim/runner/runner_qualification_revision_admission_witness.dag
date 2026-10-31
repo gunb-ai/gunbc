@@ -1,0 +1,142 @@
+module test.claim.runner.runner_qualification_revision_admission_witness
+
+import std.types { String, Bool, Int, List, CommitSha, NonEmptyStr }
+import std.optional { Present }
+import std.contract_identity { ContractEpoch }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_eq }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, WorkflowRunStatus, WorkflowRunConclusion, Completed, Success, Failure }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestTransportRefused, RestExchangeUnreached }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_yaml_value }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
+import gunbc.fleet.origin_main_revision_observe { LandedOnAdmittedStanding, TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved }
+import gunbc.fleet.fleet_revision_acceptance {
+  RequiredCiMergeGroupRunAbsent, RequiredCiMergeGroupRunsNotSuccess, CiContractEpochMismatch,
+  BranchDoesNotContainRevision, BranchContainmentUnobserved,
+}
+import gunbc.runner.runner_qualification_revision_admission {
+  admit_qualification_revision, QualificationRevisionAdmission, QualificationRevisionAccepted, QualificationRevisionRefused,
+  QualificationMergeGroupRunsUnread, QualificationRequiredCiRefused, QualificationDefaultBranchRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE QUALIFICATION ATTEMPT'S REVISION ADMISSION (gunbc.runner.runner_qualification_revision_admission), exercised at
+// its one interface with supplied readings: the merge-queue runs, the observed contract epoch and the default
+// branch's containment of the revision. Each RED breaks exactly one reading against the positive control. That the
+// unit hold cannot be reached without the accepted carrier is construction, not a claim here: the hold's parameter is
+// AcceptedFleetRevision and its only admitted caller is the step that matched it out of this fold.
+
+data sha_r: String = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+
+data sha_head: String = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+
+fn oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
+}
+
+fn epoch_match() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch_yaml_value() as ContractEpoch }
+}
+
+fn mg(id: Int, conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  WorkflowRun { display_title: none,
+    id: id,
+    name: Present { value: "witnesses" },
+    path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
+    head_sha: sha_r as CommitSha,
+    head_branch: Present { value: "gh-readonly-queue/main/pr-1-deadbeef" },
+    event: "merge_group",
+    status: Completed,
+    conclusion: Present { value: conclusion },
+    workflow_id: 900001,
+    run_number: id,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: "2026-09-13T00:00:00Z",
+    updated_at: "2026-09-13T00:30:00Z",
+    pull_requests: [],
+  }
+}
+
+fn answered(rs: List<WorkflowRun>) -> RestResult<WorkflowRunList> {
+  RestAnswered { answer: WorkflowRunList { total_count: length(rs), workflow_runs: rs } }
+}
+
+fn landed() -> LandedOnAdmittedStanding {
+  TreeLandedOnAdmitted { local: oid(hex: sha_r), admitted: oid(hex: sha_head) }
+}
+
+fn admit(runs: RestResult<WorkflowRunList>, epoch: RequiredCiEpochObservation, standing: LandedOnAdmittedStanding) -> QualificationRevisionAdmission {
+  admit_qualification_revision(revision: oid(hex: sha_r), runs: runs, epoch: epoch, landed: standing)
+}
+
+// POSITIVE CONTROL: a successful merge-queue run of the floor on R, the required epoch, and R contained in the
+// default branch at a later head admit exactly R.
+test fn a_merge_queue_success_on_a_landed_revision_is_accepted_as_that_revision() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 11, conclusion: Success)]), epoch: epoch_match(), standing: landed()) {
+    QualificationRevisionAccepted { accepted: a } => git_object_id_eq(left: a.revision, right: oid(hex: sha_r))
+    _ => false
+  }
+}
+
+// RED: the floor ran on R in the merge queue and failed.
+test fn a_failed_merge_queue_run_refuses_the_revision() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 12, conclusion: Failure)]), epoch: epoch_match(), standing: landed()) {
+    QualificationRevisionRefused { refusal: QualificationRequiredCiRefused { cause: RequiredCiMergeGroupRunsNotSuccess { revision: _, run_ids: _ } } } => true
+    _ => false
+  }
+}
+
+// RED: no merge-queue run of the floor on R at all (a revision dispatched from a branch never queued).
+test fn a_revision_with_no_merge_queue_run_refuses() -> Bool {
+  match admit(runs: answered(rs: []), epoch: epoch_match(), standing: landed()) {
+    QualificationRevisionRefused { refusal: QualificationRequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: _ } } } => true
+    _ => false
+  }
+}
+
+// RED: the run executed a different required contract.
+test fn a_merge_queue_run_under_another_contract_epoch_refuses() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 13, conclusion: Success)]), epoch: RequiredCiEpochObserved { epoch: "not-the-required-epoch" as ContractEpoch }, standing: landed()) {
+    QualificationRevisionRefused { refusal: QualificationRequiredCiRefused { cause: CiContractEpochMismatch { observed: _, required: _ } } } => true
+    _ => false
+  }
+}
+
+// RED: required CI succeeded on R but the default branch does not contain it.
+test fn a_green_revision_the_default_branch_does_not_contain_refuses() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 14, conclusion: Success)]), epoch: epoch_match(), standing: TreeNotLandedOnAdmitted { local: oid(hex: sha_r), admitted: oid(hex: sha_head) }) {
+    QualificationRevisionRefused { refusal: QualificationDefaultBranchRefused { cause: BranchDoesNotContainRevision { revision: r, branch_head: h } } } =>
+      git_object_id_eq(left: r, right: oid(hex: sha_r)) && git_object_id_eq(left: h, right: oid(hex: sha_head))
+    _ => false
+  }
+}
+
+// RED: containment unread is never containment.
+test fn an_unread_containment_refuses_rather_than_admits() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 15, conclusion: Success)]), epoch: epoch_match(), standing: TreeLandedUnobserved { cause: "shallow checkout: merge-base unavailable" }) {
+    QualificationRevisionRefused { refusal: QualificationDefaultBranchRefused { cause: BranchContainmentUnobserved { cause: _ } } } => true
+    _ => false
+  }
+}
+
+// RED: a containment reading of another revision does not speak for R.
+test fn a_containment_reading_of_another_revision_refuses() -> Bool {
+  match admit(runs: answered(rs: [mg(id: 16, conclusion: Success)]), epoch: epoch_match(), standing: TreeLandedOnAdmitted { local: oid(hex: sha_head), admitted: oid(hex: sha_head) }) {
+    QualificationRevisionRefused { refusal: QualificationDefaultBranchRefused { cause: BranchContainmentUnobserved { cause: _ } } } => true
+    _ => false
+  }
+}
+
+// RED: the run list was not read; the refusal keeps the exchange's own cause.
+test fn an_unread_run_list_refuses_with_its_exchange_cause() -> Bool {
+  match admit(runs: RestRefused { refusal: RestTransportRefused { cause: "connection reset" as NonEmptyStr } }, epoch: epoch_match(), standing: landed()) {
+    QualificationRevisionRefused { refusal: QualificationMergeGroupRunsUnread { refusal: RestExchangeUnreached { cause: _ } } } => true
+    _ => false
+  }
+}

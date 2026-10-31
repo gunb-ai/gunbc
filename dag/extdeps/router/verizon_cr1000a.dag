@@ -5,7 +5,6 @@ import extdeps.dhcp.v4 {
   DhcpLeaseObservation,
   DhcpLeaseAssignment,
   DhcpLeaseStatus,
-  MacAddress,
   DynamicLease,
   StaticReservation,
   DynamicDhcpLease,
@@ -14,6 +13,7 @@ import extdeps.dhcp.v4 {
   Inactive,
 }
 import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.network.mac { Eui48Address }
 import extdeps.vendor.verizon { verizon }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -55,18 +55,29 @@ type Cr1000aRouterStatusSnapshot {
   delegated_prefix_length: Int?
 }
 
+// THE MAC COLUMNS OF BOTH ROUTER TABLES ARE extdeps.network.mac Eui48Address SINCE PLAN
+// gunbc.plans.site_segment_anchor_bmc_reach PHASE S1. They used to be extdeps.dhcp.v4 MacAddress, a
+// branded NonEmptyStr: a row transcribed from the router's own table then carried six octets as text
+// with the parse deferred forever, and "is this row about the same machine as that row" was a string
+// comparison two call sites had to each get right. Eui48Address gives the columns the fields the
+// reading actually has, so a lease row can be compared, rendered, and matched against a reservation
+// without either side re-decoding it. The lease-table row is the one the site PXE edge and the
+// fleet-intent printer bindings read through, so this is the column the S2 anchor will reach BMC
+// addresses by.
 type Cr1000aIpv4AddressDistributionRow {
   host_name_raw: String
   ip: Ipv4Address
-  mac: MacAddress
+  mac: Eui48Address
   lease_type: DhcpLeaseAssignment
   connection_name: NonEmptyStr?
   status: DhcpLeaseStatus
   expires_in: NonEmptyStr?
 }
 
+// (See the note on Cr1000aIpv4AddressDistributionRow: both MAC columns moved to Eui48Address
+// together, from the same router table, for the same reason.)
 type Cr1000aDhcpLeaseRow {
-  mac_address: MacAddress
+  mac_address: Eui48Address
   ipv4_address: Ipv4Address
   lease: DhcpLeaseObservation
 }

@@ -1,9 +1,9 @@
 module gunbc.runner.runner_qualification_attempt_run
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
+import std.types { Bool, CommitSha, FilePath, Int, List, NonEmptyStr, String, Secret }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
-import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -16,7 +16,7 @@ import extdeps.systemd.systemd_run {
   systemd_service_result_wire,
 }
 import product.host_identity { HostIdentity }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt_label }
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused,
@@ -31,9 +31,14 @@ import gunbc.github_effect_perform {
   ControllerInstallationToken, stage_controller_app_key, ControllerKeyStaged, ControllerKeyNotStaged, remove_staged_controller_key,
   mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
 }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.runner.runner_qualification_revision_admission {
+  observe_qualification_revision, QualificationRevisionAccepted, QualificationRevisionRefused, qualification_revision_refusal_message,
+}
 import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
+  HostUnitSlot, ListenerOwnLifetime, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
   host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt,
 }
 import gunbc.runner.runner_jit_mint_binding {
@@ -59,10 +64,13 @@ import gunbc.runner.runner_qualification_attempt_pass {
 //
 // WHAT IT TAKES BEFORE ANY EFFECT, EACH A TYPED REFUSAL: the subject host as a managed host under control; the run's
 // attempt label (one per run and attempt, so a re-run is another attempt and never reuses a registration); the
-// revision the run executes; the host's declared runner user (the attempt unit never runs as root); the unit hold for
-// the subject host, without which dispatch_qualification_floor refuses; a live anchored transport to it, GATED on the
-// operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live); the gunbai-ci App key staged over
-// WIF; one installation token. The hold is released and the key removed on every arm after they were taken.
+// host's declared runner user (the attempt unit never runs as root); the gunbai-ci App key staged over WIF and one
+// installation token; the run's revision ADMITTED as an accepted fleet revision (required CI succeeded on the merge
+// queue for it and the default branch contains it, gunbc.runner.runner_qualification_revision_admission), read with
+// that token; the unit hold for the subject host, which takes the accepted revision and without which
+// dispatch_qualification_floor refuses; a live anchored transport to it, GATED on the operator's go
+// (gunbc.host.anchored_host_transport anchored_host_transport_live). The key is removed and the hold released on
+// every arm after they were taken.
 
 data qualification_attempt_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
 data qualification_attempt_runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
@@ -72,7 +80,7 @@ data qualification_attempt_receipt_path: String = "artifacts/qualification-attem
 // ONE ATTEMPT LABEL PER RUN AND RUN ATTEMPT, a single ref segment (gunbc.runner.runner_qualification_ref_pin
 // qualification_branch_name refuses anything else).
 fn qualification_attempt_label(run_id: String, run_attempt: String) -> NonEmptyStr? {
-  if trim(s: run_id) == "" || trim(s: run_attempt) == "" { none } else { Present { value: join(["q-", trim(s: run_id), "-", trim(s: run_attempt)], "") as NonEmptyStr } }
+  actions_run_attempt_label(prefix: "q", run_id: run_id, run_attempt: run_attempt)
 }
 
 // ── THE LAUNCH, AND THE EXIT IT MAY CLAIM ───────────────────────────────────────────────────────
@@ -97,7 +105,7 @@ fn attempt_listener_run_of(launcher: SystemdSummaryPrintingWait, version_line: S
 fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: HostUnitSlot, credential: EncodedJitConfig) -> ListenerRun
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_bound")]
 {
-  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit)) {
+  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit), lifetime: ListenerOwnLifetime) {
     HostUnitListenerUnbuilt { cause: c } => ListenerNotLaunched { cause: c }
     HostUnitListenerReady { wait: w } => {
       let version_line = match systemd_run_version_command() {
@@ -214,7 +222,7 @@ fn qualification_attempt_bound(
   token: ControllerInstallationToken,
 ) -> ProcessExit
   uses net: Network
-  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_held")]
 {
   let organization = github_organization_ref().login
   let state = observe_jit_mint_control_plane(signer: key, reason: "the qualification run observes the gunbai-ci App control plane before its dispatch" as NonEmptyStr)
@@ -240,19 +248,26 @@ fn qualification_attempt_bound(
   }
 }
 
-fn qualification_attempt_with_key(
-  host: HostIdentity, slot: HostUnitSlot, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr,
-  hold: UnitHoldProof, transport: HostEffectTransport, wif: Secret, key_path: NonEmptyStr,
+// THE KEY AND THE TOKEN COME FIRST, because the revision's admission reads GitHub with that token; the hold is taken
+// only for an accepted revision. The staged key is removed on every arm after it was staged.
+fn qualification_attempt_keyed(
+  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, revision_text: String, user: NonEmptyStr, wif: Secret, key_path: NonEmptyStr,
 ) -> ProcessExit
   uses net: Network
-  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_held")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_wet")]
 {
   match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
     ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
     ControllerKeyStaged { key } => {
       let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
         ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "qualification attempt: the gunbai-ci installation token was not minted")
-        ControllerTokenMinted { token } => qualification_attempt_bound(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: transport, key: key, token: token)
+        ControllerTokenMinted { token } =>
+          match observe_qualification_revision(revision_text: revision_text, repo: "." as FilePath, token: token) {
+            QualificationRevisionRefused { refusal: r } =>
+              exit_failure(reason: concat("qualification attempt: the revision is not an accepted fleet revision: ", qualification_revision_refusal_message(refusal: r)))
+            QualificationRevisionAccepted { accepted: a } =>
+              qualification_attempt_under_hold(host: host, control: control, attempt: attempt, accepted: a, user: user, key: key, token: token)
+          }
       }
       match remove_staged_controller_key(key_path: key_path) {
         Present { value: cause } => exit_failure(reason: cause)
@@ -262,21 +277,23 @@ fn qualification_attempt_with_key(
   }
 }
 
-// THE HOLD IS TAKEN FIRST AND RELEASED ON EVERY ARM; the slot and the transport are bound under it.
+// THE HOLD IS TAKEN ONLY FOR AN ACCEPTED REVISION AND RELEASED ON EVERY ARM; the slot and the transport are bound under it.
 fn qualification_attempt_under_hold(
-  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr, wif: Secret, key_path: NonEmptyStr,
+  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>, user: NonEmptyStr,
+  key: JwsSigningKeyRef, token: ControllerInstallationToken,
 ) -> ProcessExit
   uses net: Network
-  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_wet")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_keyed")]
 {
   match qualification_acquire_unit_hold(host: host, run_id: attempt) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("qualification attempt: ", r as String))
-    UnitHeld { proof: p } => unit_hold_release(proof: p, outcome: qualification_attempt_held(host: host, control: control, attempt: attempt, revision: revision, user: user, hold: p, wif: wif, key_path: key_path))
+    UnitHeld { proof: p } => unit_hold_release(proof: p, outcome: qualification_attempt_held(host: host, control: control, attempt: attempt, accepted: accepted, user: user, hold: p, key: key, token: token))
   }
 }
 
 fn qualification_attempt_held(
-  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr, hold: UnitHoldProof, wif: Secret, key_path: NonEmptyStr,
+  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>, user: NonEmptyStr,
+  hold: UnitHoldProof, key: JwsSigningKeyRef, token: ControllerInstallationToken,
 ) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_under_hold")]
@@ -284,11 +301,12 @@ fn qualification_attempt_held(
   match qualification_branch_name(attempt: attempt) {
     QualificationBranchNameRefused { attempt: _, cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
     QualificationBranchNamed { name: n } =>
-      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch)) {
+      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch), receipt: runner_user_session_receipt_observed(host: host)) {
         HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
         HostUnitSlotBound { slot: slot } =>
           match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {
-            AnchoredBindingBound { bound: b } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
+            AnchoredBindingBound { bound: b } =>
+              qualification_attempt_bound(host: host, slot: slot, attempt: attempt, revision: git_object_id_wire_hex(oid: accepted.revision) as CommitSha, user: user, hold: hold, transport: b.transport, key: key, token: token)
             other => exit_failure(reason: concat("qualification attempt: no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)))
           }
       }
@@ -323,7 +341,7 @@ fn qualification_attempt_wet() -> ProcessExit
             match host_unit_slot_runner_user(host: host) {
               RunnerUserUndeclared { host: _ } => exit_failure(reason: concat("qualification attempt: no runner user is declared for ", host_name))
               RunnerUserSelected { user: user } =>
-                qualification_attempt_under_hold(host: host, control: control, attempt: attempt, revision: revision as CommitSha, user: user, wif: wif as Secret, key_path: join([temp, "/", qualification_attempt_key_file_name], "") as NonEmptyStr)
+                qualification_attempt_keyed(host: host, control: control, attempt: attempt, revision_text: revision, user: user, wif: wif as Secret, key_path: join([temp, "/", qualification_attempt_key_file_name], "") as NonEmptyStr)
             }
         }
     }
@@ -332,5 +350,5 @@ fn qualification_attempt_wet() -> ProcessExit
 
 // WHAT REMAINS BEFORE THE ROUTE IS EXECUTABLE, carried as this module's frontier (DESIGN section 3c).
 data qualification_attempt_run_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (1) the revision is the run's own GITHUB_SHA; gunbc.fleet.fleet_revision_acceptance is not yet consulted, so the run may qualify a revision whose required CI did not succeed; (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, with (1) landed."
+  description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, "
 )
