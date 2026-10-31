@@ -76,7 +76,9 @@ data a_closure_capture_chain_releases_by_host_stack_recursion: RecurringFailureM
     Artifacts (shared runner, `~/valiant-15258/probes-closure/`): `compile.log` (gate rc=0 wall=637s),
     `list.log` (the name source of truth), `run-probe_closure_capture_chain_drops.out` (761 B, the two
     failure lines), `run-probe_env_parent_chain_drops.out`, `run-a_weak_held_list_chain_drops.out`; the
-    peak-resident line is in `~/valiant-15258/probes-closure.time` (written beside the directory). Patch
+    peak-resident line is in `~/valiant-15258/probes-closure.time` (written beside the directory). Those
+    paths are runner-local, so each artifact is pinned by full sha256 in this PR's evidence-preservation
+    comment, which is the citable form from here on. Patch
     guard: 154 lines added, 0 removed against the head, 6 probe functions.",
 
     "**NO DISK-ERROR CONFOUND.** The operator invalidated runs that hit a full disk. This pass predates
