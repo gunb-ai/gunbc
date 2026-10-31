@@ -262,6 +262,9 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // job_ran_on joins on it); runner_name is corroboration, since one name can resolve to several ids.
 // Upstream publishes both as nullable -- null until a runner takes the job -- and every record in
 // this tree written before the fields existed carries none rather than a guessed value.
+// steps WAS ADDED FOR THE QUALIFICATION COLLECT LEG (gunbc.plans.mtcollins1_ci_service_legs G3b). It is OPTIONAL BECAUSE A
+// RECORD MAY NOT HAVE READ IT: every record in this tree written before the field existed carries none, which says the
+// steps were not recorded -- never an empty list, which would say the job had no steps. A REST read carries them.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -273,6 +276,20 @@ type WorkflowJobRun {
   runner_id: Int?
   runner_name: String?
   created_at: Timestamp?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+  steps: List<WorkflowJobStep>?
+}
+
+// THE JOB'S STEPS, as the Jobs REST job object publishes them (docs.github.com/en/rest/actions/workflow-jobs,
+// X-GitHub-Api-Version 2026-03-10): `steps` is an array of objects carrying name, status, conclusion, number,
+// started_at and completed_at; conclusion and both instants are nullable until the step runs. The step's `name` is
+// the workflow step's rendered name, the only key that joins a step back to the step that declared it.
+type WorkflowJobStep {
+  name: String
+  status: WorkflowRunStatus
+  conclusion: WorkflowRunConclusion?
+  number: Int
   started_at: Timestamp?
   completed_at: Timestamp?
 }
