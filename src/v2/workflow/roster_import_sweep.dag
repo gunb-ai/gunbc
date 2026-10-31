@@ -150,7 +150,7 @@ type RosterHomeScope
 // tell the halves apart: `to_string` over a kernel Int and over a kernel Nat are the same free head, and the row cannot
 // read an argument's type (the sweep matches no type), so the two halves are two rows of the same call, each carrying the
 // census occurrence keys of ITS sites. The keys are the census location column `file:line:byte column` (1-based, byte
-// column; the same rendering the admission join uses at dag/gunbc/instruments/namespace_wave_occurrence_join.dag locus_at);
+// column);
 // they arrive as ONE-SHOT generator INPUT at a run, never as a landed artifact, and every key must meet exactly one FREE
 // value-position site of the row's spelling in the file -- a key that matches nothing, matches a site the row would not
 // touch (a bound name), or names a file outside the run's paths, REFUSES the run (RefusalOccurrenceKeyUnmatched). There is NO FALLBACK TO SPELLING: a selection carrying keys is
@@ -1654,7 +1654,7 @@ fn roster_gate_for(gates: List<RosterSiteGate>, row: RosterHeadRow) -> Optional<
 // The gates the run's scope carries: one per OnlyOccurrences leg, none for EveryRowOfHome/OnlyCall legs and none for
 // AllHomes. The keys are the census location column `<file>:<line>:<byte column>` (1-based line, 1-based BYTE column),
 // rendered by the SAME convention the admission join uses at
-// dag/gunbc/instruments/namespace_wave_occurrence_join.dag locus_at, over the byte-split line starts of the same text.
+// v2.workflow.source_locus locus_at, over the byte-split line starts of the same text.
 fn roster_scope_gates(scope: RosterHomeScope, path: String, text: String) -> List<RosterSiteGate> {
   match scope {
     AllHomes => []
