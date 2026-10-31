@@ -1,0 +1,70 @@
+module gunbc.recurring_failure_mode.a_printable_root_admitted_without_being_realized
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A PRINTABLE ROOT NOTHING HAS EVER SEEN. A root is admitted by a selection rule, a plate plan for it
+// is committed under artifacts/printing/, and an operator is given a GO for the print. NONE of those
+// three acts builds the part. The first time the geometry is realized and counted is the print
+// dispatch itself, inside preparation -- after the operator has been asked, and while the printer is
+// held. So the tree can carry a committed plate.json whose part has never been one connected solid,
+// not for days but for as long as the root has existed, and every claim about that root stays green
+// the whole time: the claims assert the SELECTION (this root admits a printed part of this kind) and
+// nothing asserts the REALIZATION (that the part builds, is a single solid, and keeps the clearances
+// the kernel requires). The gate that would have caught it exists, and is correct -- it just runs at
+// the last possible moment, on the printer lane, paid for with an operator's attention.
+//
+// HOW IT BITES HERE, AND WHY IT IS A FAMILY AND NOT THIS CASE. On the print lane a flat-on-end duct
+// root refused preparation with "DUCT: 2 disconnected solids". Reproducing it showed the refusal is
+// byte-identical at the commit that admitted the root and committed its plate plan, and at every
+// revision since -- so that plate artifact is evidence of nothing except that someone wrote it. Two
+// independent defects sat behind one another in the same part: a passage cut whose footprint equals the
+// plug lip's own OUTER footprint, which deletes the plug that seats the part and leaves a floating rim;
+// and, once that is repaired, a relief cut that clears far less of the depth a required keep-out
+// envelope claims, leaving a sliver of wall inside a clearance the kernel demands. The second was
+// already refusing a SIBLING root for the same volume, which is what makes this the admission route's
+// class and not one bad part. The class is spotable without running any geometry: ask WHEN a root's
+// realization first runs. If the answer is preparation on the printer lane, then every admission, every
+// plate commit and every operator GO before it is unverified geometry, and the committed plate is not a
+// receipt of anything.
+//
+// WHAT ENDS IT. A required route that realizes every admitted root -- builds its emitted program,
+// counts its solids, checks its required clearances -- and refuses a root whose printed part is not one
+// connected solid, or that occupies a required keep-out, BEFORE a plate plan for it can be committed and
+// before an operator is asked. That is a capability, not this row and not a claim file. Anything less
+// leaves the operator standing in as the check.
+data a_printable_root_admitted_without_being_realized: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_printable_root_admitted_without_being_realized" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a required route that realizes every admitted printable root -- builds its emitted program, counts its solids, checks its required clearances -- and refuses a root whose printed part is not one connected solid before a plate plan for it is committed" } },
+
+  receipts: [
+    "**a printable root admitted without being realized** (a root is admitted by a selection rule, a plate plan for it is committed under artifacts/printing/, and an operator is given a GO; none of the three builds the part, and the first realization is the print dispatch's own preparation step).",
+
+    "INVALID STATE: a committed plate artifact standing in the tree as if it were a receipt of a printable part, for a part that has never been built, counted, or clearance-checked by any route.",
+
+    "WHY IT SURVIVES REVIEW: the claims about a root assert its SELECTION, which is a fact about the selection rule and stays true no matter what the geometry does. Nothing on the required path realizes the part, so there is no red to go red, and the plate artifact looks like the evidence that the missing check would have produced.",
+
+    "SPECIMEN (print dispatch, 2026-10-31). Preparation refused a flat-on-end duct root with 'DUCT: 2 disconnected solids'. The refusal reproduces byte-identically at the commit that admitted the root and committed its plate plan and at every revision since. Behind it: a passage cut with the plug lip's own outer footprint, which deletes the plug and leaves a floating rim; repair that and the same part then occupies 455 mm3 of a required POWER-KEEPOUT envelope, because the relief clears 11.5 mm of a 40 mm depth the envelope claims. A sibling root realizes as one solid and fails that second rule alone, at the same volume.",
+
+    "THE DISCRIMINATOR THAT BOUNDS IT: ask WHEN a root's realization first runs. If it is the print route's preparation, the class is present -- the admission route carries no realization obligation. If a pre-admission route already builds and counts every admitted root, it is not. This keeps the row usable rather than a warning about CAD.",
+
+    "TWO DEFECTS HIDE BEHIND EACH OTHER IN ONE PART, and that is a property of this class rather than of the geometry: the first refusal stops the check before the second rule is reached, so repairing one and re-running is what reveals the other. A row that records only the first symptom understates the state of the root.",
+
+    "RUNG: found ON the ladder at MITIGATABLE. The print route's CAD check does refuse the bad print, so nothing is milled wrong and no machine is harmed -- but the refusal lands on the printer lane, after the operator's GO, with the printer held, and the plate artifact that should have been the evidence of a good part was committed without anything ever building it.",
+
+    "CEILING 2, mechanically preventable: a required route that realizes every admitted root and refuses a root whose printed part is not one connected solid, or that occupies a required keep-out, before its plate plan is committed. BLOCKER: climbable but unbuilt -- the realization program, the solid count and the clearance check all exist and run at print time; what is missing is a route that runs them over the admitted population before admission is allowed to settle.",
+
+    "NEXT-RUNG TRIGGER: the capability of making realization an obligation of admission -- the same emitted program, run over every admitted root, with its per-part solid count and required-clearance receipt recorded -- so the refusal arrives before a plate plan is committed and before an operator is asked, rather than as the reason a GO did not print.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate"),
+    decl_ref(module_path: "product.printed_chassis.printable_assembly_selection", decl_name: "select_printable_assembly"),
+    decl_ref(module_path: "product.printed_chassis.review_realization", decl_name: "program_for"),
+    decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_duct_parts"),
+  ],
+}
