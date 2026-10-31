@@ -873,7 +873,7 @@ test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> B
 }
 
 // ACT-0'S STARTABILITY IS THE CHAIN EDGE ALONE, WHICH IS THE OTHER HALF OF THE SPLIT. Its release
-// conditions -- the interlock triple and the base digests -- are its STANDING, so no milestone may
+// conditions -- the interlock release milestones (act0_release_milestones) and the base digests -- are its STANDING, so no milestone may
 // appear in its startability population. If the milestone edge were restored, ACT-0's startability
 // would name interlock milestones and this arm would red.
 test fn act0_startability_names_only_chain_stages() -> Bool {
