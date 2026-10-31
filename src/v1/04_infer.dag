@@ -15509,6 +15509,15 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 // at the carrier like any other expected position) and judged by the same obligation every other
 // position builds. A generic-declaring parameter or a formal carrying an unbound type variable has no
 // closed declared type at this seam and is left to the older path, as the direct-call argument chain does.
+//
+// VISIBILITY: a default sees module scope only, never a sibling parameter. The interpreter evaluates it in the
+// caller-supplied env, not the bindings it is building (stage0 call_function_inner), and the Rust emitter splices the
+// default expression at the call site as a filled argument (v1.compiler.emit_rust fill_default_args,
+// fill_op_default_args); neither binds an earlier parameter for it. Both agree, so module scope is used here.
+//
+// NEXT TRIGGER, NOT A SILENT GAP: only the diagnostics are kept. The typed default is not stored back on the param
+// node, and emission still reads the untyped default, so a literal introduced at its carrier here does not yet reach
+// the emitted default.
 fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions {
   infer_emissions_concat_all(chunks: item.params |> map(p =>
     match param_node_default_value(n: p) {
@@ -15631,7 +15640,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, parameter_default_emissions(item: item, scope: scope)])
     }
   }
   else {
