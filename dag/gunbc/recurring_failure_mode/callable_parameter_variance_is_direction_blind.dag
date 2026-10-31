@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.callable_parameter_variance_is_direction_blind
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data callable_parameter_variance_is_direction_blind: RecurringFailureMode = RecurringFailureMode {
+  identity: "callable_parameter_variance_is_direction_blind" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the capability of judging a callable parameter contravariantly and its return covariantly, against a DECLARED variance of the function space" } },
+
+  receipts: [
+    "INVALID STATE: offering a function whose parameter is the WIDER type where a function over the NARROWER type is declared is the sound direction, and the converse is unsound; the seed judges both identically. A function over std.nat Nat offered where fn(std.integer Int) -> Int is declared, and a function returning std.integer Int offered where fn(Int) -> Nat is declared, are Accepted. HARM: silent wrongness at the compiler floor, DESIGN section 4b values inhabit declared types. A caller of the declared type may pass an Int the offered function cannot take.",
+
+    "MEASURED (2026-10-31, `silent-raven-360`, node://adhoc-1da818f3-216): seed 646d4747907832804b59c693e7dcd595f0d2d53cb11ccb4f154f18870a465452 at tree 30e7aa4748f73bf51c6327613521666ee9e945b5, gunbc compile --target dag from src, 2>&1, srv1 dir raven-vp.20gWE7. Unsound B (declared fn(Int)->Int offered fn(Nat)->Int) and unsound D (declared fn(Int)->Nat offered fn(Int)->Int): ACCEPTED rc=0. Sound A and C and identical C1: ACCEPTED. The mirror pairs A/B and C/D got EQUAL verdicts, which is the signature of an undirected comparison. POSITIVE CONTROLS in the same tree: declared fn(Int)->Int offered fn(String)->Int, and offered fn(Int)->String, are each REFUSED rc=1 with a type mismatch at the call argument. So function-typed arguments ARE judged, and the hole is that Nat and Int pass in both directions where a function-space rule would pass one.",
+
+    "DISTINGUISHING FACTS. Not a missing judgment of function-typed arguments (the controls refuse). Not a refusal of correct code on these cells: the sound direction is accepted. The comparison site is v1.compiler.infer callable_arrow_mismatch, which orients parameter and return the same way and calls callable_component_ground_mismatch, whose ground arm is the undirected node_type_compatible. NO AUTHORITY DECLARES FUNCTION-SPACE VARIANCE: the grep over dag/std, dag/gunbc, src/v2 and DESIGN.md finds none. The declared Nat to Int widening is std.literal_elaboration kernel_grounding_crossing, CrossingTotalWidening, which grounded_cast_verdict reads for values; nothing reads it for the parameter or return of a function type.",
+
+    "CEILING AND NEXT TRIGGER. Decidable and fully modeled once the variance rule is declared, so structurally guaranteed is attainable. NEXT RUNG TRIGGER: a modeling PR declares the function-space rule over the existing declared widening rows (parameter checks the crossing from declared to offered, return from offered to declared), found by searching std.algebra and the conversion rows first; callable_component_ground_mismatch then consumes it and the undirected arm is deleted for callables. This is a modeling obligation, not a patch inside callable_component_ground_mismatch. RUNG FOUND AT: below the ladder, read from the measurement above. The enrolled RED is the witness cell for B and D; its executable form is not yet run through the test fn harness.",
+
+    "CONTROL RECEIPTS ruling out unjudged (srv1 raven-vp.20gWE7, same seed and tree, run4): run4.out sha256 prefix 9f4bf4556223d89f; param control log4 ac3cda0083152f9f and return control log4 3e9d0fa6bfd923a4, each rc=1 with a type mismatch between Callable over Int and Callable over String at the call argument. Launch 3 cells: run3.out 0946cd63683453f6, logs A 4a25ce17bcede88f, B 114f982780d3b3b6, C 6d4299c47210c6869, D 0c31a407b2f2cfb1, C1 0ef7c12facdf4da1, all rc=0 with zero errors and zero advisories.",
+    "DISPOSITION (operator ruling relayed by keen-heron-809, 2026-10-31, sleek-owl-397): the seed admission of unsound B and D is a SEED DEFECT v2 DOES NOT CARRY FORWARD (DESIGN section 7), with no v1 fix. v2 declared_type_inhabitance_arrow compares the normalized arrows by exact structural equality, so it is invariant and refuses B and D, and it also refuses sound A and C; that reading is from source, not yet measured. The v2 climb is a completeness one: a general variance-of-type-former declaration, populated for Arrow first (domain contravariant, codomain covariant, equal arity) with the existing inhabitance relation as the base case, homed in v2.std.inhabitance as a declared homomorphism rule; List covariance is the second instance. The plan is docs/notes/q5a-callable-variance-modeling-plan.md. TRIGGER CAPABILITY AUTHORED (branch raven/q5a-variance-rule): v2.std.inhabitance arrow_variance_row consumed by declared_type_inhabitance_arrow, witnessed by callable_variance_inhabitance_witness (A and C accepted, B and D refused) and the direction-swap mutant in infer_application_argument_inhabitance_witness. The standing above moves only when those witnesses are green by execution on the required path; List covariance is the stated next row.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "callable_arrow_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "callable_component_ground_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "node_type_compatible", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.callable_param_variance_differential_witness", decl_name: "a_function_taking_a_narrower_param_is_refused_where_a_wider_is_declared", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.callable_param_variance_differential_witness", decl_name: "a_function_returning_a_wider_type_is_refused_where_a_narrower_is_declared", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.callable_param_variance_differential_witness", decl_name: "a_function_taking_a_wider_param_is_accepted_where_a_narrower_is_declared", field: WholeDeclaration },
+  ],
+}

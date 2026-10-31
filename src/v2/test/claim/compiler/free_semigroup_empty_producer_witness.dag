@@ -153,6 +153,7 @@ test fn fse_bare_generic_at_its_applied_self_refuses_holds() -> Bool {
     declared: fse_applied(dotted: "p.Box"),
     produced: fse_ref(dotted: "p.Box"),
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: fse_ref(dotted: "p.Box"),
     type_variables: []
   }) {

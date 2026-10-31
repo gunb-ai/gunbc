@@ -186,6 +186,7 @@ fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) 
     declared: declared,
     produced: produced,
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: produced,
     type_variables: type_variables
   }

@@ -149,6 +149,7 @@ fn skp_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
     declared: declared,
     produced: produced,
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
     type_variables: [^skp_t]
   }

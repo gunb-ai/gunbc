@@ -18,6 +18,11 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 import std.nat { Succ, Zero }
 import v2.std.optional_layers { wrap_type_node_occupancy }
 import v2.std.inhabitance {
+  ArrowVarianceRow,
+  ComponentCarrier,
+  Contravariant,
+  Covariant,
+  declared_type_inhabitance_arrow_under,
   DeclaredTypeObligation,
   InhabitanceRefused,
   Inhabits,
@@ -624,6 +629,7 @@ fn aai_argument_obligation(produced: Symbol, carrier: Optional<Node>, declared: 
     declared: dag_type_atom_node(identity: declared),
     produced: dag_type_atom_node(identity: produced),
     produced_declared_carrier: carrier,
+    component_carriers: [],
     application: dag_type_atom_node(identity: produced),
     type_variables: []
   }
@@ -692,6 +698,7 @@ fn aai_arrow_obligation(declared: Node, produced: Node) -> DeclaredTypeObligatio
     declared: declared,
     produced: produced,
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: produced,
     type_variables: []
   }
@@ -719,6 +726,90 @@ test fn inhabitance_arrow_with_a_different_return_refuses_holds() -> Bool {
     declared: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_bool),
     produced: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_int)
   ))
+}
+
+// AN ARROW IS CONTRAVARIANT IN ITS DOMAIN AND COVARIANT IN ITS CODOMAIN (v2.std.inhabitance arrow_variance_row),
+// each component judged by the same relation, the refinement carriers SUPPLIED beside the arrows. `Pos` is a
+// refinement of Int: a function over Int is usable where a function over Pos is declared (domain), and a
+// function returning Pos where one returning Int is declared (codomain); the converses refuse. The mutant
+// states the declared variance is the only thing deciding the direction: swapping the row flips every verdict.
+// RED BEFORE: the arrow arm compared the two arrows exactly, so all four directions refused.
+fn aai_variance_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_direct_call_argument(),
+    parameter_identity: ^inhabitance_param_x,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    component_carriers: [ComponentCarrier { refinement: dag_type_atom_node(identity: ^aai_pos), carrier: dag_type_atom_node(identity: ^dag_binding_type_int) }],
+    application: produced,
+    type_variables: []
+  }
+}
+
+fn aai_variance_inhabits(o: DeclaredTypeObligation) -> Bool {
+  match declared_type_inhabitance(obligation: o) {
+    Inhabits { homomorphism: h } => h.rule == ^homomorphism_rule_arrow_variance
+    _ => false
+  }
+}
+
+fn aai_domain_pair(declared_domain: Symbol, produced_domain: Symbol) -> DeclaredTypeObligation {
+  aai_variance_obligation(
+    declared: aai_arrow(parameter: ^aai_k, domain: declared_domain, codomain: ^dag_binding_type_bool),
+    produced: aai_arrow(parameter: ^aai_k, domain: produced_domain, codomain: ^dag_binding_type_bool)
+  )
+}
+
+fn aai_codomain_pair(declared_codomain: Symbol, produced_codomain: Symbol) -> DeclaredTypeObligation {
+  aai_variance_obligation(
+    declared: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_bool, codomain: declared_codomain),
+    produced: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_bool, codomain: produced_codomain)
+  )
+}
+
+test fn inhabitance_arrow_wide_domain_offered_where_narrow_declared_inhabits_holds() -> Bool {
+  aai_variance_inhabits(o: aai_domain_pair(declared_domain: ^aai_pos, produced_domain: ^dag_binding_type_int))
+}
+
+test fn inhabitance_arrow_narrow_domain_offered_where_wide_declared_refuses_holds() -> Bool {
+  aai_refused(o: aai_domain_pair(declared_domain: ^dag_binding_type_int, produced_domain: ^aai_pos))
+}
+
+test fn inhabitance_arrow_narrow_codomain_offered_where_wide_declared_inhabits_holds() -> Bool {
+  aai_variance_inhabits(o: aai_codomain_pair(declared_codomain: ^dag_binding_type_int, produced_codomain: ^aai_pos))
+}
+
+test fn inhabitance_arrow_wide_codomain_offered_where_narrow_declared_refuses_holds() -> Bool {
+  aai_refused(o: aai_codomain_pair(declared_codomain: ^aai_pos, produced_codomain: ^dag_binding_type_int))
+}
+
+test fn inhabitance_arrow_unrelated_domain_refuses_with_carriers_supplied_holds() -> Bool {
+  aai_refused(o: aai_domain_pair(declared_domain: ^dag_binding_type_bool, produced_domain: ^dag_binding_type_int))
+}
+
+test fn inhabitance_arrow_swapped_variance_flips_domain_and_codomain_holds() -> Bool {
+  let swapped = ArrowVarianceRow { domain: Covariant, codomain: Contravariant }
+  let domain_sound = aai_domain_pair(declared_domain: ^aai_pos, produced_domain: ^dag_binding_type_int)
+  let domain_unsound = aai_domain_pair(declared_domain: ^dag_binding_type_int, produced_domain: ^aai_pos)
+  let codomain_sound = aai_codomain_pair(declared_codomain: ^dag_binding_type_int, produced_codomain: ^aai_pos)
+  let codomain_unsound = aai_codomain_pair(declared_codomain: ^aai_pos, produced_codomain: ^dag_binding_type_int)
+  match declared_type_inhabitance_arrow_under(obligation: domain_sound, row: swapped) {
+    Inhabits { homomorphism: _ } => false
+    _ =>
+      match declared_type_inhabitance_arrow_under(obligation: domain_unsound, row: swapped) {
+        Inhabits { homomorphism: _ } =>
+          match declared_type_inhabitance_arrow_under(obligation: codomain_sound, row: swapped) {
+            Inhabits { homomorphism: _ } => false
+            _ =>
+              match declared_type_inhabitance_arrow_under(obligation: codomain_unsound, row: swapped) {
+                Inhabits { homomorphism: _ } => true
+                _ => false
+              }
+          }
+        _ => false
+      }
+  }
 }
 
 // A NESTED ARROW IS NOT WIDENED (review 78749): a signature whose domain holds an Arrow stays on the
@@ -775,6 +866,7 @@ fn aai_list_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation
     declared: declared,
     produced: produced,
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: produced,
     type_variables: []
   }

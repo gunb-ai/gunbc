@@ -64,6 +64,7 @@ fn ol_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
     declared: declared,
     produced: produced,
     produced_declared_carrier: Absent,
+    component_carriers: [],
     application: ol_atom(id: ^ol_app),
     type_variables: []
   }

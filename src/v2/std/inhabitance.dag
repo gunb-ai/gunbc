@@ -34,6 +34,7 @@ import v2.std.node { positional_child_target_nodes,
   Symbol,
   TypeNode,
   node_is_arrow,
+  node_equal_ignoring_provenance,
   node_subtree_nodes,
   node_synthetic,
   NotADeclaration
@@ -132,8 +133,18 @@ type DeclaredTypeObligation {
   declared: Node
   produced: Node
   produced_declared_carrier: Optional<Node>
+  component_carriers: List<ComponentCarrier>
   application: Node
   type_variables: List<Symbol>
+}
+
+// The refinement carriers of the component types of the declared and the produced arrow, SUPPLIED by the
+// producer exactly as produced_declared_carrier is (reading a declaration is resolution's fact): the
+// variance rule judges each component pair as its own obligation, and a component that is a refinement
+// widens to its stated carrier only if the relation is handed that carrier.
+type ComponentCarrier {
+  refinement: Node
+  carrier: Node
 }
 
 type InhabitanceFormal {
@@ -542,6 +553,7 @@ fn inhabitance_with_payloads(obligation: DeclaredTypeObligation, declared: Node,
     declared: declared,
     produced: produced,
     produced_declared_carrier: carrier,
+    component_carriers: obligation.component_carriers,
     application: obligation.application,
     type_variables: obligation.type_variables
   }
@@ -621,22 +633,130 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
   }
 }
 
+// VARIANCE OF A TYPE FORMER IS A DECLARED ROW, NOT A SPELLING-EQUALITY. A function space is contravariant in
+// its domain and covariant in its codomain: a function that accepts every value of a wider domain and
+// returns only values of a narrower codomain is usable where the narrower-domain, wider-codomain function
+// is declared, and the converse is not. Each component pair is judged by this same relation (the base
+// case: exact structural equality, or the refinement's declared carrier), in the direction the row
+// states, so a swapped row flips the verdict (callable_variance_inhabitance_witness, the direction-swap
+// mutant). Equal arity is required; a nested arrow in a component stays on the exact comparison
+// (inhabitance_signature_holds_arrow). The row is the general declaration; Arrow is its first
+// instance, and List covariance (a produced List<Narrow> at a declared List<Wide>) is the stated next
+// row: no witness in this corpus depends on it today.
+type ParameterVariance
+  = Covariant
+  | Contravariant
+
+type ArrowVarianceRow {
+  domain: ParameterVariance
+  codomain: ParameterVariance
+}
+
+fn arrow_variance_row() -> ArrowVarianceRow {
+  ArrowVarianceRow { domain: Contravariant, codomain: Covariant }
+}
+
 fn declared_type_inhabitance_arrow(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  declared_type_inhabitance_arrow_under(obligation: obligation, row: arrow_variance_row())
+}
+
+fn declared_type_inhabitance_arrow_under(obligation: DeclaredTypeObligation, row: ArrowVarianceRow) -> InhabitanceVerdict {
   match inhabitance_arrow_signature_read(arrow: obligation.declared) {
     ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
     ArrowSignatureTypes { domain_types: dd, codomain: dc } =>
       match inhabitance_arrow_signature_read(arrow: obligation.produced) {
         ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
         ArrowSignatureTypes { domain_types: pd, codomain: pc } =>
-          declared_type_inhabitance_exact(obligation: DeclaredTypeObligation {
-            position: obligation.position,
-            parameter_identity: obligation.parameter_identity,
-            declared: anonymous_signature_arrow(domain_types: dd, codomain: dc, source: obligation.declared),
-            produced: anonymous_signature_arrow(domain_types: pd, codomain: pc, source: obligation.produced),
-            produced_declared_carrier: obligation.produced_declared_carrier,
-            application: obligation.application,
-            type_variables: obligation.type_variables
-          })
+          match inhabitance_variance_domain_obligations(obligation: obligation, variance: row.domain, declared: dd, produced: pd) {
+            Absent => InhabitanceRefused { find_witness_reason: inhabitance_no_candidate_reason(position: obligation.position) }
+            Present { value: domain_obligations } =>
+              inhabitance_variance_component_verdicts(
+                obligations: list_snoc_item(
+                  xs: domain_obligations,
+                  item: inhabitance_variance_component(obligation: obligation, variance: row.codomain, declared: dc, produced: pc)
+                ),
+                evidence: obligation.produced
+              )
+          }
+      }
+  }
+}
+
+fn inhabitance_variance_domain_obligations(
+  obligation: DeclaredTypeObligation,
+  variance: ParameterVariance,
+  declared: List<Node>,
+  produced: List<Node>
+) -> Optional<List<DeclaredTypeObligation>> {
+  match declared {
+    Empty =>
+      match produced {
+        Empty => Present { value: [] }
+        Cons { head: _, tail: _ } => Absent
+      }
+    Cons { head: d, tail: dt } =>
+      match produced {
+        Empty => Absent
+        Cons { head: p, tail: pt } =>
+          match inhabitance_variance_domain_obligations(obligation: obligation, variance: variance, declared: dt, produced: pt) {
+            Absent => Absent
+            Present { value: rest } =>
+              Present {
+                value: Cons {
+                  head: inhabitance_variance_component(obligation: obligation, variance: variance, declared: d, produced: p),
+                  tail: rest
+                }
+              }
+          }
+      }
+  }
+}
+
+// The base of the direction: Covariant judges the offered component at the declared one; Contravariant
+// judges the declared component at the offered one.
+fn inhabitance_variance_component(
+  obligation: DeclaredTypeObligation,
+  variance: ParameterVariance,
+  declared: Node,
+  produced: Node
+) -> DeclaredTypeObligation {
+  match variance {
+    Covariant => inhabitance_component_obligation(obligation: obligation, declared: declared, produced: produced)
+    Contravariant => inhabitance_component_obligation(obligation: obligation, declared: produced, produced: declared)
+  }
+}
+
+fn inhabitance_component_obligation(obligation: DeclaredTypeObligation, declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: obligation.position,
+    parameter_identity: obligation.parameter_identity,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: fold(obligation.component_carriers, init: Absent, f: fn(acc, c) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if node_equal_ignoring_provenance(a: c.refinement, b: produced) {
+            Present { value: c.carrier }
+          } else {
+            Absent
+          }
+      }
+    }),
+    component_carriers: obligation.component_carriers,
+    application: obligation.application,
+    type_variables: obligation.type_variables
+  }
+}
+
+fn inhabitance_variance_component_verdicts(obligations: List<DeclaredTypeObligation>, evidence: Node) -> InhabitanceVerdict {
+  match obligations {
+    Empty =>
+      Inhabits { homomorphism: HomomorphismWitness { rule: ^homomorphism_rule_arrow_variance, evidence: evidence } }
+    Cons { head: o, tail: rest } =>
+      match declared_type_inhabitance(obligation: o) {
+        Inhabits { homomorphism: _ } => inhabitance_variance_component_verdicts(obligations: rest, evidence: evidence)
+        other => other
       }
   }
 }
