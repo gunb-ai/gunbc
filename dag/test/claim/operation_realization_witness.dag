@@ -993,7 +993,7 @@ fn fan_round_subject() -> FanObservationRound {
 
 test fn a_round_whose_thermal_rows_all_decode_never_asks_for_the_verbose_read() -> Bool {
   match evaluate_in_witness_frame(
-    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "CPU0_Temp", "01h", "ok", "3.1", "45 degrees C")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]),, epoch: virtual_clock_origin())),
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "CPU0_Temp", "01h", "ok", "3.1", "45 degrees C")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]), epoch: virtual_clock_origin())),
     subject: fn(_scope) { fan_round_subject() }
   ) {
     WitnessReturned { value, route } =>
@@ -1008,7 +1008,7 @@ test fn a_round_whose_thermal_rows_all_decode_never_asks_for_the_verbose_read() 
 
 test fn a_round_left_with_an_unread_thermal_row_asks_for_the_verbose_read_in_the_same_round() -> Bool {
   match evaluate_in_witness_frame(
-    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "PSU2_Status", "EBh", "ok", "0.0", " ")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]),, epoch: virtual_clock_origin())),
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "PSU2_Status", "EBh", "ok", "0.0", " ")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]), epoch: virtual_clock_origin())),
     subject: fn(_scope) { fan_round_subject() }
   ) {
     WitnessRefused { diagnostic, route } =>
