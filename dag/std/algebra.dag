@@ -344,9 +344,26 @@ type ContainerSource
   = SameAsReceiver
   | Named { name: String }
 
+// RECEIVERELEMENTORSELF is the dual-form argument of a free-monoid operation: the value that lands
+// in this position is EITHER an element (the snoc form) OR the free monoid itself (the concat form),
+// and WHICH it is is answered by the value's own shape, never by its name. It exists because
+// `append`'s row claimed `ReceiverElement` and nothing honoured the claim: the model's interpreter
+// routes `append` through the `method_call.concat` arm, which merges `value_to_list_carrier(arg)`
+// when the argument is a list and pushes the argument as ONE item otherwise (the same arm serves
+// `concat` and `push`), and the Rust realization lowers a list-shaped appended argument to
+// `v1_rt::rc_list_concat` (list ++ list) and only a non-list one to the `rc_vec_push` snoc bridge
+// (v1.compiler.emit_rust `rust_append_call_is_concat_form`). Read as a plain `ReceiverElement`, a
+// call `append(acc, [v])` claimed the appended LIST was an element, so an open accumulator
+// (a fold's `init: []`, whose element type the seed has not pinned) was typed `List<List<T>>` and
+// the emitted closure was refused by rustc with E0308 -- the seed reported the claim, the model and
+// the realization both refused it. The single-item form is NOT this position: `list_push` is
+// FreeMonoid's declared home for a snoc and keeps `ReceiverElement` (see the row census in
+// v1.compiler.infer_types `type_is_ordered_element_run`). Which way a call goes is judged by ONE predicate,
+// shared with the emitter, so infer and the realization cannot answer the same question apart.
 type AlgebraTypeTemplate
   = ReceiverSelf
   | ReceiverElement
+  | ReceiverElementOrSelf
   | ReceiverKey
   | ReceiverValue
   | NamedTemplate { name: String }
@@ -502,6 +519,7 @@ fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
       CallableOf { params: _, return_type: _ } => true
       ReceiverSelf => false
       ReceiverElement => false
+      ReceiverElementOrSelf => false
       ReceiverKey => false
       ReceiverValue => false
       NamedTemplate { name: _ } => false
@@ -531,6 +549,7 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
           CallableOf { params: _, return_type: r } => Present { value: r }
           ReceiverSelf => none
           ReceiverElement => none
+          ReceiverElementOrSelf => none
           ReceiverKey => none
           ReceiverValue => none
           NamedTemplate { name: _ } => none
@@ -1116,7 +1135,12 @@ fn free_monoid_collection_templates() -> FreeMonoid<AlgebraFieldTemplate> {
     { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Present { value: ShrinkEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     collection_sort_by_shape(),
-    { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
+    // `append` is the dual-form append: an element lands here (snoc) or the whole run does (concat),
+    // and the argument's own shape answers which -- the claim the interpreter's `method_call.concat`
+    // arm and the emitter's `rust_append_call_is_concat_form` both honour, and which the bare
+    // `ReceiverElement` did not (it mistyped `append(acc, [v])` as a list OF lists). See
+    // `AlgebraTypeTemplate`'s ReceiverElementOrSelf. `list_push` keeps the plain element row.
+    { name: "append", param_types: [ReceiverSelf, ReceiverElementOrSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
