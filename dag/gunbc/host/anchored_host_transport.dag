@@ -279,6 +279,7 @@ type AnchoredHostBinding
   | AnchoredBindingAnchorNotForRow { cause: String }
   | AnchoredBindingAnchorAbsent { cause: String }
   | AnchoredBindingPresentedKeyMismatch { expected_line: String, observed_line: String }
+  | AnchoredBindingPinFromAnotherBoot { pinned_boot: String, expected_boot: String }
   | AnchoredBindingRefused { cause: String }
 
 // THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (§5). The host
@@ -428,13 +429,21 @@ fn per_boot_pin_from_fields(row: AnchoredHostRow, fields: List<String>) -> PerBo
   }
 }
 
+// "boot_id=a=b" is not "boot_id=a": a piece beyond the second is refused, never dropped (§5).
+fn has_no_third_piece(s: String) -> Bool {
+  match split(s: s, delimiter: "=") |> skip(n: 2) |> first {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 fn per_boot_pin_of(row: AnchoredHostRow, boot_field: String, key_type: String, key_b64: String, fingerprint: String) -> PerBootHostPin? {
   match split(s: boot_field, delimiter: "=") |> first {
     Absent => none
     Present { value: tag } => match split(s: boot_field, delimiter: "=") |> skip(n: 1) |> first {
       Absent => none
       Present { value: id } =>
-        if tag == "boot_id" && id != "" {
+        if tag == "boot_id" && id != "" && has_no_third_piece(s: boot_field) {
           Present { value: PerBootHostPin {
             boot_id: id as NonEmptyStr,
             anchor: KnownHostKeyRow {
@@ -477,9 +486,7 @@ fn anchored_host_transport_per_boot(
     }
     Present { value: p } =>
       if (p.boot_id as String) != (expected_boot_id as String) {
-        AnchoredBindingAnchorNotForRow {
-          cause: join(["the pin was printed at boot ", p.boot_id as String, ", not boot ", expected_boot_id as String, "; a per-boot key vouches for its own boot only"], ""),
-        }
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: p.boot_id as String, expected_boot: expected_boot_id as String }
       } else {
         match host_bound_transport_of(transport: transport) {
           HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
@@ -506,6 +513,8 @@ fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
     AnchoredBindingAnchorAbsent { cause: cause } => cause
     AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
       join(["AnchoredBindingPresentedKeyMismatch: got `", observed as String, "`, not the anchored key `", expected as String, "`; contacting NO host"], "")
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: pinned, expected_boot: expected } =>
+      join(["the pin was printed at boot ", pinned, ", not boot ", expected, "; a per-boot key vouches for its own boot only"], "")
     AnchoredBindingRefused { cause: cause } => cause
   }
 }
