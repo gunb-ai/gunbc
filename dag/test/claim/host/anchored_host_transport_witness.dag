@@ -473,7 +473,7 @@ fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
 }
 
 test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
-  count(anchored_host_transport_frontier_rows) == 6
+  count(anchored_host_transport_frontier_rows) == 5
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
   && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
