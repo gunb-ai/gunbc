@@ -144,7 +144,17 @@ import extdeps.network.ipv4 { render_ipv4_address }
 import product.host_identity { host_identity_eq }
 import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_eq }
-import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status, dissolution_is_bound }
+import std.dissolution {
+  DissolutionPending,
+  DissolutionFired,
+  DissolutionUnbound,
+  BoundDissolution,
+  UnboundDissolution,
+  DeclarationAppears,
+  DeclarationRetires,
+  dissolution_status,
+  dissolution_is_bound,
+}
 
 // ── THE SPELLINGS THE CLAIMS ASK ABOUT ───────────────────────────────────────────────────────
 
@@ -930,10 +940,27 @@ test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() ->
 // assertions are on FIELDS: compare references by `declaration_ref_eq`, not by searching someone's
 // sentence. If the row ref, the paired-write ref, or the bound trigger is deleted or drifted, this refuses
 // — and unlike substring checks on commentary, it refuses on the facts rather than on their description.
-test fn the_media_share_cutover_frontier_names_its_row_its_write_and_its_trigger() -> Bool {
+test fn the_media_share_cutover_frontier_names_its_row_its_write_its_caller_and_its_trigger() -> Bool {
   declaration_ref_eq(a: media_share_name_cutover.row, b: expected_share_row_ref)
     && declaration_ref_eq(a: media_share_name_cutover.paired_write, b: expected_paired_write_ref)
+    && the_caller_leg_names_the_gate_call()
     && dissolution_is_bound(condition: media_share_name_cutover.fires_when)
+}
+
+// THE THIRD LEG, PINNED. A leg written as prose is a wish, so the frontier has to name the declaration whose
+// APPEARANCE is the wiring, and in the shape that says the right thing: `DeclarationAppears` (the caller must
+// ARRIVE -- a `DeclarationRetires` would assert the opposite order and still read as a bound condition). If
+// the implementer chooses a different name for the boot-side call, this ref and the module's ref drift apart,
+// and the drift is a red here rather than a gate nobody asks.
+fn the_caller_leg_names_the_gate_call() -> Bool {
+  match media_share_name_cutover.paired_caller {
+    BoundDissolution { trigger: t } =>
+      match t {
+        DeclarationAppears { ref: r } => declaration_ref_eq(a: r, b: expected_gate_caller_ref)
+        DeclarationRetires { ref: _ } => false
+      }
+    UnboundDissolution { description: _ } => false
+  }
 }
 
 // THE TRIGGER MUST NOT ALREADY HAVE FIRED, and this claim is why the trigger names the NEW name-typed row
@@ -943,7 +970,18 @@ test fn the_media_share_cutover_frontier_names_its_row_its_write_and_its_trigger
 // debt that is honestly outstanding.
 test fn the_cutover_frontier_is_pending_rather_than_falsely_fired() -> Bool {
   match dissolution_status(condition: media_share_name_cutover.fires_when, present_decls: [expected_share_row_ref]) {
-    DissolutionPending => true
+    // THE CALLER LEG IS OUTSTANDING TOO, and it is checked against the declarations that DO exist today --
+    // the address-typed share row and the firmware write's target. A frontier reading Fired here would be
+    // declaring the gate wired into the attach path when nothing calls it.
+    DissolutionPending =>
+      match dissolution_status(
+        condition: media_share_name_cutover.paired_caller,
+        present_decls: [expected_share_row_ref, expected_paired_write_ref],
+      ) {
+        DissolutionPending => true
+        DissolutionFired => false
+        DissolutionUnbound => false
+      }
     DissolutionFired => false
     DissolutionUnbound => false
   }
@@ -958,6 +996,13 @@ data expected_share_row_ref: DeclarationRef = decl_field_ref(
 data expected_paired_write_ref: DeclarationRef = decl_ref(
   module_path: "extdeps.bmc.megarac",
   decl_name: "megarac_op_media_config",
+)
+
+// THE CALLER THE THIRD LEG WAITS FOR -- the same ref the module files, restated here so the claim is a
+// comparison and not a tautology: if either side is renamed alone, this goes red.
+data expected_gate_caller_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.mtcollins1_boot_run",
+  decl_name: "mtcollins1_media_share_address_standing",
 )
 
 // A SHARE THAT DISAGREES WITH ITS OWN ROW REFUSES. The share says the tailnet name while the row vouches
