@@ -1,5 +1,6 @@
 module test.claim.runner.runner_lost_boot_sweep_run_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.algebra { string_contains }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -355,12 +356,12 @@ test fn the_real_route_population_follows_the_committed_width() -> Bool {
             Present { value: b } =>
               match gunbc_runner_committed_width(host: m.host) {
                 RunnerWidthUnresolved { cause: _ } =>
-                  match current_service_population(host: st, boot: b) {
+                  match current_service_population(host: st, boot: b, receipt: ReceiptAbsent) {
                     CurrentServicePopulationRefused { refusal: CurrentPopulationWidthUnresolved { cause: _ } } => true
                     _ => false
                   }
                 RunnerWidthDerived { slots: n } =>
-                  match current_service_population(host: st, boot: b) {
+                  match current_service_population(host: st, boot: b, receipt: ReceiptAbsent) {
                     CurrentServicePopulationDerived { population: p } => count(p.units) == n
                     _ => false
                   }
