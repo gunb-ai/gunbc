@@ -9,6 +9,9 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.process_hold_identity { text_at }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
 
 // THE PREPARED BUNDLE STORE, SEALED. A fleet preparation writes one bundle -- the CAD check output, the staged
 // profiles, the sliced plates and the prepared-queues.json receipt -- and LATER runs read it back: the inventory
@@ -33,10 +36,11 @@ import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 // finished; it is reported and never read). More than one: Ambiguous, naming each receipt and identity; there is
 // no newest-wins and no fallback.
 //
-// RETIRING A PREPARATION so exactly one remains is out of scope as a declared operation: the operator removes the
-// published-<attempt>.json receipt that the Ambiguous refusal names for the preparation to drop, after confirming
-// it is not the one the inventory was built from. Its attempt directory then reads as residue and is never read.
-// A declared retire verb is a follow-up with its first operator need as its trigger.
+// RETIRING A PREPARATION has NO modeled authority yet. Deleting a published-<attempt>.json by hand changes which
+// preparation is authoritative, and that is OUTSIDE the modeled authority until the typed retirement op exists:
+// it names the exact attempt, checks the dependent inventory's standing, and refuses when that standing is
+// unestablished. It is enrolled as a declared frontier row (prepared_bundle_retirement_frontier_rows in
+// gunbc.census_closure_frontier), dissolved when prepared_bundle_retire appears.
 //
 // The staging directory is created owner-only (mktemp -d); a preparation and its later readers run as one principal,
 // and any other reader fails the digest verification loudly rather than reading a bundle it cannot see whole.
@@ -64,12 +68,22 @@ type PreparedBundleStaging sole_constructor { index: NonEmptyStr, root: NonEmpty
 
 type PreparedBundle sole_constructor { root: NonEmptyStr, attempt: String, identity: String }
 
+data prepared_bundle_retirement_notice: String = "Deleting a published receipt by hand is OUTSIDE the modeled authority: it changes which preparation is authoritative. A typed retirement op (exact attempt, dependent inventory standing checked, refusing when unestablished) does not exist yet."
+
+data prepared_bundle_retirement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_published"),
+    reason: "an Ambiguous reading has no modeled remedy: no typed op retires one named attempt after checking the dependent inventory standing, so removing a published receipt by hand is outside the modeled authority",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_retire"))
+  )
+]
+
 type PreparedBundleStagingReading = PreparedBundleStagingReady { staging: PreparedBundleStaging } | PreparedBundleStagingUnready { detail: String }
 
 type PreparedBundleReading
   = PreparedBundleReady { bundle: PreparedBundle }
   | PreparedBundleNotPrepared { residue: List<String> }
-  | PreparedBundleAmbiguous { published: List<String> }
+  | PreparedBundleAmbiguous { published: List<String>, notice: String }
   | PreparedBundleCorrupt { detail: String }
   | PreparedBundleUnready { detail: String }
 
@@ -224,7 +238,7 @@ fn prepared_bundle_published(tree: HostStateTree, plan_text: String) -> Prepared
           let receipts = receipt_names(entries: entries)
           let residue = entries.filter(e => starts_with(s: e, prefix: prepared_attempt_prefix) && !any(receipts, r => r == join([prepared_published_prefix, e, prepared_published_suffix], "")))
           if count(receipts) == 0 { return PreparedBundleNotPrepared { residue: residue } }
-          if count(receipts) > 1 { return PreparedBundleAmbiguous { published: receipts.map(r => receipt_summary(index: index, name: r)) } }
+          if count(receipts) > 1 { return PreparedBundleAmbiguous { published: receipts.map(r => receipt_summary(index: index, name: r)), notice: prepared_bundle_retirement_notice } }
           let name = text_at(xs: receipts, i: 0)
           match read_published_receipt(index: index, name: name) {
             Absent => PreparedBundleCorrupt { detail: concat("The publish receipt is unreadable or malformed: ", name) }

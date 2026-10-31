@@ -5,6 +5,9 @@ import std.algebra { string_contains }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready, prepared_bundle_directory }
 
 fn inputs(recipe: String, revision: String) -> PreparationInputs {
@@ -28,7 +31,7 @@ fn bundle_dir(dir: String, plan: String) -> String {
   match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: plan) {
     PreparedBundleReady { bundle: b } => prepared_bundle_directory(bundle: b)
     PreparedBundleNotPrepared { residue: _ } => ""
-    PreparedBundleAmbiguous { published: _ } => ""
+    PreparedBundleAmbiguous { published: _, notice: _ } => ""
     PreparedBundleCorrupt { detail: _ } => ""
     PreparedBundleUnready { detail: _ } => ""
   }
@@ -46,7 +49,7 @@ test fn w_one_published_preparation_is_verified_and_read() -> Bool {
 test fn w_an_empty_plan_names_no_bundle() -> Bool {
   let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
   let staged = match prepared_bundle_stage(tree: tree_in(dir: dir), plan_text: "") { PreparedBundleStagingUnready { detail: _ } => true PreparedBundleStagingReady { staging: _ } => false }
-  let read = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "") { PreparedBundleUnready { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleCorrupt { detail: _ } => false }
+  let read = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "") { PreparedBundleUnready { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _, notice: _ } => false PreparedBundleCorrupt { detail: _ } => false }
   staged && read
 }
 
@@ -57,7 +60,7 @@ test fn w_an_unpublished_attempt_is_residue_and_never_read() -> Bool {
     PreparedBundleStagingUnready { detail: _ } => false
     PreparedBundleStagingReady { staging: s } => {
       let wrote = match prepared_bundle_stage_queues(staging: s, content: "[9]") { PreparedQueuesWritten => true PreparedQueuesRefused { cause: _ } => false }
-      let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-r") { PreparedBundleNotPrepared { residue: r } => count(r) == 1 PreparedBundleReady { bundle: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleCorrupt { detail: _ } => false PreparedBundleUnready { detail: _ } => false }
+      let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-r") { PreparedBundleNotPrepared { residue: r } => count(r) == 1 PreparedBundleReady { bundle: _ } => false PreparedBundleAmbiguous { published: _, notice: _ } => false PreparedBundleCorrupt { detail: _ } => false PreparedBundleUnready { detail: _ } => false }
       wrote && reading
     }
   }
@@ -69,7 +72,7 @@ test fn w_two_published_preparations_for_one_plan_refuse_ambiguous() -> Bool {
   let a = prepare_one(dir: dir, plan: "plan-d", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
   let b = prepare_one(dir: dir, plan: "plan-d", inp: inputs(recipe: "r", revision: "v2"), body: "[2]")
   let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-d") {
-    PreparedBundleAmbiguous { published: p } => count(p) == 2 && any(p, x => string_contains(s: x, pattern: "v1")) && any(p, x => string_contains(s: x, pattern: "v2"))
+    PreparedBundleAmbiguous { published: p, notice: n } => string_contains(s: n, pattern: "OUTSIDE the modeled authority") && count(p) == 2 && any(p, x => string_contains(s: x, pattern: "v1")) && any(p, x => string_contains(s: x, pattern: "v2"))
     PreparedBundleReady { bundle: _ } => false
     PreparedBundleNotPrepared { residue: _ } => false
     PreparedBundleCorrupt { detail: _ } => false
@@ -102,7 +105,7 @@ test fn w_a_changed_bundle_file_refuses_corrupt() -> Bool {
   let made = prepare_one(dir: dir, plan: "plan-g", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
   let at = bundle_dir(dir: dir, plan: "plan-g")
   let tampered = Filesystem.Write(path: concat(at, "/prepared-queues.json"), content: "[evil]").success
-  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-g") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleUnready { detail: _ } => false }
+  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-g") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _, notice: _ } => false PreparedBundleUnready { detail: _ } => false }
   made && tampered && reading
 }
 
@@ -112,6 +115,12 @@ test fn w_an_extra_bundle_file_refuses_corrupt() -> Bool {
   let made = prepare_one(dir: dir, plan: "plan-h", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
   let at = bundle_dir(dir: dir, plan: "plan-h")
   let added = Filesystem.WriteCreateNew(path: concat(at, "/stray.txt"), content: "x").success
-  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-h") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleUnready { detail: _ } => false }
+  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-h") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _, notice: _ } => false PreparedBundleUnready { detail: _ } => false }
   made && added && reading
+}
+
+// The retirement frontier row is present in the aggregate, keyed by its subject declaration and not by a count.
+test fn w_the_retirement_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_published") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
 }

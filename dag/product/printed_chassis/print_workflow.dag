@@ -175,7 +175,7 @@ fn inventory_root(plan_file:String) -> InventoryRoot {
   match prepared_bundle_published(tree:host_state_tree(),plan_text:plan.content) {
    PreparedBundleUnready {detail:_}=>InventoryRootRefused
    PreparedBundleNotPrepared {residue:_}=>InventoryRootRefused
-   PreparedBundleAmbiguous {published:_}=>InventoryRootRefused
+   PreparedBundleAmbiguous {published:_,notice:_}=>InventoryRootRefused
    PreparedBundleCorrupt {detail:_}=>InventoryRootRefused
    PreparedBundleReady {bundle:bundle}=>match read_prepared_assembly(bundle:bundle) {
     Absent=>InventoryRootRefused
