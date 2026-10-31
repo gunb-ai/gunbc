@@ -51,6 +51,14 @@ data int_plus_int_source: String = "module probe_arith_int_plus_int\nimport std.
 
 data nat_minus_nat_is_int_source: String = "module probe_arith_nat_minus_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn f(a: Nat, b: Nat) -> Int { a - b }\n"
 
+// A Nat beside a declaration with no algebra row has no carrier: it refuses (ArithmeticNoCarrier) rather than
+// taking the left operand's typing. Observed through the result's Nat return, which would hold under the old fallback.
+data nat_plus_unmodeled_source: String = "module probe_arith_nat_plus_unmodeled\nimport std.nat { Nat }\ntype Tag = TagA | TagB\nfn f(a: Nat, t: Tag) -> Nat { a + t }\n"
+
+test fn w_nat_plus_unmodeled_carrier_refuses() -> Bool {
+  blocking_count(source: nat_plus_unmodeled_source) >= 1
+}
+
 test fn w_nat_plus_int_is_not_nat() -> Bool {
   blocking_count(source: nat_plus_int_source) >= 1
 }
