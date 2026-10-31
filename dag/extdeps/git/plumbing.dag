@@ -1,5 +1,8 @@
 module extdeps.git.plumbing
 
+import std.env_binding { EnvSet }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -99,8 +102,15 @@ fn git_repository_address_argv(address: GitRepositoryAddress) -> List<String> {
 // the identity is the DECLARATION NAME (`git.Plumbing.WriteTreeFromIndex`), and `env` is a
 // transport detail of it, which is the whole difference between an operation that has a
 // name and an argv that has a prefix.
+fn git_index_file_env_arguments(index: FilePath) -> List<String> {
+  env_prefixed_args(
+    bindings: [EnvSet { name: "GIT_INDEX_FILE", value: index as String }],
+    command_argv: [],
+  )
+}
+
 fn git_index_file_env_argv(index: FilePath) -> List<String> {
-  ["env", concat("GIT_INDEX_FILE=", index as String)]
+  concat([env_path_resolved_program().invocation as String], git_index_file_env_arguments(index: index))
 }
 
 // COMMIT PARENTS ARE A CLOSED SHAPE, NOT A POSSIBLY-EMPTY LIST OF FLAGS. `commit-tree`
@@ -231,7 +241,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "{treeish}"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "read-tree", "{treeish}"] }
   }
 
   operation ReadTreeIntoIndexPrefixed {
@@ -241,7 +251,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "--prefix={prefix}", "{treeish}"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "read-tree", "--prefix={prefix}", "{treeish}"] }
   }
 
   operation AddAllIntoIndex {
@@ -251,7 +261,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "add", "-A"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "add", "-A"] }
   }
 
   operation UpdateIndexCacheInfo {
@@ -261,7 +271,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "update-index", "--add", "--cacheinfo", "{mode},{oid},{path}"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "update-index", "--add", "--cacheinfo", "{mode},{oid},{path}"] }
   }
 
   operation WriteTreeFromIndex {
@@ -272,7 +282,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "write-tree"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "write-tree"] }
   }
 
   operation CheckoutIndexToPrefix {
@@ -282,7 +292,7 @@ service git.Plumbing {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_index_file_env_arguments(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
   }
 
   operation CommitTree {
