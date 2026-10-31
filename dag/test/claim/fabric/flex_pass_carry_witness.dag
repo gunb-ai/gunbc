@@ -21,7 +21,9 @@ import gunbc.fleet.flex_pass_run {
   flex_carry_reading_of, flex_pass_exit,
   FlexCarryWritten, FlexCarryWriteSkipped, FlexCarryWriteFailed, flex_carry_absent_reason,
   flex_pass_carry_path, flex_pass_carry_directory, flex_pass_carry_name,
+  flex_carry_home_refusal, flex_carry_home_host, flex_carry_read,
 }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused }
 import product.fabric.flex_vast_loop {
   FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated, FlexCarryTrusted, FlexCarryUntrusted,
 }
@@ -479,26 +481,26 @@ test fn an_absent_prior_is_written_forward_as_an_unknown_standing() -> Bool {
 // Absent; listed with the entry and a good read -> Loaded; listed with the entry and a refused read ->
 // Unread (the file exists and cannot be read: never absent); a directory listing that failed -> not Absent.
 fn w_listing(entries: String, ok: Bool) -> FilesystemListingObservation {
-  filesystem_listing_observation(directory: flex_pass_carry_directory, success: ok, entries: entries, error: if ok { "" } else { "listing refused" })
+  filesystem_listing_observation(directory: flex_pass_carry_directory(), success: ok, entries: entries, error: if ok { "" } else { "listing refused" })
 }
 
 test fn the_filesystem_observations_map_to_absent_loaded_and_unread_on_the_real_mapping() -> Bool {
   let sealed = w_doc(members: w_ok_members)
   let read_ok = filesystem_read_outcome(content: sealed, success: true, error: "")
   let read_refused = filesystem_read_outcome(content: "", success: false, error: "permission denied")
-  match flex_carry_reading_of(listing: w_listing(entries: "", ok: true), read: read_refused, path: flex_pass_carry_path) {
+  match flex_carry_reading_of(listing: w_listing(entries: "", ok: true), read: read_refused, path: flex_pass_carry_path()) {
     FlexCarryAbsent => true
     FlexCarryLoaded { carry: _ } => false
     FlexCarryUnread { reason: _ } => false
-  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_ok, path: flex_pass_carry_path) {
+  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_ok, path: flex_pass_carry_path()) {
     FlexCarryLoaded { carry: _ } => true
     FlexCarryAbsent => false
     FlexCarryUnread { reason: _ } => false
-  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_refused, path: flex_pass_carry_path) {
+  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_refused, path: flex_pass_carry_path()) {
     FlexCarryUnread { reason: _ } => true
     FlexCarryAbsent => false
     FlexCarryLoaded { carry: _ } => false
-  } && match flex_carry_reading_of(listing: w_listing(entries: "", ok: false), read: read_refused, path: flex_pass_carry_path) {
+  } && match flex_carry_reading_of(listing: w_listing(entries: "", ok: false), read: read_refused, path: flex_pass_carry_path()) {
     FlexCarryAbsent => false
     FlexCarryLoaded { carry: _ } => false
     FlexCarryUnread { reason: _ } => true
@@ -523,7 +525,7 @@ test fn a_carry_cut_off_anywhere_reads_unread_and_the_intact_file_still_loads() 
     && match flex_carry_reading_of(
       listing: w_listing(entries: flex_pass_carry_name, ok: true),
       read: filesystem_read_outcome(content: substring(s: text, start: 0, end: n - 1), success: true, error: ""),
-      path: flex_pass_carry_path,
+      path: flex_pass_carry_path(),
     ) {
       FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "not readable as JSON at offset")
       FlexCarryAbsent => false
@@ -558,5 +560,38 @@ test fn a_failed_carry_write_exits_failure_and_a_written_or_skipped_one_does_not
 // another literal; if they drift, absence is "established" for a directory the carry never lived in, and a
 // real carry reads absent -- which is exactly the widen this file refuses everywhere else.
 test fn the_carry_path_and_the_listed_directory_and_entry_name_denote_one_path() -> Bool {
-  flex_pass_carry_path == concat(concat(flex_pass_carry_directory, "/"), flex_pass_carry_name)
+  flex_pass_carry_path() == concat(concat(flex_pass_carry_directory(), "/"), flex_pass_carry_name)
+}
+
+// THE HOME-HOST WALL: a pass that is not on the carry home host, or cannot say which host it is, gets a
+// refusal naming the cause, and that refusal is what flex_carry_read turns into FlexCarryUnread (so the
+// create gate stays shut). The home host itself gets no refusal. The observations are supplied; the
+// decision under test is the one the pass runs.
+test fn the_carry_is_visible_only_on_its_home_host_and_every_other_host_is_refused_with_the_cause() -> Bool {
+  let other = flex_carry_home_refusal(host: HostnameShortCaptured { value: "srv2" })
+  let unknown = flex_carry_home_refusal(host: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" })
+  let home = flex_carry_home_refusal(host: HostnameShortCaptured { value: flex_carry_home_host as String })
+  match home {
+    Present { value: _ } => false
+    Absent =>
+      match other {
+        Absent => false
+        Present { value: why } =>
+          string_contains(s: why as String, pattern: "not on the carry home host srv1") && match unknown {
+            Absent => false
+            Present { value: u } => string_contains(s: u as String, pattern: "cannot establish which host it is on")
+          }
+      }
+  }
+}
+
+// The same wall through the REAL reader: flex_carry_read off the home host returns before any filesystem
+// effect, so it runs here unsupplied, and what comes out is the Unread reading the create gate refuses on,
+// carrying the located cause, with no trust.
+test fn the_real_carry_reader_off_the_home_host_reads_unread_with_the_located_cause() -> Bool {
+  match flex_carry_read(path: flex_pass_carry_path(), host: HostnameShortCaptured { value: "srv2" }) {
+    FlexCarryUnread { reason: r } => string_contains(s: r as String, pattern: "not on the carry home host srv1")
+    FlexCarryLoaded { carry: _ } => false
+    FlexCarryAbsent => false
+  }
 }

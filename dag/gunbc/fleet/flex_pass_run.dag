@@ -23,6 +23,11 @@ import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiOfferHostResources, VastAiOfferQuery, VastAiInstances, VastAiCharges, VastAiChargesDayRange,
   vast_ai_keyset_page_limit, vast_ai_charges_day_filter, vast_ai_instances_unfiltered, vast_ai_wire_mb, vast_ai_wire_mbps,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.host.host_layout { srv1_flex_pass_carry_root }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import gunbc.auth.access_token_source { resolve_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, access_token_upsert_required_reason }
 import gunbc.auth.secret_ref_credential {
@@ -326,12 +331,17 @@ fn flex_member_line(m: FlexMemberWalls) -> String {
 // gunbc.realization_census_rows: "CI receipt written by direct Filesystem.Write to a literal target/
 // path"). A SCHEDULED wet dispatch must move both files under the fleet-converge state root; that is the
 // go-wet slice's decision, not this one's, and it is named here so it is not lost.
-data flex_pass_carry_path: String = "target/flex-pass-carry.txt"
-// The SAME path split into the two parts a filesystem observation needs: the directory that is listed (which
-// is what establishes absence) and the entry name inside it. The invariant that these three literals denote
-// one path is pinned by a claim in test.claim.fabric.flex_pass_carry_witness, not left to convention.
-data flex_pass_carry_directory: String = "target"
-data flex_pass_carry_name: String = "flex-pass-carry.txt"
+// The directory is gunbc.host.host_layout srv1_flex_pass_carry_root (the host-path authority; DESIGN 3), and
+// the entry path is derived from it, so the three facts a filesystem observation needs (the directory that is
+// listed, the entry name, the full path) cannot disagree. The pass has ONE home host (flex_carry_home_host).
+fn flex_pass_carry_directory() -> String {
+  srv1_flex_pass_carry_root as String
+}
+data flex_pass_carry_name: String = "flex-pass-carry.json"
+
+fn flex_pass_carry_path() -> String {
+  concat(concat(flex_pass_carry_directory(), "/"), flex_pass_carry_name)
+}
 
 // THE WIRE IS ONE JSON DOCUMENT, written by flex_carry_render and read by flex_carry_reading_of through
 // extdeps.languages.json both ways, so the grammar is the JSON grammar and not a second hand-written one. A write
@@ -379,7 +389,7 @@ fn flex_carry_remedy_text(remedy: FlexCarryRemedy) -> String {
 }
 
 fn flex_carry_remedy() -> String {
-  flex_carry_remedy_text(remedy: FlexCarryRestateClear { path: flex_pass_carry_path })
+  flex_carry_remedy_text(remedy: FlexCarryRestateClear { path: flex_pass_carry_path() })
 }
 
 type FlexCarry {
@@ -417,14 +427,14 @@ type FlexCarryStanding
 // the strength of a file it never read, or that rents a second one because it forgot it asked for the first.
 // The state repairs itself: the next pass that reads a COMPLETE roster writes a fresh baseline.
 //
-// WHY A FILE AND NOT std.durable_compare_and_set OR A FABRIC STORE SLOT, stated because it is a real
-// limitation: this pass is dispatched by hand (fleet-converge mode flex_pass, no schedule), on one host,
-// and it already writes its receipt through the same authority to the same directory -- so today there is
-// exactly one writer and no race to arbitrate. A CAS or store slot needs a store root and an identity this
-// entry does not yet hold, and inventing one here would be a second authority over the pass's own state.
-// The go-wet slice (the schedule) is what creates the race, and it must move BOTH this file and the receipt
-// under the fleet-converge state root and take the CAS route; that obligation is named on this module's
-// census row and in the go-wet slice's scope, not hidden here.
+// WHY A FILE ON ONE HOST AND NOT std.durable_compare_and_set OR A SHARED STORE (flex_carry_home_frontier).
+// Exclusion between passes is account-wide: the FlexPass mode is keyed to the concurrency group
+// gunbc-flex-vast-account (queued, never cancelled), so two passes never overlap whatever host runs them.
+// What a file cannot give is VISIBILITY across hosts, so the carry has one home host (flex_carry_home_host)
+// and any other host reads it as unread and refuses to create. A CAS slot through durable_cas_file_store
+// needs flex_pass_run admitted as a caller and a VerifiedCasAttempt constructor in that module, a change to a
+// load-bearing store this PR does not make; the shared cross-host store is the trigger that removes both
+// the home-host restriction and this file.
 // THREE FACTS, NOT TWO. "There is no carry file" and "there is a carry file and it cannot be read" are
 // different facts, and collapsing them is the same mistake as laundering an unread standing into a clean
 // file, at the other end of this file: a fresh worktree would be indistinguishable from a corrupted carry,
@@ -531,19 +541,48 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
 // directory the carry lives in, so "no carry has ever been written" and "a carry is there and cannot be read"
 // reach the pass as different facts. The fold used is the repo's own (extdeps.filesystem.filesystem_io), which
 // also refuses the case where the listing says absent and the read still returned bytes.
-fn flex_carry_read(path: String) -> FlexCarryReading {
-  let listed = Filesystem.List(path: flex_pass_carry_directory)
-  let read = Filesystem.Read(path: path)
-  flex_carry_reading_of(
-    listing: filesystem_listing_observation(
-      directory: flex_pass_carry_directory,
-      success: listed.success,
-      entries: listed.entries,
-      error: listed.error,
-    ),
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-    path: path,
-  )
+fn flex_carry_read(path: String, host: HostnameShortCapture) -> FlexCarryReading {
+  match flex_carry_home_refusal(host: host) {
+    Present { value: why } => FlexCarryUnread { reason: why }
+    Absent =>
+      let listed = Filesystem.List(path: flex_pass_carry_directory())
+      let read = Filesystem.Read(path: path)
+      flex_carry_reading_of(
+        listing: filesystem_listing_observation(
+          directory: flex_pass_carry_directory(),
+          success: listed.success,
+          entries: listed.entries,
+          error: listed.error,
+        ),
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+        path: path,
+      )
+  }
+}
+
+// THE CARRY HAS ONE HOME HOST. Exclusion between passes is account-wide (the FlexPass mode is keyed to the
+// concurrency group gunbc-flex-vast-account in gunbc.fleet.fleet_converge_workflow, queued and never
+// cancelled), so two passes never overlap whatever host runs them. VISIBILITY is not account-wide: the carry
+// is a file on one host's disk, so a pass dispatched to another host would read "absent" or an older carry
+// and could rent on top of an ask it cannot see. Such a pass therefore reads the carry as UNREAD with the
+// located cause, and its create gate stays shut (never rents blind). An unreadable hostname refuses the
+// same way: an unknown host is not the home host. Trigger that removes the restriction: a shared store both
+// hosts read (named in flex_carry_home_frontier).
+data flex_carry_home_frontier: DissolutionCondition = unbound_dissolution(description: "The flex carry is a file on ONE host (flex_carry_home_host, directory gunbc.host.host_layout srv1_flex_pass_carry_root); a pass on any other host, or one that cannot read its own hostname, reads the carry as unread and its create refuses (executed: flex_pass_carry_witness the_real_carry_reader_off_the_home_host_reads_unread_with_the_located_cause). Exclusion is account-wide (concurrency group gunbc-flex-vast-account, queued, not cancelled); visibility is home-host only. Missing: the directory is not a live_deploy owned-artifact member, so nothing creates it with the runner write permission (a pass that cannot write fails on the write, loudly), and the write is a plain file rather than a compare-and-set slot (gunbc.durable_cas_file_store admits no flex_pass_run caller). Closes when a store both hosts read (a durable_cas_file_store slot with flex_pass_run admitted, or a fabric store slot) replaces the file, which removes the home-host restriction; until then the autoscaler can run on one host only.")
+
+data flex_carry_home_host: NonEmptyStr = operator_host_srv1 as NonEmptyStr
+
+fn flex_carry_home_refusal(host: HostnameShortCapture) -> NonEmptyStr? {
+  match host {
+    HostnameShortCaptured { value: observed } =>
+      if observed == flex_carry_home_host as String {
+        none
+      } else {
+        Present { value: concat(concat(concat("this pass is on host ", observed), concat(", not on the carry home host ", flex_carry_home_host as String)), "; the carry is that host's file and is not visible from here") as NonEmptyStr }
+      }
+    HostnameShortCaptureRefused { reason: r } =>
+      Present { value: concat("this pass cannot establish which host it is on (", concat(r, "); only the carry home host may read the carry")) as NonEmptyStr }
+  }
 }
 
 // THE FOLD OVER THE TWO OBSERVATIONS, apart from the effects that make them, so a witness supplies the
@@ -964,6 +1003,22 @@ type FlexCarryWrite
 
 type FlexPassReport { receipt: String, carry: FlexCarryWrite }
 
+// The write follows the read's trust: a pass off the carry home host did not read the carry and must not
+// leave a second one behind, so it skips with the located cause (a skip is not a failure; its create already
+// refused on the unread carry).
+fn flex_carry_write(host: HostnameShortCapture, content: String) -> FlexCarryWrite {
+  match flex_carry_home_refusal(host: host) {
+    Present { value: why } => FlexCarryWriteSkipped { because: why }
+    Absent =>
+      let carry_written = Filesystem.Write(path: flex_pass_carry_path(), content: content)
+      if carry_written.success {
+        FlexCarryWritten
+      } else {
+        FlexCarryWriteFailed { error: carry_written.error }
+      }
+  }
+}
+
 fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) -> FlexPassReport uses net: Network {
   let instance_walk = flex_walk_instances(key: key, after: none, walk: FlexInstanceWalk { pages: [], refused: none }, budget: flex_walk_page_budget)
   let instances = flex_instances_standing(walk: instance_walk)
@@ -973,7 +1028,8 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   // THE OBSERVED STATE, READ BEFORE THE DECISION: what the labelled roster says we hold, aged by the
   // sightings an earlier pass left, and the standing of the last create ask. Both come from the carry
   // file, because neither is on the Vast wire.
-  let carry = flex_carry_read(path: flex_pass_carry_path)
+  let host = hostname_short_read(transport: LocalShell)
+  let carry = flex_carry_read(path: flex_pass_carry_path(), host: host)
   let cards = flex_cards_from_roster(
     ours: flex_owner_label_gunbc_flex,
     roster: instances,
@@ -1030,14 +1086,10 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
         outcome: outcome,
         now: now,
       )
-      let carry_written = Filesystem.Write(path: flex_pass_carry_path, content: flex_carry_render(carry: carry_out))
-      let carry_write = if carry_written.success {
-        FlexCarryWritten
-      } else {
-        FlexCarryWriteFailed { error: carry_written.error }
-      }
+      let carry_rendered = flex_carry_render(carry: carry_out)
+      let carry_write = flex_carry_write(host: host, content: carry_rendered)
       let carry_write_word = match carry_write {
-        FlexCarryWritten => concat("written ", flex_pass_carry_path)
+        FlexCarryWritten => concat("written ", flex_pass_carry_path())
         FlexCarryWriteSkipped { because: b } => concat("skipped: ", b)
         FlexCarryWriteFailed { error: e } => concat("WRITE FAILED: ", e)
       }
