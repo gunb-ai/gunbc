@@ -17,7 +17,7 @@ Read-only design. Base origin/main. Prerequisite of Q1b E1 (replace v1.compiler.
 In `literal_boundary_elaboration`, before the homomorphism path, when `lit` is `LitInt { value: n }` and `expected` is Present with `destination` resolved by `type_reference_declaration_ref`:
 1. `kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: destination)`.
 2. `Found { row }` and `kernel_grounding_admits(row, n)` -> new `LiteralBoundary` arm `LiteralBoundaryGrounded { destination_type: exp }`; `infer_expr_body` keeps the `ExprLiteral` node but sets `inferred = Resolved { destination_type }` (typed AS the carrier; no image, no elaboration: the carrier realizes as the kernel value, per the KernelGrounding comment).
-3. `Found` and not admitted -> `LiteralBoundaryRefused` with a message derived from the row (carrier + extent), e.g. `-5` at std.nat Nat.
+3. `Found` and not admitted -> not decided here (no refusal arm, see the E1b producer search below): it keeps the homomorphism path and the inhabitance judgment.
 4. `Absent` -> existing path unchanged (no row = no grounded carrier, e.g. String, user types, widths). `Ambiguous` -> refuse as `HomomorphismDuplicated` does (typed, located).
 5. Expected-absent (`Absent`) and Optional-cardinality expected stay Plain (Int), as now.
 Consequence: the literal denotes a Nat before inhabitance sees it, so `alias_identity_in_judgment` answers Inhabits and E1 can delete `declared_realizes_as_kernel_numeric`; an Int-typed VALUE no longer matches (it reaches `grounded_cast_verdict`/crossing, which refuses Int -> Nat as `ExtentNotIncluded`). `literal_introduction_type_mismatch`'s LitInt arm stays false (the literal is now typed correctly, so there is nothing for it to add); it must not grow a Nat arm of its own.
@@ -25,7 +25,7 @@ Open point to measure before E1 (not guessable): every one of the 33 sites must 
 
 ## 4. Witness cells
 int_argument_at_nat_parameter_witness (origin/int-at-nat-red):
-- `a_negative_literal_at_a_nat_parameter_must_refuse`: RED today, GREEN by step 3 above (the row's extent, not a local check).
+- `a_negative_literal_at_a_nat_parameter_must_refuse`: RED today. Re-attributed: `-5` is Neg(LitInt 5), Q1e types Neg as Int and E1 deletes the numeric shortcut, so it turns green at Q1e+E1 via the ordinary Int-at-Nat refusal, not via E1b.
 - `a_non_negative_literal_at_a_nat_parameter_is_accepted`: control, must stay green (step 2).
 - `a_nat_value_at_an_int_parameter_is_accepted` (Nat -> Int): control, must stay green; it goes through `kernel_grounding_crossing` (CrossingTotalWidening), untouched.
 - `an_int_value_at_a_nat_parameter_must_refuse` (E1 cell, not E1b): stays RED until E1 removes the numeric arm.
@@ -53,7 +53,7 @@ PASSES
 
 OMITS (each is a site E1 breaks: prerequisite of E1, to be given a real expected position or a typed judgment, not worked around)
 1. Builtin call arguments: sig is Absent for a builtin, so `resolved_formals` is empty, `has_formal` is false and `infer_call_arguments_generic_pass` passes `none`. Q1d's `builtin_call_application_plan` judges these arguments AFTER inference, from types, so a literal at a builtin Nat/Int-grounded param is Int. The builtin routes need the registry param type as `expected` first. (Also `declared_formal_authority_failed` path: `expected: none` for every argument.)
-2. Calls whose formal authority failed or a callable has a lambda argument with no sig: `infer_expr_body` arg folds (`expected: none`; first argument and remaining).
+2. DECLARED RESIDUAL (not wired). (a) A call whose formal authority failed has no formal to pass: the path ends in InternalError, so there is no expected type to supply. (b) The sig-less-lambda path was over-listed: its receiver is not a declared position, and the remaining arguments go through `infer_method_args_with_fold`, a PASSES route.
 3. Binary-operator operands: `infer_binop_operands` (all four sites `none`). `n + 1` at a Nat return/param is a computed Int today admitted only by the numeric arm. This is the largest class: E1 cannot refuse Int at Nat there without a decision on arithmetic over grounded carriers (own prerequisite; the crossing authority has no operator rule).
 4. Unary operand, index base/key, slice bounds, for-each collection/body, string-interpolation parts, call receiver, field-access base, match scrutinee and guards: `infer_expr_body` with `none`. These are not grounded declared positions (nothing declares a carrier), so a literal there being Int is correct; listed so the omission is a decision, not an oversight. An index or slice bound of Nat type (`xs[3]`) is the only one that could become a grounded position; its formal is in the container model, not here.
 5. Properties/config: `infer_property_values`, `infer_service_config_properties`, `infer_transport_node` (`none`): service/transport property values never carry a grounded declared type today.
@@ -61,4 +61,9 @@ OMITS (each is a site E1 breaks: prerequisite of E1, to be given a real expected
 7. Defaults: a parameter default (`param_node_default_value`) is only checked for presence in `direct_call_shape_diags`; its value expression is not inferred against the parameter type by a fn I could find. Needs confirming by execution before E1: if the default is never type-judged, it is an OMIT of the "never judged" kind rather than a break.
 Unannotated non-tail let, lambda bodies without a declared return (`body_expected` only when declared), and fold init (`extract_fold_init_info` passes the OUTER expected, not the formal) are also not formal-directed.
 
-Net prerequisites for E1, in order: (a) builtin argument `expected` from the registry parameter type (Q1d), (b) a decision for arithmetic operands/results over grounded carriers (OMIT 3), (c) the record-field `ident_span` gate (record sub-shape), (d) confirm defaults (OMIT 7). The 33 direct-call sites are PASSES; the remaining breaks are outside them.
+Net prerequisites for E1, in order: (a) builtin argument `expected` from the registry parameter type (Q1d), (b) a decision for arithmetic operands/results over grounded carriers (OMIT 3), (c) the record-field gate (record sub-shape; addressed by route (4): `infer_record_lit_structural` now passes the field type), (d) confirm defaults (OMIT 7). The 33 direct-call sites are PASSES; the remaining breaks are outside them.
+
+
+## E1b producer search (why E1b has no refusal arm)
+
+No source form produces a negative LitInt at Nat: the tokenizer never puts a minus in a ShLitInt; `parse_prefix` (ShMinus) gives Neg over the operand; normalize and infer fold no Neg; the only negative-LitInt constructor, `grounded_signed_construct`, is typed at Int, never Nat. A refusal arm whose RED is not authorable is a decoration (DESIGN section 4b), so E1b keeps only the typing half.
