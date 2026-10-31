@@ -9,7 +9,7 @@ import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_exit, total_blocking_census, CensusVerdict }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, SectionObservedComplete, SectionCompletionUnobservable }
 import std.durable_append_log {
-  AppendFraming,
+  AppendFraming, InPlaceRecordFile, AppendObservation, StreamObserved, InPlaceRecordObserved, InPlaceRecordObservation, InPlaceRecordAbsent, InPlaceRecordDecoded, InPlaceRecordUndecodable, append_readback,
   AppendLogHead, NewlineDelimitedStream, RecordPerGeneration, AppendExpectation, AppendExpected, append_log_expectation,
   AppendStreamObservation, AppendWriterStanding, WriterHoldsWindow, WriterWindowReleased, WriterStandingUnobserved,
   AppendLogReadback, AppendLogSettled, AppendLogOpenPrefix, AppendLogTornTail, AppendLogStandingUnobserved,
@@ -91,15 +91,53 @@ test fn an_unobserved_writer_standing_is_neither_settled_nor_open() -> Bool {
   }
 }
 
-// THE WIRE MEMBER IS WRITTEN IN PLACE (harness_turn Filesystem.Write, no rename), so it is NOT atomic per record:
-// a round file the worker was killed inside reads as a torn tail exactly as an events stream does, and a record
-// that is not newline-terminated is refused, never presented as a round. FOREIGN-WRITTEN: bytes a principal
-// other than the declared one appended carry no terminator-bounded record the owner wrote, and the same law
-// refuses them while the window is released.
-test fn a_torn_wire_round_is_refused_after_the_window_releases() -> Bool {
-  match append_stream_readback(observed: obs(records: [], settled: 0, tail: 9), standing: WriterWindowReleased {}) {
-    AppendLogTornTail { complete_records: _, torn_bytes: t, head: _ } => t.count == 9
+// The wire member is written in place (harness_turn Filesystem.Write, no rename): it is a single torn-capable
+// record file, framed InPlaceRecordFile, and its decoder is the reader's. Bytes it does not accept are refused.
+// THE WIRE MEMBER'S DECLARED DISPOSITION, TAKEN THROUGH ITS READBACK. The slot is the one the census declares
+// for AttemptDirectoryWire (harness_turn writes its round files in place, so they are torn-capable), and the
+// control reads a truncated round through THAT slot's framing: a census that declared RecordPerGeneration
+// would read the same bytes as unreadable, not as the torn-tail refusal.
+fn census_framing_of(member: String) -> AppendFraming? {
+  match filter(append_log_census_slots(), sl => (sl.member as String) == member) {
+    Cons { head: sl, tail: _ } => Present { value: sl.framing }
+    Empty {} => Absent
+  }
+}
+
+test fn a_truncated_wire_round_is_refused_through_the_census_framing() -> Bool {
+  match census_framing_of(member: "AttemptDirectoryWire") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordUndecodable { bytes: bytes(n: 9) } }, standing: WriterWindowReleased {}) {
+      AppendLogTornTail { complete_records: _, torn_bytes: t, head: _ } => t.count == 9
+      _ => false
+    }
+  }
+}
+
+test fn a_whole_wire_round_reads_settled_through_the_census_framing() -> Bool {
+  match census_framing_of(member: "AttemptDirectoryWire") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordDecoded { record: "{}", bytes: bytes(n: 2) } }, standing: WriterWindowReleased {}) {
+      AppendLogSettled { records: _, head: h } => h.record_count == 1
+      _ => false
+    }
+  }
+}
+
+test fn a_whole_or_absent_framing_does_not_read_undecodable_bytes_as_torn() -> Bool {
+  match append_readback(framing: RecordPerGeneration {}, observation: InPlaceRecordObserved { record: InPlaceRecordUndecodable { bytes: bytes(n: 9) } }, standing: WriterWindowReleased {}) {
+    AppendLogUnreadable { cause: _ } => true
     _ => false
+  }
+}
+
+test fn an_events_member_declared_a_stream_refuses_a_record_observation() -> Bool {
+  match census_framing_of(member: "AttemptWorkerEvents") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordAbsent {} }, standing: WriterWindowReleased {}) {
+      AppendLogUnreadable { cause: _ } => true
+      _ => false
+    }
   }
 }
 

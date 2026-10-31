@@ -3,7 +3,7 @@ module std.durable_append_log
 import std.types { NonEmptyStr, String, Bool, Int, List, list_length }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set {
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasUnreadableSlot, CasUnreadableMalformed,
@@ -36,9 +36,13 @@ import std.durable_exclusive_hold {
 //   RecordPerGeneration   the record is one generation; it is whole or absent (create-once commit).
 //   NewlineDelimitedStream the record is the bytes through a terminating line feed; a record without its
 //                         terminator is NOT a record, it is a tail.
+//   InPlaceRecordFile     the file is ONE record written in place by its writer (no rename, no create-once
+//                         publish): it can be observed torn, and it is whole only if the OWNER'S decoder
+//                         accepts the bytes. No terminator is assumed, so none is required.
 type AppendFraming
   = RecordPerGeneration
   | NewlineDelimitedStream
+  | InPlaceRecordFile
 
 // The head a reader can state without interpreting a record: how many whole records, how many bytes.
 type AppendLogHead {
@@ -108,6 +112,60 @@ fn append_stream_head(observed: AppendStreamObservation) -> AppendLogHead? {
   match checked_int_to_nat(n: list_length(items: observed.complete_records)) {
     Present { value: n } => Present { value: AppendLogHead { record_count: n, byte_length: observed.settled_bytes } }
     Absent => Absent
+  }
+}
+
+// WHAT A READER OF ONE RECORD FILE OBSERVED: nothing, bytes the owner's decoder accepted, or bytes it did not.
+// The decoder is the log owner's (a codec is a value here, as for every record), so "decoded" is the one
+// completeness evidence a file with no terminator can offer.
+type InPlaceRecordObservation
+  = InPlaceRecordAbsent
+  | InPlaceRecordDecoded { record: String, bytes: ByteSize }
+  | InPlaceRecordUndecodable { bytes: ByteSize }
+
+type AppendObservation
+  = StreamObserved { stream: AppendStreamObservation }
+  | InPlaceRecordObserved { record: InPlaceRecordObservation }
+
+// THE READBACK LAW PER FRAMING. The observation's shape must be the one the framing declares; a different
+// shape is a refusal, never a reinterpretation. A RecordPerGeneration member is whole-or-absent by its commit,
+// so undecodable bytes in one are a violated promise (unreadable), where an InPlaceRecordFile can legitimately
+// be torn and reads as the torn-tail refusal.
+fn append_readback(framing: AppendFraming, observation: AppendObservation, standing: AppendWriterStanding) -> AppendLogReadback {
+  match observation {
+    StreamObserved { stream: o } => match framing {
+      NewlineDelimitedStream => append_stream_readback(observed: o, standing: standing)
+      _ => append_observation_shape_refused()
+    }
+    InPlaceRecordObserved { record: r } => match framing {
+      NewlineDelimitedStream => append_observation_shape_refused()
+      InPlaceRecordFile => append_record_readback(observed: r, standing: standing, tearable: true)
+      RecordPerGeneration => append_record_readback(observed: r, standing: standing, tearable: false)
+    }
+  }
+}
+
+fn append_observation_shape_refused() -> AppendLogReadback {
+  AppendLogUnreadable { cause: CasUnreadableMalformed { detail: "observation shape does not match the declared framing" as NonEmptyStr } }
+}
+
+fn append_record_readback(observed: InPlaceRecordObservation, standing: AppendWriterStanding, tearable: Bool) -> AppendLogReadback {
+  let empty = AppendLogHead { record_count: 0, byte_length: byte_size(count: 0) }
+  match standing {
+    WriterStandingUnobserved { cause: c } => AppendLogStandingUnobserved { cause: c }
+    WriterHoldsWindow { owner: o } => match observed {
+      InPlaceRecordDecoded { record: r, bytes: b } => AppendLogOpenPrefix { records: [r], head: AppendLogHead { record_count: 1, byte_length: b }, writer: o }
+      _ => AppendLogOpenPrefix { records: [], head: empty, writer: o }
+    }
+    WriterWindowReleased => match observed {
+      InPlaceRecordAbsent => AppendLogSettled { records: [], head: empty }
+      InPlaceRecordDecoded { record: r, bytes: b } => AppendLogSettled { records: [r], head: AppendLogHead { record_count: 1, byte_length: b } }
+      InPlaceRecordUndecodable { bytes: b } => if tearable {
+        AppendLogTornTail { complete_records: [], torn_bytes: b, head: empty }
+      } else {
+        AppendLogUnreadable { cause: CasUnreadableMalformed { detail: "a whole-or-absent record is undecodable" as NonEmptyStr } }
+      }
+    }
   }
 }
 
