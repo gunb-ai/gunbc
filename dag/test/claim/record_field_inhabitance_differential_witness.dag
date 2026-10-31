@@ -1,0 +1,54 @@
+module test.claim.record_field_inhabitance_differential_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_exit }
+import std.process { ProcessExit }
+
+// DIFFERENTIAL CELLS FOR THE RECORD-FIELD POSITION (v1.compiler.infer infer_record_lit_structural,
+// PositionRecordLiteralField). The field chain admits through node_type_compatible and then falls
+// through five local arms to an empty final else, so a NON-LITERAL value whose type is incompatible
+// with the declared field type and matches none of those arms is accepted. The relation that decides
+// the same question at the call-argument position, declared_type_inhabitance, refuses both specimens
+// (RefusedCollectionAtEstablishedIdentity, RefusedProductAtScalar). The value reaches the field
+// through a parameter, never a record or list literal, so structured_application_site_type_mismatch
+// (record-literal actuals only) cannot be what refuses it.
+//
+// STATUS: AUTHORED AGAINST main, NOT YET RUN. The two RED cells are expected to FAIL on main until the
+// field chain is replaced by declared_type_obligation_diags; the four controls are expected to hold on
+// main and must keep holding after. No cell here has been executed.
+
+data collection_at_product_field_source: String = "module test.claim.tmp_record_field_probe\nimport std.types { Int, List }\ntype RfA { a: Int }\ntype RfHolderL { f: RfA }\nfn rf_bad(xs: List<Int>) -> RfHolderL { RfHolderL { f: xs } }\n"
+
+data product_at_scalar_field_source: String = "module test.claim.tmp_record_field_probe\nimport std.types { Int }\ntype RfA { a: Int }\ntype RfHolderI { f: Int }\nfn rf_bad(a: RfA) -> RfHolderI { RfHolderI { f: a } }\n"
+
+data same_product_field_source: String = "module test.claim.tmp_record_field_probe\nimport std.types { Int }\ntype RfA { a: Int }\ntype RfHolderL { f: RfA }\nfn rf_ok(a: RfA) -> RfHolderL { RfHolderL { f: a } }\n"
+
+data transparent_alias_field_source: String = "module test.claim.tmp_record_field_probe\nimport std.types { Int }\ntype RfA { a: Int }\ntype RfAlias = RfA\ntype RfHolderL { f: RfAlias }\nfn rf_ok(a: RfA) -> RfHolderL { RfHolderL { f: a } }\n"
+
+data non_negative_int_at_nat_field_source: String = "module test.claim.tmp_record_field_probe\nimport std.nat { Nat }\nimport std.integer { NonNegativeInt }\ntype RfHolderN { f: Nat }\nfn rf_ok(n: NonNegativeInt) -> RfHolderN { RfHolderN { f: n } }\n"
+
+data optional_field_present_and_none_source: String = "module test.claim.tmp_record_field_probe\nimport std.types { Int }\nimport std.optional { Present }\ntype RfA { a: Int }\ntype RfHolderO { f: RfA? }\nfn rf_present(a: RfA) -> RfHolderO { RfHolderO { f: Present { value: a } } }\nfn rf_none() -> RfHolderO { RfHolderO { f: none } }\n"
+
+test fn a_collection_value_at_a_product_field_is_refused_as_not_inhabited() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: collection_at_product_field_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n > 0 }))
+}
+
+test fn a_product_value_at_a_scalar_field_is_refused_as_not_inhabited() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: product_at_scalar_field_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n > 0 }))
+}
+
+test fn the_same_product_at_its_field_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: same_product_field_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_transparent_alias_of_the_declared_product_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: transparent_alias_field_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_non_negative_int_at_a_nat_field_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: non_negative_int_at_nat_field_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_present_and_a_none_at_an_optional_field_are_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: optional_field_present_and_none_source), holds: fn(n) { n == 0 }))
+}
