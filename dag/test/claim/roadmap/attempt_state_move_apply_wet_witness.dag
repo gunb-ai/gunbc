@@ -278,14 +278,39 @@ test fn a_flat_entry_appearing_between_plan_and_readback_refuses_the_move() -> B
   string_contains(s: refusal, pattern: "left legacy entries") && string_contains(s: refusal, pattern: "attempt-identity-c-n6")
 }
 
-// ARM 12, RED: A CARRIED ENTRY THE TRANSPORT WOULD TRIM IS NOT CARRIED. A receipt ending in a newline reads back one
-// byte short through the exec transport; a CarryBytes move refuses it and the receipt stays.
-test fn a_carry_bytes_entry_the_transport_would_trim_is_refused_and_stays() -> Bool {
-  let i = fresh_instance(tag: "trim")
-  let ready = plant_receipt(i: i, bytes: "{\"schema\": \"dogfood-start-receipt/v6\"}\n")
+fn carried_to(i: HostDashboardInstance) -> String {
+  Filesystem.Read(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String, "/dogfood-start-receipt.1"], "")).content
+}
+
+// ARM 12, GREEN: A CARRIED ENTRY ENDING IN A NEWLINE (and one holding non-ASCII text) IS CARRIED BYTE FOR BYTE. The
+// transport trims the newline from what cat returns; the tail is recovered from an od dump and the slot is proved
+// equal to the legacy entry by sha256, so the flat entry is removed and the slot holds exactly the legacy bytes.
+test fn a_carry_bytes_entry_with_a_trailing_newline_or_non_ascii_text_is_carried_byte_equal() -> Bool {
+  let nl_bytes = "{\"schema\": \"dogfood-start-receipt/v6\"}\n"
+  let nl = fresh_instance(tag: "trimnl")
+  let nl_ready = plant_receipt(i: nl, bytes: nl_bytes)
+  let nl_moved = move_of(i: nl, row: dogfood_start_slots.move)
+  let uni_bytes = "{\"note\": \"café — 日本\"}\n\n"
+  let uni = fresh_instance(tag: "trimuni")
+  let uni_ready = plant_receipt(i: uni, bytes: uni_bytes)
+  let uni_moved = move_of(i: uni, row: dogfood_start_slots.move)
+  nl_ready && nl_moved.success && uni_ready && uni_moved.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: nl)).entries, pattern: "dogfood-start-receipt.")
+    && carried_to(i: nl) == nl_bytes
+    && !string_contains(s: Filesystem.List(path: parent_of(i: uni)).entries, pattern: "dogfood-start-receipt.")
+    && carried_to(i: uni) == uni_bytes
+}
+
+// ARM 12b, RED: a carried entry ending in whitespace the transport would trim and that is NOT newlines (here CR LF
+// and trailing spaces) cannot be carried faithfully: the move refuses BEFORE writing, the receipt stays, and no slot
+// exists.
+test fn a_carry_bytes_entry_ending_in_non_newline_whitespace_is_refused_before_any_write() -> Bool {
+  let i = fresh_instance(tag: "trimcr")
+  let ready = plant_receipt(i: i, bytes: "{\"schema\": \"dogfood-start-receipt/v6\"}  \r\n")
   let refused = move_of(i: i, row: dogfood_start_slots.move)
-  ready && !refused.success && string_contains(s: refused.stderr, pattern: "not read faithfully")
+  ready && !refused.success && string_contains(s: refused.stderr, pattern: "other than newlines")
     && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.1")
+    && string_length(s: Filesystem.List(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String], "") ).entries) == 0
 }
 
 fn move_with_fence(i: HostDashboardInstance, fence: LegacyWriterFence) -> DashboardExecResult {

@@ -78,7 +78,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, LegacyWriterUnits, LegacyWriterUndeclared, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -967,19 +967,43 @@ fn dashboard_apply_provision_op(
                   // moved kept and a rerun converging.
                   let drift_entry = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
                   let old = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", legacy])
-                  // The transport trims trailing whitespace from stdout, so a row that carries the bytes themselves
-                  // proves the read was faithful against the file's own size, and refuses otherwise: a carried
-                  // receipt never silently loses its tail.
+                  // The transport trims trailing whitespace from stdout, so the text cat returns is not the file. A row
+                  // that carries the bytes themselves recovers the trimmed tail from a byte-per-line hex dump (od, ASCII,
+                  // so nothing is trimmed away) when it is newlines only, and refuses before writing when it is any other
+                  // whitespace. Equality is then proved bytes to bytes: the sha256 of the legacy entry against the sha256
+                  // of the slot, read on the target, never the trimmed text and never a character count.
+                  let hex = match row.content {
+                    HoldPayload => dashboard_exec_ok(stdout: "")
+                    CarryBytes => dashboard_target_exec(instance: instance, program: "/usr/bin/od" as FilePath, args: ["-An", "-v", "-tx1", "-w1", "--", legacy])
+                  }
+                  let tail = fold(split(s: hex.stdout, delimiter: "\n"), init: "", f: (acc, tok) => {
+                    let b = trim(s: tok)
+                    if b == "0a" {
+                      join([acc, "\n"], "")
+                    } else if b == "09" || b == "0b" || b == "0c" || b == "0d" || b == "20" {
+                      join([acc, "?"], "")
+                    } else {
+                      ""
+                    }
+                  })
+                  let src_digest = match row.content {
+                    HoldPayload => ""
+                    CarryBytes => dashboard_target_digest(instance: instance, path: legacy)
+                  }
                   let sized = match row.content {
                     HoldPayload => dashboard_exec_ok(stdout: "")
-                    CarryBytes => {
-                      let size = dashboard_target_exec(instance: instance, program: "/usr/bin/stat" as FilePath, args: ["-c", "%s", "--", legacy])
-                      if size.success && size.stdout == to_string(value: string_length(s: old.stdout)) {
-                        dashboard_exec_ok(stdout: "")
+                    CarryBytes =>
+                      if !hex.success || src_digest == "" {
+                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be hashed or dumped on the target; not carried, nothing removed"], ""))
+                      } else if string_contains(s: tail, pattern: "?") {
+                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " ends in whitespace other than newlines, which the transport would trim; not carried, nothing removed"], ""))
                       } else {
-                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " was not read faithfully (size ", size.stdout, " vs ", to_string(value: string_length(s: old.stdout)), " bytes read); not carried, nothing removed"], ""))
+                        dashboard_exec_ok(stdout: "")
                       }
-                    }
+                  }
+                  let carried = match row.content {
+                    HoldPayload => old.stdout
+                    CarryBytes => join([old.stdout, tail], "")
                   }
                   if drift_entry != "" {
                     dashboard_exec_refused(detail: join([drift_entry, "; the move stopped before ", legacy, "; entries already moved stay, a rerun converges"], ""))
@@ -988,12 +1012,12 @@ fn dashboard_apply_provision_op(
                   } else if !sized.success {
                     sized
                   } else {
-                    let expected = move_expected_content(row: row, legacy_bytes: old.stdout)
+                    let expected = move_expected_content(row: row, legacy_bytes: carried)
                     let placed = if e.slot_present {
                       let had = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
                       if !had.success {
                         dashboard_exec_refused(detail: join(["the slot ", slot, " a previous run left could not be read: ", had.stderr], ""))
-                      } else if had.stdout != expected {
+                      } else if !dashboard_slot_equals(instance: instance, row: row, slot: slot, text: had.stdout, expected: expected, src_digest: src_digest) {
                         dashboard_exec_refused(detail: join(["the slot ", slot, " exists with bytes that differ from the legacy entry; refused, nothing removed"], ""))
                       } else {
                         dashboard_exec_ok(stdout: "slot already written")
@@ -1004,7 +1028,7 @@ fn dashboard_apply_provision_op(
                           let back = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
                           if !back.success {
                             dashboard_exec_refused(detail: join(["the slot ", slot, " was written but could not be read back: ", back.stderr], ""))
-                          } else if back.stdout != expected {
+                          } else if !dashboard_slot_equals(instance: instance, row: row, slot: slot, text: back.stdout, expected: expected, src_digest: src_digest) {
                             dashboard_exec_refused(detail: join(["the slot ", slot, " read back different bytes than the legacy entry; the flat entry is kept"], ""))
                           } else {
                             dashboard_exec_ok(stdout: "slot written")
@@ -1087,6 +1111,28 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
         LegacyWriterNotExcluded { reason: why } => why
         LegacyWriterExcluded => ""
       }
+  }
+}
+
+// sha256 of a file read on the target ("" when it cannot be read): the first word of sha256sum's ASCII output.
+fn dashboard_target_digest(instance: HostDashboardInstance, path: String) -> String {
+  let r = dashboard_target_exec(instance: instance, program: "/usr/bin/sha256sum" as FilePath, args: ["--", path])
+  if r.success {
+    fold(split(s: trim(s: r.stdout), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  } else {
+    ""
+  }
+}
+
+// Whether a slot holds what the row demands: a held payload by its text, carried bytes by digest against the
+// legacy entry's (an empty digest never equals anything).
+fn dashboard_slot_equals(instance: HostDashboardInstance, row: MoveRow, slot: String, text: String, expected: String, src_digest: String) -> Bool {
+  match row.content {
+    HoldPayload => text == expected
+    CarryBytes => {
+      let d = dashboard_target_digest(instance: instance, path: slot)
+      d != "" && d == src_digest
+    }
   }
 }
 
