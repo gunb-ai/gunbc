@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_parameter_default_value_is_never_judged_against_its_parameter_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_parameter_default_value_is_never_judged_against_its_parameter_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_parameter_default_value_is_never_judged_against_its_parameter_type" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of judging a parameter default value against the parameter's declared type with the same declared-type obligation that judges a call argument, refusing a default that does not inhabit it" } },
+
+  receipts: [
+    "**a parameter default value is never judged against its parameter type** (`fn f(v: Nat = \"x\") -> Nat { v }` is accepted: the default is a value of the wrong kind and nothing refuses or warns, so every call that omits the argument receives it).",
+
+    "INVALID STATE: a default whose value does not inhabit its parameter's declared type, accepted with no diagnostic that differs from a correct default.",
+
+    "SPECIMEN, found 2026-10-31 by execution (sunny-newt-661, route 5 of the Q1b E1b literal-route census). Command: `gunbc run --source-root dag --entry <probe> --function <fn>` over a probe module that builds `module dp.p ... fn f(v: Nat = <default>) -> Nat { v }` and reads `compile_dag_diagnostic_census` (census_total_count, census_blocking_rows, CensusNotRunnable). Revision: kh/q1d-builtin-parameter-obligation e0dfd7aeb6d, binary sha256 prefix f6c9e59c3d84 (built from tree dd798283). Defaults tried: `3` (control), `\"x\"`, `0 - 5`, `Wrap { n: 1 }`. Output sums, identical across all four: blocking-rows-zero true, total-rows-zero false (the same non-blocking baseline rows as the control), not-runnable false. 4 defaults x 3 cells = 12 cells; the three wrong-kind defaults are indistinguishable from the control.",
+
+    "WHY IT SURVIVES: argument positions are judged by direct_call_argument_inhabitance_diags (and, since Q1d, builtin arguments); the default expression is never routed through it, so it is a fourth unjudged route beside the literal-introduction routes. E1b and E1 do not reach it: they act where an expected type is supplied, and a default is never given one.",
+
+    "NEXT-RUNG TRIGGER: supply the parameter's declared type as `expected` to the default expression and run the argument obligation on it. RED: the four defaults above; positive control: `3`."
+  ],
+
+  evidence: [],
+}
