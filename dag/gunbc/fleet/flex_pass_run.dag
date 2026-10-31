@@ -421,9 +421,14 @@ fn flex_carry_cooldown_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [asked, until] => FlexCarryCooldown { asked_at: asked, until: until }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: asked } =>
+          match ns.skip(n: 1).first() {
+            Absent => flex_carry_unread_line(line: line)
+            Present { value: until } =>
+              FlexCarryCooldown { asked_at: asked, until: until }
+          }
       }
   }
 }
@@ -432,9 +437,14 @@ fn flex_carry_loading_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [id, at] => FlexCarryLoading { instance_id: id, first_sampled_loading_ms: at }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: id } =>
+          match ns.skip(n: 1).first() {
+            Absent => flex_carry_unread_line(line: line)
+            Present { value: at } =>
+              FlexCarryLoading { instance_id: id, first_sampled_loading_ms: at }
+          }
       }
   }
 }
@@ -443,9 +453,18 @@ fn flex_carry_answered_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 2, arity: 3) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [id, machine, ask] => FlexCarryAnswered { instance_id: id, machine_id: machine, ask_id: ask }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: id } =>
+          match ns.skip(n: 1).first() {
+            Absent => flex_carry_unread_line(line: line)
+            Present { value: machine } =>
+              match ns.skip(n: 2).first() {
+                Absent => flex_carry_unread_line(line: line)
+                Present { value: ask } =>
+                  FlexCarryAnswered { instance_id: id, machine_id: machine, ask_id: ask }
+              }
+          }
       }
   }
 }
@@ -454,9 +473,14 @@ fn flex_carry_lost_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [machine, ask] => FlexCarryLost { machine_id: machine, ask_id: ask }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: machine } =>
+          match ns.skip(n: 1).first() {
+            Absent => flex_carry_unread_line(line: line)
+            Present { value: ask } =>
+              FlexCarryLost { machine_id: machine, ask_id: ask }
+          }
       }
   }
 }
@@ -465,9 +489,14 @@ fn flex_carry_refused_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [machine, ask] => FlexCarryRefused { machine_id: machine, ask_id: ask }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: machine } =>
+          match ns.skip(n: 1).first() {
+            Absent => flex_carry_unread_line(line: line)
+            Present { value: ask } =>
+              FlexCarryRefused { machine_id: machine, ask_id: ask }
+          }
       }
   }
 }
@@ -476,9 +505,10 @@ fn flex_carry_trailer_line(line: String) -> FlexCarryLine {
   match flex_carry_ints(line: line, keyword_tokens: 1, arity: 1) {
     Absent => flex_carry_unread_line(line: line)
     Present { value: ns } =>
-      match ns {
-        [n] => FlexCarryTrailer { count: n }
-        _ => flex_carry_unread_line(line: line)
+      match ns.skip(n: 0).first() {
+        Absent => flex_carry_unread_line(line: line)
+        Present { value: n } =>
+          FlexCarryTrailer { count: n }
       }
   }
 }

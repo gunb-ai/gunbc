@@ -543,6 +543,13 @@ test fn a_carry_cut_off_anywhere_reads_unread_and_the_intact_file_still_loads() 
     && !w_loads(content: wrong_count)
 }
 
+fn w_unread(l: String) -> Bool {
+  match flex_carry_line(line: l) {
+    FlexCarryLineUnread { text: _ } => true
+    _ => false
+  }
+}
+
 fn w_loads(content: String) -> Bool {
   match flex_carry_gate(content: content) {
     FlexCarryLoaded { carry: _ } => true
@@ -554,12 +561,11 @@ fn w_loads(content: String) -> Bool {
 // THE GRAMMAR IS EXACT: an extra token, a non-integer token, a doubled space and a repeated standing line
 // each make the carry unread rather than a shorter or longer record.
 test fn the_carry_grammar_is_exact_extra_tokens_junk_and_duplicates_read_unread() -> Bool {
-  let unread = (l: String) => match flex_carry_line(line: l) { FlexCarryLineUnread { text: _ } => true  _ => false }
-  unread("loading 42 1792008000000 7")
-    && unread("loading 42 17x2")
-    && unread("loading  42 1792008000000")
-    && unread("cooldown 1 2 3")
-    && unread("end 3 4")
+  w_unread("loading 42 1792008000000 7")
+    && w_unread("loading 42 17x2")
+    && w_unread("loading  42 1792008000000")
+    && w_unread("cooldown 1 2 3")
+    && w_unread("end 3 4")
     && !w_loads(content: w_sealed(lines: [flex_carry_header, flex_carry_line_standing_none, flex_carry_line_standing_unknown]))
     && w_loads(content: w_sealed(lines: [flex_carry_header, flex_carry_line_standing_none]))
 }
