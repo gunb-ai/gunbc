@@ -300,34 +300,78 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
   refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
 }
 
-// SUBTRACTION LEAVES A REFINEMENT. A refinement row says every to_type value IS a from_type value
-// and not the converse, so the refinement is closed under whatever its predicate is closed under
-// and no more: a Nat is closed under + and * (it is a commutative semiring) but `a - b` over two
-// Nats is an arbitrary Int. The difference is therefore typed at the row's SOURCE type, read from
-// the same rows that make `n as Nat` a refinement cast -- not a second rule beside them. The
-// operand is matched by its RESOLVED DECLARATION, never by its spelling: v2.std.nat.Nat shares the
-// spelling, is not a refinement of Int, and subtracts through its own typed nat_sub. Absent means
-// the operand's declaration is the target of no refinement row, and the operand's own algebra
-// decides as before.
-// ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
-// source types would make the difference's type depend on row ORDER, which is not a fact about
-// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
-// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
-type SubtractionRefinement
-  = SubtractionStaysInOperandAlgebra
-  | SubtractionEscapesTo { from_type: String }
-  | SubtractionRefinementAmbiguous { from_types: List<String> }
+// ARITHMETIC OVER DECLARED CARRIERS (Q1e), for the operators v1.compiler.types arithmetic_requirement declares
+// (Add, Mul, Sub, unary Neg; Div and Mod are the declared stall division_and_remainder_typed_from_left_operand_stall).
+// The result carrier of such an operator is DERIVED, never read from
+// the left operand and never from a name-preference table: the candidates are the operands' declared
+// carriers closed upward under the implicit-safe injections the conversion plan rows declare
+// (InjectionPhase), restricted to the carriers whose algebra profile defines the operator's field
+// (std.algebra algebra_carriers); the result is the UNIQUE MINIMAL candidate, and no candidate or several
+// incomparable minimal ones refuse. This replaces the old subtraction rule that read the Int->Nat PROOF
+// cast table as a type-escape oracle: that table states which conversion is refused, not which carrier an
+// operation lands in. Nat - Nat is an Int because Nat's profile (a semiring) does not define negate and Int
+// embeds Nat; nothing says "subtraction escapes".
+type ArithmeticCarrierSelection
+  = ArithmeticCarrierSelected { carrier: DeclarationRef }
+  | ArithmeticNoCarrier
+  | ArithmeticCarrierAmbiguous { candidates: List<DeclarationRef> }
 
-fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
-  let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
-  match hits |> first {
-    Absent => SubtractionStaysInOperandAlgebra
-    Present { value: r } =>
-      if (hits |> count) == 1 {
-        SubtractionEscapesTo { from_type: r.from_type }
-      } else {
-        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
-      }
+// The one projection of a plan onto its injection fields; every other phase has none.
+type InjectionFields {
+  source: DeclarationRef
+  target: DeclarationRef
+  safety: InjectionSafety
+}
+
+fn injection_of(plan: ConversionPlan) -> InjectionFields? {
+  match plan.phase {
+    InjectionPhase { source: sc, target: t, safety: sf } => Present { value: InjectionFields { source: sc, target: t, safety: sf } }
+    UnfoldPhase { row: _ } => none
+    InverseUnfoldPhase { row: _ } => none
+  }
+}
+
+fn injection_is_implicit_safe(plan: ConversionPlan) -> Bool {
+  match injection_of(plan: plan) {
+    Present { value: i } => i.safety.total && i.safety.exact && i.safety.pure && i.safety.consent_free
+    Absent => false
+  }
+}
+
+// The carriers an implicit-safe injection from `from` reaches that preserve every field in `preserved`
+// (the operator's positive fields: Add and Sub preserve add, Mul preserves mul, Neg none).
+fn injection_targets(rows: List<ConversionPlan>, from: DeclarationRef, preserved: List<String>) -> List<DeclarationRef> {
+  rows |> flat_map(r => match injection_of(plan: r) {
+    Present { value: i } =>
+      if injection_is_implicit_safe(plan: r) && declaration_ref_eq(a: i.source, b: from) && (preserved |> all(f => i.safety.preserves |> any(g => g == f))) { [i.target] } else { [] }
+    Absent => []
+  })
+}
+
+fn carrier_listed(xs: List<DeclarationRef>, d: DeclarationRef) -> Bool {
+  xs |> any(x => declaration_ref_eq(a: x, b: d))
+}
+
+// `right` Absent is the unary form. `definers` are the carriers (among any the caller may name) whose
+// profile defines the operator's field; a candidate outside it is never selected.
+fn select_arithmetic_carrier(
+  rows: List<ConversionPlan>,
+  left: DeclarationRef,
+  right: DeclarationRef?,
+  definers: List<DeclarationRef>,
+  preserved: List<String>
+) -> ArithmeticCarrierSelection {
+  let up_left = concat([left], injection_targets(rows: rows, from: left, preserved: preserved))
+  let up_right = match right {
+    Absent => up_left
+    Present { value: r } => concat([r], injection_targets(rows: rows, from: r, preserved: preserved))
+  }
+  let common = up_left |> filter(c => carrier_listed(xs: up_right, d: c) && carrier_listed(xs: definers, d: c))
+  let minimal = common |> filter(c => !(common |> any(d => !declaration_ref_eq(a: d, b: c) && carrier_listed(xs: injection_targets(rows: rows, from: d, preserved: preserved), d: c))))
+  match minimal |> first {
+    Absent => ArithmeticNoCarrier
+    Present { value: only } =>
+      if (minimal |> count) == 1 { ArithmeticCarrierSelected { carrier: only } } else { ArithmeticCarrierAmbiguous { candidates: minimal } }
   }
 }
 
@@ -360,9 +404,23 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
 // construction over validation). A composite plan -- several phases whose consecutive endpoints must
 // meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
 // exists until a row needs it.
+// THE IMPLICIT-SAFE CLAIMS A NUMERIC INJECTION DECLARES (ruling coercion_is_the_implicit_safe_subset: total,
+// exact, semantics-preserving, unique, pure, consent-free). Uniqueness is not a property of one row: it is
+// established by select_arithmetic_carrier, which refuses several minimal carriers. `preserves` names the
+// algebra fields (std.algebra template names) the injection commutes with, so a carrier reached through it
+// is admissible for an operator only when the operator's positive fields are listed.
+type InjectionSafety {
+  total: Bool
+  exact: Bool
+  preserves: List<String>
+  pure: Bool
+  consent_free: Bool
+}
+
 type ConversionPhase
   = UnfoldPhase { row: LiteralHomomorphism }
   | InverseUnfoldPhase { row: LiteralHomomorphism }
+  | InjectionPhase { source: DeclarationRef, target: DeclarationRef, safety: InjectionSafety }
 
 // A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
 // String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
@@ -410,6 +468,7 @@ fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
     InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    InjectionPhase { source: sc, target: _, safety: _ } => DeclaredCarrier { declaration: sc, element: none }
   }
 }
 
@@ -417,6 +476,7 @@ fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
     InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    InjectionPhase { source: _, target: t, safety: _ } => DeclaredCarrier { declaration: t, element: none }
   }
 }
 

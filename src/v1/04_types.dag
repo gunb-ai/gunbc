@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -17,6 +17,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
   AlgebraFieldTemplate,
+  algebra_carriers,
   kernel_algebra_profile,
   algebra_templates_for_profile
 }
@@ -24,7 +25,9 @@ import std.algebra {
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 
-import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
+import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, ArithmeticNoCarrier, ArithmeticCarrierAmbiguous, select_arithmetic_carrier, injection_targets }
+import gunbc.structural_realization_bindings { conversion_plan_rows, kernel_grounding_rows }
+import std.literal_elaboration { UnboundedIntegers }
 
 import v1.std.core { Unmarked,
   Node, make_param_node, param_node_type_expr,
@@ -1732,25 +1735,158 @@ type BinOpInferred {
   algebra_field: AlgebraFieldKind?
 }
 
-// The one reading of std.coercion's subtraction rows for an operand type: its resolved declaration,
-// then the three-valued answer. infer_binop_type_node types from it and the binop arm of infer
-// refuses on its Ambiguous arm, so the type and the diagnostic cannot disagree.
-fn subtraction_refinement_of(left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> SubtractionRefinement {
-  match type_reference_declaration_ref(n: left_type, source_indices: source_indices, env: env) {
-    Present { value: operand } => dag_subtraction_refinement(operand: operand)
-    Absent => SubtractionStaysInOperandAlgebra
+// THE OPERATOR'S REQUIREMENT ON A CARRIER: the std.algebra field the operation needs, and the positive fields an
+// implicit injection into that carrier must commute with (a subtraction needs the ring's negate, and the
+// operands must still add after the embedding). Operators outside this roster keep the operand-algebra
+// reading in infer_arithmetic_binop_type_node.
+type ArithmeticRequirement {
+  field: String
+  preserved: List<String>
+}
+
+fn arithmetic_requirement(op: BinOp) -> ArithmeticRequirement? {
+  match op {
+    Add => Present { value: ArithmeticRequirement { field: "add", preserved: ["add"] } }
+    Mul => Present { value: ArithmeticRequirement { field: "mul", preserved: ["mul"] } }
+    Sub => Present { value: ArithmeticRequirement { field: "negate", preserved: ["add"] } }
+    _ => none
   }
 }
 
-fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> BinOpInferred {
-  match op {
-    Sub =>
-      match subtraction_refinement_of(left_type: left_type, source_indices: source_indices, env: env) {
-        SubtractionEscapesTo { from_type: from_type } => BinOpInferred { result_type: nominal_type_ref(name: from_type), algebra_field: none }
-        SubtractionRefinementAmbiguous { from_types: _ } => BinOpInferred { result_type: error_type, algebra_field: none }
-        SubtractionStaysInOperandAlgebra => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+// algebra_carriers is keyed by the carrier's leaf name (AlgebraCarrier carries no declaration identity), so
+// this lookup is the table's own contract: a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat
+// only by the injection rows and operand declarations that feed the fold, which are compared by
+// declaration_ref_eq. Giving AlgebraCarrier a declaration identity is the climb gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall declares.
+fn carrier_in_algebra_table(carrier: DeclarationRef) -> Bool {
+  algebra_carriers() |> any(c => c.name == carrier.decl_name)
+}
+
+fn carrier_defines_field(carrier: DeclarationRef, field: String) -> Bool {
+  algebra_carriers() |> any(c => c.name == carrier.decl_name && (algebra_templates_for_profile(profile: c.profile) |> any(t => t.name == field)))
+}
+
+// THE CARRIER AN ARITHMETIC OPERAND DENOTES: its declaration, or -- for the kernel integer spelling, which
+// names no declaration -- the carrier gunbc.structural_realization_bindings kernel_grounding_rows grounds the
+// unbounded kernel integer in (std.integer Int). The same row the literal elaboration reads, so a kernel Int
+// operand meets the injection rows by identity rather than falling outside the fold.
+fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  // A `T where p` field is the carrier of T: the refinement narrows the value set, not the algebra.
+  if is_where_refinement_node(n: n) {
+    return match n.children |> first {
+      Present { value: base } => operand_carrier_ref(n: base, source_indices: source_indices, env: env)
+      Absent => none
+    }
+  }
+  match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 16) {
+        Present { value: kernel } =>
+          if kernel != "Int" { none } else {
+            match kernel_grounding_rows |> filter(g => match g.extent { UnboundedIntegers => true  _ => false }) |> first {
+              Present { value: g } => Present { value: g.carrier }
+              Absent => none
+            }
+          }
+        Absent => none
       }
-    _ => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+  }
+}
+
+// A type variable is instantiation-blind at this rung: an operand that is one keeps the operand-algebra reading
+// (gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall names the climb); any other operand with
+// no carrier beside one that has a carrier is refused, never typed from the operand that happens to be on the left.
+fn operand_is_type_variable(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: env) {
+    TypeReferenceIsTypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
+// The one reading of the carrier an arithmetic operator lands in, from the operands' DECLARATIONS: a
+// candidate is an operand's carrier or one an implicit-safe injection (conversion_plan_rows InjectionPhase)
+// reaches from it, kept when its algebra profile defines the field. Absent means an operand names no resolved
+// declaration, so the operand-algebra reading decides as before; two DIFFERENT resolved declarations of which one has no
+// algebra row are ArithmeticNoCarrier (refused), never the left operand's typing; the ambiguity arm is refused by the caller.
+fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
+  match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
+    Absent =>
+      match right_type {
+        Absent => none
+        Present { value: rt } =>
+          match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
+            Absent => none
+            Present { value: r } =>
+              if carrier_in_algebra_table(carrier: r) && !operand_is_type_variable(n: left_type, source_indices: source_indices, env: env) { Present { value: ArithmeticNoCarrier } } else { none }
+          }
+      }
+    Present { value: left } =>
+      let rows = conversion_plan_rows
+      let right = match right_type {
+        Absent => none
+        Present { value: rt } => operand_carrier_ref(n: rt, source_indices: source_indices, env: env)
+      }
+      let right_missing = match right_type {
+        Absent => false
+        Present { value: _ } => match right { Absent => true  Present { value: _ } => false }
+      }
+      let right_outside = match right { Absent => false  Present { value: r } => !carrier_in_algebra_table(carrier: r) }
+      let pair_differs = match right { Absent => false  Present { value: r } => !declaration_ref_eq(a: left, b: r) }
+      let one_outside = match right { Absent => false  Present { value: r } => right_outside || !carrier_in_algebra_table(carrier: left) }
+      let right_blind = match right_type { Absent => false  Present { value: rt } => operand_is_type_variable(n: rt, source_indices: source_indices, env: env) }
+      if (right_missing && carrier_in_algebra_table(carrier: left) && !right_blind) || (pair_differs && one_outside) { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_in_algebra_table(carrier: left) { none } else {
+        let named = match right { Absent => [left]  Present { value: r } => [left, r] }
+        let candidates = concat(named, named |> flat_map(d => injection_targets(rows: rows, from: d, preserved: requirement.preserved)))
+        let definers = candidates |> filter(d => carrier_defines_field(carrier: d, field: requirement.field))
+        Present { value: select_arithmetic_carrier(rows: rows, left: left, right: right, definers: definers, preserved: requirement.preserved) }
+      }
+  }
+}
+
+// The type node of a selected carrier: an operand's own node when the carrier is its declaration (so a
+// same-carrier operation is exactly the pre-existing answer), else the carrier's nominal reference.
+fn arithmetic_carrier_type(selected: DeclarationRef, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
+  let left_is = match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: selected)
+    Absent => false
+  }
+  if left_is { left_type } else {
+    let right_is = match right_type {
+      Absent => none
+      Present { value: rt } =>
+        match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
+          Present { value: d } => if declaration_ref_eq(a: d, b: selected) { Present { value: rt } } else { none }
+          Absent => none
+        }
+    }
+    match right_is { Present { value: rt } => rt  Absent => nominal_type_ref(name: selected.decl_name) }
+  }
+}
+
+fn infer_binop_type_node(op: BinOp, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> BinOpInferred {
+  match arithmetic_requirement(op: op) {
+    Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+    Present { value: req } =>
+      match arithmetic_carrier_selection(requirement: req, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env) {
+        Present { value: ArithmeticCarrierSelected { carrier: c } } =>
+          // the algebra field is read from the SELECTED carrier's own type, exactly as the same-carrier
+          // operation always did, so emission still receives the field that chooses the realization
+          infer_arithmetic_binop_type_node(op: op, left_type: arithmetic_carrier_type(selected: c, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env), source_indices: source_indices)
+        Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Present { value: ArithmeticNoCarrier } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+      }
+  }
+}
+
+// Unary minus: the same fold with one operand. -n for a Nat is the Int the embedding reaches (Nat defines no
+// negate), never the operand's own type.
+fn infer_neg_type_node(operand_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
+  match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: operand_type, right_type: none, source_indices: source_indices, env: env) {
+    Present { value: ArithmeticCarrierSelected { carrier: c } } => arithmetic_carrier_type(selected: c, left_type: operand_type, right_type: none, source_indices: source_indices, env: env)
+    Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => error_type
+    Present { value: ArithmeticNoCarrier } => error_type
+    Absent => operand_type
   }
 }
 
