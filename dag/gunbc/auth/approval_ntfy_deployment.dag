@@ -7,7 +7,11 @@ import std.human_intervention {
   BreakGlassOnly, ProvisioningHumanBurden, HumanInterventionIdentity,
   InterventionCompletionEvidence, NoDischargeSiteModeled,
 }
-import gunbc.auth.approval_notification { approval_ntfy_topic }
+import extdeps.ntfy.ntfy { NtfyTopic }
+import std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import gunbc.executor_privileged_operation {
@@ -17,6 +21,39 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+
+// ── RETIRING: THE APPROVAL ROUTE NO LONGER PUBLISHES HERE ───────────────────────────────────
+// The broker notified the operator through this server until the device cutover (ruling
+// gunbc.design_ruling one_approval_route_for_every_privileged_action): the publish binding
+// (gunbc.auth.approval_ntfy_publish) and the message builder (gunbc.auth.approval_notification) were
+// deleted then, and the phone is woken by gunbc.auth.approval_apns_publish. What remains below is the
+// model of a server that is STILL INSTALLED on srv1 -- its account, directories, unit, front door,
+// tokens and their custody -- kept because deleting the model of a running service would leave the
+// host carrying state nothing reads back. It is frozen: no new consumer, no new rows. It goes in ONE
+// change that also uninstalls it from srv1, which is an actuation and so the operator's to approve.
+data approval_ntfy_retirement_frontier: DissolutionCondition = unbound_dissolution(
+  description: "one change that uninstalls the srv1 ntfy server (unit, front door on approval_ntfy_serve_port, the gunbc-ntfy account and its directories, the publisher user and token, the subscriber grant) under operator approval, reads its absence back, and deletes this module with gunbc.auth.approval_ntfy_converge, the custody arm gunbc.fleet.host_credential_custody_converge ApprovalNtfyPublisherToken, gunbc.auth.fleet_secret_accessor_roster approval_ntfy_publisher_token_accessor_row and the keyring converge's ntfy group admission -- SUFFICIENT FOR no approval-era ntfy state to remain on srv1 or in the corpus",
+)
+
+// THE TOPIC AND THE ADDRESS, moved here from the deleted publish binding and message builder: they
+// are facts of the installed server (its ACL names the topic, its front door the port), which this
+// module models until the retirement above.
+data approval_ntfy_topic: NtfyTopic = "gunbc-approvals" as NtfyTopic
+
+// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
+// :443 already carries the dashboard, so the approval server takes its own.
+data approval_ntfy_serve_port: Port = 8443
+
+// WHERE THE CUSTODY CONVERGE DELIVERS THE PUBLISHER TOKEN (gunbc.fleet.host_credential_custody_converge
+// ApprovalNtfyPublisherToken). Nothing reads it since the publish was deleted; it stays while the
+// token is still placed on srv1, and goes with the retirement above.
+data approval_publisher_token_path: NonEmptyStr = "/etc/gunbc-ntfy/publisher-token"
+
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: operator_host_srv1 as NonEmptyStr, domain: domain, port: Present { value: approval_ntfy_serve_port })
+}
+
+data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_tailnet_domain)
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -117,7 +154,7 @@ data approval_ntfy_listen_port: Port = 2586
 // APNs push, so a self-hosted server forwards a poll request upstream and the app fetches the body
 // from us. The upstream sees a hashed topic and a message id -- never the topic name, the body, or
 // the approval URL -- so the credential stays on the tailnet and the residual disclosure is
-// timing. gunbc.auth.approval_notification carries that argument in full.
+// timing (the argument the deleted gunbc.auth.approval_notification carried in full).
 data approval_ntfy_upstream_base_url: NonEmptyStr = "https://ntfy.sh"
 
 // ── The acquisition facts this install owes ─────────────────────────────────────────────────

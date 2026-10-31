@@ -40,11 +40,12 @@ import gunbc.machine_intake.subject {
   qualification_subject_of,
 }
 import gunbc.deployment_risk { ProdRisk, TestRisk }
-import gunbc.machine_intake.phase { machine_qualification_policy }
-import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.phase { machine_qualification_policy, QualificationPolicy }
+import gunbc.machine_intake.receipt { EvidenceRef, ReceiptSatisfied, ReceiptRefused, same_intake_subject }
 import std.scoped_authorization { AttemptIdentity }
 import std.scoped_authorization { ScopedAuthorization }
-import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
+import test.fixture.machine_intake.bmc_lockout { lockout_served_channels }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
 import gunbc.machine_intake.bmc_rotation_route {
@@ -71,12 +72,13 @@ import gunbc.machine_intake.bmc_rotation_route {
   BmcWriteApprovalDenied,
   BmcWriteApprovalForAnotherPurpose,
   BmcWriteApprovalForAnotherSubject,
-  BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
+  BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject, BmcWriteNotEntailedByTheApproval, BmcWriteApprovalQualifyByRotationIsOneWrite,
   rotation_route_ungrounded,
   rotation_route_from_citation,
 }
 import gunbc.machine_intake.bmc_secure {
-  ChannelCloseInput, ChannelCloseRouteNotSupplied, ChannelCloseApprovalAbsent, ChannelWriteNotAdmitted,
+  bmc_secure_convergence_approval, PublishedWriteInput,
+  ChannelCloseInput, ChannelCloseRouteNotSupplied, PlanWritesAreNotTheApprovedConvergence, ChannelWriteNotAdmitted,
   PlanPrecedesReading, ManagedUserNotTheAuthenticatedAccount,
   BmcSecureGoal,
   BmcAccountActionDue,
@@ -98,6 +100,13 @@ import gunbc.machine_intake.bmc_secure {
   BmcSecurePhaseOutcome,
   GenerationFetchAdmission,
   BmcSecureRefusalCause,
+  BmcSecured,
+  BmcSecureRefused,
+  PhaseReceiptForAnotherSubject,
+  conjunction_over_observation,
+  bmc_secure_receipt_observations,
+  bmc_secure_receipt_result,
+  bmc_secure_standing_of_phase_receipt,
   bmc_secure_refusal_label,
   bmc_secure_state_finding_label,
   BmcSecureStateFinding,
@@ -309,16 +318,22 @@ fn world_reflash_restored() -> BmcWorld {
 
 fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_receipt_for_another_subject_never_projects"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_unestablished_reading_yields_no_receipt_to_project"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_outcome_of_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "decision_on"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_noop_projects_to_a_secured_standing"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secret_order_is_carried_by_the_plan"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_standing_reports_the_policy_the_readback_was_adjudicated_under"),
   ]
 {
   read_with(w: w, subject: subject, managed: managed, managed_password: managed_password, census_value: census(published_lan_privilege_closed: closed), account: PublishedAccountRetired, at: at)
@@ -361,6 +376,7 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
     world: w,
     subject: subject,
     endpoint: lab_endpoint,
+    board: none,
     firmware: lab_firmware(),
     managed: managed,
     managed_user: managed_user,
@@ -374,32 +390,17 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
     published_reading: DryProbePublished,
     attempt: attempt as AttemptIdentity,
     read_at_millis: at,
+    // Both LAN channels of this controller's census are read, not just one: the
+    // published probes the reading carries cross channels 1 and 8, and a lockout
+    // reading that covered only one of them would leave the other's logins with no
+    // threshold — which the gate answers by refusing the plan (fail closed), so the
+    // claims below would be testing the fixture's gap instead of the behaviour.
+    lockout: lockout_served_channels(read_at: at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
 }
 
 // ── approvals and routes ────────────────────────────────────────────────────────────────────────
 
-fn rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  approved_bmc_write(standing: s, request: IpmiSetUserPassword { user: user }, purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
-}
-
-// The approval names the route's own request: the operator approves what the route grounds.
-fn route_user(s: BmcRotationRouteStanding) -> IpmiUserId {
-  match s.grounding {
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => request_user(r: r)
-    RouteGroundedByCitedSource { request: r, citation: _ } => request_user(r: r)
-    RouteQualificationCandidate { request: r, evidence: _ } => request_user(r: r)
-    RouteUngrounded => managed_user
-  }
-}
-
-fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
-  match r {
-    IpmiSetUserPassword { user: u } => u
-    IpmiSetUserPrivilegeLimit { access: x } => x.user
-    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => managed_user
-  }
-}
 
 // GROUNDED LAB ROUTES, BY A FIXTURE CITATION. A modeled run cannot ground a route (O1a), so this
 // witness grounds the synthetic lab controller's two routes through rotation_route_from_citation, whose
@@ -521,11 +522,15 @@ fn plan_with(
 }
 
 fn plan_closing(reading: BmcAccountStateObservation, channel_close: ChannelCloseInput?, i: ScheduleInstants) -> BmcAccountPlanOutcome? {
-  plan_closing_as(reading: reading, claimed_managed_user: managed_user, channel_close: channel_close, i: i)
+  plan_closing_with(reading: reading, channel_close: channel_close, approve: ApproveTheProposal, i: i)
+}
+
+fn plan_closing_with(reading: BmcAccountStateObservation, channel_close: ChannelCloseInput?, approve: ApprovedConvergence, i: ScheduleInstants) -> BmcAccountPlanOutcome? {
+  plan_full_as(reading: reading, goal: goal_v1(), claimed_managed_user: managed_user, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), published_generation_value: break_glass_generation(i: i), channel_close: channel_close, approve: approve, i: i)
 }
 
 fn plan_closing_as(reading: BmcAccountStateObservation, claimed_managed_user: IpmiUserId, channel_close: ChannelCloseInput?, i: ScheduleInstants) -> BmcAccountPlanOutcome? {
-  plan_full_as(reading: reading, goal: goal_v1(), claimed_managed_user: claimed_managed_user, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), published_generation_value: break_glass_generation(i: i), channel_close: channel_close, i: i)
+  plan_full_as(reading: reading, goal: goal_v1(), claimed_managed_user: claimed_managed_user, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), published_generation_value: break_glass_generation(i: i), channel_close: channel_close, approve: ApproveTheProposal, i: i)
 }
 
 fn plan_full(
@@ -548,7 +553,7 @@ fn plan_full_closing(
   channel_close: ChannelCloseInput?,
   i: ScheduleInstants,
 ) -> BmcAccountPlanOutcome? {
-  plan_full_as(reading: reading, goal: goal, claimed_managed_user: managed_user, managed_route: managed_route, managed_generation_value: managed_generation_value, published_generation_value: published_generation_value, channel_close: channel_close, i: i)
+  plan_full_as(reading: reading, goal: goal, claimed_managed_user: managed_user, managed_route: managed_route, managed_generation_value: managed_generation_value, published_generation_value: published_generation_value, channel_close: channel_close, approve: ApproveTheProposal, i: i)
 }
 
 fn plan_full_as(
@@ -559,6 +564,7 @@ fn plan_full_as(
   managed_generation_value: ManagedCredentialGenerationFetched?,
   published_generation_value: ManagedCredentialGenerationFetched?,
   channel_close: ChannelCloseInput?,
+  approve: ApprovedConvergence,
   i: ScheduleInstants,
 ) -> BmcAccountPlanOutcome? {
   match managed_generation_value {
@@ -568,21 +574,77 @@ fn plan_full_as(
         Absent => none
         Present { value: bg } =>
           Present {
-            value: plan_bmc_account_action(
-              subject: lab_subject(),
-              goal: goal,
+            value: plan_under(
               reading: reading,
-              managed_user: claimed_managed_user,
+              goal: goal,
+              claimed_managed_user: claimed_managed_user,
               managed_route: managed_route,
-              managed_approval: rotation_approval(s: managed_route, user: route_user(s: managed_route)),
-              managed_generation: mg,
-              published: PublishedWriteInputs { route: grounded_route(user: published_user), approval: rotation_approval(s: grounded_route(user: published_user), user: published_user), generation: bg },
+              mg: mg,
+              published: PublishedWriteInputs { route: grounded_route(user: published_user), generation: bg },
               channel_close: channel_close,
-              planned_at: i.plan,
+              approve: approve,
+              i: i,
             ),
           }
       }
   }
+}
+
+// WHAT THE OPERATOR APPROVED, relative to the convergence the reading entails (bmc_secure_convergence_approval,
+// the real producer of the request a run files). ApproveTheProposal is the operator approving exactly it.
+type ApprovedConvergence
+  = ApproveTheProposal
+  | ApproveTheProposalIn { attempt: String }
+  | ApproveWithoutChannelCloses
+  | ApproveWithAnExtraWrite { extra: BmcAccountWriteRequest }
+  | ApproveAt { controller: BmcControllerEndpoint }
+  | ApproveWrites { writes: List<BmcAccountWriteRequest> }
+
+fn is_channel_close(w: BmcAccountWriteRequest) -> Bool {
+  match w {
+    IpmiSetUserPrivilegeLimit { access: _ } => true
+    IpmiSetUserPassword { user: _ } => false
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
+  }
+}
+
+fn plan_under(
+  reading: BmcAccountStateObservation,
+  goal: BmcSecureGoal,
+  claimed_managed_user: IpmiUserId,
+  managed_route: BmcRotationRouteStanding,
+  mg: ManagedCredentialGenerationFetched,
+  published: PublishedWriteInput,
+  channel_close: ChannelCloseInput?,
+  approve: ApprovedConvergence,
+  i: ScheduleInstants,
+) -> BmcAccountPlanOutcome {
+  let p = bmc_secure_convergence_approval(goal: goal, reading: reading, managed_user: claimed_managed_user, managed_route: managed_route, published: published)
+  let approval = match approve {
+    ApproveTheProposal => approved_bmc_convergence(approval: p, attempt: "attempt-1" as NonEmptyStr)
+    ApproveTheProposalIn { attempt: a } => approved_bmc_convergence(approval: p, attempt: a as NonEmptyStr)
+    ApproveWithoutChannelCloses => approved_bmc_convergence(approval: BmcAccountWriteApproval { controller: p.controller, firmware: p.firmware, writes: filter(p.writes, w => !is_channel_close(w: w)), purpose: p.purpose }, attempt: "attempt-1" as NonEmptyStr)
+    ApproveWithAnExtraWrite { extra: x } => approved_bmc_convergence(approval: BmcAccountWriteApproval { controller: p.controller, firmware: p.firmware, writes: concat(p.writes, [x]), purpose: p.purpose }, attempt: "attempt-1" as NonEmptyStr)
+    ApproveAt { controller: c } => approved_bmc_convergence(approval: BmcAccountWriteApproval { controller: c, firmware: p.firmware, writes: p.writes, purpose: p.purpose }, attempt: "attempt-1" as NonEmptyStr)
+    ApproveWrites { writes: ws } => approved_bmc_convergence(approval: BmcAccountWriteApproval { controller: p.controller, firmware: p.firmware, writes: ws, purpose: p.purpose }, attempt: "attempt-1" as NonEmptyStr)
+  }
+  plan_bmc_account_action(
+    subject: lab_subject(),
+    goal: goal,
+    reading: reading,
+    managed_user: claimed_managed_user,
+    managed_route: managed_route,
+    approval: approval,
+    managed_generation: mg,
+    published: published,
+    channel_close: channel_close,
+    planned_at: i.plan,
+    // The budget gate (BMC 1b): nothing is declared here and no forced change was
+    // admitted on these readings; the lockout reading above is generous, so the gate
+    // is inert for this witness and the orderings it censuses stay the whole test.
+    declared_retries: [],
+    forced_change: none,
+  )
 }
 
 fn plan_default(reading: BmcAccountStateObservation, i: ScheduleInstants) -> BmcAccountPlanOutcome? {
@@ -603,6 +665,8 @@ fn admission_label(a: RotationApplyAdmission) -> String {
         BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
         BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
         BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
+        BmcWriteNotEntailedByTheApproval { approved: _, requested: _ } => "not-entailed"
+        BmcWriteApprovalQualifyByRotationIsOneWrite { approved: _ } => "qualify-by-rotation-is-one-write"
       }
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
     RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
@@ -654,7 +718,8 @@ fn plan_label(o: BmcAccountPlanOutcome?) -> String {
             PlanPrecedesReading { planned_at: _ } => "plan-precedes-reading"
             ManagedUserNotTheAuthenticatedAccount { supplied: _, authenticated: _ } => "managed-user-not-authenticated-account"
             ChannelCloseRouteNotSupplied { channels: _ } => "channel-close-route-not-supplied"
-            ChannelCloseApprovalAbsent { channel: _ } => "channel-close-approval-absent"
+            PlanWritesAreNotTheApprovedConvergence { approved: _, planned: _ } => "not-the-approved-convergence"
+            FailedLoginBudgetExceeded { blocked: _ } => "failed-login-budget-exceeded"
             ChannelWriteNotAdmitted { channel: _, admission: a } => join(["channel-write-not-admitted:", admission_label(a: a)], "")
           }
       }
@@ -710,19 +775,35 @@ fn applied_with(
     Present { value: o } =>
       match o {
         BmcAccountPlanRefused { cause: _ } => join(["plan:", plan_label(o: Present { value: o })], "")
-        BmcAccountPlanned { plan: p } => {
-          let step = dry_apply_bmc_account_plan(
-            world: initial,
-            plan: p,
-            managed_fetch: managed_fetch,
-            published_fetch: published_fetch,
-            applied_at_millis: applied_at,
-          )
-          let after = read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: closed_before, at: readback_at)
-          phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: after))
-        }
+        BmcAccountPlanned { plan: p } =>
+          phase_label(o: applied_outcome_of_plan(world: initial, plan: p, closed_before: closed_before, managed_fetch: managed_fetch, published_fetch: published_fetch, applied_at: applied_at, readback_at: readback_at))
       }
   }
+}
+
+// THE APPLY-AND-READ-BACK, IN ONE PLACE. applied_with above is its label form; a claim that needs the
+// receipt the application converges to -- the standing projection's witnesses -- reads the outcome here
+// instead of relabeling it, so the dry application, the independent re-read and the mint exist once
+// (DESIGN §2: the label is derived from this, not carried beside it). Sealed carrier: the outcome holds
+// the sealed receipt, so it is admitted only to the label form and to the claims that consume the
+// receipt and return Bool.
+fn applied_outcome_of_plan(
+  world: BmcWorld,
+  plan: BmcAccountActionPlan,
+  closed_before: Bool,
+  managed_fetch: SecretCredentialFetch,
+  published_fetch: SecretCredentialFetch,
+  applied_at: EpochMs,
+  readback_at: EpochMs,
+) -> BmcSecurePhaseOutcome
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
+  ]
+{
+  let step = dry_apply_bmc_account_plan(world: world, plan: plan, managed_fetch: managed_fetch, published_fetch: published_fetch, applied_at_millis: applied_at)
+  let after = read(w: step.world, subject: lab_subject(), managed: plan.goal.managed, managed_password: managed_password_v2, closed: closed_before, at: readback_at)
+  bmc_secure_phase_applied(application: step.application, post_read: after)
 }
 
 fn managed_v2_fetch() -> SecretCredentialFetch {
@@ -879,7 +960,6 @@ test fn the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading() -
   plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: break_glass_generation(i: i), i: i)) == "generation-another-account"
     && plan_label(o: plan_with(reading: read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "2", epoch: 2), managed_password: managed_password_v1, closed: true, at: t_read), goal: stale_goal, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), i: i)) == "generation-not-advanced"
     && plan_label(o: plan_default(reading: foreign, i: i)) == "unobserved"
-    && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: published_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), i: i)) == "not-admitted:another-subject"
 }
 
 // ── blocker controls (side-chat review of 07423d29de) ───────────────────────────────────────────
@@ -934,6 +1014,7 @@ fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAcc
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "one_approval_admits_exactly_the_convergence_it_names"),
   ]
 {
   read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_value, account: account, at: t_read)
@@ -1021,14 +1102,13 @@ test fn an_open_channel_is_closed_only_over_a_grounded_channel_access_route() ->
   let close = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess) }
   let route = rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: close, citation: lab_route_fixture_citation)
   let candidate = rotation_route_candidate(endpoint: lab_endpoint, firmware: lab_firmware(), request: close, evidence: PublicStandardOperation { authority: lab_route_fixture_citation })
-  let exact = [approved_bmc_write(standing: route, request: close, purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)]
   let with_admin = secured_read(census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired)
   let without_admin = secured_read(census_value: census_with_managed_row(managed_on_2: false), account: PublishedAccountRetired)
   channel_plan_label(o: plan_closing(reading: with_admin, channel_close: none, i: i)) == "channel-close-route-not-supplied"
-    && channel_plan_label(o: plan_closing(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: candidate, approvals: exact } }, i: i)) == "channel-write-not-admitted:route-not-grounded"
-    && channel_plan_label(o: plan_closing(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [] } }, i: i)) == "channel-close-approval-absent"
-    && channel_plan_label(o: plan_closing(reading: without_admin, channel_close: Present { value: ChannelCloseInput { route: route, approvals: exact } }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:not-administrator-on-channel"
-    && channel_plan_label(o: plan_closing(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: route, approvals: exact } }, i: i)) == "planned:1"
+    && channel_plan_label(o: plan_closing(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: candidate } }, i: i)) == "channel-write-not-admitted:route-not-grounded"
+    && channel_plan_label(o: plan_closing_with(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: route } }, approve: ApproveWithoutChannelCloses, i: i)) == "channel-write-not-admitted:not-entailed"
+    && channel_plan_label(o: plan_closing(reading: without_admin, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:not-administrator-on-channel"
+    && channel_plan_label(o: plan_closing(reading: with_admin, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "planned:1"
 }
 
 // Retention. A break-glass account retained by policy must be the goal's generation; a factory
@@ -1119,10 +1199,6 @@ fn close_ch2() -> BmcAccountWriteRequest {
   IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess) }
 }
 
-fn close_approval_in(route: BmcRotationRouteStanding, attempt: String) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  approved_bmc_write(standing: route, request: close_ch2(), purpose: RotateCredential, attempt: attempt as NonEmptyStr)
-}
-
 // On the REAL plan path, with the published account open on channel 2: read A (attempt-1) with an
 // approval for run B refuses as another run; A with A plans the one write; a reading in which another
 // user (4), not the authenticated managed user, holds ADMINISTRATOR on channel 2 refuses; and a plan
@@ -1140,11 +1216,11 @@ test fn the_channel_close_readback_is_bound_to_the_observed_run_and_account() ->
   let other_admin = ipmi_controller_channel_census(members: base.members, user_access: concat(base.user_access, [ipmi_user_channel_access(channel: 2, user: 4, privilege: IpmiPrivilegeAdministrator)]))
   let a = secured_read(census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired)
   let later = read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired, at: t_plan + 1)
-  channel_plan_label(o: plan_closing(reading: a, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-2")] } }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:another-run"
-    && channel_plan_label(o: plan_closing(reading: a, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }, i: i)) == "planned:1"
-    && channel_plan_label(o: plan_closing(reading: secured_read(census_value: other_admin, account: PublishedAccountRetired), channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:not-administrator-on-channel"
-    && channel_plan_label(o: plan_closing_as(reading: a, claimed_managed_user: 4, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }, i: i)) == "managed-user-not-authenticated-account"
-    && channel_plan_label(o: plan_closing(reading: later, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }, i: i)) == "plan-precedes-reading"
+  channel_plan_label(o: plan_closing_with(reading: a, channel_close: Present { value: ChannelCloseInput { route: route } }, approve: ApproveTheProposalIn { attempt: "attempt-2" }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:another-run"
+    && channel_plan_label(o: plan_closing(reading: a, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "planned:1"
+    && channel_plan_label(o: plan_closing(reading: secured_read(census_value: other_admin, account: PublishedAccountRetired), channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "channel-write-not-admitted:would-leave-no-administrator:not-administrator-on-channel"
+    && channel_plan_label(o: plan_closing_as(reading: a, claimed_managed_user: 4, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "managed-user-not-authenticated-account"
+    && channel_plan_label(o: plan_closing(reading: later, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i)) == "plan-precedes-reading"
 }
 
 // ── one nonempty real plan through the dry application, the post-read and the phase (item 3) ─────
@@ -1165,7 +1241,7 @@ test fn a_planned_channel_close_is_applied_read_back_and_converges() -> Bool {
   let layout = census_with_managed_row(managed_on_2: true)
   let initial = seeded(w: world_secured(), census_value: layout)
   let before = read_in(w: initial, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: layout, account: PublishedAccountRetired, attempt: "attempt-1", at: t_read)
-  match plan_closing(reading: before, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }, i: i) {
+  match plan_closing(reading: before, channel_close: Present { value: ChannelCloseInput { route: route } }, i: i) {
     Absent => false
     Present { value: o } =>
       match o {
@@ -1177,6 +1253,172 @@ test fn a_planned_channel_close_is_applied_read_back_and_converges() -> Bool {
             && phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: after)) == "converged:applied"
             && match bmc_ipmi_get_user_access(world: step.world, user: published_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeNoAccess  Absent => false }
             && match bmc_ipmi_get_user_access(world: step.world, user: managed_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeAdministrator  Absent => false }
+        }
+      }
+  }
+}
+
+// ── ONE APPROVAL PER CONVERGENCE (operator ruling 2026-10-25, gunbc.design_ruling
+// the_initial_convergence_is_the_only_approval) ────────────────────────────────────────────────────
+//
+// The run asks for the convergence the reading entails (bmc_secure_convergence_approval, the real producer of
+// the request), and the plan admits every write against that one approval. POSITIVE CONTROL: the managed write,
+// the published write and the channel close are planned under ONE approval. REDS, each differing from it only in
+// what the operator approved: an approval that omits one of the writes does not entail it; an approval naming a
+// write the plan no longer entails is another convergence; an approval for another controller is no approval of
+// this one.
+test fn one_approval_admits_exactly_the_convergence_it_names() -> Bool {
+  let i = ScheduleInstants {
+    store: observer_clock_modeled(millis: t_store, realization: schedule_realization),
+    fetch: observer_clock_modeled(millis: t_fetch, realization: schedule_realization),
+    plan: observer_clock_modeled(millis: t_plan, realization: schedule_realization),
+    apply: observer_clock_modeled(millis: t_apply, realization: schedule_realization),
+  }
+  let route = rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: close_ch2(), citation: lab_route_fixture_citation)
+  let reading = secured_read(census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired)
+  let closing: ChannelCloseInput? = Present { value: ChannelCloseInput { route: route } }
+  let channel_1_close = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 1, user: published_user, privilege: IpmiPrivilegeNoAccess) }
+  channel_plan_label(o: plan_closing_with(reading: reading, channel_close: closing, approve: ApproveTheProposal, i: i)) == "planned:1"
+    && channel_plan_label(o: plan_closing_with(reading: reading, channel_close: closing, approve: ApproveWrites { writes: [close_ch2()] }, i: i)) == "not-admitted:not-entailed"
+    && channel_plan_label(o: plan_closing_with(reading: reading, channel_close: closing, approve: ApproveWithAnExtraWrite { extra: channel_1_close }, i: i)) == "not-the-approved-convergence"
+    && channel_plan_label(o: plan_closing_with(reading: reading, channel_close: closing, approve: ApproveAt { controller: other_endpoint }, i: i)) == "not-admitted:another-subject"
+}
+
+// ── THE STANDING PROJECTION (bmc_secure_standing_of_phase_receipt) ────────────────────────────────
+//
+// RUNG (§4b). THE ONE ROUTE FROM THIS FOLD TO THE CARRIER EVERY CONSUMER READS. BmcSecureStanding is what
+// gunbc.host.managed_host, gunbc.host.bmc_control_binding, gunbc.host.managed_host_boot_federation and
+// gunbc.fleet.mtcollins_firmware_converge join on; until this projection its only mint consumed the
+// rotation-EVENT observation, so a controller THIS fold converged could not be handed to any of them, and
+// mtcollins1's cutover meant rewriting each. Positive controls: the dry-world secured controller, on each
+// converged arm, projects to a standing whose receipt result is satisfied and whose audit chain is the
+// receipt's own evidence -- including the write receipts on the Applied arm, which the conjunction's own
+// list does not carry. REDs: a reading that never satisfied the goal mints no receipt, so there is nothing
+// for the projection to project, while the same unit's converged readback does project; and a receipt read
+// under another subject's claim is refused with the subject-join cause and owner, never secured. The seal
+// that keeps this the only route -- that neither the receipt nor the standing is a writable record outside
+// gunbc.machine_intake.bmc_secure -- is
+// test.claim.machine_intake.machine_intake_bmc_secure_standing_forged_probe_witness.
+
+// POSITIVE CONTROL, THE NOOP ARM. The secured controller needs no write; the standing the admission joins
+// read says so, names the unit the readback was taken of, and reports the readback's own endpoint,
+// reference and probe instant -- every field re-derived by the conjunction, none supplied by the caller.
+test fn the_secured_noop_projects_to_a_secured_standing() -> Bool {
+  let reading = read(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  match bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: reading) {
+    BmcSecurePhaseRefused { cause: _ } => false
+    BmcSecurePhaseConverged { receipt: receipt } => {
+      let standing = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: receipt)
+      bmc_secure_receipt_result(standing: standing) == ReceiptSatisfied
+        && same_intake_subject(left: standing.subject, right: lab_subject())
+        && match standing.outcome {
+             BmcSecured { endpoint: endpoint, reference: reference, evidence: evidence, latest_admitted_probe_at: latest, published_credential: _ } =>
+               endpoint == lab_endpoint
+                 && reference == managed_ref(version: "1", epoch: 1)
+                 && latest == t_read
+                 && list_length(items: evidence) == list_length(items: receipt.held.evidence)
+                 && list_length(items: evidence) > 0
+             BmcSecureRefused { cause: _ } => false
+           }
+    }
+  }
+}
+
+// POSITIVE CONTROL, THE APPLIED ARM, AND THE EVIDENCE CLAIM. The write the convergence rests on is in the
+// standing's audit chain: the projected standing carries the readback's evidence PLUS the application's
+// request and response receipts. A projection that reported the conjunction's own evidence list -- the
+// tempting shortcut, since the conjunction is what mints the verdict -- is two entries short and fails
+// this, and one that invented receipts would fail the equality beside it.
+test fn the_secured_apply_projects_to_a_secured_standing_carrying_the_writes() -> Bool {
+  let i = ScheduleInstants {
+    store: observer_clock_modeled(millis: t_store, realization: schedule_realization),
+    fetch: observer_clock_modeled(millis: t_fetch, realization: schedule_realization),
+    plan: observer_clock_modeled(millis: t_plan, realization: schedule_realization),
+    apply: observer_clock_modeled(millis: t_apply, realization: schedule_realization),
+  }
+  let before = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  match plan_default(reading: before, i: i) {
+    Absent => false
+    Present { value: o } =>
+      match o {
+        BmcAccountPlanRefused { cause: _ } => false
+        BmcAccountPlanned { plan: p } =>
+          match applied_outcome_of_plan(world: world_factory_open(), plan: p, closed_before: true, managed_fetch: managed_v2_fetch(), published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password), applied_at: t_apply, readback_at: t_readback) {
+            BmcSecurePhaseRefused { cause: _ } => false
+            BmcSecurePhaseConverged { receipt: receipt } => {
+              let standing = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: receipt)
+              bmc_secure_receipt_result(standing: standing) == ReceiptSatisfied
+                && bmc_secure_receipt_observations(standing: standing) == bmc_secure_phase_receipt_evidence(receipt: receipt)
+                && list_length(items: bmc_secure_receipt_observations(standing: standing)) == list_length(items: receipt.held.evidence) + 2
+            }
+          }
+      }
+  }
+}
+
+// RED: A READING THAT NEVER SATISFIED THE GOAL REACHES THE PROJECTION NEVER. Two ways the fold refuses:
+// the managed credential the controller no longer answers (the reflash-restored box, where the conjunction
+// itself refuses ManagedCredentialRejected) and another unit's reading (which the observer refuses to
+// treat as this unit's state). Neither mints a receipt, so there is no argument the projection could be
+// handed; and the same unit's converged readback DOES project, which is what makes both halves one
+// measurement -- the difference is the readback, not the caller.
+test fn an_unestablished_reading_yields_no_receipt_to_project() -> Bool {
+  let restored = read(w: world_reflash_restored(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let foreign = read(w: world_secured(), subject: other_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  phase_label(o: bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: restored)) == join(["refused:not-held:", apply_on(cause: ManagedCredentialRejected)], "")
+    && phase_label(o: bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: foreign)) == "refused:unobserved"
+    && match conjunction_over_observation(goal: goal_v1(), observed: restored) {
+         BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => false
+         BmcSecureRefused { cause: cause } => cause == ManagedCredentialRejected
+       }
+    && match bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: read(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)) {
+         BmcSecurePhaseRefused { cause: _ } => false
+         BmcSecurePhaseConverged { receipt: receipt } => bmc_secure_receipt_result(standing: bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: receipt)) == ReceiptSatisfied
+       }
+}
+
+// RED: THE SUBJECT JOIN. The same converged receipt, claimed for another intake subject, comes back
+// refused with the cause that names both subjects and the qualification-policy owner, and with no evidence
+// at all -- while the claim it was minted for still projects to a satisfied standing. Same receipt, same
+// fold, opposite verdicts: the check that failed is the one between the caller's claim and the subject the
+// fold minted, and nothing else moved.
+test fn a_receipt_for_another_subject_never_projects() -> Bool {
+  let reading = read(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  match bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: reading) {
+    BmcSecurePhaseRefused { cause: _ } => false
+    BmcSecurePhaseConverged { receipt: receipt } => {
+      let claimed = bmc_secure_standing_of_phase_receipt(subject: other_subject(), receipt: receipt)
+      let own = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: receipt)
+      bmc_secure_receipt_result(standing: claimed) == ReceiptRefused { owner: QualificationPolicy, cause: "the converged phase receipt was read for another intake subject" }
+        && match claimed.outcome {
+             BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => false
+             BmcSecureRefused { cause: cause } =>
+               cause == PhaseReceiptForAnotherSubject { expected: other_subject(), found: lab_subject() }
+           }
+        && bmc_secure_receipt_observations(standing: claimed) == []
+        && bmc_secure_receipt_result(standing: own) == ReceiptSatisfied
+    }
+  }
+}
+
+// THE POLICY THE STANDING REPORTS IS THE ONE THE READBACK WAS ADJUDICATED UNDER. The projection takes no
+// policy argument: the standing carries the policy of the goal the fold ran, because that is the policy
+// the published-credential retention arm was decided by. Two receipts from two goals -- the same secured
+// reading, admitted under TestRisk and under ProdRisk -- report their own goal's policy, so the field is
+// read off the adjudication and is not a default either path could drift into.
+test fn the_standing_reports_the_policy_the_readback_was_adjudicated_under() -> Bool {
+  let reading = read(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  match bmc_secure_phase_noop(subject: lab_subject(), goal: goal_admitting_prod_risk(), reading: reading) {
+    BmcSecurePhaseRefused { cause: _ } => false
+    BmcSecurePhaseConverged { receipt: prod } =>
+      match bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: reading) {
+        BmcSecurePhaseRefused { cause: _ } => false
+        BmcSecurePhaseConverged { receipt: test_risk } => {
+          let prod_standing = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: prod)
+          let test_standing = bmc_secure_standing_of_phase_receipt(subject: lab_subject(), receipt: test_risk)
+          bmc_secure_receipt_result(standing: prod_standing) == ReceiptSatisfied
+            && prod_standing.policy == machine_qualification_policy(admits: ProdRisk)
+            && test_standing.policy == machine_qualification_policy(admits: TestRisk)
         }
       }
   }

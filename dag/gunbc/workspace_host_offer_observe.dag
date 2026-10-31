@@ -10,7 +10,8 @@ import gunbc.clock_read { clock_now_probed_at }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.runner.runner_microvm_slot_controller { bind_slot_host }
 import gunbc.runner.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
@@ -21,7 +22,7 @@ import gunbc.workspace_commissioning_store { workspace_commissioning_committed_f
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
 import gunbc.workspace_allocation_supply { workspace_observe_host_supply, WorkspaceHostSupplyObserved, WorkspaceHostSupplyUnavailable }
-import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable }
+import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable, workspace_gateway_store }
 import gunbc.workspace_offer_producer { WorkspaceHostOfferRead, WorkspaceHostOfferUnmet, workspace_host_offer_admit }
 import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
 import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, WorkspaceGatewayAccessObserved }
@@ -62,17 +63,23 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
                 Present { value: access } => match access {
                   WorkspaceSshFromHost { identity_file: _ } => match clock_now_probed_at() {
                     Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
-                    Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
-                      commissioned: committed, image: image, host: supply, tools: tools,
-                      access: WorkspaceHostAccessObserved { host: host, observed_at: supply.observed_at }, now: now as String)
+                    Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
+                      FabricAllocationStoreUnready { detail } => WorkspaceHostOfferUnmet { host: host, reason: detail }
+                      FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(cells: allocation, request: request,
+                        commissioned: committed, image: image, host: supply, tools: tools,
+                        access: WorkspaceHostAccessObserved { host: host, observed_at: supply.observed_at }, now: now as String)
+                    }
                   }
-                  WorkspaceSshThroughGateway => match workspace_read_gateway_evidence(store: fabric_state_storage_binding(), slot: slot) {
+                  WorkspaceSshThroughGateway => match workspace_read_gateway_evidence(store: workspace_gateway_store(binding: fabric_state_storage_binding()), slot: slot) {
                     WorkspaceGatewayEvidenceUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
                     WorkspaceGatewayEvidenceRead { evidence: gateway } => match clock_now_probed_at() {
                       Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
-                      Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
-                        commissioned: committed, image: image, host: supply, tools: tools,
-                        access: WorkspaceGatewayAccessObserved { evidence: gateway }, now: now as String)
+                      Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
+                        FabricAllocationStoreUnready { detail } => WorkspaceHostOfferUnmet { host: host, reason: detail }
+                        FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(cells: allocation, request: request,
+                          commissioned: committed, image: image, host: supply, tools: tools,
+                          access: WorkspaceGatewayAccessObserved { evidence: gateway }, now: now as String)
+                      }
                     }
                   }
                 }

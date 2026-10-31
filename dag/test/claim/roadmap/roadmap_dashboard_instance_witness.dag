@@ -6,10 +6,10 @@ import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory }
-import gunbc.auth.session_store { session_store_directory }
-import gunbc.auth.login_transaction_store { login_transaction_store_directory }
+import gunbc.auth.session_store_root { session_store_directory }
+import gunbc.auth.login_transaction_store_root { login_transaction_store_directory }
 import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
-import gunbc.auth.profile_projection { profile_store_directory }
+import gunbc.auth.profile_store_root { profile_store_directory }
 import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {

@@ -22,6 +22,8 @@ import extdeps.bmc.ipmi_channel {
   IpmiPrivilegeCallback, IpmiPrivilegeUser, IpmiPrivilegeOperator, IpmiPrivilegeAdministrator, IpmiPrivilegeOem, IpmiPrivilegeNoAccess,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_credential_policy { PublishedCredentialChangeForced }
+import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_ipmi_get_user_access }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
@@ -155,6 +157,10 @@ fn rotation_route_from_citation(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "cited_password_route_at"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "cited_root_route"),
+    // The served-lockout witness plans a root password write over the SAME cited
+    // route the shared-store witness uses, so a budget refusal there cannot be
+    // attributed to a route that witness file invented.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "root_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
@@ -162,6 +168,7 @@ fn rotation_route_from_citation(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "cited_mtjade1_published_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "one_approval_admits_exactly_the_convergence_it_names"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
   ]
 {
@@ -358,16 +365,35 @@ fn route_subject_of(standing: BmcRotationRouteStanding, request: BmcAccountWrite
 // THE PURPOSE IS PART OF WHAT WAS APPROVED. Grounding a route is its own effect, not the Apply: the
 // Apply consumes a grounded route, so it cannot produce the premise that admits it, and approving a
 // rotation does not qualify a route. QualifyByRotation is the one write that is both, admitted only
-// where the build forces the published credential's change on first login: there the password write
-// that grounds the route IS the first rotation, so it is approved once, as itself.
+// where the build forces the published credential's change on first login (admit_forced_first_rotation):
+// there the password write that grounds the route IS the first rotation, so it is approved once, as itself.
 type BmcAccountWritePurpose
   = QualifyRoute
   | RotateCredential
   | QualifyByRotation
 
+// WHAT THE OPERATOR APPROVES: ONE CONVERGENCE (operator ruling 2026-10-25, gunbc.design_ruling
+// the_initial_convergence_is_the_only_approval). One controller, one build, and every account write the
+// convergence entails, under one purpose: one tap per controller, never one per write. Each write is then
+// admitted against this one approval exactly (read_bmc_write_approval): its controller and build are the
+// approval's, it is one of the approved writes, and the approved scopes are exactly the approved writes'
+// own. An approval too narrow for a plan is a fresh request, never a widening; an approval naming a write
+// the plan no longer entails is another convergence (gunbc.machine_intake.bmc_secure plan_bmc_account_action
+// refuses it). QualifyByRotation names exactly one write: the forced first rotation.
 type BmcAccountWriteApproval {
-  subject: RouteQualificationSubject
+  controller: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
+  writes: List<BmcAccountWriteRequest>
   purpose: BmcAccountWritePurpose
+}
+
+// The approval of one write: a convergence that entails only `subject`'s request.
+fn bmc_account_write_approval_of(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose) -> BmcAccountWriteApproval {
+  BmcAccountWriteApproval { controller: subject.endpoint, firmware: subject.firmware, writes: [subject.request], purpose: purpose }
+}
+
+fn approved_write_subject(approval: BmcAccountWriteApproval, request: BmcAccountWriteRequest) -> RouteQualificationSubject {
+  RouteQualificationSubject { endpoint: approval.controller, firmware: approval.firmware, request: request }
 }
 
 fn bmc_account_write_purpose_text(purpose: BmcAccountWritePurpose) -> NonEmptyStr {
@@ -378,11 +404,17 @@ fn bmc_account_write_purpose_text(purpose: BmcAccountWritePurpose) -> NonEmptySt
   }
 }
 
-// What an approved purpose discharges: a QualifyByRotation approval discharges both of the effects it
-// names, and neither single-purpose approval discharges the other.
+// What an approved purpose discharges: each purpose exactly itself. QualifyByRotation is required only by
+// admit_forced_first_rotation, which also requires the forced-change state; a QualifyByRotation go is
+// therefore no qualification and no rotation on a build that does not force the change.
 fn bmc_account_write_purpose_covers(approved: BmcAccountWritePurpose, required: BmcAccountWritePurpose) -> Bool {
   match approved {
-    QualifyByRotation => true
+    QualifyByRotation =>
+      match required {
+        QualifyByRotation => true
+        QualifyRoute => false
+        RotateCredential => false
+      }
     QualifyRoute =>
       match required {
         QualifyRoute => true
@@ -398,15 +430,22 @@ fn bmc_account_write_purpose_covers(approved: BmcAccountWritePurpose, required: 
   }
 }
 
-// THE IDENTITY the operator approves, and what the request's intent hash is taken over: the purpose,
-// then the controller, build and request (route_subject_identity's injective encoding).
+// THE IDENTITY the operator approves, and what the request's intent hash is taken over: the purpose, then
+// the controller and build, then the number of writes and each write, every part length-prefixed so the
+// encoding is injective.
 fn bmc_account_write_identity(approval: BmcAccountWriteApproval) -> NonEmptyStr {
   join(
-    [
-      bmc_account_write_purpose_text(purpose: approval.purpose) as String,
-      ";",
-      route_subject_identity(subject: approval.subject) as String,
-    ],
+    concat(
+      [
+        bmc_account_write_purpose_text(purpose: approval.purpose) as String,
+        ";gunbc.bmc.account-convergence/v1;",
+        canonical_component(text: approval.controller.host as String),
+        canonical_component(text: canonical_firmware_family(family: approval.firmware.family)),
+        canonical_component(text: approval.firmware.raw_version as String),
+        canonical_component(text: to_string(length(approval.writes))),
+      ],
+      map(approval.writes, w => canonical_component(text: canonical_account_write_request(request: w))),
+    ),
     "",
   ) as NonEmptyStr
 }
@@ -440,8 +479,9 @@ fn bmc_account_write_scope(subject: RouteQualificationSubject) -> AuthorizationS
   }
 }
 
+// One scope per approved write, in the approved order.
 fn bmc_account_write_scopes(approval: BmcAccountWriteApproval) -> List<AuthorizationScope> {
-  [bmc_account_write_scope(subject: approval.subject)]
+  map(approval.writes, w => bmc_account_write_scope(subject: approved_write_subject(approval: approval, request: w)))
 }
 
 data bmc_account_write_intent_schema: NonEmptyStr = "gunbc.machine_intake.bmc-account-write/v1" as NonEmptyStr
@@ -449,8 +489,17 @@ data bmc_account_write_intent_schema: NonEmptyStr = "gunbc.machine_intake.bmc-ac
 // THE INTENT IS FRAMED (std.scoped_authorization intent_frame_head): the schema line, then the derived
 // scopes, then the write's identity. The hash is taken over all of it, so a request carrying other
 // scopes is another intent. Absent when a scope has no wire (a path segment with a space or a slash):
-// such a write has no intent the gate can bind, and no request is built for it.
+// such a write has no intent the gate can bind, and no request is built for it. A convergence entailing no
+// write has nothing to approve, and is Absent too.
 fn bmc_account_write_intent_text(approval: BmcAccountWriteApproval) -> NonEmptyStr? {
+  if length(approval.writes) == 0 {
+    none
+  } else {
+    bmc_account_write_framed(approval: approval)
+  }
+}
+
+fn bmc_account_write_framed(approval: BmcAccountWriteApproval) -> NonEmptyStr? {
   match intent_frame_head(schema: bmc_account_write_intent_schema, scopes: bmc_account_write_scopes(approval: approval)) {
     Absent => none
     Present { value: head } => Present { value: join([head, "\n", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr }
@@ -485,7 +534,7 @@ fn bmc_account_write_authorization_request(
           escalation_id: escalation_id,
           scopes: bmc_account_write_scopes(approval: approval),
           subject: approval,
-          purpose: join(["Approve one BMC account write: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
+          purpose: join(["Approve one BMC account convergence: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
           attempt: escalation_id as AttemptIdentity,
           intent_hash: h,
           destructive: false,
@@ -502,15 +551,18 @@ type BmcWriteApprovalRefusal
   | BmcWriteApprovalForAnotherSubject { approved: NonEmptyStr, requested: NonEmptyStr }
   | BmcWriteApprovalIntentNotItsSubject { approved: NonEmptyStr }
   | BmcWriteApprovalScopesNotItsSubject { approved: NonEmptyStr }
+  | BmcWriteNotEntailedByTheApproval { approved: NonEmptyStr, requested: NonEmptyStr }
+  | BmcWriteApprovalQualifyByRotationIsOneWrite { approved: NonEmptyStr }
 
 type BmcWriteApprovalReading
   = BmcWriteApproved { attempt: AttemptIdentity, granted_by: NonEmptyStr }
   | BmcWriteApprovalRefused { cause: BmcWriteApprovalRefusal }
 
-// THE ONE READING OF A GRANT, for every admission in this module and its consumers. The grant's own
-// window and claim are std.scoped_authorization authorize's, run by the gate at the instant the run
-// proceeds; this reads what was approved. The intent hash must be the hash of the grant's own subject,
-// so a grant whose subject was edited after the decision is refused rather than read.
+// THE ONE READING OF A GRANT FOR ONE WRITE, for every admission in this module and its consumers. The
+// grant's own window and claim are std.scoped_authorization authorize's, run by the gate at the instant the
+// run proceeds; this reads what was approved. The write must be at the approved controller and build and be
+// one of the approved writes; the intent hash must be the hash of the grant's own subject, so a grant whose
+// subject was edited after the decision is refused rather than read.
 fn read_bmc_write_approval(
   approval: ScopedAuthorization<BmcAccountWriteApproval>,
   subject: RouteQualificationSubject,
@@ -522,8 +574,12 @@ fn read_bmc_write_approval(
     AuthorizationGranted { grant: g, claim: _ } =>
       if !bmc_account_write_purpose_covers(approved: g.subject.purpose, required: required) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherPurpose { approved: bmc_account_write_purpose_text(purpose: g.subject.purpose), required: bmc_account_write_purpose_text(purpose: required) } }
-      } else if route_subject_identity(subject: g.subject.subject) != route_subject_identity(subject: subject) {
-        BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherSubject { approved: route_subject_identity(subject: g.subject.subject), requested: route_subject_identity(subject: subject) } }
+      } else if (g.subject.controller.host as String) != (subject.endpoint.host as String) || !bmc_firmware_release_identity_eq(a: g.subject.firmware, b: subject.firmware) {
+        BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherSubject { approved: bmc_account_write_identity(approval: g.subject), requested: route_subject_identity(subject: subject) } }
+      } else if (match g.subject.purpose { QualifyByRotation => length(g.subject.writes) != 1  QualifyRoute => false  RotateCredential => false }) {
+        BmcWriteApprovalRefused { cause: BmcWriteApprovalQualifyByRotationIsOneWrite { approved: bmc_account_write_identity(approval: g.subject) } }
+      } else if !any(g.subject.writes, w => account_write_request_eq(a: w, b: subject.request)) {
+        BmcWriteApprovalRefused { cause: BmcWriteNotEntailedByTheApproval { approved: bmc_account_write_identity(approval: g.subject), requested: route_subject_identity(subject: subject) } }
       } else if !(match bmc_account_write_intent_hash(approval: g.subject) { Absent => false  Present { value: h } => content_hash_equal(left: g.intent_hash, right: h) }) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalIntentNotItsSubject { approved: bmc_account_write_identity(approval: g.subject) } }
       } else if !scopes_are_exactly(granted: g.scopes, derived: bmc_account_write_scopes(approval: g.subject)) {
@@ -1144,5 +1200,96 @@ fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteReques
     account: account,
     transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: "SetAccountPassword"),
     action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: "SetAccountPassword"),
+  }
+}
+
+// ── THE FORCED FIRST ROTATION ───────────────────────────────────────────────────────────────────────
+//
+// On a build whose published login answers 403 PasswordChangeRequired (gunbc.machine_intake
+// bmc_credential_policy PublishedCredentialChangeForced), nothing authenticated can be read before the
+// password write, and that write is the only request the state admits. So the first rotation of such a
+// controller is admitted here, from the forced state itself rather than from a reading of the account:
+//
+// - the forced state was read at this controller, at this build, in this run (the approval's attempt is
+//   the attempt that read the 403, so a 403 kept from an earlier run admits nothing);
+// - the write is the password write of the account the factory login names (OpenBMC root), and nothing
+//   else -- not a privilege write, not another account;
+// - the route names exactly that write, as a candidate (the controller's own 403 names the target) or
+//   already grounded; an ungrounded route names no write;
+// - the operator approved exactly this write with purpose QualifyByRotation: one approval, one write
+//   that both grounds the route and rotates the credential.
+//
+// The admitted write is not consumed yet: forced_first_rotation_apply_frontier. Its readback is the
+// ordinary BmcSecure read under the new generation; the forced state proves nothing about the
+// controller after the write.
+
+data forced_first_rotation_apply_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live apply consumes AdmittedForcedFirstRotation -- materializing the generation's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential at its pinned version, writing them under the published credential the forced state admits, grounding the route through qualify_rotation_route from that write's own request and response receipts, and reading back with the ordinary BmcSecure read under the new generation, whose firmware must be the forced state's build (on a build unreadable before the write, gunbc.machine_intake.bmc_credential_policy ForcedBuildInferredFromTheResponse, that read is the inference's only confirmation, and a different build refuses BmcSecure) -- so that on a forcing build that write is the first rotation and the converge then reads the controller as secured, a Noop; NOT satisfied by the dry realization or by a write whose bytes were supplied out of band" as NonEmptyStr,
+)
+
+type ForcedFirstRotationRefusal
+  = ForcedStateForAnotherController { forced: BmcControllerEndpoint, route: BmcControllerEndpoint }
+  | ForcedStateForAnotherBuild { forced: BmcFirmwareReleaseIdentity, route: BmcFirmwareReleaseIdentity }
+  | ForcedStateFromAnotherAttempt { forced: AttemptIdentity, approved: AttemptIdentity }
+  | ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: BmcAccountWriteRequest, factory_account: NonEmptyStr }
+  | ForcedRouteDoesNotNameThisWrite { grounding: BmcRotationRouteGrounding }
+  | ForcedWriteApprovalRefused { cause: BmcWriteApprovalRefusal }
+
+type AdmittedForcedFirstRotation sole_constructor {
+  forced: PublishedCredentialChangeForced
+  standing: BmcRotationRouteStanding
+  request: BmcAccountWriteRequest
+  attempt: AttemptIdentity
+  decided_by: NonEmptyStr
+}
+
+type ForcedFirstRotationAdmission
+  = ForcedFirstRotationAdmitted { admitted: AdmittedForcedFirstRotation }
+  | ForcedFirstRotationRefused { cause: ForcedFirstRotationRefusal }
+
+fn is_factory_account_password_write(request: BmcAccountWriteRequest, factory_account: NonEmptyStr) -> Bool {
+  match request {
+    RedfishAccountPasswordWrite { account: a, transport_operation: _, action_shape: _ } => (a as String) == (factory_account as String)
+    IpmiSetUserPassword { user: _ } => false
+    IpmiSetUserPrivilegeLimit { access: _ } => false
+  }
+}
+
+fn route_names_write(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest) -> Bool {
+  match standing.grounding {
+    RouteQualificationCandidate { request: r, evidence: _ } => account_write_request_eq(a: r, b: request)
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => account_write_request_eq(a: r, b: request)
+    RouteGroundedByCitedSource { request: r, citation: _ } => account_write_request_eq(a: r, b: request)
+    RouteUngrounded => false
+  }
+}
+
+fn admit_forced_first_rotation(
+  forced: PublishedCredentialChangeForced,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
+) -> ForcedFirstRotationAdmission {
+  let factory_account = bmc_firmware_factory_account(family: forced.key.firmware.family)
+  if (forced.endpoint.host as String) != (standing.endpoint.host as String) {
+    ForcedFirstRotationRefused { cause: ForcedStateForAnotherController { forced: forced.endpoint, route: standing.endpoint } }
+  } else if !bmc_firmware_release_identity_eq(a: forced.key.firmware, b: standing.firmware) {
+    ForcedFirstRotationRefused { cause: ForcedStateForAnotherBuild { forced: forced.key.firmware, route: standing.firmware } }
+  } else if !is_factory_account_password_write(request: request, factory_account: factory_account) {
+    ForcedFirstRotationRefused { cause: ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: request, factory_account: factory_account } }
+  } else if !route_names_write(standing: standing, request: request) {
+    ForcedFirstRotationRefused { cause: ForcedRouteDoesNotNameThisWrite { grounding: standing.grounding } }
+  } else {
+    match read_bmc_write_approval(approval: approval, subject: route_subject_of(standing: standing, request: request), required: QualifyByRotation) {
+      BmcWriteApprovalRefused { cause: c } => ForcedFirstRotationRefused { cause: ForcedWriteApprovalRefused { cause: c } }
+      BmcWriteApproved { attempt: a, granted_by: by } =>
+        if (a as String) != (forced.attempt as String) {
+          ForcedFirstRotationRefused { cause: ForcedStateFromAnotherAttempt { forced: forced.attempt, approved: a } }
+        } else {
+          ForcedFirstRotationAdmitted {
+            admitted: AdmittedForcedFirstRotation { forced: forced, standing: standing, request: request, attempt: a, decided_by: by },
+          }
+        }
+    }
   }
 }

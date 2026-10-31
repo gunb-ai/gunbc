@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_generic_release_assess_accepts_evidence_its_caller_authored
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data a_generic_release_assess_accepts_evidence_its_caller_authored: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_generic_release_assess_accepts_evidence_its_caller_authored" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "module-private functions, or a release assess that accepts only a sole_constructor observation minted by the real observation, so a caller-authored verdict cannot reach the release mint" } },
+
+  receipts: [
+    "INVALID STATE: an eligible release plan for a hold its caller does not hold, minted from a verdict about the world that no observation produced. gunbc.durable_exclusive_hold_file_store file_hold_nonholder_release_assess is generic in Observation and the CALLER chooses that type, so a caller can pass Observation = String with SectionObservedComplete { observation: \"x\" } and receive a FileHoldReleasePlan that frees any file hold whose root, slot, holder and generation it can name. The plan's sole_constructor holds, and protects nothing here, because the forged input is the verdict and not the plan.",
+    "HARM: a hold freed while its protected section is still running, so a second actor is admitted into it -- for the consumer this release was written for (the deploy transition lease) that is two converges mutating one repository at once.",
+    "WHY A SEAL ON ONE CONSUMER'S OBSERVATION DOES NOT CLOSE IT (C-lease, clever-dove-93, 2026-10-25): sealing gunbc.deploy_transition's head observation as a sole_constructor carrier binds only callers that use that type, and the generic function admits every other type. .dag has no module privacy (no pub/private), so admit_callers is the only confinement of a function's callers, and the guard that holds today is the authored roster. Ruled by stern-ram-763 (2026-10-25): the roster stays frozen, not deleted and not joined, and the deploy transition lease refuses a non-holder release instead of consuming this one.",
+    "SPECIMEN: file_hold_nonholder_release_assess, landed by gunb-ai/gunbc#15061 with admit_callers [test.claim.durable_exclusive_hold_nonholder_release_wet_witness nr_assess_at], although the operator had rejected caller rosters and allowlists as architecture; the side-chat merge review of #15061 did not catch the roster. SIBLINGS OF THE SAME SHAPE, named for the census and not ruled on here: file_hold_recovery_assess and file_hold_recovery_assess_windowed take a DurableHoldHolderReport whose HolderObservedDead a caller can author, and admit their callers by roster for the same reason.",
+    "ALLOWLIST-CLEANUP LIST (operator's): the admit_callers roster of gunbc.durable_exclusive_hold_file_store file_hold_nonholder_release_assess, FROZEN -- delete it when the trigger lands, in the change that makes the release evidence a sole_constructor carrier only the real observation mints, with a RED showing that an authored or literal evidence value refuses at construction and the same probe passing with the seal stripped.",
+    "BLOCKED CONSUMER: gunbc.deploy_transition clear_transition_records clears the inhibition on ClearedByEvidence and ClearedByAbandonment and then refuses to release the transition lease, which stays held by a holder that is not the caller. No production ingress acquires the lease today, so this blocks only that future ingress; binding acquire_transition_lease into an ingress before this trigger lands is a line-stop. The operator arm needs a second thing besides this trigger: abandonment is not a lease-release basis until it binds a std.scoped_authorization AuthorizationDecision.",
+    "OUTSIDE THIS CLASS, so it is not counted here: the filesystem is ambient, so any module can write a free payload into a hold slot's next generation directly, without any assess; that is the ambient-authority residual every file-backed store carries.",
+    "CEILING: structurally guaranteed. The verdict a release consumes becomes a carrier only its observer constructs, and the release mint accepts nothing else; decidable, awaiting one grounding (the capability in the standing). NEXT TRIGGER: that capability lands; then the roster above is deleted, the transition lease consumes the non-holder release with its sealed observation, and gunbc.durable_exclusive_hold_file_store durable_hold_nonholder_release_consumer_frontier_rows is deleted with it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_nonholder_release_assess", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "durable_hold_nonholder_release_consumer_frontier_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.deploy_transition", decl_name: "clear_transition_records", field: WholeDeclaration },
+  ],
+}

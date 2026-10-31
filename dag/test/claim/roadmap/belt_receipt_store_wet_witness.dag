@@ -1,0 +1,264 @@
+module test.claim.roadmap.belt_receipt_store_wet_witness
+
+// THE SIX SEALED BELT STORES OVER A REAL DIRECTORY TREE, with the realization broken and restored.
+// Each store is sealed in place with NO format change (ruling stern-ram-763 2026-10-24), so every claim that a
+// record "reads back" plants the file at the literal path the pre-seal code wrote -- the bytes an old record
+// carries -- and reads it through the store; and every write is read back from that same literal path with a
+// raw Filesystem.Read. The BROKEN world removes the directory the mint lists: the mint must answer its Unready
+// arm, and the claim names that arm; the paired GREEN world creates it and the mint must answer Ready. No claim
+// maps a refusal to an empty value and asserts over it.
+// On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout, instance_receipts_dir }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_submission { submission_capture_basename }
+import gunbc.roadmap.roadmap_belt_receipt_store_root {
+  belt_tick_receipt_store, BeltTickReceiptStoreReady, BeltTickReceiptStoreUnready, belt_tick_receipt_observe, belt_tick_receipt_put,
+  belt_obligation_receipt_store, BeltObligationReceiptStoreReady, BeltObligationReceiptStoreUnready, belt_obligation_receipt_observe, belt_obligation_receipt_put,
+  belt_publication_receipt_store, BeltPublicationReceiptStoreReady, BeltPublicationReceiptStoreUnready, belt_publication_receipt_put,
+  belt_projects_slots_path, BeltReceiptWritten, BeltReceiptWriteRefused,
+}
+import gunbc.roadmap.roadmap_belt_attempt_store_root {
+  belt_attempt_member_path, belt_submission_store_slots, belt_capture_intent_store_slots, belt_integration_store_slots,
+  belt_submission_store, BeltSubmissionStoreReady, BeltSubmissionStoreUnready, belt_submission_store_observe_head, belt_submission_store_put_head,
+  belt_capture_intent_store, BeltCaptureIntentStoreReady, BeltCaptureIntentStoreUnready, belt_capture_intent_store_observe, belt_capture_intent_store_put,
+  belt_integration_store, BeltIntegrationStoreReady, BeltIntegrationStoreUnready, belt_integration_store_observe_head, belt_integration_store_put_head,
+  BeltAttemptEntryRead, BeltAttemptEntryReading,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data wit_node: String = "receipt-store-wet-n"
+data wit_attempt: String = "k1"
+data wit_head: String = "0123456789abcdef0123456789abcdef01234567"
+data old_bytes: String = "{\"written\":\"by the pre-seal code\"}"
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_belt_receipt_store_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["belt-receipt-store-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["belt-receipt-store-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18104,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn receipts_dir(instance: HostDashboardInstance) -> String {
+  instance_receipts_dir(instance_root: instance.instance_root as String)
+}
+
+fn made(path: String) -> Bool {
+  shell.Mkdir.Parents(path: path as FilePath).success
+}
+
+fn planted(path: String) -> Bool {
+  Filesystem.Write(path: path, content: old_bytes).success
+}
+
+fn raw_reads_as(path: String, want: String) -> Bool {
+  let r = Filesystem.Read(path: path)
+  r.success && r.content == want
+}
+
+fn observed_is(observation: FilesystemFileObservation, want: String) -> Bool {
+  match observation {
+    FilesystemFileRead { path: _, content } => content == want
+    FilesystemFileAbsent(_) => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+fn entry_is(reading: BeltAttemptEntryReading, want: String) -> Bool {
+  match reading {
+    BeltAttemptEntryRead { content } => content == want
+    _ => false
+  }
+}
+
+// ── the tick receipt ───────────────────────────────────────────────────────────────────────────────
+test fn an_old_tick_receipt_reads_through_the_store_and_a_write_lands_at_the_old_path() -> Bool {
+  let i = fresh_instance(tag: "tick")
+  let literal = join([receipts_dir(instance: i), "/belt-last-tick.json"], "")
+  made(path: receipts_dir(instance: i)) && planted(path: literal) && match belt_tick_receipt_store(instance: i) {
+    BeltTickReceiptStoreUnready { detail: _ } => false
+    BeltTickReceiptStoreReady { store } =>
+      observed_is(observation: belt_tick_receipt_observe(store: store), want: old_bytes)
+        && match belt_tick_receipt_put(store: store, content: "{\"next\":1}") {
+          BeltReceiptWriteRefused { error: _ } => false
+          BeltReceiptWritten => raw_reads_as(path: literal, want: "{\"next\":1}")
+        }
+  }
+}
+
+test fn the_tick_mint_is_unready_with_the_receipts_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "tick-broken")
+  let broken = match belt_tick_receipt_store(instance: i) {
+    BeltTickReceiptStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltTickReceiptStoreReady { store: _ } => false
+  }
+  let restored = made(path: receipts_dir(instance: i)) && match belt_tick_receipt_store(instance: i) {
+    BeltTickReceiptStoreReady { store: _ } => true
+    BeltTickReceiptStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}
+
+// ── the obligation receipt ─────────────────────────────────────────────────────────────────────────
+test fn an_old_obligation_receipt_reads_through_the_store_and_a_write_lands_at_the_old_path() -> Bool {
+  let i = fresh_instance(tag: "oblig")
+  let literal = join([receipts_dir(instance: i), "/obligations-", wit_node, "-", wit_attempt, ".json"], "")
+  made(path: receipts_dir(instance: i)) && planted(path: literal) && match belt_obligation_receipt_store(instance: i) {
+    BeltObligationReceiptStoreUnready { detail: _ } => false
+    BeltObligationReceiptStoreReady { store } =>
+      observed_is(observation: belt_obligation_receipt_observe(store: store, node_id: wit_node, attempt_key: wit_attempt), want: old_bytes)
+        && match belt_obligation_receipt_put(store: store, node_id: wit_node, attempt_key: wit_attempt, content: "{\"next\":2}") {
+          BeltReceiptWriteRefused { error: _ } => false
+          BeltReceiptWritten => raw_reads_as(path: literal, want: "{\"next\":2}")
+        }
+  }
+}
+
+test fn the_obligation_mint_is_unready_with_the_receipts_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "oblig-broken")
+  let broken = match belt_obligation_receipt_store(instance: i) {
+    BeltObligationReceiptStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltObligationReceiptStoreReady { store: _ } => false
+  }
+  let restored = made(path: receipts_dir(instance: i)) && match belt_obligation_receipt_store(instance: i) {
+    BeltObligationReceiptStoreReady { store: _ } => true
+    BeltObligationReceiptStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}
+
+// ── the publication receipt ────────────────────────────────────────────────────────────────────────
+test fn a_publication_receipt_write_lands_at_the_old_path_under_the_projects_directory() -> Bool {
+  let i = fresh_instance(tag: "pub")
+  let projects = belt_projects_slots_path(instance: i) as String
+  let literal = join([projects, "/proj-a.publication-receipt.json"], "")
+  made(path: projects) && match belt_publication_receipt_store(instance: i) {
+    BeltPublicationReceiptStoreUnready { detail: _ } => false
+    BeltPublicationReceiptStoreReady { store } =>
+      match belt_publication_receipt_put(store: store, project_key: "proj-a", content: old_bytes) {
+        BeltReceiptWriteRefused { error: _ } => false
+        BeltReceiptWritten => raw_reads_as(path: literal, want: old_bytes)
+      }
+  }
+}
+
+test fn the_publication_mint_is_unready_with_the_projects_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "pub-broken")
+  let broken = match belt_publication_receipt_store(instance: i) {
+    BeltPublicationReceiptStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltPublicationReceiptStoreReady { store: _ } => false
+  }
+  let restored = made(path: belt_projects_slots_path(instance: i) as String) && match belt_publication_receipt_store(instance: i) {
+    BeltPublicationReceiptStoreReady { store: _ } => true
+    BeltPublicationReceiptStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}
+
+// ── the attempt-scoped stores ──────────────────────────────────────────────────────────────────────
+fn member_dir(instance: HostDashboardInstance, member: NonEmptyStr) -> String {
+  belt_attempt_member_path(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, member: member)
+}
+
+test fn an_old_submission_capture_reads_through_the_store_and_a_write_lands_at_the_old_path() -> Bool {
+  let i = fresh_instance(tag: "sub")
+  let dir = member_dir(instance: i, member: belt_submission_store_slots.member)
+  let literal = join([dir, "/", submission_capture_basename(head_sha: wit_head)], "")
+  made(path: dir) && planted(path: literal) && match belt_submission_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltSubmissionStoreUnready { detail: _ } => false
+    BeltSubmissionStoreReady { store } =>
+      entry_is(reading: belt_submission_store_observe_head(store: store, head_sha: wit_head), want: old_bytes)
+        && match belt_submission_store_put_head(store: store, head_sha: wit_head, content: "{\"next\":3}") {
+          BeltReceiptWriteRefused { error: _ } => false
+          BeltReceiptWritten => raw_reads_as(path: literal, want: "{\"next\":3}")
+        }
+  }
+}
+
+test fn the_submission_mint_is_unready_with_the_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "sub-broken")
+  let broken = match belt_submission_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltSubmissionStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltSubmissionStoreReady { store: _ } => false
+  }
+  let restored = made(path: member_dir(instance: i, member: belt_submission_store_slots.member)) && match belt_submission_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltSubmissionStoreReady { store: _ } => true
+    BeltSubmissionStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}
+
+test fn an_old_capture_intent_reads_through_the_store_and_a_write_lands_at_the_old_path() -> Bool {
+  let i = fresh_instance(tag: "intent")
+  let dir = member_dir(instance: i, member: belt_capture_intent_store_slots.member)
+  let literal = join([dir, "/intent.json"], "")
+  made(path: dir) && planted(path: literal) && match belt_capture_intent_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltCaptureIntentStoreUnready { detail: _ } => false
+    BeltCaptureIntentStoreReady { store } =>
+      entry_is(reading: belt_capture_intent_store_observe(store: store), want: old_bytes)
+        && match belt_capture_intent_store_put(store: store, content: "{\"next\":4}") {
+          BeltReceiptWriteRefused { error: _ } => false
+          BeltReceiptWritten => raw_reads_as(path: literal, want: "{\"next\":4}")
+        }
+  }
+}
+
+test fn the_capture_intent_mint_is_unready_with_the_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "intent-broken")
+  let broken = match belt_capture_intent_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltCaptureIntentStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltCaptureIntentStoreReady { store: _ } => false
+  }
+  let restored = made(path: member_dir(instance: i, member: belt_capture_intent_store_slots.member)) && match belt_capture_intent_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltCaptureIntentStoreReady { store: _ } => true
+    BeltCaptureIntentStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}
+
+test fn an_old_integration_receipt_reads_through_the_store_and_a_write_lands_at_the_old_path() -> Bool {
+  let i = fresh_instance(tag: "integ")
+  let dir = member_dir(instance: i, member: belt_integration_store_slots.member)
+  let literal = join([dir, "/", wit_head, ".json"], "")
+  made(path: dir) && planted(path: literal) && match belt_integration_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltIntegrationStoreUnready { detail: _ } => false
+    BeltIntegrationStoreReady { store } =>
+      entry_is(reading: belt_integration_store_observe_head(store: store, head_sha: wit_head), want: old_bytes)
+        && match belt_integration_store_put_head(store: store, head_sha: wit_head, content: "{\"next\":5}") {
+          BeltReceiptWriteRefused { error: _ } => false
+          BeltReceiptWritten => raw_reads_as(path: literal, want: "{\"next\":5}")
+        }
+  }
+}
+
+test fn the_integration_mint_is_unready_with_the_directory_unlisted_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "integ-broken")
+  let broken = match belt_integration_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltIntegrationStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed")
+    BeltIntegrationStoreReady { store: _ } => false
+  }
+  let restored = made(path: member_dir(instance: i, member: belt_integration_store_slots.member)) && match belt_integration_store(instance: i, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) {
+    BeltIntegrationStoreReady { store: _ } => true
+    BeltIntegrationStoreUnready { detail: _ } => false
+  }
+  broken && restored
+}

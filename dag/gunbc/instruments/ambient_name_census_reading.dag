@@ -299,6 +299,17 @@ fn ambient_name_census_standing(
   // refused, which is not the same fact as never read. Both leave the wave's edits unjudged at
   // occurrence grain, so both answer 2; they are named apart so the cause is not misreported.
   let refused_modules = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
+  // WHICH refusal each refused module carries, read off the walk's OWN row rather than re-derived here: the
+  // two trailing fields of a binding_unreached line are the cause symbol and the locus the resolver located
+  // (v2.compiler.source_root_eval native_census_infer_first_refusal_text, whose source is the demand
+  // census's first-reason/first-unbound derivation). A row without them -- an older walk, or a module that
+  // refused before resolve -- reads as "-" and the receipt says so instead of guessing a cause.
+  let refused_first_refusal = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) {
+    let cause = field_at(line: l, index: 3)
+    let locus = field_at(line: l, index: 4)
+    map_insert(m, field_at(line: l, index: 1),
+      (if cause == "" { "-" } else { cause }) + "\t" + (if locus == "" { "-" } else { locus }))
+  })
   let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
   let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
   let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
@@ -316,7 +327,8 @@ fn ambient_name_census_standing(
     + (unanswered |> join(separator: "\n")) + "\n"
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
-    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })
+      + "\t" + (match map_get(refused_first_refusal, m) { Present { value: refusal } => refusal  Absent => "-\t-" })) |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
