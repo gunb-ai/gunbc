@@ -1,0 +1,21 @@
+module test.claim.emitter_fn_param_called_in_fold_closure_witness
+
+// REGRESSION CONTROL for the sibling shape of emitter_fn_param_static_forwarding_witness (gunbc#14876
+// demand_engine_entries_mapped): an `impl Fn` parameter that the body only CALLS from inside a fold_list
+// cons closure is not forwarded, so it owes no `+ 'static`; and a caller whose closure borrows a local
+// (demand_engine_seal passes fn(entry){..e..}) must compile, and the type parameter reaching a 'static callee (make_bag) is what made the OLD function-wide rule bound f, which E0373 refuses when the bound is
+// present. Discriminating arm: the same fn with the parameter forwarded bare into a returned-arrow fn
+// keeps `+ 'static` (the bound was not deleted). compile_dag_rust_emit_check is the consumer.
+
+fn w_fn_param_called_in_fold_closure_has_no_static_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module efold_a\n\nimport std.types { Int, List }\nimport std.algebra { fold_list }\n\ntype Bag {\n  run: fn(Int) -> Int\n}\n\nfn make_bag<T>(x: T) -> Bag {\n  Bag { run: n => n }\n}\n\nfn mapped<T>(x: T, xs: List<Int>, f: fn(Int) -> Int) -> List<Int> {\n  let b = make_bag(x: x)\n  fold_list(xs: xs, empty: [], cons: fn(acc, n) { [f(n)] })\n}\n\nfn caller(xs: List<Int>, k: Int) -> List<Int> {\n  mapped(x: k, xs: xs, f: fn(n) { n + k })\n}\n",
+    "src/efold_a.rs",
+    ["f: impl Fn(i64) -> i64 + Clone"],
+    ["f: impl Fn(i64) -> i64 + Clone + 'static"]
+  )
+}
+
+test fn a_fn_param_called_inside_a_fold_closure_carries_no_static_bound() -> Bool {
+  w_fn_param_called_in_fold_closure_has_no_static_bound()
+}
