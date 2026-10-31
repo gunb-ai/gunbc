@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
@@ -28,7 +28,8 @@ import std.optional { Present, Absent }
 // (publication requests) of the store inventory at commit c5671ca07216.
 //
 // MODEL ONLY. This module declares the closed stage roles, the per-spool declaration row, the sealed entry key
-// and the pure decisions of the four operations. The effect layer (listing, create-only write, the rename) is
+// and the pure decisions of the four operations (enqueue, claim, complete, observe) plus the two crash decisions
+// (spool_requeue_assess on boot-id evidence, then spool_stale_assess for the line stop). The effect layer (listing, create-only write, the rename) is
 // the implementation PR; its REDs are the expecting-red claims in test.claim.spool_queue_seal_witness.
 
 type SpoolKind
@@ -42,7 +43,7 @@ type SpoolKind
 // claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
 // because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
 // roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
-// (parent jolly-hawk-60, design approval). That PR deletes HostSpoolStage in the same change (DESIGN section 3).
+// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (DESIGN section 3).
 type SpoolRole
   = RolePending
   | RoleHandedOff
@@ -97,17 +98,18 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   }
 }
 
-// THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer into the
-// first role, the claimant into every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each
-// spool directory with the ownership these principals imply instead of spelling it beside host_layout's path
-// functions; that rewrite is the implementation PR (frontier row spool_writers_column_reader below).
-fn spool_role_writer(kind: SpoolKind, role: SpoolRole) -> SpoolPrincipal {
+// THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer and the claimant
+// into the first role (the claimant by spool_requeue_assess, the one move to an earlier role), the claimant into
+// every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each spool directory with the
+// ownership these principals imply instead of spelling it beside host_layout's path functions; that rewrite is
+// node://adhoc-ec4fbad6-dec. Requeue's writer is therefore IN this column, so the planned ownership cannot refuse it.
+fn spool_role_writers(kind: SpoolKind, role: SpoolRole) -> List<SpoolPrincipal> {
   match role {
-    RolePending => spool_declaration(kind: kind).enqueuer
-    RoleHandedOff => spool_declaration(kind: kind).claimant
-    RoleClaimed => spool_declaration(kind: kind).claimant
-    RoleDone => spool_declaration(kind: kind).claimant
-    RoleRefused => spool_declaration(kind: kind).claimant
+    RolePending => [spool_declaration(kind: kind).enqueuer, spool_declaration(kind: kind).claimant]
+    RoleHandedOff => [spool_declaration(kind: kind).claimant]
+    RoleClaimed => [spool_declaration(kind: kind).claimant]
+    RoleDone => [spool_declaration(kind: kind).claimant]
+    RoleRefused => [spool_declaration(kind: kind).claimant]
   }
 }
 
@@ -165,9 +167,10 @@ fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
 }
 
 // THE ONLY FORWARD STEP. The successor of a role is the first chain role of strictly greater rank; the LAST chain role (the claim
-// itself) and every terminal have none. THERE IS NO CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE: no
-// requeue, no reap-and-reclaim, no age-based release (a claimed entry whose claimant died stops the line through
-// gunbc.roadmap.spool_stall and is settled by complete, never re-offered).
+// itself) and every terminal have none. THE ONLY CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE IS
+// spool_requeue_assess, gated on a typed claimant-dead observation (a boot id differing from the one the claim
+// recorded). No unevidenced requeue, no reap-and-reclaim, no age-based release exist; without evidence the line
+// stops through gunbc.roadmap.spool_stall.
 fn spool_role_rank(role: SpoolRole) -> Int {
   match role {
     RolePending => 0
@@ -266,8 +269,10 @@ fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: Sp
   }
 }
 
-// CRASH REFUSAL. The verdict is an OBSERVATION of the claimant, never an age. Dead licenses the line stop only;
-// there is deliberately no arm that offers the entry again. Unobservable is not dead.
+// CRASH REFUSAL. The verdict is an OBSERVATION of the claimant, never an age. ONE ordered policy over a dead claimant:
+// spool_requeue_assess is consulted first and requeues only on boot-id evidence; where it refuses (no boot-id
+// observation) a claimant observed dead by other means STOPS THE LINE here, through gunbc.roadmap.spool_stall. This
+// decision itself has no arm that offers the entry again. Unobservable is not dead.
 type SpoolClaimantLiveness
   = ClaimantObservedLive { evidence: NonEmptyStr }
   | ClaimantObservedDead { evidence: NonEmptyStr }
@@ -297,14 +302,61 @@ fn spool_stale_assess(observed: SpoolEntryState, liveness: SpoolClaimantLiveness
   }
 }
 
+// REQUEUE ON EVIDENCE. Claimed -> the spool's first chain role, and only on a typed claimant-dead observation: the
+// claim records the boot id it was taken under, and a DIFFERENT current boot id is the evidence (the claimant cannot
+// have survived a reboot), as std.durable_exclusive_hold ReleasedOnEvidence. Age is never evidence; an absent
+// observation refuses and the line stops through gunbc.roadmap.spool_stall.
+type SpoolRequeueEvidence
+  = BootsObserved { claim_boot_id: NonEmptyStr, current_boot_id: NonEmptyStr }
+  | NoClaimantObservation { cause: NonEmptyStr }
+
+type SpoolRequeueAssessment
+  = RequeueEligible { from: SpoolRole, into: SpoolRole }
+  | RequeueClaimantStillBound
+  | RequeueNotClaimed { state: SpoolEntryState }
+  | RequeueRefused { cause: NonEmptyStr }
+
+fn spool_requeue_target(kind: SpoolKind) -> Optional<SpoolRole> {
+  spool_declaration(kind: kind).chain |> first()
+}
+
+fn spool_requeue_on_boots(kind: SpoolKind, claim_boot_id: NonEmptyStr, current_boot_id: NonEmptyStr) -> SpoolRequeueAssessment {
+  if (claim_boot_id == current_boot_id) {
+    RequeueClaimantStillBound
+  } else {
+    match spool_requeue_target(kind: kind) {
+      Present { value: t } => RequeueEligible { from: RoleClaimed, into: t }
+      Absent => RequeueRefused { cause: "the spool declares no chain" as NonEmptyStr }
+    }
+  }
+}
+
+fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: SpoolRequeueEvidence) -> SpoolRequeueAssessment {
+  match observed {
+    EntryStanding { role: r } =>
+      if (r == RoleClaimed) {
+        match evidence {
+          BootsObserved { claim_boot_id: c, current_boot_id: n } => spool_requeue_on_boots(kind: kind, claim_boot_id: c, current_boot_id: n)
+          NoClaimantObservation { cause: m } => RequeueRefused { cause: m }
+        }
+      } else {
+        RequeueNotClaimed { state: observed }
+      }
+    EntryAbsent => RequeueNotClaimed { state: observed }
+    EntryAmbiguous { roles: _ } => RequeueNotClaimed { state: observed }
+    EntryObservationUnavailable { detail: _ } => RequeueNotClaimed { state: observed }
+  }
+}
+
 // FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
-// a String row that no fold reads is the dead data of DESIGN 4c. The implementation PR gives each a typed carrier.
+// a String row that no fold reads is the dead data of DESIGN 4c. The implementation change is node://adhoc-ec4fbad6-dec
+// (cut HostSpoolStage, move its 7 consumer modules, wire live_deploy.emit); it gives each a typed carrier.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
 //  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
-//    spool_role_writer when the implementation PR migrates the three spools and deletes the literal spellings.
+//    spool_role_writers when the implementation PR migrates the three spools and deletes the literal spellings.
 //  - out-of-corpus writers (the ExecStopPost hook is derived from the codec; any other principal is not): no rung is
 //    established by this model-only change, so none is dropped here. The implementation PR files the gunbc.rung_drop
 //    row (previous rung, temporary rung, reason, population, trigger). Restoration capability: each spool directory
-//    creatable only by the principals spool_role_writer names, kernel-refusing others; a permission-bits readback
+//    creatable only by the principals spool_role_writers names, kernel-refusing others; a permission-bits readback
 //    does not retire it.

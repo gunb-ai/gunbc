@@ -1,11 +1,12 @@
 module test.claim.spool_queue_seal_witness
 
-import std.types { Bool, Int, String, List }
+import std.types { Bool, Int, String, List, NonEmptyStr }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spool_queue {
-  spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writer, PrincipalExternalHook, PrincipalDrainer,
+  spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
+  spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
   ClaimEligible, ClaimRoleUndeclared, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
@@ -58,6 +59,7 @@ data raw_exit_stage_source: String = "module probe_spool_queue_raw_attempt_exit_
 data raw_publication_source: String = "module probe_spool_queue_raw_publication_request_dir\nimport std.types { NonEmptyStr }\nimport gunbc.host.host_layout { publication_request_dir }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
 data probe_requeue_source: String = "module probe_spool_queue_requeue\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+data probe_requeue_on_evidence_source: String = "module probe_spool_queue_requeue_on_evidence\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_requeue_on_evidence }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_reap_source: String = "module probe_spool_queue_reap\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_reap_stale }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data probe_stale_stop_source: String = "module probe_spool_queue_stale_stop\nimport std.types { NonEmptyStr }\nimport gunbc.spool_queue { spool_queue_stale_stop }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 data raw_host_spool_stage_source: String = "module probe_spool_queue_raw_stage_enum\nimport std.types { NonEmptyStr }\nimport gunbc.durable_handoff_host { HostSpoolStage }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
@@ -111,10 +113,15 @@ test fn only_a_claimed_entry_completes() -> ProcessExit {
   }
 }
 
-test fn the_exit_spool_pending_writer_is_the_external_hook() -> ProcessExit {
-  match spool_role_writer(kind: SpoolAttemptExit, role: RolePending) {
-    PrincipalExternalHook => ExitSuccess
-    _ => exit_failure(reason: "the exit spool inbox is not written by the hook")
+fn exit_inbox_writers_include(who: SpoolPrincipal) -> Bool {
+  spool_role_writers(kind: SpoolAttemptExit, role: RolePending) |> any(w => w == who)
+}
+
+test fn the_exit_spool_inbox_is_written_by_the_hook_and_by_requeue_of_the_drainer() -> ProcessExit {
+  if (exit_inbox_writers_include(who: PrincipalExternalHook) && exit_inbox_writers_include(who: PrincipalDrainer)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the exit inbox writers are not the hook and the requeueing drainer")
   }
 }
 
@@ -253,7 +260,8 @@ test fn a_minted_name_decodes_to_the_same_key() -> ProcessExit {
   }
 }
 
-// PERMANENT CONTROLS: no operation moves an entry out of Claimed to an earlier role, and none reclaims by age.
+// PERMANENT CONTROLS: no UNEVIDENCED operation moves an entry out of Claimed to an earlier role (the only one is
+// requeue_on_evidence, gated on a claimant-dead boot-id observation), and none reclaims by age.
 // Importing any such effect is a MissingExport and must stay one.
 test fn no_requeue_operation_exists() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: probe_requeue_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_requeue"), holds: fn(n) { n == 1 }))
@@ -261,6 +269,36 @@ test fn no_requeue_operation_exists() -> ProcessExit {
 
 test fn no_reap_stale_reclaim_operation_exists() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: probe_reap_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_reap_stale"), holds: fn(n) { n == 1 }))
+}
+
+// EXPECTING-RED: the evidence-gated requeue effect does not exist yet (the pure decision spool_requeue_assess does).
+test fn the_requeue_on_evidence_effect_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_requeue_on_evidence_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_requeue_on_evidence"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_different_boot_id_licenses_requeue_to_pending() -> ProcessExit {
+  match spool_requeue_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RoleClaimed }, evidence: BootsObserved { claim_boot_id: "boot-a", current_boot_id: "boot-b" as NonEmptyStr }) {
+    RequeueEligible { from: _, into: t } => if (t == RolePending) { ExitSuccess } else { exit_failure(reason: "requeued somewhere other than pending") }
+    _ => exit_failure(reason: "a different boot id did not license requeue")
+  }
+}
+
+test fn the_same_boot_id_or_no_observation_never_requeues() -> ProcessExit {
+  match spool_requeue_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RoleClaimed }, evidence: BootsObserved { claim_boot_id: "boot-a", current_boot_id: "boot-a" as NonEmptyStr }) {
+    RequeueClaimantStillBound =>
+      match spool_requeue_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RoleClaimed }, evidence: NoClaimantObservation { cause: "no boot id readable" as NonEmptyStr }) {
+        RequeueRefused { cause: _ } => ExitSuccess
+        _ => exit_failure(reason: "no observation did not refuse")
+      }
+    _ => exit_failure(reason: "the same boot id did not hold the claim")
+  }
+}
+
+test fn only_a_claimed_entry_is_requeued() -> ProcessExit {
+  match spool_requeue_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RoleHandedOff }, evidence: BootsObserved { claim_boot_id: "a", current_boot_id: "b" as NonEmptyStr }) {
+    RequeueNotClaimed { state: _ } => ExitSuccess
+    _ => exit_failure(reason: "a non-claimed entry was requeued")
+  }
 }
 
 // EXPECTING-RED: the one stale effect is the line stop feeding gunbc.roadmap.spool_stall; it does not exist yet.
