@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size }
 import std.optional { Present, Absent }
 import gunbc.durable_append_log_store { AppendLogSlot, AppendLogListingVerdict, ListingClean, ListingUnlisted, ListingLegacy, AppendLogLegacyCause, LegacyFramingMismatch, LegacyDuplicateClaim, append_log_listing_verdict, append_log_census_slots }
 import std.process { ProcessExit }
-import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_exit, total_blocking_census, CensusVerdict }
+import gunbc.compile_census_probe { census_delta_verdict, census_exit, total_blocking_census, CensusVerdict, deleted_callable_route_is_gone }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, SectionObservedComplete, SectionCompletionUnobservable }
 import std.durable_append_log {
   AppendFraming, InPlaceRecordFile, AppendObservation, StreamObserved, InPlaceRecordObserved, InPlaceRecordObservation, InPlaceRecordAbsent, InPlaceRecordDecoded, InPlaceRecordUndecodable, append_readback,
@@ -212,8 +212,6 @@ data log_member_write_source: String = "module probe_append_log_member_write\nim
 
 data events_initializer_source: String = "module probe_append_log_events_initializer\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_initialize_for_instance }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
 
-data forged_store_source: String = "module probe_append_log_forged_store\nimport std.types { NonEmptyStr }\nimport gunbc.durable_append_log_store { AppendLogStore, AppendLogParent }\nfn f(d: NonEmptyStr) -> AppendLogParent {\n  AppendLogParent { directory: d }\n}\n"
-
 // RED (EXPECTED, TRIGGER: the log and sandbox-written members leave AttemptStateMember and are reached only
 // through AppendLogStore) -- A LOG MEMBER IS WRITTEN THROUGH THE GENERIC ATTEMPT-STATE WRITE. Nothing refuses it
 // today (the closed enum still lists AttemptWorkerEvents); the migrated tree must.
@@ -221,17 +219,17 @@ test fn a_log_member_cannot_be_written_through_the_generic_attempt_state_write()
   census_exit(blocking_delta(hostile: log_member_write_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
 }
 
-// RED (EXPECTED, TRIGGER: the events initializer routes through the writer-window create) -- THE EVENTS FILE IS
-// STILL CREATED BY A BARE Filesystem.WriteCreateNewWithMode IN dispatch_attempt_events_initialize_for_instance.
-// The symbol must be deleted: importing it must add a blocking diagnostic.
+// KEYED CLAIM (flipped GREEN by this PR's deletion): THE EVENTS FILE IS NO LONGER CREATED BY A BARE
+// Filesystem.WriteCreateNewWithMode IN dispatch_attempt_events_initialize_for_instance. That callable is deleted,
+// so importing it yields a keyed MissingExport on that exact name (== 1) plus a blocking delta over baseline --
+// not a mere total-blocking count that any unrelated error could satisfy.
 test fn the_raw_events_initializer_is_gone() -> ProcessExit {
-  census_exit(blocking_delta(hostile: events_initializer_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  deleted_callable_route_is_gone(source: events_initializer_source, baseline: baseline_source, deleted_callable: "dispatch_attempt_events_initialize_for_instance")
 }
 
-// GREEN CONTROL, already true: the sealed parent handle cannot be forged outside its module.
-test fn a_forged_append_log_parent_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: forged_store_source, wanted_class: "SoleConstructorViolation", wanted_subject: "AppendLogParent"), holds: fn(n) { n == 1 }))
-}
+// The seal control moved with the seal: a foreign module cannot sole_construct AttemptAppendLogStore (the
+// business-key log store), asserted in the roadmap witness. The generic AppendLogParent/AppendLogStore are now an
+// unsealed data carrier -- constructible anywhere -- recorded as the same residual as a_slot_store_is_built_over_a_literal_path_by_any_module, so the generic witness no longer asserts they are blocked.
 
 fn census_slot_mint_unclean(slot: AppendLogSlot) -> Bool {
   match append_log_listing_verdict(slot: slot, listing: Present { value: [] }) {
