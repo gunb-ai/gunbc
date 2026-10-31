@@ -15506,8 +15506,9 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 // emitted but never inferred, so `fn f(v: Nat = "x")` was accepted silently
 // (gunbc.recurring_failure_mode a_parameter_default_value_is_never_judged_against_its_parameter_type).
 // The default is inferred with the declared parameter type as `expected` (so a literal is introduced
-// at the carrier like any other expected position) and judged by the same obligation every other
-// position builds. A generic-declaring parameter or a formal carrying an unbound type variable has no
+// at the carrier like any other expected position) and judged by declared_type_conformance_diags, the same
+// entry every other declared position uses (not the bare inhabitance projection, whose terminal arm answers an
+// Undecided that this position's witness does not count). A generic-declaring parameter or a formal carrying an unbound type variable has no
 // closed declared type at this seam and is left to the older path, as the direct-call argument chain does.
 //
 // VISIBILITY: a default sees module scope only, never a sibling parameter. The interpreter evaluates it in the
@@ -15530,14 +15531,12 @@ fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions 
           let r = infer_expr(texpr: default_expr, scope: scope, expected: Present { value: declared })
           infer_emissions_concat(
             left: r.emissions,
-            right: infer_emissions_of_diagnostics(diagnostics: declared_type_obligation_diags(
-              obligation: DeclaredTypeObligation {
-                position: PositionParameterDefault,
-                subject: authored_name_at(source_indices: scope.type_env.source_indices, node: p),
-                declared: declared,
-                produced: expression_value_type(e: r.typed),
-                span: r.typed.span
-              },
+            right: infer_emissions_of_diagnostics(diagnostics: declared_type_conformance_diags(
+              position: PositionParameterDefault,
+              subject: authored_name_at(source_indices: scope.type_env.source_indices, node: p),
+              declared: declared,
+              produced: expression_value_type(e: r.typed),
+              span: r.typed.span,
               scope: scope)))
         }
     }))
