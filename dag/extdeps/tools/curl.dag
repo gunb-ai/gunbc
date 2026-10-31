@@ -688,9 +688,12 @@ fn curl_trace_transfer_sending(events: List<CurlTraceEvent>, text: NonEmptyStr) 
     CurlTraceRecvHeader => false
     CurlTraceOtherEvent => false
   })
-  let ids = fold(carriers, init: [], f: (acc, e) => if length(filter(acc, i => i == e.transfer as String)) > 0 { acc } else { concat(acc, [e.transfer as String]) })
-  if length(ids) != 1 { none } else {
-    match ids.first() { Present { value: i } => Present { value: i as NonEmptyStr }  Absent => none }
+  match carriers.first() {
+    Absent => none
+    Present { value: first } =>
+      if all(carriers, event => event.transfer == first.transfer) {
+        Present { value: first.transfer }
+      } else { none }
   }
 }
 

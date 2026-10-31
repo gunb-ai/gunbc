@@ -1,0 +1,89 @@
+module test.claim.roadmap.attempt_request_binding_commit_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptRequestBindingFile, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_request_record {
+  AttemptRequestBinding, RequestClaimBound, RequestAutonomous, AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused,
+  attempt_request_binding_create_for_instance,
+}
+
+// THE CREATE-ONLY COMMIT DRIVEN THROUGH ITS EFFECT ENTRY (attempt_request_binding_create_for_instance): a fresh
+// instance under a temporary directory, the real create, and the real read-back of an occupied target. The pure
+// decision fn that used to take the create's outcome as a parameter is deleted, so no witness can hand it a
+// success. Each claim reaches a verdict only through the filesystem the entry acted on.
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_binding_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "binding-wet" as NonEmptyStr),
+    instance_id: "binding-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18098,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn node() -> RoadmapNodeId { "n1" as NonEmptyStr as RoadmapNodeId }
+
+fn claim(id: String) -> AttemptRequestBinding { RequestClaimBound { claim: id as NonEmptyStr as RoadmapEventId } }
+
+fn with_attempt_directory(instance: HostDashboardInstance) -> HostDashboardInstance {
+  let _made = shell.Mkdir.Parents(path: attempt_state_directory_text(instance: instance, node_id: node(), attempt_key: "k1", directory: AttemptDirectoryRoot) as FilePath)
+  instance
+}
+
+fn create(instance: HostDashboardInstance, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
+  attempt_request_binding_create_for_instance(instance: instance, node_id: node(), attempt_key: "k1", binding: binding)
+}
+
+fn committed_is(c: AttemptRequestBindingCommit, expected: AttemptRequestBinding) -> Bool {
+  match c {
+    RequestBindingCommitted { binding } => binding == expected
+    RequestBindingCommitRefused { step: _, detail: _ } => false
+  }
+}
+
+fn refused_at(c: AttemptRequestBindingCommit, step: String) -> Bool {
+  match c {
+    RequestBindingCommitted { binding: _ } => false
+    RequestBindingCommitRefused { step: s, detail: _ } => s == step
+  }
+}
+
+test fn a_first_create_commits_the_binding() -> Bool {
+  committed_is(c: create(instance: with_attempt_directory(instance: fresh_instance(tag: "first")), binding: claim(id: "evt-1")), expected: claim(id: "evt-1"))
+}
+
+test fn a_repeated_create_of_the_same_binding_is_idempotent() -> Bool {
+  let i = with_attempt_directory(instance: fresh_instance(tag: "same"))
+  let _first = create(instance: i, binding: claim(id: "evt-1"))
+  committed_is(c: create(instance: i, binding: claim(id: "evt-1")), expected: claim(id: "evt-1"))
+}
+
+test fn a_different_binding_cannot_replace_the_first() -> Bool {
+  let i = with_attempt_directory(instance: fresh_instance(tag: "rebind"))
+  let _first = create(instance: i, binding: claim(id: "evt-1"))
+  refused_at(c: create(instance: i, binding: claim(id: "evt-2")), step: "attempt-request-binding-conflict")
+    && refused_at(c: create(instance: i, binding: RequestAutonomous), step: "attempt-request-binding-conflict")
+}
+
+test fn an_unreadable_existing_binding_is_not_replaced() -> Bool {
+  let i = with_attempt_directory(instance: fresh_instance(tag: "garbage"))
+  let planted = Filesystem.Write(path: attempt_state_text(instance: i, node_id: node(), attempt_key: "k1", member: AttemptRequestBindingFile), content: "not json").success
+  planted && refused_at(c: create(instance: i, binding: claim(id: "evt-1")), step: "attempt-request-binding-conflict")
+}
+
+test fn an_attempt_directory_that_does_not_list_refuses_the_create() -> Bool {
+  refused_at(c: create(instance: fresh_instance(tag: "nodir"), binding: claim(id: "evt-1")), step: "attempt-request-binding-persist")
+}
