@@ -119,34 +119,26 @@ fn mint_bmc_credential() -> Secret {
   Urandom.ReadPassword(count: bmc_credential_length_chars).password as Secret
 }
 
-// ONE AUTHENTICATED REDFISH CALL, MADE INSIDE A PER-CALL PRIVATE NETRC THAT IS GONE WHEN IT RETURNS.
+// ONE AUTHENTICATED REDFISH READ, MADE INSIDE A PER-CALL PRIVATE NETRC THAT IS GONE WHEN IT RETURNS.
 //
 // WHAT THIS REPLACES. Every caller here used to write one fixed path, /tmp/bmc_onboard_netrc, and
 // none removed it, so after a run that file held whichever BMC credential the run used last, which
-// after a rotation is the NEW password. The rotation body sat beside it at
-// /tmp/bmc_onboard_pwbody.json, written with the ambient umask. The body now goes to curl on stdin
-// (extdeps.bmc.http SetAccountPassword). The netrc still has to be a file, because curl --netrc-file
+// after a rotation is the NEW password. The netrc still has to be a file, because curl --netrc-file
 // reads a path, so it is placed through gunbc.auth.netrc_binding with_private_netrc_binding: a fresh
 // 0700 directory, a 0600 O_EXCL file, and a checked removal of both on every arm out.
 //
-// THE CALLS ARE A CLOSED SET rather than a callback, so the bracket's body cannot be anything but one
-// Redfish request: nothing else can run while the credential is on disk.
-type BmcRedfishCall
-  = BmcGetSystem
-
+// THE BRACKET'S BODY IS FIXED rather than a callback, so it cannot be anything but the one Redfish
+// read (GetSystem): nothing else can run while the credential is on disk. It was a closed set of two
+// calls until the legacy rotation's password PATCH was deleted.
 type BmcRedfishReply {
   success: Bool
   body: String
 }
 
-fn bmc_redfish_call(host: NonEmptyStr, netrc: NonEmptyStr, call: BmcRedfishCall) -> BmcRedfishReply
+fn bmc_redfish_get_system(host: NonEmptyStr, netrc: NonEmptyStr) -> BmcRedfishReply
 {
-  match call {
-    BmcGetSystem => {
-      r = redfish.Http.GetSystem(bmc_host: host, netrc_file: netrc)
-      return BmcRedfishReply { success: r.success, body: r.body }
-    }
-  }
+  r = redfish.Http.GetSystem(bmc_host: host, netrc_file: netrc)
+  return BmcRedfishReply { success: r.success, body: r.body }
 }
 
 // A CALL THAT NEVER REACHED THE BMC IS NOT A BMC ANSWER, and a credential left on disk is a refusal
@@ -166,14 +158,13 @@ fn bmc_authenticated_call(
   host: NonEmptyStr,
   account: NonEmptyStr,
   password: Secret,
-  call: BmcRedfishCall,
 ) -> BmcAuthenticatedCall
 {
   match with_private_netrc_binding(
     machine: host,
     login: account,
     password: password,
-    use: fn(binding) { bmc_redfish_call(host: host, netrc: netrc_binding_path(binding: binding) as NonEmptyStr, call: call) },
+    use: fn(binding) { bmc_redfish_get_system(host: host, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
   ) {
     PrivateSecretFileCompleted { value: reply } => BmcCallAnswered { reply: reply }
     PrivateSecretFileCompletedResidueRemains { value: reply } =>
@@ -398,7 +389,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let factory_check = bmc_authenticated_call(stage: "factory credential probe", host: host, account: account, password: plan.factory_login.published_password as Secret, call: BmcGetSystem)
+  let factory_check = bmc_authenticated_call(stage: "factory credential probe", host: host, account: account, password: plan.factory_login.published_password as Secret)
   match factory_check {
     BmcCallRefused { reason: r } => return CredentialStateUnknown { reason: r }
     BmcCallAnswered { reply: _ } => {}
@@ -419,7 +410,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
         CustodyCredentialUnreadable { cause: c } =>
           return CredentialStateUnknown { reason: concat("the factory credential was refused and the stored credential could not be read from custody: ", c) }
         CustodyCredentialHeld { password: password } => {
-          return match bmc_authenticated_call(stage: "stored credential probe", host: host, account: account, password: password as Secret, call: BmcGetSystem) {
+          return match bmc_authenticated_call(stage: "stored credential probe", host: host, account: account, password: password as Secret) {
             BmcCallRefused { reason: r } => CredentialStateUnknown { reason: r }
             BmcCallAnswered { reply: rotated_verify } =>
               if rotated_verify.success {
