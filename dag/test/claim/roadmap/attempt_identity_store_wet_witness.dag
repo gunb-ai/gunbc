@@ -118,8 +118,8 @@ test fn after_the_flat_entry_is_moved_away_the_mint_is_ready_and_claims_ordinal_
 test fn the_move_plan_is_noop_apply_or_refused_by_the_listings() -> Bool {
   let row = attempt_identity_slots.move
   let p = "attempt-identity-a-n1\nattempt-identity-a-n2\nother"
-  let noop = match move_plan(row: row, parent_listing: "other\nx", member_listing: "") { MoveNoop => true, MoveApply { legacy_names: _ } => false, MoveRefused { collision: _ } => false }
-  let apply = match move_plan(row: row, parent_listing: p, member_listing: "b-n1.1") { MoveNoop => false, MoveApply { legacy_names } => length(xs: legacy_names) == 2, MoveRefused { collision: _ } => false }
-  let refused = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.1") { MoveNoop => false, MoveApply { legacy_names: _ } => false, MoveRefused { collision } => collision == "attempt-identity-a-n2" }
+  let noop = match move_plan(row: row, parent_listing: "other\nx", member_listing: "") { MoveNoop => true, MoveApply { entries: _ } => false, MoveRefused { collision: _ } => false }
+  let apply = match move_plan(row: row, parent_listing: p, member_listing: "b-n1.1") { MoveNoop => false, MoveApply { entries } => length(xs: entries) == 2, MoveRefused { collision: _ } => false }
+  let refused = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.1") { MoveNoop => false, MoveApply { entries: _ } => false, MoveRefused { collision } => collision == "attempt-identity-a-n2" }
   noop && apply && refused
 }

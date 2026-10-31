@@ -78,7 +78,8 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, move_hold_payload, move_hold_slot_name, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
@@ -901,10 +902,14 @@ fn dashboard_apply_provision_op(
       }
     }
     // THE MOVE OF A STORE'S FLAT ENTRIES INTO ITS MEMBER, the same arm for every row. The plan is the pure
-    // move_plan over the two listings the target reports; Apply writes each entry as the hold slot the store
-    // would have written (argv, because the target may be remote) and removes the flat entry only after its
-    // slot exists; the readback lists both directories again and refuses unless nothing legacy remains and
-    // every moved entry is present.
+    // move_plan over the two listings the target reports. Each entry, in order, stops the line on its first
+    // refusal: (1) its legacy bytes are read; (2) the content the row demands is derived from them (the held
+    // payload, or the bytes themselves); (3) a slot a previous run left is read back and must equal that content
+    // (else a collision, refused), an absent slot is written create-only through
+    // dashboard_target_write_create_new, which on CreateNewWritten is read back byte-equal; (4) only then is the
+    // flat entry removed. Every outcome but CreateNewWritten is a refusal, and nothing is removed on one: no entry
+    // is ever absent from the old place and unwritten in the new, and a rerun after any stop converges. The
+    // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
     DashboardMoveAttemptStateEntries { row: row } => {
       let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
       let member = join([parent, "/", row.member as String], "")
@@ -918,30 +923,64 @@ fn dashboard_apply_provision_op(
         match move_plan(row: row, parent_listing: before.stdout, member_listing: member_before.stdout) {
           MoveNoop => dashboard_exec_ok(stdout: join(["no flat ", row.legacy_flat_prefix as String, "* entries remain in ", parent], ""))
           MoveRefused { collision: c } =>
-            dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, "; nothing was moved"], ""))
-          MoveApply { legacy_names: names } => {
-            // SCAFFOLD, ADMITTED FOR THIS ONE STEP AND NAMED AS SUCH. The slot must hold the hold library's own
-            // payload (an undecodable slot makes file_hold_acquire refuse, measured: a hard-linked legacy entry
-            // kept its bytes and the next claim refused), and the target may be remote, where the Filesystem
-            // effects and file_hold_acquire cannot reach and the argv transport carries no stdin. The only
-            // argv that writes a create-only file with given bytes is this sh redirect under `set -C`.
-            // Dissolution trigger: a target-exec handler that realizes Filesystem.WriteCreateNew on the
-            // instance's transport (local or SSH); then this argv is replaced by file_hold_acquire over the
-            // member and the sh program leaves this arm. Every value reaches sh as a positional parameter, never
-            // interpolated into the script text.
-            let moved = dashboard_run_target_argvs(
-              instance: instance,
-              commands: map(names, n => DashboardArgv {
-                program: "/bin/sh" as FilePath,
-                args: [
-                  "-c",
-                  "set -C; printf %s \"$1\" > \"$2\" && rm -- \"$3\"",
-                  "move",
-                  move_hold_payload(),
-                  join([member, "/", move_hold_slot_name(row: row, legacy_name: n)], ""),
-                  join([parent, "/", n], ""),
-                ],
-              }),
+            dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, " under another name; nothing was moved"], ""))
+          MoveApply { entries: entries } => {
+            let moved = fold(
+              entries,
+              init: dashboard_exec_ok(stdout: ""),
+              f: (acc, e) => {
+                let legacy = join([parent, "/", e.legacy_name], "")
+                let slot = join([member, "/", e.slot_name], "")
+                if !acc.success {
+                  acc
+                } else {
+                  let old = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", legacy])
+                  if !old.success {
+                    dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be read: ", old.stderr], ""))
+                  } else {
+                    let expected = move_expected_content(row: row, legacy_bytes: old.stdout)
+                    let placed = if e.slot_present {
+                      let had = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
+                      if !had.success {
+                        dashboard_exec_refused(detail: join(["the slot ", slot, " a previous run left could not be read: ", had.stderr], ""))
+                      } else if had.stdout != expected {
+                        dashboard_exec_refused(detail: join(["the slot ", slot, " exists with bytes that differ from the legacy entry; refused, nothing removed"], ""))
+                      } else {
+                        dashboard_exec_ok(stdout: "slot already written")
+                      }
+                    } else {
+                      match dashboard_target_write_create_new(instance: instance, path: slot as FilePath, content: expected) {
+                        CreateNewWritten => {
+                          let back = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
+                          if !back.success {
+                            dashboard_exec_refused(detail: join(["the slot ", slot, " was written but could not be read back: ", back.stderr], ""))
+                          } else if back.stdout != expected {
+                            dashboard_exec_refused(detail: join(["the slot ", slot, " read back different bytes than the legacy entry; the flat entry is kept"], ""))
+                          } else {
+                            dashboard_exec_ok(stdout: "slot written")
+                          }
+                        }
+                        CreateNewRefused { exit_code: code, stderr: err } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " was refused (exit ", to_string(value: code), "): ", err], ""))
+                        CreateNewNotDispatched { reason: why } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " was not dispatched: ", why], ""))
+                        CreateNewStagingResidue { stage: stage, landed: _, stderr: err } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " left staging file ", stage, ": ", err], ""))
+                      }
+                    }
+                    if !placed.success {
+                      placed
+                    } else {
+                      let removed = dashboard_target_exec(instance: instance, program: "/bin/rm" as FilePath, args: ["--", legacy])
+                      if removed.success {
+                        dashboard_exec_ok(stdout: join([acc.stdout, e.legacy_name, ": ", placed.stdout, ", ", to_string(value: string_length(s: old.stdout)), " legacy bytes read back; "], ""))
+                      } else {
+                        dashboard_exec_refused(detail: join(["the slot ", slot, " is in place but the flat entry ", legacy, " was not removed: ", removed.stderr, "; a rerun finishes the removal"], ""))
+                      }
+                    }
+                  }
+                }
+              },
             )
             if !moved.success {
               moved
@@ -955,7 +994,7 @@ fn dashboard_apply_provision_op(
               } else {
                 let detail = move_readback_refusal(row: row, before_parent: before.stdout, after_parent: after.stdout, after_member: member_after.stdout)
                 if detail == "" {
-                  dashboard_exec_ok(stdout: join(["moved ", to_string(value: length(xs: names)), " entries into ", member, ", read back"], ""))
+                  dashboard_exec_ok(stdout: join(["moved ", to_string(value: length(xs: entries)), " entries into ", member, ", read back: ", moved.stdout], ""))
                 } else {
                   dashboard_exec_refused(detail: detail)
                 }

@@ -17,7 +17,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries,
 }
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, CarryBytes, move_hold_payload }
+import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
   AttemptIdentityClaimed, AttemptIdentityClaimRefused, attempt_identity_slots_path,
@@ -132,7 +135,72 @@ test fn a_collision_is_refused_and_nothing_moves() -> Bool {
     temp_verify_repo: "/unused-verify" as FilePath,
   )
   ready && seeded && !refused.success
-    && string_contains(s: refused.stderr, pattern: "already holds entries")
+    && string_contains(s: refused.stderr, pattern: "differ from the legacy entry")
     && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
     && Filesystem.Read(path: join([member_of(i: i), "/a-n1.1"], "")).content == "held|other"
+}
+
+fn move_of(i: HostDashboardInstance, row: MoveRow) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: row },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 5: A HALF MOVE CONVERGES. A previous run wrote the slot (with the held payload) and stopped before the
+// removal; the rerun finishes the removal and the legacy entry is gone, the slot unchanged.
+test fn a_rerun_after_a_half_move_finishes_the_removal() -> Bool {
+  let i = fresh_instance(tag: "half")
+  let ready = plant(i: i)
+  let slot = join([member_of(i: i), "/a-n1.1"], "")
+  let seeded = Filesystem.Write(path: slot, content: move_hold_payload()).success
+  let applied = move_of(i: i, row: attempt_identity_slots.move)
+  applied.success && ready && seeded
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && Filesystem.Read(path: slot).content == move_hold_payload()
+}
+
+// ARM 6, RED: THE WRITE IS REFUSED. The member is read-only, so every create-only write is refused; the move
+// refuses and every flat entry is still there (nothing is removed on a write that did not land).
+test fn a_refused_write_removes_no_flat_entry() -> Bool {
+  let i = fresh_instance(tag: "refused")
+  let ready = plant(i: i)
+  let locked = shell.Chmod.RecursiveReadOnly(path: member_of(i: i) as FilePath).success
+  let refused = move_of(i: i, row: attempt_identity_slots.move)
+  let restored = shell.Chmod.RecursiveWritable(path: member_of(i: i) as FilePath).success
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  ready && locked && restored && !refused.success
+    && string_contains(s: refused.stderr, pattern: "create-only write")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n1")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n2")
+    && string_contains(s: parent, pattern: "attempt-identity-b-n7")
+}
+
+// ARM 7: A CARRY-BYTES ROW (B2, the dogfood start receipt) moves the legacy bytes themselves, read back
+// byte-equal before the flat entry is removed, under the same name (the generation survives).
+fn plant_receipt(i: HostDashboardInstance, bytes: String) -> Bool {
+  shell.Mkdir.Parents(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String], "") as FilePath).success
+    && Filesystem.Write(path: join([parent_of(i: i), "/dogfood-start-receipt.1"], ""), content: bytes).success
+}
+
+test fn a_carry_bytes_row_moves_the_receipt_bytes_equal_under_the_same_name() -> Bool {
+  let i = fresh_instance(tag: "carry")
+  let bytes = "{\"schema\": \"dogfood-start-receipt/v6\", \"pr_number\": 424}"
+  let ready = plant_receipt(i: i, bytes: bytes)
+  let applied = move_of(i: i, row: dogfood_start_slots.move)
+  ready && applied.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.")
+    && Filesystem.Read(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String, "/dogfood-start-receipt.1"], "")).content == bytes
+}
+
+// ARM 8, RED: a slot already in the member with DIFFERENT bytes is a refusal and the legacy receipt stays.
+test fn a_carry_bytes_destination_with_other_bytes_is_refused_and_the_receipt_stays() -> Bool {
+  let i = fresh_instance(tag: "carrymismatch")
+  let ready = plant_receipt(i: i, bytes: "legacy-receipt")
+  let seeded = Filesystem.Write(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String, "/dogfood-start-receipt.1"], ""), content: "different").success
+  let refused = move_of(i: i, row: dogfood_start_slots.move)
+  ready && seeded && !refused.success
+    && Filesystem.Read(path: join([parent_of(i: i), "/dogfood-start-receipt.1"], "")).content == "legacy-receipt"
 }

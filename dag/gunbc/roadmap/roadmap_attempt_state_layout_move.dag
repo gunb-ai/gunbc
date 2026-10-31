@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_state_layout_move
 
-import std.types { String, NonEmptyStr, List, Int }
+import std.types { String, NonEmptyStr, List, Int, Bool }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldOwnerRef }
 import std.durable_compare_and_set { cas_generation_first }
 import gunbc.durable_cas_file_store { cas_file_slot_name }
@@ -14,7 +14,20 @@ import gunbc.durable_exclusive_hold_file_store { hold_slot_payload }
 //
 // The refusal is permanent and typed, never a dual read: a mint that read both layouts would let an ordinal
 // claimed in the flat layout be re-claimed in the member.
-type MoveRow { member: NonEmptyStr, legacy_flat_prefix: NonEmptyStr }
+//
+// `content` says what the moved slot holds: HoldPayload for a store whose entry is only an occupied marker (the
+// identity ordinals: the owner of an occupied slot is never read), CarryBytes for a store whose entry IS the
+// record (the executor writes the legacy bytes and reads them back byte-equal before removing the flat entry).
+type MoveContent = HoldPayload | CarryBytes
+type MoveRow { member: NonEmptyStr, legacy_flat_prefix: NonEmptyStr, content: MoveContent }
+
+// What the moved slot must hold, given the legacy entry's bytes: the one place the content mode is read.
+fn move_expected_content(row: MoveRow, legacy_bytes: String) -> String {
+  match row.content {
+    HoldPayload => move_hold_payload()
+    CarryBytes => legacy_bytes
+  }
+}
 
 fn move_row_legacy_names(row: MoveRow, parent_listing: String) -> List<String> {
   split(s: parent_listing, delimiter: "\n").filter(fn(n) { starts_with(s: n, prefix: row.legacy_flat_prefix as String) })
@@ -23,18 +36,29 @@ fn move_row_legacy_names(row: MoveRow, parent_listing: String) -> List<String> {
 // The target stem of a legacy entry is its name without the legacy prefix; the member holds records whose
 // names begin with that stem.
 fn move_target_stem(row: MoveRow, legacy_name: String) -> String {
-  substring(s: legacy_name, start: string_length(s: row.legacy_flat_prefix as String), end: string_length(s: legacy_name))
+  match row.content {
+    HoldPayload => substring(s: legacy_name, start: string_length(s: row.legacy_flat_prefix as String), end: string_length(s: legacy_name))
+    CarryBytes => legacy_name
+  }
 }
+
+// ONE LEGACY ENTRY'S STEP. `slot_present` is true when the member already lists the exact hold-slot name, i.e. a
+// previous run wrote the slot and stopped before removing the flat entry (a failed rm, a dead host). The executor
+// reads that slot back: its bytes equal the content the row demands -> only the removal is left (converge); they
+// differ -> a real collision, refused. A slot absent from the member is written create-only first.
+type MoveEntry { legacy_name: String, slot_name: String, slot_present: Bool }
 
 type MovePlan
   = MoveNoop
-  | MoveApply { legacy_names: List<String> }
+  | MoveApply { entries: List<MoveEntry> }
   | MoveRefused { collision: String }
 
-// Noop when nothing remains in the flat layout. Refused when a member entry already begins with a legacy
-// entry's target stem followed by the member's separator "." or equals it: the entry would be claimed twice.
-// Apply otherwise. Nothing is overwritten and nothing is lost: Apply names every legacy entry, and the
-// readback after the move compares the set of target stems with the set of legacy stems.
+// Noop when nothing remains in the flat layout. Refused when a member entry begins with a legacy entry's target
+// stem (equal to it, or followed by the member's separator ".") but is not that entry's own hold-slot name: the
+// entry would be claimed twice under another generation. Apply otherwise, naming every legacy entry with whether
+// its own slot is already there. Nothing is overwritten and nothing is lost: an entry leaves the old place only
+// after its slot exists and has been read back (the executor), so no state is both absent from the old place and
+// unwritten in the new one, and a rerun after any stop converges to the same end state.
 fn move_plan(row: MoveRow, parent_listing: String, member_listing: String) -> MovePlan {
   let legacy = move_row_legacy_names(row: row, parent_listing: parent_listing)
   if length(xs: legacy) == 0 {
@@ -43,9 +67,18 @@ fn move_plan(row: MoveRow, parent_listing: String, member_listing: String) -> Mo
     let members = split(s: member_listing, delimiter: "\n")
     let clashes = legacy.filter(fn(l) {
       let stem = move_target_stem(row: row, legacy_name: l)
-      members.any(fn(m) { m == stem || starts_with(s: m, prefix: join([stem, "."], "")) })
+      let own = move_hold_slot_name(row: row, legacy_name: l)
+      members.any(fn(m) { m != own && (m == stem || starts_with(s: m, prefix: join([stem, "."], ""))) })
     })
-    if length(xs: clashes) > 0 { MoveRefused { collision: join(clashes, ",") } } else { MoveApply { legacy_names: legacy } }
+    if length(xs: clashes) > 0 {
+      MoveRefused { collision: join(clashes, ",") }
+    } else {
+      MoveApply { entries: map(legacy, l => MoveEntry {
+        legacy_name: l,
+        slot_name: move_hold_slot_name(row: row, legacy_name: l),
+        slot_present: members.any(fn(m) { m == move_hold_slot_name(row: row, legacy_name: l) }),
+      }) }
+    }
   }
 }
 
@@ -53,8 +86,13 @@ fn move_plan(row: MoveRow, parent_listing: String, member_listing: String) -> Mo
 // payload, both derived by the hold and CAS libraries' own pure functions, so the move writes what
 // file_hold_acquire would have written and the store decodes it as occupied. The legacy entry's own content
 // is not carried: an occupied identity slot is never read for its owner, and the owner here names the move.
+// A CarryBytes entry is already a slot (`<key>.<generation>`): it keeps its name, so the generation it was
+// written at survives the move.
 fn move_hold_slot_name(row: MoveRow, legacy_name: String) -> String {
-  cas_file_slot_name(key: move_target_stem(row: row, legacy_name: legacy_name) as NonEmptyStr, generation: cas_generation_first())
+  match row.content {
+    HoldPayload => cas_file_slot_name(key: move_target_stem(row: row, legacy_name: legacy_name) as NonEmptyStr, generation: cas_generation_first())
+    CarryBytes => legacy_name
+  }
 }
 
 fn move_hold_payload() -> String {

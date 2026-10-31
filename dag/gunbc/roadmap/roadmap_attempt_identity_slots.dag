@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_attempt_identity_slots
 
 import std.types { NonEmptyStr }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, HoldPayload }
 
 // THE ATTEMPT IDENTITY STORE'S MEMBER DECLARATION under the shared dispatch attempt-state root, in a leaf
 // that imports no instance so the provision plan can read the move row it carries
@@ -11,6 +11,6 @@ type AttemptIdentitySlotsDeclaration { mode: DeclaredDirectoryMode, move: MoveRo
 
 data attempt_identity_slots: AttemptIdentitySlotsDeclaration = AttemptIdentitySlotsDeclaration {
   mode: DirectoryOwnerOnly,
-  move: MoveRow { member: "attempt-identities" as NonEmptyStr, legacy_flat_prefix: "attempt-identity-" as NonEmptyStr },
+  move: MoveRow { member: "attempt-identities" as NonEmptyStr, legacy_flat_prefix: "attempt-identity-" as NonEmptyStr, content: HoldPayload },
 }
 
