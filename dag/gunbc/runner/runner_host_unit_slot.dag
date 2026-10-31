@@ -1,5 +1,7 @@
 module gunbc.runner.runner_host_unit_slot
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.decimal { decimal_digits_only }
@@ -29,7 +31,7 @@ import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit,
 import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
-import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_registration_labels }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_evidence_gated_registration_labels }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, gunbc_runner_committed_width }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
@@ -182,10 +184,10 @@ fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
 // group restricted to any other (gunbc.runner.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
-fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr, receipt: RunnerUserSessionReceiptInput) -> HostUnitSlotStanding {
   match host {
     HostControlled { controlled: b } =>
-      host_unit_slot_over(host: host, purpose: purpose, workflow: workflow, registration_labels: runner_registration_labels(host: b.host))
+      host_unit_slot_over(host: host, purpose: purpose, workflow: workflow, registration_labels: runner_evidence_gated_registration_labels(host: b.host, receipt: receipt))
     HostControlRefused { refusal: r } => HostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
   }
 }
@@ -196,7 +198,7 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
 // architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
 // replacing the Aarch64 literal here and in provider_guest_slot_for.
 // THE FOLD, over the registration labels it is handed. host_unit_slot_for hands it the host's own
-// (runner_registration_labels); the labels are a boundary because the one production host's offer is
+// (runner_evidence_gated_registration_labels); the labels are a boundary because the one production host's offer is
 // not yet in the fleet catalog, so the service arm's success path is reachable only by supplying them.
 fn host_unit_slot_over(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr, registration_labels: RunnerRegistrationLabelsResolution) -> HostUnitSlotStanding {
   match host {
@@ -380,11 +382,11 @@ fn service_slot_selected_workflow() -> NonEmptyStr {
 // Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
 // on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
 // is the same mode's other half.
-fn current_service_population(host: HostControlStanding, boot: ServiceBootId) -> CurrentServicePopulationStanding {
+fn current_service_population(host: HostControlStanding, boot: ServiceBootId, receipt: RunnerUserSessionReceiptInput) -> CurrentServicePopulationStanding {
   match host {
     HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
     HostControlled { controlled: b } =>
-      current_service_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_registration_labels(host: b.host), boot: boot)
+      current_service_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_evidence_gated_registration_labels(host: b.host, receipt: receipt), boot: boot)
   }
 }
 

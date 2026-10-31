@@ -7,13 +7,14 @@ import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.serving.router_proxy_scaffold { router_proxy_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
+import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_consumer_frontier_rows }
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
+import gunbc.site_segment_anchor_frontier { site_segment_anchor_consumer_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
   bmc_recovery_route_onboarding_consumer_frontier_rows,
   bmc_recovery_route_pairing_frontier_rows,
 }
-import gunbc.machine_intake.host_interface_inventory_frontier { host_interface_inventory_consumer_frontier_rows }
 import gunbc.machine_intake.h11ssl_x86_bringup_frontier { h11ssl_x86_bringup_frontier_rows }
 import gunbc.machine_intake.bmc_secure_redfish_frontier { bmc_secure_redfish_consumer_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
@@ -97,7 +98,6 @@ import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
 import gunbc.realization_census_sheet { realization_census_sheet_frontier_rows }
 import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
-import gunbc.runner.runner_user_session_receipt { runner_user_session_label_frontier_rows }
 import gunbc.github_app_acquisition {
   github_app_human_step_frontier_rows,
   census_app_installation_population_frontier_rows,
@@ -178,7 +178,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_manifest_broker_frontier_rows,
-    runner_user_session_label_frontier_rows,
     anchored_host_transport_frontier_rows,
     machine_word_consumer_frontier_rows,
     tracker_web_oauth_frontier_rows,
@@ -196,8 +195,9 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     bmc_recovery_route_onboarding_consumer_frontier_rows(),
     bmc_recovery_route_pairing_frontier_rows(),
     h11ssl_x86_bringup_frontier_rows,
-    host_interface_inventory_consumer_frontier_rows(),
+    site_segment_anchor_consumer_frontier_rows(),
     bmc_secure_redfish_consumer_frontier_rows(),
+    dashboard_target_write_consumer_frontier_rows,
   ]
 }
 

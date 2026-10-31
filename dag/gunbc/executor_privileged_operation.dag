@@ -409,15 +409,18 @@ fn executor_privileged_operations_sudoers_body(
 // longer generated file and removes the traversal entirely.
 data executor_managed_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
+// The slot directory's mode is the slot's, not the executor's: a deploy slot's tree is its account's
+// alone (gunbc.runner.runner_slot_job_role runner_slot_job_role_tree_mode).
 fn runner_slot_install_operations(
   slot_dirs: List<NonEmptyStr>,
   slot_owner: NonEmptyStr,
+  slot_mode: FileMode,
 ) -> List<ExecutorPrivilegedOperation> {
   map(slot_dirs, d => EnsureOwnedDirectory {
     path: d,
     owner: slot_owner,
     group: slot_owner,
-    mode: executor_managed_directory_mode,
+    mode: slot_mode,
   })
 }
 

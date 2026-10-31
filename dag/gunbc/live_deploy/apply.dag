@@ -129,8 +129,7 @@ import gunbc.live_deploy.tailnet_door_cutover {
   tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
 }
 import gunbc.live_deploy.tailnet_door_cutover_host {
-  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write,
-}
+  live_deploy_serve_route_observe, tailnet_door_cutover_binding, tailnet_door_cutover_journal_read, tailnet_door_cutover_journal_write, tailnet_door_cutover_store }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
@@ -472,8 +471,8 @@ fn live_deploy_tailnet_door_cutover_effects(
 ) -> ServeCutoverEffects {
   let binding = tailnet_door_cutover_binding(spec: spec, candidate: candidate)
   ServeCutoverEffects {
-    journal_read: fn() { tailnet_door_cutover_journal_read(store: journal, binding: binding) },
-    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: journal, binding: binding, expected_generation: expected_generation, record: record) },
+    journal_read: fn() { tailnet_door_cutover_journal_read(store: tailnet_door_cutover_store(binding: journal), binding: binding) },
+    journal_write: fn(expected_generation, record) { tailnet_door_cutover_journal_write(store: tailnet_door_cutover_store(binding: journal), binding: binding, expected_generation: expected_generation, record: record) },
     observe: fn(n) { live_deploy_serve_route_observe(spec: spec, transport: transport) },
     repoint: fn(permit) {
       serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: spec.names.tailscale_serve_endpoint, enabled: true }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))

@@ -3011,28 +3011,12 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 // must be the same empty record declaration for the same reason the two-field forms must, and an
 // exception at zero would leave the fork alive in exactly the corner a reader stops checking.
 //
-// ONE MODIFIER IS STILL DROPPED ON THE `=` FORM, AND IT IS NOT THIS CHANGE'S TO CLOSE.
-// `sole_constructor` is threaded into the record arm below, so both spellings of a record
-// declaration carry the seal. On every OTHER `=` right-hand side -- a leaf alias, a coproduct --
-// parse_type_body_after_eq still discards it, as before. That is one pre-existing class, not two,
-// and it is left whole rather than half-refused: the coproduct arm has a live consumer
-// (test.fixture.sole_constructor_variant_probe.definer declares
-// `type SealedChoice sole_constructor = SealedA { .. } | SealedB { .. }`, whose probe measures the
-// variant-construction hole DESIGN section 4b records as entirely unwired), so refusing there
-// would break the fixture that exists to measure it, while wiring it is that audit's work and
-// would change what its probe reports. Refusing ONLY the leaf-alias arm -- the one with zero
-// authored instances in dag/ or src/v2/ -- would refuse in the harmless arm and stay silent in the
-// arm that matters, a worse rule than the one declared here.
-//
-// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): this class CAN CLIMB AFTER ONE GROUNDING -- neither a
-// permanent ceiling nor merely unbuilt. It climbs when the variant-construction audit wires
-// coproduct construction through sole_constructor_construction_diags (the hole DESIGN section 4b
-// records as entirely unwired, measured by
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses). Then the
-// coproduct arm has somewhere for the flag to GO, refusing is no longer the only alternative to
-// silence, and the whole `=` family -- coproduct and leaf alias together -- is threaded or refused
-// in one motion by the lane that owns the wall. Until then the drop is declared here rather than
-// half-closed.
+// `sole_constructor` IS THREADED ON EVERY `=` RIGHT-HAND SIDE: the record, the leaf alias and both
+// coproduct spellings (leading-pipe and bare) carry the seal on the declaration node, so
+// seed infer's sole_constructor_construction_diags can resolve a constructed VARIANT to its owning
+// coproduct and judge it as it judges a record. (This block used to record the coproduct arm as
+// dropped; test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses
+// is the regression control that the drop stays closed.)
 fn alias_rhs_is_anonymous_record(te: Node) -> Bool {
   te.connective == Conj
     && te.ident_span == none
@@ -3064,8 +3048,9 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     let rest = parse_more_variants_acc(tokens: rv.tokens, ctx: rv.ctx, acc: [rv.variant])
     if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
     let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-    let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
-    let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+    let sole = parsed_sole_constructor_properties(ctx: rest.ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+    let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: rest.tokens })
+    let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
@@ -3083,8 +3068,9 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
       let variants = rest.variants
       let type_children = variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-      let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
-      let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+      let sole = parsed_sole_constructor_properties(ctx: rest.ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+      let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: rest.tokens })
+      let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
     } else {
       let r = finish_type_expr_from_name(tokens: tokens, ctx: ctx, type_name: first_name, start_span: first_name_span)
