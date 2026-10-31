@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
@@ -165,9 +165,10 @@ fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
 }
 
 // THE ONLY FORWARD STEP. The successor of a role is the first chain role of strictly greater rank; the LAST chain role (the claim
-// itself) and every terminal have none. THERE IS NO CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE: no
-// requeue, no reap-and-reclaim, no age-based release (a claimed entry whose claimant died stops the line through
-// gunbc.roadmap.spool_stall and is settled by complete, never re-offered).
+// itself) and every terminal have none. THE ONLY CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE IS
+// spool_requeue_assess, gated on a typed claimant-dead observation (a boot id differing from the one the claim
+// recorded). No unevidenced requeue, no reap-and-reclaim, no age-based release exist; without evidence the line
+// stops through gunbc.roadmap.spool_stall.
 fn spool_role_rank(role: SpoolRole) -> Int {
   match role {
     RolePending => 0
@@ -294,6 +295,52 @@ fn spool_stale_assess(observed: SpoolEntryState, liveness: SpoolClaimantLiveness
     EntryAbsent => StaleNotApplicable { state: observed }
     EntryAmbiguous { roles: _ } => StaleNotApplicable { state: observed }
     EntryObservationUnavailable { detail: _ } => StaleNotApplicable { state: observed }
+  }
+}
+
+// REQUEUE ON EVIDENCE. Claimed -> the spool's first chain role, and only on a typed claimant-dead observation: the
+// claim records the boot id it was taken under, and a DIFFERENT current boot id is the evidence (the claimant cannot
+// have survived a reboot), as std.durable_exclusive_hold ReleasedOnEvidence. Age is never evidence; an absent
+// observation refuses and the line stops through gunbc.roadmap.spool_stall.
+type SpoolRequeueEvidence
+  = BootsObserved { claim_boot_id: NonEmptyStr, current_boot_id: NonEmptyStr }
+  | NoClaimantObservation { cause: NonEmptyStr }
+
+type SpoolRequeueAssessment
+  = RequeueEligible { from: SpoolRole, into: SpoolRole }
+  | RequeueClaimantStillBound
+  | RequeueNotClaimed { state: SpoolEntryState }
+  | RequeueRefused { cause: NonEmptyStr }
+
+fn spool_requeue_target(kind: SpoolKind) -> Optional<SpoolRole> {
+  spool_declaration(kind: kind).chain |> first()
+}
+
+fn spool_requeue_on_boots(kind: SpoolKind, claim_boot_id: NonEmptyStr, current_boot_id: NonEmptyStr) -> SpoolRequeueAssessment {
+  if (claim_boot_id == current_boot_id) {
+    RequeueClaimantStillBound
+  } else {
+    match spool_requeue_target(kind: kind) {
+      Present { value: t } => RequeueEligible { from: RoleClaimed, into: t }
+      Absent => RequeueRefused { cause: "the spool declares no chain" as NonEmptyStr }
+    }
+  }
+}
+
+fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: SpoolRequeueEvidence) -> SpoolRequeueAssessment {
+  match observed {
+    EntryStanding { role: r } =>
+      if (r == RoleClaimed) {
+        match evidence {
+          BootsObserved { claim_boot_id: c, current_boot_id: n } => spool_requeue_on_boots(kind: kind, claim_boot_id: c, current_boot_id: n)
+          NoClaimantObservation { cause: m } => RequeueRefused { cause: m }
+        }
+      } else {
+        RequeueNotClaimed { state: observed }
+      }
+    EntryAbsent => RequeueNotClaimed { state: observed }
+    EntryAmbiguous { roles: _ } => RequeueNotClaimed { state: observed }
+    EntryObservationUnavailable { detail: _ } => RequeueNotClaimed { state: observed }
   }
 }
 
