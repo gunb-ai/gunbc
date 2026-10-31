@@ -1,8 +1,8 @@
 module gunbc.fleet.printer_execution_hold
 import gunbc.durable_exclusive_hold_file_store {FileHoldOccupied,FileHoldAcquireLost,FileHoldAcquireStoreUnavailable,FileHoldSlotUndecodable,FileHoldKeyNotSlotAddressable,FileHoldReleaseLost,FileHoldReleaseStoreUnavailable,FileHoldReleaseKeyNotSlotAddressable,FileHoldReleaseNotEligible}
 import std.durable_exclusive_hold {HoldSlotAbsent,HoldSlotFree,HoldSlotUndecodable,HoldObservationUnavailable}
-import std.types {NonEmptyStr,Bool,String}
-import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer_state_directory,printer_starts_legacy_scan,PrinterStartsClean,PrinterStartsLegacyEntries,PrinterStartsUnreadable}
+import std.types {NonEmptyStr,Bool,String,List}
+import gunbc.fleet.printer_workflow_artifact {printer_starts_path,printer_starts_member_path,printer_state_directory,printer_starts_legacy_scan,PrinterStartsClean,PrinterStartsLegacyEntries,PrinterStartsUnreadable}
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
@@ -11,7 +11,7 @@ import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
-import gunbc.durable_exclusive_hold_file_store {file_hold_acquire,FileHoldAcquired,file_hold_release_assess,FileHoldReleasePlanned,file_hold_release_commit,FileHoldReleased,observe_file_hold}
+import gunbc.durable_exclusive_hold_file_store {FileHoldReleasePlan,file_hold_acquire,FileHoldAcquired,file_hold_release_assess,FileHoldReleasePlanned,file_hold_release_commit,FileHoldReleased,observe_file_hold}
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_recover_dead_holder,FileHoldDeadHolderRecovered,FileHoldDeadHolderHolderLive,
   FileHoldDeadHolderHolderUnobservable,FileHoldDeadHolderNotEligible,FileHoldDeadHolderReleaseLost,
@@ -67,15 +67,106 @@ type PrinterExecutionHoldStoreReading = PrinterExecutionHoldStoreReady {store:Pr
 
 fn printer_execution_hold_legacy_entry(name:String) -> Bool { starts_with(s:name,prefix:concat(hold_key as String,".")) }
 
-// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds a fleet-print-controller.<n> slot
-// of the flat layout, which would otherwise read as free here and admit a second controller.
-fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
+// THE LEGACY CONTROLLER HOLD IS RETIRED BY A FENCE, NOT RELEASED. The flat-layout slot fleet-print-controller.<n> is
+// taken through the hold library by the layout step and stays HELD by the declared owner below: the layout step copies
+// every generation into this store's member and leaves the generations in the parent, the head held. An old
+// controller that acquires the legacy slot afterwards sees it occupied by this owner. The hold library has no expiry
+// and no age-based takeover: recovery frees a hold only on an observed-dead holder (this owner names no process, so
+// printer_execution_hold_live_owner answers unobservable, never dead) or on an operator-authorized non-holder release,
+// which is an operator's act on that exact hold, not a timeout. The owner is the declaration; no scan matches a name
+// to decide a fence.
+type PrinterExecutionHoldFenceDeclaration { owner: NonEmptyStr }
+
+data printer_execution_hold_fence: PrinterExecutionHoldFenceDeclaration = PrinterExecutionHoldFenceDeclaration { owner: "printer-state-layout-move" as NonEmptyStr }
+
+type PrinterExecutionHoldFence sole_constructor {generation:CasGeneration}
+
+fn printer_execution_hold_fence_entry(fence:PrinterExecutionHoldFence) -> String { join([hold_key as String,".",int_to_decimal_string(value:cas_generation_count(g:fence.generation))],"") }
+
+// WHAT THE PARENT HOLDS OF THE LEGACY CONTROLLER HOLD: nothing, the fence (the declared owner holding the slot at its
+// head generation; the earlier generations stay beside it so the slot's history stays contiguous), or other entries (a live or stale holder, or a layout not yet moved).
+type LegacyHoldState = LegacyHoldAbsent | LegacyHoldFenced {generation:CasGeneration} | LegacyHoldLive {names:List<String>} | LegacyHoldUnreadable {detail:String}
+
+fn printer_execution_hold_legacy_state(tree:HostStateTree) -> LegacyHoldState {
   match printer_starts_legacy_scan(tree:tree,owns:n=>printer_execution_hold_legacy_entry(name:n)) {
-    PrinterStartsUnreadable {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
-    PrinterStartsLegacyEntries {names:n}=>PrinterExecutionHoldStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
-    PrinterStartsClean=>match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {
-      SlotStoreRefused {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
-      SlotStoreListed {root:r}=>PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}}
+    PrinterStartsUnreadable {detail:d}=>LegacyHoldUnreadable {detail:d}
+    PrinterStartsClean=>LegacyHoldAbsent
+    PrinterStartsLegacyEntries {names:n}=>match observe_file_hold(root:printer_starts_path(tree:tree),key:hold_key) {
+      HoldSlotHeld {generation:g,owner:o}=>if durable_hold_owner_equal(left:o,right:printer_execution_hold_fence.owner as DurableHoldOwnerRef) { LegacyHoldFenced {generation:g} } else { LegacyHoldLive {names:n} }
+      HoldSlotAbsent=>LegacyHoldLive {names:n}
+      HoldSlotFree {generation:_,released_by:_}=>LegacyHoldLive {names:n}
+      HoldSlotUndecodable {generation:_,detail:_}=>LegacyHoldLive {names:n}
+      HoldObservationUnavailable {cause:_}=>LegacyHoldLive {names:n}
+    }
+  }
+}
+
+type PrinterExecutionHoldFenceBegun = HoldFenceBegun {fence:PrinterExecutionHoldFence} | HoldFenceRefused {cause:String}
+
+// TAKE (OR RESUME) THE LEGACY HOLD as the declared owner, through the hold library. A different holder refuses.
+fn printer_execution_hold_fence_begin(tree:HostStateTree) -> PrinterExecutionHoldFenceBegun {
+  let owner = printer_execution_hold_fence.owner as DurableHoldOwnerRef
+  match file_hold_acquire(root:printer_starts_path(tree:tree),slot_key:hold_key,requested_owner:owner) {
+    FileHoldAcquired {slot_key:_,owner:_,generation:g}=>HoldFenceBegun {fence:PrinterExecutionHoldFence {generation:g}}
+    FileHoldOccupied {slot_key:_,holder:h,generation:g}=>if durable_hold_owner_equal(left:h,right:owner) { HoldFenceBegun {fence:PrinterExecutionHoldFence {generation:g}} } else { HoldFenceRefused {cause:join(["the old printer hold is held by ",h as String,"; the layout step moves nothing of it until it is free"],"")} }
+    FileHoldAcquireLost {slot_key:_}=>HoldFenceRefused {cause:"the old printer hold was claimed by another controller; nothing was moved"}
+    FileHoldAcquireStoreUnavailable {slot_key:_,cause:_}=>HoldFenceRefused {cause:"the old printer hold store is unavailable; nothing was moved"}
+    FileHoldSlotUndecodable {slot_key:_,generation:_,detail:_}=>HoldFenceRefused {cause:"the old printer hold slot is undecodable; nothing was moved"}
+    FileHoldKeyNotSlotAddressable {slot_key:_}=>HoldFenceRefused {cause:"the old printer hold key is not slot addressable"}
+  }
+}
+
+type PrinterExecutionHoldHandover = HoldHandedOver | HoldHandoverRefused {cause:String}
+
+fn handover_released(plan:FileHoldReleasePlan) -> PrinterExecutionHoldHandover {
+  match file_hold_release_commit(plan:plan) {
+    FileHoldReleased {slot_key:_,generation:_}=>HoldHandedOver
+    FileHoldReleaseLost {slot_key:_}=>HoldHandoverRefused {cause:"the copied hold moved under the handover"}
+    FileHoldReleaseStoreUnavailable {slot_key:_,cause:_}=>HoldHandoverRefused {cause:"the copied hold could not be released"}
+    FileHoldReleaseKeyNotSlotAddressable {slot_key:_}=>HoldHandoverRefused {cause:"the hold key is not slot addressable"}
+  }
+}
+
+// THE HAND-OVER, INSIDE THE EXCLUSION: after the generations were copied here, the declared owner's copy of the held
+// generation is released in THIS store through its own release. A slot that is already free is the finished state.
+fn printer_execution_hold_fence_handover(tree:HostStateTree,fence:PrinterExecutionHoldFence) -> PrinterExecutionHoldHandover {
+  let root = printer_execution_hold_path(tree:tree)
+  let owner = printer_execution_hold_fence.owner as DurableHoldOwnerRef
+  match observe_file_hold(root:root,key:hold_key) {
+    HoldSlotHeld {generation:_,owner:o}=>if durable_hold_owner_equal(left:o,right:owner) {
+      match file_hold_release_assess(root:root,slot_key:hold_key,owner:owner,acquired_generation:fence.generation,released_by:printer_execution_hold_fence.owner as DurableHoldReleaseRef) {
+        FileHoldReleasePlanned {plan:p}=>handover_released(plan:p)
+        FileHoldReleaseNotEligible {slot_key:_,refusal:_}=>HoldHandoverRefused {cause:"the copied hold changed before the handover"}
+      }
+    } else { HoldHandoverRefused {cause:"the copied hold is held by another owner"} }
+    HoldSlotFree {generation:_,released_by:_}=>HoldHandedOver
+    HoldSlotAbsent=>HoldHandoverRefused {cause:"the generations were not copied before the handover"}
+    HoldSlotUndecodable {generation:_,detail:_}=>HoldHandoverRefused {cause:"the copied hold slot is undecodable"}
+    HoldObservationUnavailable {cause:_}=>HoldHandoverRefused {cause:"the copied hold slot cannot be observed"}
+  }
+}
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE. It refuses while the parent still holds a fleet-print-controller.<n> slot
+// of the flat layout other than the declared fence (a slot that would read as free here and admit a second controller),
+// and while the copied hold is still held by the fence owner (the hand-over has not happened).
+fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
+  match printer_execution_hold_legacy_state(tree:tree) {
+    LegacyHoldUnreadable {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
+    LegacyHoldLive {names:n}=>PrinterExecutionHoldStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+    LegacyHoldAbsent=>printer_execution_hold_member(tree:tree)
+    LegacyHoldFenced {generation:_}=>printer_execution_hold_member(tree:tree)
+  }
+}
+
+fn printer_execution_hold_member(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
+  match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {
+    SlotStoreRefused {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
+    SlotStoreListed {root:r}=>match observe_file_hold(root:r,key:hold_key) {
+      HoldSlotHeld {generation:_,owner:o}=>if durable_hold_owner_equal(left:o,right:printer_execution_hold_fence.owner as DurableHoldOwnerRef) { PrinterExecutionHoldStoreUnready {detail:"the legacy hold was copied here but its hand-over has not completed; gunbc.fleet.printer_state_layout completes it"} } else { PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}} }
+      HoldSlotAbsent=>PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}}
+      HoldSlotFree {generation:_,released_by:_}=>PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}}
+      HoldSlotUndecodable {generation:_,detail:_}=>PrinterExecutionHoldStoreUnready {detail:"the execution hold slot is undecodable"}
+      HoldObservationUnavailable {cause:_}=>PrinterExecutionHoldStoreUnready {detail:"the execution hold slot cannot be observed"}
     }
   }
 }

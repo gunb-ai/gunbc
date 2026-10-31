@@ -3,14 +3,12 @@ module gunbc.fleet.printer_state_layout
 import std.types { String, NonEmptyStr, List, Bool, FilePath }
 import std.algebra { trim, string_contains }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
-import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
-import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable, file_hold_release_assess, FileHoldReleasePlanned, FileHoldReleaseNotEligible, file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_starts_directory, print_run_directory_target, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
 import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name, legacy_completed_suffix }
 import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
-import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
 
 // THE PRINTER STATE TREE'S LAYOUT: what directories a printer pass demands (printer_state_directories) and the one
@@ -29,13 +27,14 @@ import product.printed_chassis.assembly_inventory_store { cassette_inventory_dir
 // Noop when the parent is clean. A target that already exists with different bytes refuses, and so does an entry
 // no store claims; an equal target is adopted (an interrupted earlier pass). Each move is create-new, read back
 // byte-equal, then delete of the old name, so after every step each key is readable from exactly one layout. The
-// hold moves only after its OLD slot was acquired and released through the hold library: a live holder makes the
-// whole step refuse before anything has moved, and the pass retries on the next run.
+// hold is the exception, retired inside its own exclusion: the legacy slot is taken through the hold library and
+// stays held by the fence owner declared in gunbc.fleet.printer_execution_hold while the generations are copied
+// across and are LEFT in the parent (a contiguous history whose head stays held, so an old controller sees the slot
+// occupied); the copy of the head is released in the new store. A live holder makes the hold refuse before it moves; the pass retries on the next run.
 
 data legacy_claimed_suffix: String = ".claimed"
 data legacy_claim_evidence_marker: String = ".claimed."
 data legacy_inventory_prefix: String = "cassette-prototype-inventory."
-data legacy_move_owner: NonEmptyStr = "printer-state-layout-move" as NonEmptyStr
 
 type PrinterStateMove = PrinterStateMoved | PrinterStateMoveRefused { cause: String }
 
@@ -56,7 +55,7 @@ type Relocated = RelocationDone | RelocationRefused { cause: String }
 
 // ONE FILE, create-new at the target, read back byte-equal, then delete of the source. A target that is already
 // there with the same bytes is adopted; one with other bytes refuses.
-fn relocate_file(from: String, to: String) -> Relocated {
+fn copy_file(from: String, to: String) -> Relocated {
   let source = Filesystem.Read(path: from)
   if !source.success { return RelocationRefused { cause: join(["cannot read ", from], "") } }
   let existing = Filesystem.Read(path: to)
@@ -67,8 +66,14 @@ fn relocate_file(from: String, to: String) -> Relocated {
   }
   let back = Filesystem.Read(path: to)
   if !back.success || back.content != source.content { return RelocationRefused { cause: join([to, " read back differently from ", from], "") } }
-  if !Filesystem.Delete(path: from).success { return RelocationRefused { cause: join(["cannot delete ", from, " after copying it"], "") } }
   RelocationDone
+}
+
+fn relocate_file(from: String, to: String) -> Relocated {
+  match copy_file(from: from, to: to) {
+    RelocationRefused { cause: c } => RelocationRefused { cause: c }
+    RelocationDone => if Filesystem.Delete(path: from).success { RelocationDone } else { RelocationRefused { cause: join(["cannot delete ", from, " after copying it"], "") } }
+  }
 }
 
 fn legacy_target(tree: HostStateTree, name: String) -> String? {
@@ -97,29 +102,6 @@ fn legacy_target(tree: HostStateTree, name: String) -> String? {
 }
 
 
-// THE OLD HOLD, PROVEN FREE THROUGH THE HOLD LIBRARY before anything moves: acquire it, release it at the
-// generation won. A holder (live or stale) makes the step refuse; recovering a stale holder stays the hold
-// protocol's own business, not this step's.
-fn old_hold_proven_free(tree: HostStateTree) -> Relocated {
-  let root = printer_starts_path(tree: tree)
-  match file_hold_acquire(root: root, slot_key: hold_key, requested_owner: legacy_move_owner as DurableHoldOwnerRef) {
-    FileHoldAcquired { slot_key: _, owner: o, generation: g } => match file_hold_release_assess(root: root, slot_key: hold_key, owner: o, acquired_generation: g, released_by: legacy_move_owner as DurableHoldReleaseRef) {
-      FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) {
-        FileHoldReleased { slot_key: _, generation: _ } => RelocationDone
-        FileHoldReleaseLost { slot_key: _ } => RelocationRefused { cause: "the old printer hold moved under the layout step; nothing was moved, re-run" }
-        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => RelocationRefused { cause: "the old printer hold could not be released after it was acquired" }
-        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => RelocationRefused { cause: "the old printer hold key is not slot addressable" }
-      }
-      FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => RelocationRefused { cause: "the old printer hold changed before the layout step released it" }
-    }
-    FileHoldOccupied { slot_key: _, holder: h, generation: _ } => RelocationRefused { cause: join(["the old printer hold is held by ", h as String, "; the layout step moves nothing until it is free"], "") }
-    FileHoldAcquireLost { slot_key: _ } => RelocationRefused { cause: "the old printer hold was claimed by another controller; nothing was moved" }
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => RelocationRefused { cause: "the old printer hold store is unavailable; nothing was moved" }
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => RelocationRefused { cause: "the old printer hold slot is undecodable; nothing was moved" }
-    FileHoldKeyNotSlotAddressable { slot_key: _ } => RelocationRefused { cause: "the old printer hold key is not slot addressable" }
-  }
-}
-
 // THE HOLD'S ENTRIES, LISTED AFTER THE OLD HOLD WAS PROVEN FREE: acquiring and releasing it wrote new generations
 // into the parent, so the list taken before the proof is stale and moving only it would leave those behind.
 fn fresh_hold_names(tree: HostStateTree) -> List<String> {
@@ -130,39 +112,65 @@ fn fresh_hold_names(tree: HostStateTree) -> List<String> {
   }
 }
 
-// PER STORE: the entries of every store but the hold move first and unconditionally (their mints are Ready as
-// soon as their own entries are gone); the hold's entries move only once the OLD hold was proven free, and a
-// holder makes the step report a refusal naming the hold, with everything else already moved.
-fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
-  match printer_starts_legacy_scan(tree: tree, owns: n => true) {
+// THE HOLD IS RETIRED INSIDE ITS OWN EXCLUSION: the legacy hold is taken (or resumed) as the declared fence owner and
+// stays held; every generation is COPIED into the hold store's member (the parent keeps them, head held by the fence owner, so an
+// old controller cannot acquire the legacy slot again) and the copied held generation is released in the new store.
+fn retire_hold(tree: HostStateTree) -> List<String> {
+  match printer_execution_hold_fence_begin(tree: tree) {
+    HoldFenceRefused { cause: c } => [join(["the execution hold was not moved: ", c], "")]
+    HoldFenceBegun { fence: f } => {
+      let parent = printer_starts_path(tree: tree) as String
+      let fence_entry = printer_execution_hold_fence_entry(fence: f)
+      let copy_causes = fresh_hold_names(tree: tree).flat_map(n => match legacy_target(tree: tree, name: n) {
+        Present { value: to } => match copy_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+        Absent => [join(["no store claims ", n], "")]
+      })
+      let fence_copied = if Filesystem.Read(path: join([printer_execution_hold_path(tree: tree) as String, "/", fence_entry], "")).success { [] } else { [join(["the fence generation ", fence_entry, " was not copied"], "")] }
+      let all_copy_causes = append(copy_causes, items: fence_copied)
+      if count(all_copy_causes) != 0 { all_copy_causes } else {
+        match printer_execution_hold_fence_handover(tree: tree, fence: f) {
+          HoldHandedOver => []
+          HoldHandoverRefused { cause: c } => [join(["the execution hold was not handed over: ", c], "")]
+        }
+      }
+    }
+  }
+}
+
+fn finish_move(tree: HostStateTree, other_causes: List<String>) -> PrinterStateMove {
+  let hold_causes = match printer_execution_hold_legacy_state(tree: tree) {
+    LegacyHoldAbsent => []
+    LegacyHoldUnreadable { detail: d } => [d]
+    LegacyHoldFenced { generation: _ } => retire_hold(tree: tree)
+    LegacyHoldLive { names: _ } => retire_hold(tree: tree)
+  }
+  let causes = append(other_causes, items: hold_causes)
+  if count(causes) != 0 { return PrinterStateMoveRefused { cause: join(causes, "; ") } }
+  match printer_starts_legacy_scan(tree: tree, owns: n => !printer_execution_hold_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
-    PrinterStartsClean => PrinterStateMoved
+    PrinterStartsLegacyEntries { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
+    PrinterStartsClean => match printer_execution_hold_legacy_state(tree: tree) {
+      LegacyHoldAbsent => PrinterStateMoved
+      LegacyHoldFenced { generation: _ } => PrinterStateMoved
+      LegacyHoldLive { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
+      LegacyHoldUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
+    }
+  }
+}
+
+// PER STORE: the entries of every store but the hold move first and unconditionally; the hold retires after (above).
+fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
+  match printer_starts_legacy_scan(tree: tree, owns: n => !printer_execution_hold_legacy_entry(name: n)) {
+    PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
+    PrinterStartsClean => finish_move(tree: tree, other_causes: [])
     PrinterStartsLegacyEntries { names: names } => {
       let parent = printer_starts_path(tree: tree) as String
       let unknown = names.filter(n => match legacy_target(tree: tree, name: n) { Present { value: _ } => false Absent => true })
       if count(unknown) != 0 { return PrinterStateMoveRefused { cause: join(["printer-starts holds entries no store claims: ", join(unknown, ", ")], "") } }
-      let hold_names = names.filter(n => printer_execution_hold_legacy_entry(name: n))
-      let other_names = names.filter(n => !printer_execution_hold_legacy_entry(name: n))
-      let other_causes = other_names.flat_map(n => match legacy_target(tree: tree, name: n) {
+      finish_move(tree: tree, other_causes: names.flat_map(n => match legacy_target(tree: tree, name: n) {
         Present { value: to } => match relocate_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
         Absent => [join(["no store claims ", n], "")]
-      })
-      let hold_causes = if count(hold_names) == 0 { [] } else {
-        match old_hold_proven_free(tree: tree) {
-          RelocationRefused { cause: c } => [join(["the execution hold was not moved: ", c], "")]
-          RelocationDone => fresh_hold_names(tree: tree).flat_map(n => match legacy_target(tree: tree, name: n) {
-            Present { value: to } => match relocate_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
-            Absent => [join(["no store claims ", n], "")]
-          })
-        }
-      }
-      let causes = append(other_causes, items: hold_causes)
-      if count(causes) != 0 { return PrinterStateMoveRefused { cause: join(causes, "; ") } }
-      match printer_starts_legacy_scan(tree: tree, owns: n => true) {
-        PrinterStartsClean => PrinterStateMoved
-        PrinterStartsLegacyEntries { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
-        PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
-      }
+      }))
     }
   }
 }
