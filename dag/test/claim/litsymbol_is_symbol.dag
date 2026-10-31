@@ -1,0 +1,97 @@
+module test.claim.litsymbol_is_symbol
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_blocking_rows_of_class,
+  census_total_count,
+}
+
+// Producer: v1.compiler.infer_types infer_literal_node types LitSymbol as symbol_type.
+// The discriminating RED is the rust unit test infer_literal_node_types_litsymbol_as_symbol
+// (node name Symbol). These rows are compile-path controls that stay after the producer lands.
+// Symbol-vs-String inhabitance at a declared return is the implicit-safe subset, not this PR.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn two_carets_compare() -> Bool {
+  blocking_count(source: "module litsymbol.eq\nfn f() -> Bool { ^tag == ^tag }\n") == 0
+}
+
+test fn quoted_string_still_inhabits_string() -> Bool {
+  blocking_count(source: "module litsymbol.litstr\nfn f() -> String { \"tag\" }\n") == 0
+}
+
+fn blocking_in_class(source: String, wanted_class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted_class))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// RED for the widening: Symbol is outside kernel_type_set, so conformance once emitted nothing at ANY
+// ground type and `-> Int { ^tag }` passed. Each refusal asserts the class, not only a nonzero count.
+// The asserted class is the one the census checker EMITS at that position. At the seed's fixed-point
+// stage0 mirrors all three refusals report TypeMismatch: an earlier mirror state reported
+// DeclaredTypeNotInhabited at Int while Bool and a record reported TypeMismatch -- two classes for one
+// judgment. Unifying them is the follow-up: bright-pike-492's item-2 scalar-formal rule.
+test fn symbol_at_int_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atint\nfn f() -> Int { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_bool_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atbool\nfn f() -> Bool { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_record_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atrec\ntype P { x: Int }\nfn f() -> P { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+// The declared gap stays open and is a control, not a refusal: Symbol at String is accepted
+// (gunbc.recurring_failure_mode caret_symbol_inhabits_string_via_conformance_unjudged).
+test fn symbol_at_string_stays_accepted() -> Bool {
+  blocking_count(source: "module litsymbol.atstr\nfn f() -> String { ^tag }\n") == 0
+}
+
+// ── THE BOUNDARY IS THE MINTED CARRIER, NOT THE SPELLING (gunbc#14082 review, DESIGN §3b) ──
+//
+// THE DISCRIMINATING RED. The judgment admits Symbol by node equality against the seed's own minted
+// carrier (v1.std.core symbol_type), never by the leaf name "Symbol". A user-declared `type Symbol`
+// carries its own DeclarationRef, so it is an ordinary declared type and must be judged exactly like
+// the same shape declared under any other name. This row compares the two verdicts: it fails the
+// moment a spelling comparison is reintroduced, because the name `Symbol` would then buy kernel
+// treatment for a user declaration. The two sources differ ONLY in the declared head's name.
+test fn caret_symbol_named_type_is_not_the_minted_carrier() -> Bool {
+  blocking_count(source: "module litsymbol.usersym\ntype Symbol { x: Int }\nfn takes_int(v: Int) -> Int { v }\nfn leak(v: Symbol) -> Int { takes_int(v: v) }\n")
+    == blocking_count(source: "module litsymbol.useroth\ntype Other { x: Int }\nfn takes_int(v: Int) -> Int { v }\nfn leak(v: Other) -> Int { takes_int(v: v) }\n")
+}
+
+// THE DECLARED GAP IS BOUNDED TO SYMBOL-AT-STRING ONLY (operator ruling, 2026-10-26): no other
+// kernel formal is a target. Each of these must refuse, so the exemption cannot widen to
+// "anything kernel-shaped". MEASURED, not assumed: Secret, Bytes, Float and Json refuse with
+// TypeMismatch at the seed's fixed-point mirrors. A FreeSemigroup<String> formal was probed and is
+// ACCEPTED (zero blocking rows) -- the seed's declared coercion rows judge it by its element -- and a
+// refinement like NonEmptyStr is peeled to the kernel it represents by this judgment's own declared
+// peel rule, so neither is a refusal row of its own; naming one would contradict those authorities.
+
+test fn symbol_at_secret_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atsecret\nfn f() -> Secret { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_bytes_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atbytes\nfn f() -> Bytes { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_float_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atfloat\nfn f() -> Float { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}
+
+test fn symbol_at_json_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atjson\nfn f() -> Json { ^tag }\n", wanted_class: "TypeMismatch") >= 1
+}

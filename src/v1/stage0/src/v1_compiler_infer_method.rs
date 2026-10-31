@@ -31,9 +31,8 @@ use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
-    bool_type, error_type, hash_type, int_type, no_span, string_type, unit_type,
-    with_optional_cardinality, Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, Node,
+    bool_type, error_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
+    Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData, InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -722,15 +721,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "a".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Hash".to_string(),
+        name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
         name: "b".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Hash".to_string(),
+        name: "String".to_string(),
     }),
     })]),
-        returns: hash_type(),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("std.content_hash.Fnv1a64StructuralDigestHex".to_string()),
     }));
                 __m.insert("atom_identity_hash".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -739,7 +738,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: hash_type(),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("std.content_hash.Fnv1a64StructuralDigestHex".to_string()),
     }));
                 __m.insert("trace_mark".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

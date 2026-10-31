@@ -1,16 +1,19 @@
 module gunbc.runner.runner_lost_boot_sweep_run
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.optional { Absent, Present }
 import std.types { Bool, Int, NonEmptyStr, String, List, Secret }
 import std.measure { Second, second, second_count, Minute, minute }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { decl_ref }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import product.host_identity { HostIdentity }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt_label_of_run }
+import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
@@ -74,14 +77,21 @@ import gunbc.runner.runner_jit_deregistration {
 //
 // THE OBSERVATION ROUTE IS THE HOST TRANSPORT, A PARAMETER. lost_boot_observe_current_boot reads
 // /proc/sys/kernel/random/boot_id through host_operation_exec (ProcfsReadBootId) over a HostEffectTransport and
-// is the only place the evidence is minted. This run holds the App installation authority, not a host
-// credential, so lost_boot_sweep_wet passes no transport and the mode stays gated at the join until a
-// host-authenticated transport to the swept host (a known-hosts anchor plus an SSH credential, both from an
-// executed selection) is supplied. The read, its refusals and the mint are exercised in
+// is the only place the evidence is minted. The run reaches the swept host over the one live anchored transport
+// (gunbc.host.anchored_host_transport anchored_host_transport_live: the host's known-hosts anchor as the only trusted
+// row, the presented key scanned, the operator's go), so a host with no anchor, no go or a presented key that is not
+// the anchor's is unobserved and refuses at the join. The read, its refusals and the mint are exercised in
 // test.claim.runner.runner_lost_boot_sweep_run_witness. HOST BINDING IS STRUCTURE: the observer takes a
 // gunbc.host.host_bound_transport HostBoundTransport, whose host is derived from the transport's address
 // through the managed-host join and cannot be stated, so evidence for a host other than the one reached is
 // unwritable; see lost_boot_sweep_effect_pairing_frontier for what remains.
+//
+// TWO ARMS, ONE ADMISSION (gunbc.plans.mtcollins1_ci_service_legs F4). The dry run (fleet-converge mode
+// service_runner_lost_boot_sweep_dry_run, lost_boot_sweep_dry_run_wet) admits the current boot, plans against the real
+// organization roster and writes the admitted boot and the selection to its receipt; it never reaches
+// deregister_selection. The deleting arm (service_runner_lost_boot_sweep, lost_boot_sweep_wet) refuses every dispatch
+// before any read while lost_boot_sweep_apply_standing is gated. The dry run's receipt is the minted evidence the
+// pairing obligation asks for (lost_boot_sweep_effect_pairing_frontier).
 //
 // THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
 // run's federated identity, signs the installation-token mint and the control-plane observation, and
@@ -92,7 +102,10 @@ data lost_boot_sweep_capture_path_env_name: String = "FLEET_CONVERGE_HOST_CAPTUR
 data lost_boot_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
 data lost_boot_sweep_runner_temp_env_name: String = "RUNNER_TEMP"
 data lost_boot_sweep_key_file_name: String = "lost-boot-sweep-app-key"
+data lost_boot_sweep_dry_run_key_file_name: String = "lost-boot-sweep-dry-run-app-key"
 data lost_boot_sweep_receipt_path: String = "artifacts/service-runner-lost-boot-sweep-receipt.txt"
+data lost_boot_sweep_dry_run_receipt_path: String = "artifacts/service-runner-lost-boot-sweep-dry-run-receipt.txt"
+data lost_boot_sweep_attempt_prefix: String = "lost-boot-sweep"
 data lost_boot_sweep_artifact_glob: String = "artifacts/service-runner-lost-boot-sweep-*"
 
 data lost_boot_sweep_prelude_allowance: Second = second(count: 120)
@@ -292,27 +305,156 @@ fn write_sweep_receipt(lines: List<String>) -> ProcessExit {
   if kept.success { ExitSuccess } else { exit_failure(reason: concat("lost-boot sweep: receipt write refused: ", kept.error)) }
 }
 
-fn lost_boot_sweep_wet() -> ProcessExit
-  uses net: Network
-{
+// THE LIVE OBSERVATION: the one anchored transport to the swept host, then the boot id read over it. A refusal to
+// bind is the observation's own cause, so the join refuses with it and nothing past the join runs.
+fn lost_boot_live_observation(host: String) -> CurrentBootObservation {
+  if host == "" {
+    CurrentBootUnobserved { cause: concat(lost_boot_sweep_host_env_name, " is unset, so no host is reached") }
+  } else {
+    match actions_run_attempt_label_of_run(prefix: lost_boot_sweep_attempt_prefix) {
+      Absent => CurrentBootUnobserved { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the SSH context has no attempt-owned path" }
+      Present { value: label } =>
+        match anchored_host_transport_live(host: host as HostIdentity, attempt_raw: label as String) {
+          AnchoredBindingBound { bound: b } => lost_boot_observe_current_boot(transport: Present { value: b })
+          other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
+        }
+    }
+  }
+}
+
+// THE ADMISSION BOTH ARMS SHARE: both inputs present before the host is contacted, the recorded boot joined to the
+// live observation, the run's federation token and RUNNER_TEMP, and the host's managed row. Nothing is staged and
+// nothing is read from GitHub before it holds.
+type LostBootSweepAdmission
+  = SweepAdmitted { host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, temp: String }
+  | SweepNotAdmitted { cause: String }
+
+fn lost_boot_sweep_admission() -> LostBootSweepAdmission {
   let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
-  match lost_boot_current_input(host: host_name, capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name), observed: lost_boot_observe_current_boot(transport: none)) {
-    LostBootCurrentRefused { cause } => exit_failure(reason: cause)
-    LostBootCurrentPresent { host: admitted, boot } => {
-      let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
-      let temp = actions_variable_trimmed(name: lost_boot_sweep_runner_temp_env_name)
-      if wif == "" || temp == "" {
-        exit_failure(reason: "lost-boot sweep: the sweep host input, the run's federation token or RUNNER_TEMP is unset")
-      } else {
-        match sweep_host_standing(host: admitted) {
-          SweepHostNotManaged { host } => exit_failure(reason: concat("lost-boot sweep: host is not a managed_host row: ", host))
-          SweepHostBound { host, standing } => sweep_under_staged_key(
-            host: host, standing: standing, current: boot,
-            wif: wif as Secret, key_path: join([temp, "/", lost_boot_sweep_key_file_name], "") as NonEmptyStr,
-          )
+  let capture_path = actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name)
+  if host_name == "" || capture_path == "" {
+    SweepNotAdmitted { cause: join(["lost-boot sweep: ", lost_boot_sweep_host_env_name, " and ", lost_boot_sweep_capture_path_env_name, " are required and never defaulted"], "") }
+  } else {
+    match lost_boot_current_input(host: host_name, capture_path: capture_path, observed: lost_boot_live_observation(host: host_name)) {
+      LostBootCurrentRefused { cause } => SweepNotAdmitted { cause: cause }
+      LostBootCurrentPresent { host: admitted, boot } => {
+        let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
+        let temp = actions_variable_trimmed(name: lost_boot_sweep_runner_temp_env_name)
+        if wif == "" || temp == "" {
+          SweepNotAdmitted { cause: "lost-boot sweep: the run's federation token or RUNNER_TEMP is unset" }
+        } else {
+          match sweep_host_standing(host: admitted) {
+            SweepHostNotManaged { host } => SweepNotAdmitted { cause: concat("lost-boot sweep: host is not a managed_host row: ", host) }
+            SweepHostBound { host, standing } => SweepAdmitted { host: host, standing: standing, current: boot, wif: wif as Secret, temp: temp }
+          }
         }
       }
     }
+  }
+}
+
+// THE DELETING ARM IS GATED BY DECLARATION (gunbc.plans.mtcollins1_ci_service_legs F4). It refuses every dispatch before
+// any read until merry-fox-82 relays the operator's go after the dry run has recorded its receipt, and the go is a
+// change to this row naming its ruling, never an input of the run. While it is gated the mode reaches no host and
+// deletes nothing, so it consumes no fleet SSH key; admitting it moves the mode to FleetSshKeyConsumed with it.
+type LostBootSweepApplyStanding
+  = SweepApplyGated { reason: NonEmptyStr }
+  | SweepApplyAdmitted { ruling: NonEmptyStr }
+
+data lost_boot_sweep_apply_standing: LostBootSweepApplyStanding = SweepApplyGated {
+  reason: "GATED: the deleting lost-boot sweep refuses until the operator's go, relayed by merry-fox-82 after the read-only service_runner_lost_boot_sweep_dry_run has recorded its receipt; nothing was read or deleted" as NonEmptyStr,
+}
+
+fn lost_boot_sweep_wet() -> ProcessExit
+  uses net: Network
+{
+  match lost_boot_sweep_apply_standing {
+    SweepApplyGated { reason: r } => exit_failure(reason: r as String)
+    SweepApplyAdmitted { ruling: _ } =>
+      match lost_boot_sweep_admission() {
+        SweepNotAdmitted { cause } => exit_failure(reason: cause)
+        SweepAdmitted { host, standing, current, wif, temp } =>
+          sweep_under_staged_key(host: host, standing: standing, current: current, wif: wif, key_path: join([temp, "/", lost_boot_sweep_key_file_name], "") as NonEmptyStr)
+      }
+  }
+}
+
+// ── The dry run: plan against the real roster, record, delete nothing ────────────────────────
+
+// THE RECEIPT RECORDS THE ADMITTED BOOT AND THE PLAN. The first line is the current boot the live observation minted
+// and the capture joined; one line per registration the deleting arm would deregister and per name it would leave;
+// the last line states that this arm made no deletion request. No token, key or credential is a field of any line.
+fn dry_run_boot_line(host: HostIdentity, current: ServiceBootId) -> String {
+  join(["lost-boot-sweep-dry-run current-boot host=", host as String, " boot=", current.boot_id as String, " observed=boot-id-over-anchored-transport"], "")
+}
+
+fn dry_run_report_lines(host: HostIdentity, current: ServiceBootId, selection: SweepSelection) -> List<String> {
+  concat(
+    concat([dry_run_boot_line(host: host, current: current)], selection.subjects |> map(sub => join(["lost-boot-sweep-dry-run runner=", deregistration_name(subject: sub).value as String, " would-deregister"], ""))),
+    concat(selection.untouched |> map(n => join(["lost-boot-sweep-dry-run runner=", n, " untouched"], "")), ["lost-boot-sweep-dry-run deletion-requests=0"]),
+  )
+}
+
+fn dry_run_refused_lines(host: HostIdentity, current: ServiceBootId, cause: String) -> List<String> {
+  [dry_run_boot_line(host: host, current: current), concat("lost-boot-sweep-dry-run plan-refused: ", cause), "lost-boot-sweep-dry-run deletion-requests=0"]
+}
+
+fn write_dry_run_receipt(lines: List<String>) -> ProcessExit {
+  let kept = Filesystem.Write(path: lost_boot_sweep_dry_run_receipt_path, content: concat(join(lines, "\n"), "\n"))
+  if kept.success { ExitSuccess } else { exit_failure(reason: concat("lost-boot sweep dry run: receipt write refused: ", kept.error)) }
+}
+
+fn lost_boot_sweep_dry_run_wet() -> ProcessExit
+  uses net: Network
+{
+  match lost_boot_sweep_admission() {
+    SweepNotAdmitted { cause } => exit_failure(reason: cause)
+    SweepAdmitted { host, standing, current, wif, temp } =>
+      dry_run_under_staged_key(host: host, standing: standing, current: current, wif: wif, key_path: join([temp, "/", lost_boot_sweep_dry_run_key_file_name], "") as NonEmptyStr)
+  }
+}
+
+// THE KEY IS REMOVED ON EVERY ARM, as in the deleting arm; the token reads the roster and nothing else.
+fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_sweep_dry_run_wet")]
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key } => {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "lost-boot sweep dry run: the gunbai-ci installation token was not minted")
+        ControllerTokenMinted { token } => plan_without_deleting(host: host, standing: standing, current: current, token: token, receipt: runner_user_session_receipt_observed(host: host))
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}
+
+// THE PLAN IS THE DELETING ARM'S OWN (sweep_plan over the same population and the same roster read), so what the dry
+// run records is what the deleting arm would select. A refused plan is recorded beside the admitted boot and fails the
+// run; a selected one is recorded and the run succeeds having requested no deletion.
+fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key")]
+{
+  let organization = github_organization_ref()
+  match current_service_population(host: standing, boot: current, receipt: receipt) {
+    CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
+    CurrentServicePopulationDerived { population } =>
+      match sweep_plan(organization: organization, population: population, report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)) {
+        SweepPlanRefused { cause } => {
+          let wrote = write_dry_run_receipt(lines: dry_run_refused_lines(host: host, current: current, cause: cause))
+          match wrote {
+            ExitSuccess => exit_failure(reason: cause)
+            ExitFailure { code: _, reason: _ } => wrote
+          }
+        }
+        SweepPlanSelected { selection } => write_dry_run_receipt(lines: dry_run_report_lines(host: host, current: current, selection: selection))
+      }
   }
 }
 
@@ -335,7 +477,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
             required: gunbai_ci_registration_goal.required_permissions,
             reason: "the lost-boot sweep observes the gunbai-ci App control plane before deregistering stale registrations" as NonEmptyStr,
           )
-          sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane)
+          sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane, receipt: runner_user_session_receipt_observed(host: host))
         }
       }
       match remove_staged_controller_key(key_path: key_path) {
@@ -346,12 +488,12 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
-fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key")]
 {
   let organization = github_organization_ref()
-  match current_service_population(host: standing, boot: current) {
+  match current_service_population(host: standing, boot: current, receipt: receipt) {
     CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
     CurrentServicePopulationDerived { population } =>
       match sweep_plan(organization: organization, population: population, report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)) {

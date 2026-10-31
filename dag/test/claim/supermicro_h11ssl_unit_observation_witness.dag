@@ -1,5 +1,6 @@
 module test.claim.supermicro_h11ssl_unit_observation_witness
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import std.types { Bool }
 import std.optional { Present, Absent }
 import std.list { first_where }
@@ -18,7 +19,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   UnitStorageRefusedVariantUnread, ServiceRootRefused,
 }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
-  supermicro_h11ssl_unit_readings, supermicro_h11ssl_post_traces, supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac,
+  supermicro_h11ssl_unit_readings, supermicro_h11ssl_post_traces,
   H11sslPostTrace, H11sslPostSample, HostLanDisabled, RedfishRootReading, SelRead, ReadAtUtcMinute,
   supermicro_h11ssl_decoded_trace, supermicro_h11ssl_code_standing, CodeSampled, CodeNotSampled, SnoopPolledEvery, SnoopPollIntervalUnrecorded,
   supermicro_h11ssl_legacy_boot_handoff_code, supermicro_h11ssl_last_progress_code, supermicro_h11ssl_shared_ordered_tail,

@@ -138,7 +138,6 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   // re-declare (which would make the test the authority on what the board carries).
   AdminAccessAuthorisation,
   AhciModule,
-  Amd64Architecture,
   Amd64MicrocodeDriver,
   AltraBoard,
   Ast2500DrmDriver,
@@ -4248,7 +4247,7 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
                 // THE ARCHITECTURE THE READING WAS TAKEN FROM, stated like every other receipt row. This fixture's
                 // target is the arm64 one, so an arm64 reading is the one that admits it; the read_obligation
                 // below is the point of the row and the architecture field must not become the thing it tests.
-                architecture: Arm64Architecture,
+                architecture: Aarch64,
                 observed_version: "2.8-1build2" as NonEmptyStr,
                 standing: TranscribedUncited {
                   read_obligation: "read the Noble arm64 archive index before believing this row" as NonEmptyStr,

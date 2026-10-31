@@ -145,6 +145,7 @@ import gunbc.fleet.organization_runner_roster_read_credential { organization_run
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
 }
@@ -886,9 +887,35 @@ data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunS
   function: "export_host_reader_converge_wet",
 }
 
-data gunbc_ci_boot_medium_reader_key_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/host/boot_medium_reader_key_mint.dag",
-  function: "boot_medium_reader_key_mint_wet",
+// THE LIVE READER PROBE'S ENTRY (gunbc.host.boot_medium_reader_probe): one wet entry, one receipt path, the
+// seven stages and both open facts read inside the run.
+data gunbc_ci_boot_medium_reader_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/boot_medium_reader_probe.dag",
+  function: "boot_medium_reader_probe_wet",
+}
+
+// THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
+// (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
+// would defeat it: the row a step was built from could disagree with the module that actually ran, which is
+// exactly the shape of "I minted the host key" printed by a run that minted the reader key. So the entry and
+// function are taken FROM the subject row, and
+// gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
+fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
+  GunbcRunStepTarget {
+    entry: subject.mint_entry,
+    function: subject.mint_function,
+  }
+}
+
+fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
+  let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: target.entry,
+    function: target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 data gunbc_ci_flex_pass_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1163,6 +1190,11 @@ data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcR
   function: "lost_boot_sweep_wet",
 }
 
+data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_dry_run_wet",
+}
+
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
@@ -1343,8 +1375,9 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
   function: "approval_broker_dark_install_wet",
 }
 
-// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
-// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+// THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
+// apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
+// over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "microvm_controller_install_wet",
@@ -1480,7 +1513,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_cache_object_read_mint_target,
     gunbc_ci_hetzner_cloud_server_read_target,
     gunbc_ci_export_host_reader_converge_target,
-    gunbc_ci_boot_medium_reader_key_mint_target,
+    gunbc_ci_boot_medium_reader_probe_target,
     gunbc_ci_flex_pass_target,
     gunbc_ci_flex_template_ensure_target,
     gunbc_ci_branch_run_grant_request_target,
@@ -1560,6 +1593,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
+    gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
@@ -3012,11 +3046,11 @@ fn gunbc_ci_export_host_reader_converge_invoke() -> String {
   )
 }
 
-fn gunbc_ci_boot_medium_reader_key_mint_invoke() -> String {
+fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_boot_medium_reader_key_mint_target.entry,
-    function: gunbc_ci_boot_medium_reader_key_mint_target.function,
+    entry: gunbc_ci_boot_medium_reader_probe_target.entry,
+    function: gunbc_ci_boot_medium_reader_probe_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -3987,7 +4021,6 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
     bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
     bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE")]),
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-    bcmd(words: [bl(text: "mkdir"), bl(text: "-p"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts")])]),
     bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
   ]
 }
@@ -4466,6 +4499,16 @@ fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

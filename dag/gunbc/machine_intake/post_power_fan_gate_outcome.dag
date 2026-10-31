@@ -105,7 +105,7 @@ fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
     PostPowerThermalUnreadable => "the chassis temperature sensors were unreadable after the settle window"
     PostPowerThermalNotPublished { publication: p } => concat("the chassis temperature sensors published no decoded temperature after the settle window: ", render_thermal_publication(publication: p))
     PostPowerThermalReadingUnrecognised { texts: t } => join(["the chassis temperature read left ", to_string(t.length()), " unrecognised reading(s) beside a published one: ", join(t, " || ")], "")
-    PostPowerThermalRowsUndecoded { undecoded_line_count: n } => join(["the chassis temperature read left ", to_string(n), " undecoded row(s)"], "")
+    PostPowerThermalRowsUndecoded { texts: t } => join(["the chassis temperature read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
     FanReadUnreadable => "the chassis fan sensors were unreadable after the settle window"
     FanRowsUndecoded { texts: t } => join(["the fan sensor read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
     FanFailureSensorNoReading { text: t } => concat("a fan failure sensor row reads No Reading while the chassis is on (missing observation, refused unread): ", t)

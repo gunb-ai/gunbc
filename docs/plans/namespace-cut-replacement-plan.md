@@ -1,100 +1,24 @@
-# Namespace cut (NAMESPACE-Y): delete the import concept, resolve by containment
+# Namespace cut: replace imports with containment resolution
 
-> **CENSUS RECEIPT (2026-08-25).** Generation 3 executed steps 0-5 on
-> `integration/namespace-cut` (gunbc#8282), now frozen. **This plan is not superseded as to
-> its ROOT or its CENSUS** — its 2026-08-15 ruling called for exactly what happened on that
-> branch, and the defects it surfaced are the concealment census running. (It IS superseded
-> on ORDER; see the next paragraph, which an executor reads for sequencing.) What the census
-> returned, with a terminal shape per class, is the namespace-cut postmortem — **deliberately
-> NOT a file in this tree.** It is carried as an open PR (gunbc#9201) under the 2026-08-26
-> operator rule that document-only changes are read as a PR and closed, never merged; its
-> measurement rows are snapshots that rot. **Nothing an executor needs is sourced from it:
-> every ruling it records lives in a typed carrier, cited by symbol below.**
-> **THE 2026-08-15 ORDERING IS SUPERSEDED ON ORDER (operator, 2026-08-25): the grammar
-> deletion is the LAST step, not the first.** The ROOT is unchanged — grammar, parse surface
-> and import-name universe are all still inside it, and delete-first as a doctrine is
-> untouched — but the order of cutting that root was reversed by a later ruling from the same
-> authority, which also ruled the cut "doesn't have to be atomic technically". Every sentence
-> below that states or implies grammar-first is read subject to this paragraph. Neither this
-> plan nor any other artifact may claim the two rulings agree.
->
-> **THE RULING'S AUTHORITY IS THE CARRIER, NOT THIS PARAGRAPH AND NOT A DOCUMENT.**
-> `gunbc.namespace_cut.namespace_cut_landing_order` holds both rulings verbatim with the supersession typed
-> (`namespace_cut_grammar_last_ruling`, `SupersedesOnOrderOnly`); `current_landing_order`
-> derives the answer rather than storing a copy. Cite that module and symbol, never a file
-> path — DESIGN §4c names *ruling* among the facts that belong in a typed carrier; prose here
-> is the reasoning, the carrier is the fact.
->
-> Two further amendments it argues for: the census output lands on **main** rather than being
-> fixed forward on the branch (the branch will not merge, so fixes on it are throwaway work
-> per DESIGN section 6), and the re-cut runs in a temporary worktree rather than a maintained
-> PR (222 merges of main into the branch, against roughly 380 commits of its own work). The
-> **target qualification spelling** — this plan's full qualification vs
-> namespace-resolution-design's shortest unique suffix, whose *sequencing* this plan quarries
-> but whose *terminal shapes* it keeps as evidence — is reopened there as an operator
-> decision.
+**Goal:** delete the import grammar, parse surface and import-name universe. **Method:** `SymbolIndex` from `v2.compiler.symbol_index_fill`, resolved by `v2.compiler.resolve` containment walks; derive dependencies from references. **Validation:** typed parse refusal for `import`, containment-only binding, restored reference-derived emission/order, dispositioned census and applicable drift/regen receipts.
 
-> **CURRENT-STATE AUTHORITY (2026-08-29): this document carries REASONING and HISTORY, never
-> live standing.** Enrolment, standing and sequencing facts are typed carriers, cited by symbol:
-> the required-CI phase roster (and with it the wave-admission wall's enrolment) is
-> `gunbc.required_ci_phase_roster` `required_ci_phases`; the NAMESPACE-XL stage chain and its
-> prerequisites are `gunbc.namespace_cut.namespace_cut_stage` `stage_prerequisites`; the deletion-subject
-> denominator is `gunbc.namespace_cut.namespace_cut_subject_roster` `namespace_cut_subjects`, observed by
-> `gunbc.namespace_cut.namespace_cut_subject_observation` `subject_roster_report`; and the derived standing
-> report is `gunbc.compiler_frontend_program_status` `where_are_we`. Where a sentence below
-> disagrees with those carriers, the carrier is correct and the sentence is a dated record —
-> in particular, sentences predating #9365 that say no wall or CI mechanism exists.
+This is reasoning and history, not live standing. Current authorities:
 
-Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **SUPERSEDED ON ORDER 2026-08-25 — `gunbc.namespace_cut.namespace_cut_landing_order` `namespace_cut_grammar_last_ruling`: grammar deletion is last.** The concealment-census expectation survives; what moved is when the grammar is cut, not what cutting it reveals. **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15; the 2026-08-25 reordering is the same authority moving the grammar step, not a quarried design deferring it — the distinction this clause enforces).
+- `gunbc.namespace_cut.namespace_cut_landing_order.current_landing_order` derives the supersession: the 2026-08-15 grammar-first ruling was replaced **on order only** by `namespace_cut_grammar_last_ruling` (2026-08-25). Grammar deletion is **last**; the root and concealment census remain. The rulings do not agree on order; the later ruling also permits a technically non-atomic cut.
+- `required_ci_phase_roster.required_ci_phases` owns CI enrollment; `namespace_cut_stage.stage_prerequisites` owns sequence; `namespace_cut_subject_roster.namespace_cut_subjects` and `namespace_cut_subject_observation.subject_roster_report` own the denominator/observations; `compiler_frontend_program_status.where_are_we` derives standing. Predating claims of missing walls are historical.
+- [Floor-cut census limits](floor-cut-replacement-plan.md) apply unchanged: deletion does not reveal its three silent populations.
 
-## The cut, stated in .dag terms
+Generation 3 executed steps 0–5 on frozen `integration/namespace-cut` / #8282, based on `64ebefa74`; that branch will not merge. Land its findings on main and perform the re-cut in a temporary worktree, not another maintained integration PR. #9201 carries the read-and-close postmortem; no execution requirement depends on it. Its findings’ rulings live in typed carriers. Full qualification versus shortest unique suffix remains an operator decision. Existing designs supply terminal-shape evidence, never authority to defer the root cut.
 
-- **Old root:** the `import` concept — the grammar production, the parse surface, and the import-name universe (visibility = own declarations ∪ direct import lists).
-- **New root:** containment-tree resolution — `v2.std.symbol_index` `SymbolIndex` filled by `src/v2/compiler/symbol_index_fill.dag`, walked by `src/v2/compiler/resolve.dag` (`lookup_symbol_index_atom_identity`, chain lookup, qualified projection) — with dependency edges **derived from references**, exactly as `src/v2/lens/module_graph.dag`'s own `dependency_edge_source_migration_note` already specifies.
-- **X's residual roles:** the pre-strip resolver (from quarry or a pinned ref) as OFFLINE differential oracle for the qualification sweep — occurrence → exact old target → canonical qualified spelling; only exact old bindings rewrite mechanically; old-ambiguous and old-unbound refuse migration. Never a fallback, never a production second opinion.
+At each major step, stop and present for operator satisfaction; fix forward continuously within the step. The pre-strip resolver is an **offline differential oracle only**: occurrence→exact old binding→canonical qualification. Refuse old-ambiguous/unbound migrations; never install it as fallback or a production second opinion.
 
-## Step 0 — DONE (dated receipts, 2026-08-15): the strip
+## Step 0 — historical strip and census
 
-- `d4916cacf3` — Delete every import statement from `dag/` and `src/v2/` (2,975 files, −62,850 lines)
-- `59db42ffc9` — Delete every import statement from `src/v1/` (the seed; 60 files, −1,837 lines)
+Strip receipts: `d4916cacf3` (`dag`/`src/v2`) and `59db42ffc9` (`src/v1`). The [full dated readings](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/namespace-cut-replacement-plan.md) retain raw counts, class breakdowns and reproduction notes. They are one-off outputs of an **unowned** procedure, not a live instrument.
 
-> **READ THIS BEFORE ANY NUMBER BELOW. These are a dated ONE-OFF measurement taken by an UNOWNED procedure. They cannot be re-derived by any entry point in this repository, and they expire the moment either tree moves.** Do not cite them as a standing census, and do not assume someone can regenerate them on demand — nobody can, today. DESIGN §6 does not forbid a one-off; it forbids a one-off wearing the name of an instrument, which is what `review 58770` correctly caught in the first draft of this section.
->
-> **What is owned and what is not.** The compile is a real entry point: `gunbc compile` over `gunbc.ci.ci_layer_roots` `compile_clean_source_roots`. **Nothing owned performs the strip, and nothing owned derives the classification.** Brace-balanced deletion of an import statement is a parse-level rewrite and the corpus has no typed source-rewrite op, so the procedure below is executed by hand and its output is read by hand. The shortcut was checked and is not available: the compiler's namespace-only resolution policy (`v1_rt` `name_resolution_policy_set_namespace_only`) is test-only and would not remove the import universe in any case.
->
-> **RETIREMENT TRIGGER, naming the capability rather than an artifact (§4b(3)):** a **typed source-rewrite op, plus the instruments-layer producer that folds the strip census over it**. Not "a script", not "an entry point". That capability is STEP 0's own work — the strip is the program, not the measurement of it — so when the strip is real the census becomes a fold over it, and **the figures in this section are DELETED at that point rather than updated**. A producer built now purely to re-derive them would be a throwaway model priced against a lifetime of one answer.
->
-> **Reproducible by hand, which is the whole licence for a one-off.** Current tree `de531c35496`; August tree `64ebefa7416` (the tree `d4916cacf3` stripped — note `f84c91b774a` is `#9162`, from September, and is NOT the August base). Each compiler built from the tree it is named for with `cargo build --release -p v1-compiler --bin gunbc`. Strip: every import statement removed **brace-balanced** — a line-based delete strands 5,387-plus member lists and their closing braces — from `dag/`, `src/v2/` and `src/v1/` in a detached scratch worktree. Invocation, identical for every row: `gunbc compile --source-root dag --source-root src/v2 --source-root src/v1 --dependency-pool-index primary-precedence --target dag --output-dir <tmp>`, reading the terminal `N blocking error(s)` line and the `error[file:line:col]: msg` rows (the pinned compiler renders them as `msg (file:start-end)` and reports `v2 self-compile produced N hard diagnostic(s)`). **The pipeline was validated against the original census before it compared anything:** the strip subject reproduces the two strip commits' own counts (19,728 statements / 3,035 files vs their 19,347+381 / 2,975+60), and the pinned compiler on the August tree reproduces 5,531 with its class breakdown to the digit. Both baselines are stated below and neither stripped figure is the cost of the strip alone.
+Reproduction used brace-balanced import removal in detached worktrees, not line deletion or test-only `name_resolution_policy_set_namespace_only`. Build each compiler from its named tree with `cargo build --release -p v1-compiler --bin gunbc`; run `gunbc compile --source-root dag --source-root src/v2 --source-root src/v1 --dependency-pool-index primary-precedence --target dag --output-dir <tmp>`, reading hard diagnostics. `compile_clean_source_roots` owns the compile entry, not stripping/classification. A typed source-rewrite capability plus instruments-layer census producer retires these one-off readings; do not build a throwaway count reproducer.
 
-**Two readings, and why both were needed.** The **current** procedure runs the strip and the compile above at `de531c35496`, with the unstripped tree under the same invocation as its control. The **pinned** one runs the same strip and the same invocation, with `gunbc` built from `64ebefa7416` instead — the tree `d4916cacf3` stripped — run against BOTH trees, which is what separates a corpus delta from an instrument delta. The current compiler cannot serve as the pinned instrument in the other direction: it refuses the August tree at module-index time (`module index refused: 22 unparseable .dag source(s)`, 26 unstripped) over walls that landed since, and patching those files would mutate the subject.
-
-- **Strip subject:** 25,121 import statements across 3,886 files (single-line 17,980 · multi-line 6,765 · bare 376), zero residue — against 19,347 / 2,975 in 2026-08-15's `dag/`+`src/v2/` pass plus 381 / 60 in the seed.
-- **Control (unstripped main, same invocation):** 78 blocking errors across 16 files. Main is not compile-clean under the v1-inclusive root set, so the stripped figure is a total, not a delta.
-- **Stripped census:** **10,436 hard diagnostics · 272 distinct names · 923 files**  (a name is the subject the diagnostic names in its own class — the unresolved type, the missing function, the ambiguous reference; counting the first quoted token in every message instead gives 305); 3,427 sources resolved, 1,106 modules indexed in the name census.
-- **By class, summing to 10,436:** unresolved type 3,247 · no-field 2,468 · ambiguous reference 1,701 · undefined variable 1,054 · method-unresolved 839 · function-not-found 777 · variant-not-found 186 · other 164. Six diagnostics carry a `<kernel:String>`/`<kernel:V>` span rather than a file; they are not a class of their own — all six are variant-not-found (`Accepted` ×3, `Rejected` ×3) and are counted in that class's 186. They are excluded from the 923-file spread, which counts files.
-- **Top names:** `children` 704 · `Nat` 675 · `FilePath` 640 · `decl` 623 · `row` 598 · `trim` 528 · `Empty` 525 · `Node` 464.
-
-**The 5,531/280/935 census does NOT still hold, and the cause is the CORPUS, not the instrument.** Establishing that needed a second run, because the first comparison changed the compiler and the tree at the same time: a delta across a changed instrument is not a delta in the subject. So the instrument was pinned at August — `gunbc` built from `64ebefa7416`, the tree `d4916cacf3` stripped — and pointed at both trees under the identical strip and invocation:
-
-| instrument · subject | diagnostics | files | names |
-|---|---|---|---|
-| **August compiler · August tree, stripped** | **5,531** | 934 | 655 |
-| **August compiler · current tree, stripped** | **12,548** | 1,312 | 870 |
-| August compiler · August tree, unstripped (baseline) | 41 | 2 | 3 |
-| current compiler · current tree, stripped | 10,436 | 923 | 272 |
-| current compiler · current tree, unstripped (baseline) | 78 | 16 | 8 |
-
-**The first row reproduces the 2026-08-15 census exactly** — 5,531 diagnostics, and its class breakdown to the digit: function-not-found 2,065 · unresolved type 1,742 · undefined variable 1,067. The strip subject reproduces too (19,728 statements / 3,035 files, matching the two strip commits' own 19,347+381 / 2,975+60). So the pipeline is validated against the original measurement before it is used to compare anything, and the second row is a like-for-like reading of the same instrument on a corpus 3,226 changed `.dag` files later: **5,531 → 12,548, files 934 → 1,312.**
-
-**The compiler-refinement reading is refuted by its own prediction.** Had the doubling been finer diagnosis of a stable corpus, the August compiler on the August tree would have had to report roughly today's volume; it reports 5,531. Nor is the growth an artifact of one new class: 3,796 of the 12,548 are `source annotation names no subject`, §4c annotations the August compiler cannot attach, and excluding that class entirely still leaves 8,752 — **+58% on the August compiler's own vocabulary.**
-
-**Two corrections to the first reading of these figures, both from comparing across instruments.** The spread did **not** stay flat: held at one compiler it grows 934 → 1,312 files, so the strip reaches materially MORE of the corpus than it did in August, not the same sites twice over. And the name column should not be compared at all — 280 is not re-derivable from its own instrument's output under any obvious rule (the reproduction gives 655 distinct quoted subjects, 555 restricted to the three enumerated classes), so 280 → 272 was two different counting rules, not a measurement.
-
-**The four classes with no August number are UNREPORTED, not zero.** The 2026-08-15 census enumerated its top three classes only — 4,874 of 5,531, leaving 657 in classes it never listed — and all seven of today's class spellings are present in the August compiler's sources at `64ebefa7416`. No part of today's volume belongs to a diagnostic that did not exist.
-
-**Consequence for step 4:** the census is genuinely bigger, so step 4 is re-sized as well as re-sorted. Its class-grain fix-forward should be prioritized off the current mix — and note that the current compiler reports FEWER diagnostics on the current tree than the August one does (10,436 vs 12,548), so the class counts to work from are the current compiler's.
-
-Standing census on the branch (2026-08-15, dated record): **5,531 hard diagnostics · 280 distinct names · 935 files · 2,355 of 3,709 modules in closure**; by class: function-not-found 2,065 · unresolved type 1,742 · undefined variable 1,067; top names `LiveTreeDisposition` 579 · `SubstrateInputsOnly` 506 · `OccurrenceId` 347. Two earlier root-cause hypotheses (declaration-registration gap; sibling-homonym eligibility) were **retracted** — the probes ran under conditions differing from the corpus (their diagnostic appears zero times in the census). That census stood as of that date and is superseded as a measurement by the 2026-09-02 re-derivation above; the hypotheses remain open questions for step 4's instrument.
+Controls held the August compiler (`64ebefa7416`, not September’s `f84c91b774a`) fixed across August/current (`de531c35496`) stripped and unstripped subjects. The original strip/class breakdown reproduced before comparison. The current compiler refuses the old tree at module indexing; patching it would change the subject. Unstripped controls were not compile-clean, so stripped counts are totals, not deltas. Growth persists under the pinned compiler and after removing its source-annotation class: the corpus grew, not merely diagnostic precision. Historical name counts used incompatible rules; omitted classes mean unreported, not zero. Prior declaration-registration/sibling-homonym hypotheses were retracted because probes did not match corpus conditions. Re-size step 4 using current classes and real specimens.
 
 ## Step 1 — import-name-universe deletion (before deep census diagnosis)
 
@@ -124,7 +48,7 @@ Standing census on the branch (2026-08-15, dated record): **5,531 hard diagnosti
 
 - `src/v2/lens/module_graph.dag`: repoint `dependency_resolution_facts_live` to the reference-derived producer per the file's own `dependency_edge_source_migration_note`; `dependency_closure`, `import_closure`, `touched_path_in_closure`, `entry_affected_by_touched_paths` are edge-source-agnostic and survive under the new supply. Consumers riding through unchanged: `dag/gunbc/instruments/dag_compile_clean_scope.dag`, `dag/gunbc/instruments/module_impact_query_front_door.dag`, `dag/gunbc/instruments/rust_stage0_gates.dag`, `dag/gunbc/doc_graph_roots.dag`, `gunbc.stage0_partition_closure`, `gunbc.repo.repo_atlas_projection`, affected-set entry selection
 - `cli_run.rs` `import_resolution_facts` / `dependency_resolution_facts` / `union_dedup_import_facts_reference_first`: the reference-first union collapses to reference-only; the dedup authority survives with one arm
-- `layer_import_facts` family + its interpreter builtin arm: `v2.std.layer` consumes it; the transitional reference arm already exists (`reference_edges_as_import_facts` strict=true, per `docs/plans/layering-imports-reference-repoint-design.md` §3.1) — becomes reference-only; repoint + rename
+- `layer_import_facts` family + its interpreter builtin arm: `v2.std.layer_import_scan` supplies `v2.std.layer.LayerImportFact` to surviving containment consumers. Its `reference_edges_as_import_facts(strict=true)` bridge covers import-less files; import syntax currently wins duplicate (path, module) pairs. Replace that mixed supply with reference-only facts. The retired directional layering gate is not a consumer to restore
 - `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: re-derive its type-ref channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes. **This is restoration, not cleanup** (crisp-crab finding, 2026-08-15): the channel was fed by `UnlistedImportUse` diagnostics whose mask guards on a non-empty `source_visible_names` — empty for every module post-strip — so the strip already silently emptied it. Rust emission is degraded on the branch until this lands; an emit-green result before it is the suspicious one. Related: `topological_sort` derives build order from `module_imports`, so ordering is flat (every module in-degree 0) until reference-derived edges supply it — ordering-sensitive results are not meaningful before then.
 - `src/v1/05_emit_python.dag` `emit_py_imports` / `05_emit_go.dag` `emit_go_imports` etc.: target-language import emission survives; only the input (dag import nodes) is re-derived from references
 - `dag/gunbc/instruments/dag_compile_clean_scope.dag`: re-word the import-closure prose; keep the tool

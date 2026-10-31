@@ -562,28 +562,28 @@ fn board_seed_profile(board: ProvisioningBoard, delivery: SeedDeliveryStrategy) 
 // one of them is only transcribed, or is found to prompt, it can change its standing without touching the others.
 data nvme_cli_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "nvme-cli" as NonEmptyStr,
-  architecture: Arm64Architecture,
+  architecture: Aarch64,
   observed_version: "2.8-1build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: nvme_cli_deb_authority },
 }
 
 data ipmitool_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "ipmitool" as NonEmptyStr,
-  architecture: Arm64Architecture,
+  architecture: Aarch64,
   observed_version: "1.8.19-7build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: ipmitool_deb_authority },
 }
 
 data dmidecode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "dmidecode" as NonEmptyStr,
-  architecture: Arm64Architecture,
+  architecture: Aarch64,
   observed_version: "3.5-3build1" as NonEmptyStr,
   standing: CitedToAuthority { authority: dmidecode_deb_authority },
 }
 
 data rasdaemon_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "rasdaemon" as NonEmptyStr,
-  architecture: Arm64Architecture,
+  architecture: Aarch64,
   observed_version: "0.8.0-2" as NonEmptyStr,
   standing: CitedToAuthority { authority: rasdaemon_deb_authority },
 }
@@ -674,35 +674,35 @@ data amd64_microcode_deb_authority: ExternalAuthority = ExternalAuthority {
 // artifact stops admitting, where a locator-only design would keep admitting and never notice.
 data nvme_cli_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "nvme-cli" as NonEmptyStr,
-  architecture: Amd64Architecture,
+  architecture: X86_64,
   observed_version: "2.8-1build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: nvme_cli_amd64_deb_authority },
 }
 
 data ipmitool_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "ipmitool" as NonEmptyStr,
-  architecture: Amd64Architecture,
+  architecture: X86_64,
   observed_version: "1.8.19-7build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: ipmitool_amd64_deb_authority },
 }
 
 data dmidecode_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "dmidecode" as NonEmptyStr,
-  architecture: Amd64Architecture,
+  architecture: X86_64,
   observed_version: "3.5-3build1" as NonEmptyStr,
   standing: CitedToAuthority { authority: dmidecode_amd64_deb_authority },
 }
 
 data rasdaemon_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "rasdaemon" as NonEmptyStr,
-  architecture: Amd64Architecture,
+  architecture: X86_64,
   observed_version: "0.8.0-2" as NonEmptyStr,
   standing: CitedToAuthority { authority: rasdaemon_amd64_deb_authority },
 }
 
 data amd64_microcode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "amd64-microcode" as NonEmptyStr,
-  architecture: Amd64Architecture,
+  architecture: X86_64,
   observed_version: "3.20231019.1ubuntu2" as NonEmptyStr,
   standing: CitedToAuthority { authority: amd64_microcode_deb_authority },
 }
@@ -713,39 +713,17 @@ data amd64_microcode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
 
 // WHICH ARCHITECTURE A SILENCE WAS ESTABLISHED FOR, and which seed may therefore use it. This is a row-level
 // fact and not a global one: the arm64 archive and the amd64 archive are different trees with different builds
-// of the same source, and the same name can be silent on one and prompt on the other. The two spellings are
-// deliberately separate from `extdeps.toolchain.types.Architecture`, which is the ARCHITECTURE OF A TARGET and
-// is used for admission; this one is the ARCHITECTURE OF AN ARTIFACT, and the gate below is precisely the
-// statement that the two agree. Collapsing them would let a target's own value be copied into an artifact's
-// field by whoever wrote the row, which is the same failure the module already forbids between a package name
-// and the name written inside its receipt.
-type SilencedArchitecture = Amd64Architecture | Arm64Architecture
-
-// ROW EQUALITY ON THE ARTIFACT ARCHITECTURE, WRITTEN AS A MATCH AND NOT AN `==` OVER THE VALUES. The repo
-// carries its own warning (gunbc.recurring_failure_mode.optional_equality_answers_by_representation) that
-// comparing two values of a sum type can answer by representation rather than meaning; the comparison is
-// spelled out over the two constructors instead of relying on the structural `==`.
-fn silenced_architecture_eq(left: SilencedArchitecture, right: SilencedArchitecture) -> Bool {
-  match left {
-    Amd64Architecture =>
-      match right {
-        Amd64Architecture => true
-        Arm64Architecture => false
-      }
-    Arm64Architecture =>
-      match right {
-        Amd64Architecture => false
-        Arm64Architecture => true
-      }
-  }
-}
+// of the same source, and the same name can be silent on one and prompt on the other. A row and a receipt carry
+// it as the ISA it was built for, in extdeps.toolchain.types Architecture: the same vocabulary the target is
+// admitted in, so matching a row to a target is equality on one type, with no second architecture enum and no
+// translation between them (review 87055, DESIGN section 3).
 
 // ONE ADMITTED PACKAGE ROW. `architecture` is the axis the seed's target is matched against; `receipt` carries
 // everything else the silence claim needs (name, version, standing, citation). Rows are the only way a package
 // enters a seed: an architecture with no rows is not a platform this module can build a seed for, and the
 // admit door refuses it rather than producing a seed whose every package claim is unverifiable.
 type SeedPackageRow sole_constructor {
-  architecture: SilencedArchitecture
+  architecture: Architecture
   receipt: PackageSilenceReceipt
 }
 
@@ -758,74 +736,51 @@ fn seed_package_rows() -> List<SeedPackageRow> {
   [
     // ARM64 (the ASRock Rack ALTRAD8UD-2T32F fleet).
     SeedPackageRow {
-      architecture: Arm64Architecture,
+      architecture: Aarch64,
       receipt: nvme_cli_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Arm64Architecture,
+      architecture: Aarch64,
       receipt: ipmitool_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Arm64Architecture,
+      architecture: Aarch64,
       receipt: dmidecode_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Arm64Architecture,
+      architecture: Aarch64,
       receipt: rasdaemon_silence_receipt,
     },
     // AMD64 (the Supermicro H11SSL family). The first four are the same diagnostic and BMC tooling the arm64
     // board installs, re-verified against this architecture's own builds; the fifth is x86's CPU firmware.
     SeedPackageRow {
-      architecture: Amd64Architecture,
+      architecture: X86_64,
       receipt: nvme_cli_amd64_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Amd64Architecture,
+      architecture: X86_64,
       receipt: ipmitool_amd64_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Amd64Architecture,
+      architecture: X86_64,
       receipt: dmidecode_amd64_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Amd64Architecture,
+      architecture: X86_64,
       receipt: rasdaemon_amd64_silence_receipt,
     },
     SeedPackageRow {
-      architecture: Amd64Architecture,
+      architecture: X86_64,
       receipt: amd64_microcode_silence_receipt,
     },
   ]
 }
 
-// THE TARGET'S ARCHITECTURE SAID IN THE ARTIFACT'S VOCABULARY, or Absent when the target names an architecture
-// nobody has admitted artifact rows for. This is the ONLY place the two vocabularies meet, and it is a total
-// match over Architecture: a new target architecture lands in Absent, which the door reads as "refuse", until
-// somebody authors its rows.
-fn seed_architecture_of(architecture: Architecture) -> Optional<SilencedArchitecture> {
-  match architecture {
-    Aarch64 => Present { value: Arm64Architecture }
-    X86_64 => Present { value: Amd64Architecture }
-    _ => Absent
-  }
-}
-
 // THE ADMIT DOOR'S ROW LOOKUP. Absent means no architecture row was found, which the door reads as a refusal —
 // not as a default, and not as a branch that names a board or a family.
 fn find_seed_architecture_row(architecture: Architecture) -> Optional<SeedPackageRow> {
-  match seed_architecture_of(architecture: architecture) {
-    Absent => Absent
-    Present { value: wanted } =>
-      seed_package_rows().filter(row =>
-        silenced_architecture_eq(left: row.architecture, right: wanted)
-      ).first()
-  }
+  seed_package_rows().filter(row => row.architecture == architecture).first()
 }
-
-// ROW EQUALITY ON THE ARTIFACT ARCHITECTURE, WRITTEN AS A MATCH AND NOT AN `==`. The repo carries its own
-// warning (gunbc.recurring_failure_mode.optional_equality_answers_by_representation) that comparing two values
-// of a sum type answers by representation rather than meaning; a nullary-variant equality is exactly the shape
-// that warning names, so the comparison is spelled out over the two constructors instead.
 
 // THE DOOR'S REAL PREDICATE: not "does the architecture have a row" but "does it have a row THAT CAN CARRY A
 // CLAIM INTO A SEED". A row set consisting only of receipts the audit would refuse is an architecture admitted
@@ -855,19 +810,14 @@ fn architecture_admits_package(
   architecture: Architecture,
   package: NonEmptyStr,
 ) -> Bool {
-  match seed_architecture_of(architecture: architecture) {
-    Absent => false
-    Present { value: wanted } =>
-      seed_package_rows().filter(row =>
-        silenced_architecture_eq(left: row.architecture, right: wanted)
-          && silenced_package(receipt: row.receipt) == package
-      ).count() > 0
-  }
+  seed_package_rows().filter(row =>
+    row.architecture == architecture && silenced_package(receipt: row.receipt) == package
+  ).count() > 0
 }
 
 // THE ARCHITECTURE A RECEIPT ITSELF WAS READ OFF. The type carries it as a field; reading it back is what lets
 // a seed be audited against the evidence rather than against a name the caller repeated.
-fn silenced_receipt_architecture(receipt: PackageSilenceReceipt) -> SilencedArchitecture {
+fn silenced_receipt_architecture(receipt: PackageSilenceReceipt) -> Architecture {
   match receipt {
     SilentReceipt { package: _, architecture: arch, observed_version: _, standing: _ } => arch
   }
@@ -880,41 +830,23 @@ fn silenced_receipt_architecture(receipt: PackageSilenceReceipt) -> SilencedArch
 //      from is a different build;
 //   2. a row must actually be shipped for that (architecture, package) pair, so a receipt with a plausible
 //      architecture field that nobody admitted still refuses.
-// The equality goes through silenced_architecture_eq rather than == because these are nullary-variant values
-// and the repo's own rule is that comparison over them goes through a match (recurring_failure_mode.
-// optional_equality_answers_by_representation).
 fn silence_receipt_is_admitted_for(
   receipt: PackageSilenceReceipt,
   architecture: Architecture,
 ) -> Bool {
-  match seed_architecture_of(architecture: architecture) {
-    Absent => false
-    Present { value: wanted } =>
-      match silenced_architecture_eq(
-        left: silenced_receipt_architecture(receipt: receipt),
-        right: wanted,
-      ) {
-        False => false
-        True =>
-          architecture_admits_package(
-            architecture: architecture,
-            package: silenced_package(receipt: receipt),
-          )
-      }
-  }
+  silenced_receipt_architecture(receipt: receipt) == architecture
+    && architecture_admits_package(
+      architecture: architecture,
+      package: silenced_package(receipt: receipt),
+    )
 }
 
 // THE ADMITTED PACKAGE ROWS FOR A TARGET, as intents. A witness or a caller builds a seed's package list from
 // here rather than by hand-pairing a name with a receipt; the pairing cannot go wrong because there is no
 // place left to put it wrong.
 fn package_rows_for_architecture(architecture: Architecture) -> List<PackageIntent> {
-  match seed_architecture_of(architecture: architecture) {
-    Absent => []
-    Present { value: wanted } =>
-      seed_package_rows().filter(row =>
-        silenced_architecture_eq(left: row.architecture, right: wanted)
-      ).map(row => PackageVerifiedSilent { silence: row.receipt })
-  }
+  seed_package_rows().filter(row => row.architecture == architecture)
+    .map(row => PackageVerifiedSilent { silence: row.receipt })
 }
 
 // THE KERNEL-MODULE AXIS, KEPT APART BECAUSE IT IS NOT CHECKABLE AGAINST APT. What the board must have loaded
@@ -1149,7 +1081,7 @@ fn debconf_answer_for(
 // comes along for free and cannot be left behind.
 type PackageSilenceReceipt = SilentReceipt {
   package: NonEmptyStr
-  architecture: SilencedArchitecture
+  architecture: Architecture
   observed_version: NonEmptyStr
   standing: CitedFigureStanding
 }

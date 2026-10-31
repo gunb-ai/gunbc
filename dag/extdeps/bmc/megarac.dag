@@ -9,6 +9,13 @@ import extdeps.bmc.capability {
   bmc_firmware_release_identity_eq,
   bmc_firmware_release_identity_of_wire,
 }
+import std.optional { Present, Absent }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
+  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice,
+  HpmVersionAbsent, HpmVersionHeld, hpm_check_table_of, hpm_component_named,
+}
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -208,36 +215,69 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // capability row, the run that exercised it, and how the version string came to be known (an operator
 // read of the web UI, not a machine read) — is a receipt in the observing layer, at
 // gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
+// THE VENDOR'S PAGE LABEL, AND NOTHING MORE. "0.45.3" is what the vendor's release page SAYS this build
+// is called; it is not what the controller reports. The controller reports APP `0.45 03000000`, and the
+// release identity that flows through the platform is DERIVED from those bytes (below, and in
+// gunbc.host.bmc_release_capability_catalog for the capability row). NO production site keys anything on
+// this datum any more: it survives as the page's wording, cited by comments and by witnesses that demand
+// the label is NOT a key of any table here.
 data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.45.3",
 )
 
+// THE RELEASE THIS UNIT'S BUILD IS READ AS, DERIVED HERE FROM THE COMMITTED CAPTURE. The bytes have their
+// one home in extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_45 (boot run 40082618814's
+// retained stdout); this parses them with the SAME parser a live read uses (hpm_check_table_of) and the
+// SAME name-keyed lookup that refuses an absent or duplicated component rather than taking the first row
+// (hpm_component_named), then takes the cell's leading revision -- exactly the path
+// gunbc.host.bmc_release_capability_catalog megarac_version_establishment walks for the capability row,
+// and witness w_the_media_table_key_and_the_capability_row_derive_the_same_release pins that the two
+// land on one release, so this shortcut cannot drift out from under the row that licenses a boot.
+// It answers Absent for every case the parser refuses, and it keeps no cause -- the cause-carrying
+// reading is the capability row's, and an Absent here simply leaves the table with no 0.45 arm.
+data megarac_committed_hpm_read_release: BmcFirmwareReleaseIdentity? = match hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_45) {
+  HpmCheckRead { rows: rows } => match hpm_component_named(rows: rows, name: "APP") {
+    HpmComponentSelected { row: row } => match row.active {
+      HpmVersionHeld { rendering: rendering } => match split(s: rendering as String, delimiter: " ").first() {
+        Present { value: revision } => Present { value: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: revision as NonEmptyStr) }
+        Absent => Absent
+      }
+      HpmVersionAbsent => Absent
+    }
+    HpmComponentNotListed { name: _, listed: _ } => Absent
+    HpmComponentListedTwice { name: _, ids: _ } => Absent
+  }
+  HpmCheckUpgradeVariant { header: _ } => Absent
+  HpmCheckUnreadable { detail: _ } => Absent
+}
+
+// IS THE IDENTITY A CALLER CARRIES THE ONE THE COMMITTED READ DERIVES? Absent read -- no capture parsed --
+// answers false, which leaves every wire of every release uncatalogued rather than assuming a build.
+fn megarac_release_is_the_committed_hpm_read(firmware: BmcFirmwareReleaseIdentity) -> Bool {
+  match megarac_committed_hpm_read_release {
+    Present { value: read } => bmc_firmware_release_identity_eq(a: firmware, b: read)
+    Absent => false
+  }
+}
+
 // THE cd_remote_server_address FIELD'S OWN VALIDATOR, AS EXECUTED, KEYED TO THE RELEASE IT WAS READ
-// FROM. These rows are the firmware's OUTPUTS, not a second implementation of its predicate: each one is
-// a spelling handed to the controller's own client-side validator and the verdict it returned, executed
-// 2026-10-27 against the bundle the device at 192.168.1.228 was serving (the predicate was extracted
-// verbatim and run, not read — docs/probes/bmc_media_share_naming_2026-10-27.md, "The firmware's own
-// field validator, executed"). Nothing here claims to restate the predicate: the set is exactly what was
-// executed, and a spelling outside it is simply not covered rather than guessed at.
-//
-// WHY KEYED. The validator is served BY THE FIRMWARE, so another release can ship another one, and an
-// unkeyed row here would be a family-grain claim resting on one build — which the scope note at the top
-// of this module forbids. The key is megarac_firmware_0_45_3, the same identity the redirection-status rows
-// below are keyed by, so the firmware-grain facts about this device share one key.
-//
-// WHAT THAT KEY IS WORTH, stated rather than left to be discovered: its version string came from an operator
-// read of the BMC web UI after the 2026-10-02 reflash, which is why it is a string and not a machine read.
-// The gunbc release capability catalog keys on a DIFFERENT grain — an identity derived from a committed
-// ipmitool hpm-check, whose wire is "0.45" because the HPM.1 auxiliary bytes are deliberately not folded into
-// a patch number — and that module says plainly that nothing asserts "0.45.3" and the derived "0.45" are the
-// same name. This row does not equate them either: asking that catalog for this key answers Uncatalogued.
-// Closing the gap needs a machine read whose wire IS the label; until then this row rests on the operator's
-// read and says so.
+// AGAINST. The field is a String on purpose: the empty spelling was executed and REFUSED, and a
+// NonEmptyStr could not record that fact. WHY KEYED TO A RELEASE: the verdicts are a property of one
+// firmware build's validator, not of the field's name, so a rule that consults them must say which
+// release they describe or it silently applies one build's validator to another's. The key is the
+// machine-read identity megarac_committed_hpm_read_release above -- derived here from the committed
+// hpm-check capture, the same grain the boot reaches and the grain the redirection table below is keyed
+// on -- NOT the vendor page label, which production keys nothing on: megarac_release_is_the_committed_hpm_read
+// is the only test of a carried identity against this datum, and the corpus pins that a caller carrying
+// the label inherits nothing. The probe was executed against the bundle the device now serving this unit
+// offered, and this corpus's evidence for that device's build is that committed capture. IF THE CAPTURE
+// IS ABSENT there is no evidenced release at all: the key is then Absent, and a consumer that needs these
+// verdicts must refuse rather than assume a build -- a rule of unknown provenance is no rule.
 //
 // WHY `raw` IS A String AND NOT A NonEmptyStr: the empty spelling is one of the spellings that was
 // actually handed over and refused, and narrowing the carrier would make one of the executed verdicts
-// unwritable — the type would silently drop a row of the evidence.
+// unwritable -- the type would silently drop a row of the evidence.
 type MegaRacMediaAddressFieldProbe {
   raw: String
   accepted: Bool
@@ -245,14 +285,20 @@ type MegaRacMediaAddressFieldProbe {
 
 // THE SET, PAIRED WITH ITS KEY AT CONSTRUCTION. A bare list of verdicts could be read against the wrong
 // release; carrying the key beside the rows is what makes "which build answered this" part of the fact
-// rather than part of a comment above it.
+// rather than part of a comment above it. An Absent key means the committed capture is missing, so
+// NOTHING here is evidenced about any build.
 type MegaRacMediaAddressFieldProbeSet {
-  firmware: BmcFirmwareReleaseIdentity
+  firmware: BmcFirmwareReleaseIdentity?
   probes: List<MegaRacMediaAddressFieldProbe>
 }
 
+// THE EXECUTED VERDICTS, keyed to the release the committed capture derives. These rows are the
+// firmware's OUTPUTS, not a second implementation of its predicate: each is a spelling handed to the
+// controller's own client-side validator and the verdict it returned, executed 2026-10-27 (the predicate
+// was extracted verbatim and run, not read -- docs/probes/bmc_media_share_naming_2026-10-27.md, "The
+// firmware's own field validator, executed"). A spelling outside this set is not covered, not guessed at.
 data megarac_media_address_field_probe_set: MegaRacMediaAddressFieldProbeSet = MegaRacMediaAddressFieldProbeSet {
-  firmware: megarac_firmware_0_45_3,
+  firmware: megarac_committed_hpm_read_release,
   probes: [
     MegaRacMediaAddressFieldProbe { raw: "192.168.1.201", accepted: true },
     MegaRacMediaAddressFieldProbe { raw: "192.168.1.188", accepted: true },
@@ -312,7 +358,16 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
-  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3) {
+  } else if megarac_release_is_the_committed_hpm_read(firmware: firmware) {
+    // THE BUILD THE CONTROLLER REPORTS, NOT THE PAGE'S NAME FOR IT. Keyed on the identity the committed
+    // hpm read derives, because that is the identity a boot carries for this controller once it has read
+    // its own build -- keying this arm on the operator's page label instead would leave a boot that reads
+    // "0.45" unable to tell a STARTED session from a stopped one, attach refusing on every row.
+    // Grounded by boot run 40258937016, which read redirection_status 1 on the session it then
+    // established (session_index 0, cd_error_code 0 before any write and at ready) in the same run that
+    // machine-read this build, and by run 38789347052, whose session read 1 on the build the capability
+    // row's machine read establishes. 0 and 100 are NOT carried over from 0.32: no 0.45 reading returned
+    // them, and 16/19 stay codes this release's catalogue does not name.
     let status = if wire == 1 {
       RedirectionStartedConnectionAccepted
     } else {

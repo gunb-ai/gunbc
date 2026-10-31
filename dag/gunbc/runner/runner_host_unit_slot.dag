@@ -1,5 +1,7 @@
 module gunbc.runner.runner_host_unit_slot
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.decimal { decimal_digits_only }
@@ -22,14 +24,14 @@ import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused,
   systemd_run_transient_wait_pipe_summary_command,
 }
-import extdeps.systemd { User, DelegateProperty }
+import extdeps.systemd { User, DelegateProperty, PartOf, AfterProperty }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_properties }
 import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
-import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_registration_labels }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_evidence_gated_registration_labels }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, gunbc_runner_committed_width }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
@@ -134,17 +136,36 @@ type HostUnitListenerWait
   = HostUnitListenerReady { wait: SystemdSummaryPrintingWait }
   | HostUnitListenerUnbuilt { cause: NonEmptyStr }
 
-fn host_unit_listener_properties(user: NonEmptyStr) -> List<SystemdRunProperty> {
+// WHO ENDS THE LISTENER'S LIFE (gunbc.plans.mtcollins1_ci_service_legs F3). A service slot's listener is a separate
+// transient unit its controller unit waits on, so a stop of the controller -- a unit stop or the host's shutdown --
+// must reach the listener FIRST: PartOf= propagates the controller's stop to the listener, and After= orders the
+// listener's stop before the controller's, so the controller's ExecStop runs only once the listener has ended. The
+// attempt slot's listener has no owning unit on the host; its driver ends it and tears it down.
+type HostUnitListenerLifetime
+  = ListenerOwnLifetime
+  | ListenerPartOf { unit: NonEmptyStr }
+
+fn host_unit_listener_lifetime_properties(lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
+  match lifetime {
+    ListenerOwnLifetime => []
+    ListenerPartOf { unit: u } => [NamedUnitSetting { property: PartOf, value: u }, NamedUnitSetting { property: AfterProperty, value: u }]
+  }
+}
+
+fn host_unit_listener_properties(user: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
   concat(
     ephemeral_slot_properties(desired: gunbc_runner_slot_desired()),
-    [
-      NamedUnitSetting { property: User, value: user },
-      NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
-    ],
+    concat(
+      [
+        NamedUnitSetting { property: User, value: user },
+        NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
+      ],
+      host_unit_listener_lifetime_properties(lifetime: lifetime),
+    ),
   )
 }
 
-fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: NonEmptyStr) -> HostUnitListenerWait {
+fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> HostUnitListenerWait {
   match admit_posix_shell_name(spelling: actions_runner_jitconfig_env_name()) {
     PosixShellNameRefused { spelling: sp } =>
       HostUnitListenerUnbuilt { cause: join(["the listener's JIT environment name is not a shell name: ", sp], "") as NonEmptyStr }
@@ -152,7 +173,7 @@ fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: 
       match posix_sh_export_from_stdin_then_exec_command(name: n, command: host_unit_slot_listener_argv(root: root)) {
         PosixShExportExecEmitRefused { name: _ } => HostUnitListenerUnbuilt { cause: "the stdin export wrapper did not emit" as NonEmptyStr }
         PosixShExportExecReady { command: wrapper } =>
-          match systemd_run_transient_wait_pipe_summary_command(unit: listener_unit, properties: host_unit_listener_properties(user: user), command_argv: argv_words(command: wrapper)) {
+          match systemd_run_transient_wait_pipe_summary_command(unit: listener_unit, properties: host_unit_listener_properties(user: user, lifetime: lifetime), command_argv: argv_words(command: wrapper)) {
             SystemdSummaryPrintingWaitRefused { cause: _ } => HostUnitListenerUnbuilt { cause: "systemd-run refused the listener unit" as NonEmptyStr }
             SystemdSummaryPrintingWaitReady { wait: w } => HostUnitListenerReady { wait: w }
           }
@@ -163,10 +184,10 @@ fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
 // group restricted to any other (gunbc.runner.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
-fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr, receipt: RunnerUserSessionReceiptInput) -> HostUnitSlotStanding {
   match host {
     HostControlled { controlled: b } =>
-      host_unit_slot_over(host: host, purpose: purpose, workflow: workflow, registration_labels: runner_registration_labels(host: b.host))
+      host_unit_slot_over(host: host, purpose: purpose, workflow: workflow, registration_labels: runner_evidence_gated_registration_labels(host: b.host, receipt: receipt))
     HostControlRefused { refusal: r } => HostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
   }
 }
@@ -177,7 +198,7 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
 // architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
 // replacing the Aarch64 literal here and in provider_guest_slot_for.
 // THE FOLD, over the registration labels it is handed. host_unit_slot_for hands it the host's own
-// (runner_registration_labels); the labels are a boundary because the one production host's offer is
+// (runner_evidence_gated_registration_labels); the labels are a boundary because the one production host's offer is
 // not yet in the fleet catalog, so the service arm's success path is reachable only by supplying them.
 fn host_unit_slot_over(host: HostControlStanding, purpose: HostUnitSlotPurpose, workflow: NonEmptyStr, registration_labels: RunnerRegistrationLabelsResolution) -> HostUnitSlotStanding {
   match host {
@@ -361,11 +382,11 @@ fn service_slot_selected_workflow() -> NonEmptyStr {
 // Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
 // on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
 // is the same mode's other half.
-fn current_service_population(host: HostControlStanding, boot: ServiceBootId) -> CurrentServicePopulationStanding {
+fn current_service_population(host: HostControlStanding, boot: ServiceBootId, receipt: RunnerUserSessionReceiptInput) -> CurrentServicePopulationStanding {
   match host {
     HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }
     HostControlled { controlled: b } =>
-      current_service_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_registration_labels(host: b.host), boot: boot)
+      current_service_population_over(host: host, width: gunbc_runner_committed_width(host: b.host), registration_labels: runner_evidence_gated_registration_labels(host: b.host, receipt: receipt), boot: boot)
   }
 }
 

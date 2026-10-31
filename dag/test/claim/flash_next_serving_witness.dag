@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count_value, token_count, tokens_per_second, nanosecond, milli_tokens_per_second_count, basis_point, basis_point_count, Permille, permille, permille_count, concurrent_request_thousandths_count }
 import std.dissolution { dissolution_is_bound }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
-import extdeps.gpu.types { GpuModelCatalogRow, TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count, gpu_catalog_bandwidth }
+import extdeps.gpu.types { GpuDeviceCatalogRow, TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count, gpu_catalog_bandwidth }
 import extdeps.gpu.nvidia { nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog, nvidia_rtx_pro_6000_max_q_catalog }
 import extdeps.qwen.qwen3_8_flash_next {
   qwen3_8_flash_next_architecture, flash_next_qsa_kv_bytes_per_token, flash_next_routed_expert_parameters,
@@ -256,8 +256,8 @@ test fn w_mandatory_step_work_follows_the_config() -> Bool {
 // A CATALOG BANDWIDTH IS READ WITH ITS CITATION. The Max-Q and H200 rows cite memory_bandwidth; the B200 row has none, so its
 // card reads the override and its standing. RED: a row that carries a bandwidth its citations do not ground is absent, and a
 // card on it does NOT fall back to an override (the uncited figure is neither read as cited nor silently replaced).
-fn uncited_bandwidth_row(r: GpuModelCatalogRow) -> GpuModelCatalogRow {
-  GpuModelCatalogRow { vendor: r.vendor, model: r.model, microarchitecture: r.microarchitecture, package: r.package, execution_lane_count: r.execution_lane_count, memory: r.memory, memory_bandwidth: r.memory_bandwidth, boost_clock: r.boost_clock, tdp_watts: r.tdp_watts, compute_capability: r.compute_capability, supported_runtimes: r.supported_runtimes, interconnect: r.interconnect, sm_cache: r.sm_cache, sm_cache_citations: r.sm_cache_citations, figure_citations: [], dense_tensor_throughput: r.dense_tensor_throughput }
+fn uncited_bandwidth_row(r: GpuDeviceCatalogRow) -> GpuDeviceCatalogRow {
+  GpuDeviceCatalogRow { vendor: r.vendor, model: r.model, microarchitecture: r.microarchitecture, execution_lane_count: r.execution_lane_count, memory: r.memory, memory_bandwidth: r.memory_bandwidth, boost_clock: r.boost_clock, compute_capability: r.compute_capability, supported_runtimes: r.supported_runtimes, sm_cache: r.sm_cache, sm_cache_citations: r.sm_cache_citations, figure_citations: [], dense_tensor_throughput: r.dense_tensor_throughput }
 }
 
 test fn w_catalog_bandwidth_carries_its_citation_and_an_uncited_one_is_absent() -> Bool {

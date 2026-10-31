@@ -273,9 +273,10 @@ fn ipmi_cipher_suite_of_id(id: Int) -> IpmiCipherSuite? {
 // and the byte-equality control over mtcollins1's argv (test.claim.bmc.ipmi_cipher_suite_argv_witness) materializes
 // through it; and (2) a sealed record input does not splice at execution: the seed splices only a native List or a
 // std.compilers.cli_surface ProcessArgvExpansion into an argv and renders any other record as one Debug-text word
-// (gunbc.recurring_failure_mode a_record_in_an_argv_position_becomes_its_debug_text). The operations switch to
-// cipher_suite: IpmiCipherSuite? when argv element evaluation lands in std.operation_argv, or when the seed splices
-// a declared sealed role type.
+// (gunbc.v1.v1_maintenance_standing records that seam as unreachable and its repair as not admitted in the seed).
+// The operations switch to cipher_suite: IpmiCipherSuite? when argv element
+// evaluation lands in std.operation_argv, or when the v2 realization of the shell transport splices a declared
+// sealed role type.
 fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
   match suite {
     Absent => []

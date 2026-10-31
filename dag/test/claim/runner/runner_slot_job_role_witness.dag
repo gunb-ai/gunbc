@@ -1,12 +1,22 @@
 module test.claim.runner.runner_slot_job_role_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_observed_tenancy }
+import gunbc.ci.deploy_slot_tenancy {
+  deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_observed_tenancy,
+  RunnerGroupEnsureReceipt, deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt,
+  DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread,
+  DeploySlotJobUserIdentity, DeploySlotJobUserRead, DeploySlotJobUserUnread,
+  DeploySlotPrivacy, DeploySlotPathsPrivate, DeploySlotPathReachable, DeploySlotPrivacyUnread, deploy_slot_privacy,
+}
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_of_octal_text }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.runner.runner_slot_allocation { identity_in_list, gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_slot_job_role {
@@ -15,7 +25,7 @@ import gunbc.runner.runner_slot_job_role {
   host_committed_github_members, srv1_modeled_deploy_slot_reading, runner_host_has_deploy_slot,
 }
 import gunbc.runner.runner_registration_labels {
-  runner_slot_registration_labels, runner_slot_labels_conform, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_declared_slot_registration_labels, runner_slot_labels_conform, RegistrationLabelsResolved, RegistrationLabelsRefused,
   RegistrationLabelsConform, RegistrationLabelsDiverge, gunbc_browser_ready_label,
 }
 import gunbc.runner.runner_unit_file { runner_unit_slot_role_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
@@ -45,7 +55,7 @@ fn committed_srv1() -> Int {
 }
 
 fn labels_of(slot: RunnerSlotIdentity) -> List<String> {
-  match runner_slot_registration_labels(slot: slot) {
+  match runner_declared_slot_registration_labels(slot: slot) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }
@@ -95,10 +105,10 @@ test fn witness_deploy_slot_labels_exclude_the_ci_class_and_the_ci_slot_is_uncha
     && has(c, "gunbc-heavy")
     && !has(c, deploy_slot_runner_group_name as String)
     && has(d, "srv1") == has(c, "srv1")
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: d) == RegistrationLabelsConform
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: c) == RegistrationLabelsDiverge
-    && runner_slot_labels_conform(slot: srv1_deploy_slot(), observed: concat(d, [gunbc_browser_ready_label])) == RegistrationLabelsDiverge
-    && runner_slot_labels_conform(slot: ci_slot(), observed: concat(c, [gunbc_browser_ready_label])) == RegistrationLabelsConform
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: d) == RegistrationLabelsConform
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: c) == RegistrationLabelsDiverge
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: srv1_deploy_slot(), observed: concat(d, [gunbc_browser_ready_label])) == RegistrationLabelsDiverge
+    && runner_slot_labels_conform(receipt: ReceiptAbsent, slot: ci_slot(), observed: concat(c, [gunbc_browser_ready_label])) == RegistrationLabelsConform
 }
 
 fn dropin_text(slot: RunnerSlotIdentity) -> String? {
@@ -119,11 +129,13 @@ test fn witness_deploy_instance_dropin_sets_user_labels_and_clears_the_docker_so
     Absent => false
     Present { value: t } =>
       string_contains(s: t, pattern: "CTRL_RUNNER_JOB_USER=ghdeploy")
+        && string_contains(s: t, pattern: "RUNNER_GROUP_ID=10")
         && string_contains(s: t, pattern: "gunbc-deploy")
         && !string_contains(s: t, pattern: "gunbc-heavy")
         && string_contains(s: t, pattern: "DOCKER_HOST=")
         && !string_contains(s: t, pattern: "unix:///run/user")
         && !string_contains(s: t, pattern: "ghrunner")
+        && string_contains(s: t, pattern: "UMask=0077")
   }
   let ci_none = match dropin_text(slot: ci_slot()) {
     Absent => true
@@ -152,6 +164,98 @@ test fn witness_deploy_account_holds_per_unit_grants_and_no_whole_binary_entry()
   }
 }
 
+// EACH SLOT DIRECTORY'S GRANT CARRIES ITS ROLE'S MODE: the deploy slot's tree is created owner-only and a CI
+// slot's keeps 0755 (gunbc.runner.runner_slot_job_role runner_slot_job_role_tree_mode). The sudoers line and
+// the provisioner's install command are one operation, so the grant is the command that runs. RED: the one
+// executor mode for every slot, which left srv1-02's runner key readable by ghrunner.
+test fn witness_each_slot_directory_is_granted_at_its_roles_mode() -> Bool {
+  match runner_host_deploy_for(host: operator_host_srv1) {
+    RunnerHostDeployFound { deploy: d } => {
+      let body = runner_host_sudoers_content(deploy: d, artifact_path: "x")
+      string_contains(s: body, pattern: "/usr/bin/install -d -m 00700 -o ghdeploy -g ghdeploy /opt/actions-runner/srv1-02\n")
+        && string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv1-01\n")
+        && !string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghdeploy")
+    }
+    _ => false
+  }
+}
+
+// ── THE CONFIDENTIALITY WALL, JUDGED OVER SUPPLIED READINGS ──────────────────────────────────────
+// Readings are what `ls -l -n` shows at each path; ghrunner is uid 999 in group 987, ghdeploy 990/982.
+fn mode(octal: String) -> FileMode {
+  match file_mode_of_octal_text(text: octal) { Present { value: m } => m Absent => mode(octal: "0") }
+}
+fn at(path: String, dir: Bool, uid: Int, gid: Int, octal: String) -> DeploySlotPathReading {
+  DeploySlotPathRead { path: path as NonEmptyStr, directory: dir, ownership: FileOwnership { uid: uid, gid: gid }, mode: mode(octal: octal) }
+}
+fn slot_root() -> String { "/opt/actions-runner/srv1-02" }
+fn private_paths() -> List<NonEmptyStr> {
+  map([slot_root(), concat(slot_root(), "/.runner"), concat(slot_root(), "/.credentials"), concat(slot_root(), "/.credentials_rsaparams"), concat(slot_root(), "/_work"), concat(slot_root(), "/_diag")], p => p as NonEmptyStr)
+}
+fn ancestors() -> List<DeploySlotPathReading> {
+  [at(path: "/opt", dir: true, uid: 0, gid: 0, octal: "755"), at(path: "/opt/actions-runner", dir: true, uid: 1000, gid: 1000, octal: "755")]
+}
+fn slot_readings(root: String, files: String) -> List<DeploySlotPathReading> {
+  concat(ancestors(), [
+    at(path: slot_root(), dir: true, uid: 990, gid: 982, octal: root),
+    at(path: concat(slot_root(), "/.runner"), dir: false, uid: 990, gid: 982, octal: files),
+    at(path: concat(slot_root(), "/.credentials"), dir: false, uid: 990, gid: 982, octal: files),
+    at(path: concat(slot_root(), "/.credentials_rsaparams"), dir: false, uid: 990, gid: 982, octal: files),
+    at(path: concat(slot_root(), "/_work"), dir: true, uid: 990, gid: 982, octal: root),
+    at(path: concat(slot_root(), "/_diag"), dir: true, uid: 990, gid: 982, octal: root),
+  ])
+}
+fn ghrunner() -> DeploySlotJobUserIdentity { DeploySlotJobUserRead { user: "ghrunner" as NonEmptyStr, uid: 999, gids: [987] } }
+fn privacy_wire(p: DeploySlotPrivacy) -> String {
+  match p {
+    DeploySlotPathsPrivate => "private"
+    DeploySlotPathReachable { path, user } => join(["reachable ", path as String, " ", user as String], "")
+    DeploySlotPrivacyUnread { subject, reason: _ } => concat("unread ", subject as String)
+    _ => "other"
+  }
+}
+fn judged(readings: List<DeploySlotPathReading>, others: List<DeploySlotJobUserIdentity>) -> String {
+  privacy_wire(p: deploy_slot_privacy(private_paths: private_paths(), readings: readings, others: others))
+}
+
+// RED, srv1 AS READ ON 2026-10-30: the tree 0755 and the registration 0644 -- reachable by ghrunner, named
+// at the first private path that is. Converged: the tree 0700 and its files 0600 are private; and the
+// per-path read, not the tree's mode, decides: 0644 files inside a 0700 tree are private (the tree stops
+// the walk), while the same files inside a re-widened tree are reachable at the tree itself.
+test fn witness_the_slot_as_read_is_reachable_and_the_converged_slot_is_private() -> Bool {
+  judged(readings: slot_readings(root: "755", files: "644"), others: [ghrunner()]) == "reachable /opt/actions-runner/srv1-02 ghrunner"
+    && judged(readings: slot_readings(root: "700", files: "600"), others: [ghrunner()]) == "private"
+    && judged(readings: slot_readings(root: "700", files: "644"), others: [ghrunner()]) == "private"
+    && judged(readings: slot_readings(root: "711", files: "644"), others: [ghrunner()]) == "reachable /opt/actions-runner/srv1-02 ghrunner"
+}
+
+// THE CLASS RULE, NOT THE OTHER BITS ALONE: a tree whose group is one the other account holds is reachable
+// through the group bits; root reaches everything; with no other runnable slot nothing is reachable.
+test fn witness_group_membership_and_root_reach_what_other_bits_do_not() -> Bool {
+  let shared_group = concat(ancestors(), [
+    at(path: slot_root(), dir: true, uid: 990, gid: 987, octal: "750"),
+    at(path: concat(slot_root(), "/.runner"), dir: false, uid: 990, gid: 987, octal: "640"),
+    at(path: concat(slot_root(), "/.credentials"), dir: false, uid: 990, gid: 987, octal: "640"),
+    at(path: concat(slot_root(), "/.credentials_rsaparams"), dir: false, uid: 990, gid: 987, octal: "640"),
+    at(path: concat(slot_root(), "/_work"), dir: true, uid: 990, gid: 987, octal: "750"),
+    at(path: concat(slot_root(), "/_diag"), dir: true, uid: 990, gid: 987, octal: "750"),
+  ])
+  judged(readings: shared_group, others: [ghrunner()]) == "reachable /opt/actions-runner/srv1-02 ghrunner"
+    && judged(readings: shared_group, others: [DeploySlotJobUserRead { user: "other" as NonEmptyStr, uid: 1001, gids: [1001] }]) == "private"
+    && judged(readings: slot_readings(root: "700", files: "600"), others: [DeploySlotJobUserRead { user: "root" as NonEmptyStr, uid: 0, gids: [0] }]) == "reachable /opt/actions-runner/srv1-02 root"
+    && judged(readings: slot_readings(root: "755", files: "644"), others: []) == "private"
+}
+
+// ABSENCE IS PRIVATE ONLY WHEN OBSERVED: a state file the listing did not carry is private; a path with no
+// reading, or an account whose groups were not read, refuses by name rather than reading private.
+test fn witness_an_unread_path_or_account_refuses_and_only_an_observed_absence_is_private() -> Bool {
+  let without_key = filter(slot_readings(root: "700", files: "600"), r => match r { DeploySlotPathRead { path: p, directory: _, ownership: _, mode: _ } => (p as String) != concat(slot_root(), "/.credentials_rsaparams") _ => true })
+  judged(readings: concat(without_key, [DeploySlotPathAbsent { path: concat(slot_root(), "/.credentials_rsaparams") as NonEmptyStr }]), others: [ghrunner()]) == "private"
+    && judged(readings: without_key, others: [ghrunner()]) == "unread /opt/actions-runner/srv1-02/.credentials_rsaparams"
+    && judged(readings: concat(without_key, [DeploySlotPathUnread { path: concat(slot_root(), "/.credentials_rsaparams") as NonEmptyStr, reason: "ls refused" }]), others: [ghrunner()]) == "unread /opt/actions-runner/srv1-02/.credentials_rsaparams"
+    && judged(readings: slot_readings(root: "700", files: "600"), others: [DeploySlotJobUserUnread { user: "ghrunner" as NonEmptyStr, reason: "id failed" }]) == "unread ghrunner"
+}
+
 test fn witness_deploy_job_account_is_declared_with_no_binary_grants() -> Bool {
   match fleet_principal_intent(key: FleetAccountDeployJob) {
     FleetPrincipalIntent { principal: _, login_policy: _, name_requirements: _, sudo_grants: gs } => count(gs) == 0
@@ -168,4 +272,21 @@ test fn witness_fleet_converge_keeps_its_selector_until_the_readback_admits_the_
       RunsOnExpression { expression: e } => !string_contains(s: e, pattern: deploy_slot_runner_group_name as String)
       _ => false
     }
+}
+
+fn id_of(x: RunnerGroupEnsureReceipt) -> Int {
+  match deploy_slot_runner_group_id(receipt: x) {
+    Absent => 0 - 1
+    Present { value: g } => g.value
+  }
+}
+
+// THE GROUP ID IS THE ENSURE RUN'S RECEIPT ONLY FOR THIS GROUP AND WORKFLOW. The committed receipt
+// yields its id; the same receipt naming another group, or the deploy group restricted to another
+// workflow, yields none, so the drop-in refuses rather than registering the slot into it.
+test fn witness_the_deploy_group_id_comes_only_from_a_receipt_for_this_group_and_workflow() -> Bool {
+  let r = deploy_slot_runner_group_ensure_receipt
+  id_of(x: r) == 10
+    && id_of(x: RunnerGroupEnsureReceipt { run_id: r.run_id, observed_at: r.observed_at, name: "heal-publisher-private", group: JitRunnerGroupId { value: 9 }, selected_workflow: r.selected_workflow }) == 0 - 1
+    && id_of(x: RunnerGroupEnsureReceipt { run_id: r.run_id, observed_at: r.observed_at, name: r.name, group: r.group, selected_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main" }) == 0 - 1
 }

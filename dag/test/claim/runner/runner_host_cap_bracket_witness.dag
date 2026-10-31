@@ -1196,7 +1196,11 @@ test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them()
 // the cancel-leaves-masked residual is typed AND carried on the wire with its bound and its restoration trigger
 test fn the_cancellation_residual_names_its_bound_and_its_restoration_trigger() -> Bool {
   let w = release_envelope_wire(policy: runner_host_cap_drain_policy)
-  string_contains(s: w, pattern: "after 300s") && string_contains(s: w, pattern: "needs 1140s") && string_contains(s: w, pattern: "restoration trigger: the next bracket run reading a durable hold")
+  // The figure is the policy's own sum (release allowance plus the runner-host closure's resolve budget),
+  // read from the row rather than restated, so the budget can move without this claim pinning a stale literal.
+  let needed = (second_count(s: runner_host_cap_drain_policy.release_allowance) as Int) + (second_count(s: runner_host_cap_drain_policy.release_startup_allowance) as Int)
+  string_contains(s: w, pattern: "after 300s") && string_contains(s: w, pattern: join(["needs ", to_string(needed), "s"], "")) && string_contains(s: w, pattern: "restoration trigger: the next bracket run reading a durable hold")
+    && needed > 1140
 }
 
 
