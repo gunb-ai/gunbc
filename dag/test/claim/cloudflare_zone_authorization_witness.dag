@@ -1,0 +1,138 @@
+module test.claim.cloudflare_zone_authorization_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, PatternSelected,
+  select_authorization_pattern, pattern_identity,
+}
+import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
+import gunbc.auth.privileged_effect_census {
+  zone_token_accessor_cell_unlanded, present_trigger_declarations,
+  privileged_effect_census, site_verdict, site,
+  DivergesWithReason, Diverges, Conforms, SiteNotDecidable, PrivilegedEffectSite,
+}
+import gunbc.cloudflare.zone_authorization {
+  zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
+  zone_routes_unrealized, zone_token_accessor_cell_landed,
+}
+import gunbc.cloudflare.zone { zone_route_gap, SelectedRouteUnrealized, CloudflareRecordListUnread }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn bindable() -> WorkloadIdentityStanding {
+  WorkloadIdentityBindable { member: "principal://fixture-fleet-principal" as NonEmptyStr }
+}
+
+fn unbindable() -> WorkloadIdentityStanding {
+  WorkloadIdentityUnbindable { cause: "fixture: no member can be bound" as NonEmptyStr }
+}
+
+fn selects_pattern(e: PrivilegedEffect, want: AuthorizationPattern) -> Bool {
+  match select_authorization_pattern(e: e) {
+    PatternSelected { pattern: p, receipt: _ } => declaration_ref_eq(a: pattern_identity(p: p), b: pattern_identity(p: want))
+    _ => false
+  }
+}
+
+// POSITIVE: with a bindable fleet identity the selection sends each zone effect to the federated grant.
+test fn the_dns_record_copy_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_dns_record_copy_effect(identity: bindable()), want: FederatedScopedGrant)
+}
+
+test fn the_custom_domain_bind_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: bindable()), want: FederatedScopedGrant)
+}
+
+// DISCRIMINATING: an unbindable identity moves the same effects to the operator-approved capability.
+test fn an_unbindable_identity_moves_the_dns_copy_to_operator_approval() -> Bool {
+  selects_pattern(e: zone_dns_record_copy_effect(identity: unbindable()), want: OperatorApprovedCapability)
+}
+
+test fn an_unbindable_identity_moves_the_bind_to_operator_approval() -> Bool {
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: unbindable()), want: OperatorApprovedCapability)
+}
+
+// INHABITANCE: the real census rows, through the real fold, with the real fleet principal. The census is
+// the route the effects are consumed by; each row must be present and diverge WITH a reason, since the
+// selected federated grant is not yet realized.
+fn row_for(decl_name: String) -> PrivilegedEffectSite? {
+  (filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: site(module_path: "gunbc.cloudflare.zone_authorization", decl_name: decl_name)))).first()
+}
+
+fn row_diverges_with_reason(decl_name: String) -> Bool {
+  match row_for(decl_name: decl_name) {
+    Absent => false
+    Present { value: r } =>
+      match site_verdict(row: r).conformance {
+        DivergesWithReason { reason: _ } => true
+        Conforms => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      }
+  }
+}
+
+test fn the_dns_copy_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
+  row_diverges_with_reason(decl_name: "zone_dns_record_copy_effect")
+}
+
+test fn the_bind_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
+  row_diverges_with_reason(decl_name: "zone_r2_custom_domain_bind_effect")
+}
+
+// THE ONE CHAIN, executed. The standing is a fold over the real roster: no row names the zone token today,
+// so the selected federated grant is unrealized, the zone carries SelectedRouteUnrealized, and the census
+// rows (which read the same standing) diverge. The control below flips the standing's input.
+test fn no_roster_cell_names_the_zone_token_so_the_standing_is_unlanded() -> Bool {
+  !zone_token_accessor_cell_landed()
+}
+
+test fn the_unlanded_standing_surfaces_as_the_zones_selected_route_unrealized_gap() -> Bool {
+  match zone_routes_unrealized() {
+    Present { value: _ } => match zone_route_gap() {
+      SelectedRouteUnrealized { missing: _, basis: _ } => true
+      _ => false
+    }
+    Absent => match zone_route_gap() {
+      CloudflareRecordListUnread { missing: _, basis: _ } => true
+      _ => false
+    }
+  }
+}
+
+// DISCRIMINATING: the zone gap and the landed standing agree in both directions, so the gap cannot be
+// SelectedRouteUnrealized once the cell has landed.
+test fn the_gap_arm_follows_the_landed_standing() -> Bool {
+  zone_token_accessor_cell_landed() == match zone_route_gap() {
+    CloudflareRecordListUnread { missing: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// DEBT RETIREMENT AND REALIZATION CANNOT DRIFT. The reason's trigger is a real declaration retirement judged
+// over the real declaration population; the realization is the roster fold. They are independent sources, and
+// this claim is red unless they agree: landing the accessor row without deleting zone_token_accessor_unlanded
+// leaves the reason Pending while the cell is landed, and deleting the declaration without the row is refused
+// by the floor (the list cites it).
+test fn the_reason_retires_exactly_when_the_roster_cell_lands() -> Bool {
+  let fired = match dissolution_status(condition: zone_token_accessor_cell_unlanded.dissolution, present_decls: present_trigger_declarations()) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+  fired == zone_token_accessor_cell_landed()
+}
+
+// DISCRIMINATING: over an empty population the same condition is Fired, so the claim above is not vacuous.
+test fn the_reason_fires_when_its_subject_is_absent_from_the_population() -> Bool {
+  match dissolution_status(condition: zone_token_accessor_cell_unlanded.dissolution, present_decls: []) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+}

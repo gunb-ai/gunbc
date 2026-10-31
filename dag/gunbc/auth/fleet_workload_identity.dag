@@ -1,0 +1,21 @@
+module gunbc.auth.fleet_workload_identity
+
+import std.types { NonEmptyStr }
+import gunbc.spark.bootstrap_provision {
+  fleet_cloud_principal_standing,
+  CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
+}
+import gunbc.auth.authorization_pattern_selection { WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable }
+
+// THE MEMBER IS RESOLVED FROM THE STANDING, never spelled: an unallocated principal is an unbindable
+// identity, which is the truthful input to the selection rather than a member string that cannot exist (the
+// same refusal gunbc.auth.gcp_secret_access makes before writing a policy). One resolution for every
+// privileged effect that runs under the fleet principal: the census rows and the Cloudflare zone fold read it.
+fn convergence_principal() -> WorkloadIdentityStanding {
+  match fleet_cloud_principal_standing() {
+    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalUnallocated { principal: _ } =>
+      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
+  }
+}
