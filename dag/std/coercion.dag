@@ -326,7 +326,7 @@ fn injection_is_implicit_safe(plan: ConversionPlan) -> Bool {
 // (the operator's positive fields: Add and Sub preserve add, Mul preserves mul, Neg none).
 fn injection_targets(rows: List<ConversionPlan>, from: DeclarationRef, preserved: List<String>) -> List<DeclarationRef> {
   rows |> filter(r => injection_is_implicit_safe(plan: r) && injection_plan_runs_from(plan: r, from: from) && injection_plan_preserves(plan: r, preserved: preserved))
-       |> map(r => injection_plan_target(plan: r))
+       |> flat_map(r => injection_plan_target(plan: r))
 }
 
 fn injection_plan_runs_from(plan: ConversionPlan, from: DeclarationRef) -> Bool {
@@ -345,11 +345,11 @@ fn injection_plan_preserves(plan: ConversionPlan, preserved: List<String>) -> Bo
   }
 }
 
-fn injection_plan_target(plan: ConversionPlan) -> DeclarationRef {
+fn injection_plan_target(plan: ConversionPlan) -> List<DeclarationRef> {
   match plan.phase {
-    InjectionPhase { source: _, target: t, constructor: _, safety: _ } => t
-    UnfoldPhase { row: r } => r.destination
-    InverseUnfoldPhase { row: r } => r.destination
+    InjectionPhase { source: _, target: t, constructor: _, safety: _ } => [t]
+    UnfoldPhase { row: _ } => []
+    InverseUnfoldPhase { row: _ } => []
   }
 }
 
