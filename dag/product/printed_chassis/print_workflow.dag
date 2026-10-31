@@ -1,10 +1,10 @@
 module product.printed_chassis.print_workflow
-import product.printed_chassis.preparation_identity {PreparedSlot,PreparedAssembly,read_prepared_assembly}
+import product.printed_chassis.preparation_identity {PreparedSlot,PreparedAssembly,read_prepared_assembly,digest_file}
 
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import product.printing.print_runtime {PrintRuntimeReady,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
+import product.printing.print_runtime {PrintRuntimeReady,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad,print_runtime_receipt_sha256}
 import product.printing.runtime_converge {converge}
 import product.printing.cad_runtime_converge {converge_cad_runtime}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
@@ -30,7 +30,7 @@ import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory, cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready }
 import gunbc.host_state_root { host_state_tree }
-import product.printed_chassis.prepared_bundle_store { prepared_bundle, PreparedBundle, PreparedBundleReady, PreparedBundleUnready, prepared_bundle_directory, prepared_bundle_write_receipt, PreparedReceiptWritten, PreparedReceiptRefused }
+import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready }
 import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly, printed_assembly_root_from_wire }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -79,15 +79,18 @@ fn prepare_queue(runtime:PrintRuntimeReady,spec:PrinterSpec,output:String,appima
  else {QueueReadyForApproval {queue:PreparedQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] Absent=>[]})}}}
 }
 fn run(plan_file:String,recipe:String,source_revision:String,root:String) -> ProcessExit {
+ let read=Filesystem.Read(path:plan_file)
+ if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
+ let staging=match prepared_bundle_stage(tree:host_state_tree(),plan_text:read.content) {PreparedBundleStagingReady {staging:s}=>s PreparedBundleStagingUnready {detail:d}=>return exit_failure(reason:d)}
+ run_staged(plan_text:read.content,staging:staging,recipe:recipe,source_revision:source_revision,root:root)
+}
+fn run_staged(plan_text:String,staging:PreparedBundleStaging,recipe:String,source_revision:String,root:String) -> ProcessExit {
  let appimage=match acquire_orca_archive(tree:host_state_tree()) {SlicerArchiveReady {path:p}=>p SlicerArchiveRefused {cause:c}=>return exit_failure(reason:c)}
  let selected=match printed_assembly_root_from_wire(s:root) {Present {value:r}=>r Absent=>return exit_failure(reason:"Unknown printed assembly root")}
  let chosen=match print_recipe_from_wire(s:recipe) {Present {value:r}=>r Absent=>return exit_failure(reason:"Unknown print recipe")}
  if source_revision=="" {return exit_failure(reason:"Preparation needs the source revision its geometry is generated at")}
- let read=Filesystem.Read(path:plan_file)
- if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
- let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
- let bundle=match prepared_bundle(tree:host_state_tree(),plan_text:read.content) {PreparedBundleReady {bundle:b}=>b PreparedBundleUnready {detail:d}=>return exit_failure(reason:d)}
- let output=prepared_bundle_directory(bundle:bundle)
+ let specs=match parse_plan(text:plan_text) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
+ let output=prepared_bundle_stage_directory(staging:staging)
  let runtime=match observe_print_runtime(tree:host_state_tree(),appimage:appimage,receipt:concat(output,"/runtime.json")) {PrintRuntimeObserved {runtime:r}=>r PrintRuntimeRefused {reason:why}=>return exit_failure(reason:why)}
  let profiles=match stage_recipe_profiles(output:concat(output,"/inputs"),appimage:appimage,recipe:chosen) {RecipeStaged {profiles:p}=>p RecipeStagingRefused {cause:c}=>return exit_failure(reason:c as String)}
  match check_printable_cad(cad:print_runtime_cad(r:runtime),root:selected,output:concat(output,"/cad")) {ExitSuccess=>{} cad_refusal=>return cad_refusal}
@@ -96,7 +99,12 @@ fn run(plan_file:String,recipe:String,source_revision:String,root:String) -> Pro
  let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
  if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
  let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
- match prepared_bundle_write_receipt(bundle:bundle,content:receipt) {PreparedReceiptWritten=>ExitSuccess PreparedReceiptRefused {cause:c}=>exit_failure(reason:c)}
+ match prepared_bundle_stage_queues(staging:staging,content:receipt) {PreparedQueuesWritten=>{} PreparedQueuesRefused {cause:c}=>return exit_failure(reason:c)}
+ let archive_sha=match digest_file(path:appimage) {Present {value:d}=>d.hex as String Absent=>return exit_failure(reason:"Cannot digest the pinned slicer archive")}
+ let profile_shas=map([profiles.machine,profiles.filament,profiles.process],f=>match digest_file(path:f) {Present {value:d}=>d.hex as String Absent=>""})
+ if any(profile_shas,d=>d=="") {return exit_failure(reason:"Cannot digest the staged profiles")}
+ let inputs=PreparationInputs {recipe:recipe,source_revision:source_revision,assembly_root:root,runtime_receipt_sha256:print_runtime_receipt_sha256(r:runtime),slicer_archive_sha256:archive_sha,profiles_sha256:join(profile_shas,",")}
+ match prepared_bundle_publish(staging:staging,inputs:inputs) {PreparedPublished=>ExitSuccess PreparedPublishRefused {cause:c}=>exit_failure(reason:c)}
 }
 
 // ONE PLATE FOR ONE PRINT REQUEST (gunbc.fleet.print_converge). The plate plan names only objects,
@@ -147,9 +155,9 @@ fn provision_and_run(plan_file:String,recipe:String,source_revision:String,root:
  let plan_read=Filesystem.Read(path:plan_file)
  if !plan_read.success {return exit_failure(reason:"Cannot read print plan before provisioning")}
  match parse_plan(text:plan_read.content) {Absent=>return exit_failure(reason:"Invalid print plan before provisioning") Present {value:_}=>{}}
- let bundle=match prepared_bundle(tree:host_state_tree(),plan_text:plan_read.content) {PreparedBundleReady {bundle:b}=>b PreparedBundleUnready {detail:d}=>return exit_failure(reason:d)}
- match converge_runtime(receipt:concat(prepared_bundle_directory(bundle:bundle),"/runtime-convergence.txt")) {
-  ExitSuccess=>run(plan_file:plan_file,recipe:recipe,source_revision:source_revision,root:root)
+ let staging=match prepared_bundle_stage(tree:host_state_tree(),plan_text:plan_read.content) {PreparedBundleStagingReady {staging:s}=>s PreparedBundleStagingUnready {detail:d}=>return exit_failure(reason:d)}
+ match converge_runtime(receipt:concat(prepared_bundle_stage_directory(staging:staging),"/runtime-convergence.txt")) {
+  ExitSuccess=>run_staged(plan_text:plan_read.content,staging:staging,recipe:recipe,source_revision:source_revision,root:root)
   provisioning_refusal=>provisioning_refusal
  }
 }
@@ -164,8 +172,11 @@ type InventoryRoot = InventoryRootReady {parts:List<AssemblyPart>,bindings:List<
 fn inventory_root(plan_file:String) -> InventoryRoot {
  let plan=Filesystem.Read(path:plan_file)
  if !plan.success {InventoryRootRefused} else {
-  match prepared_bundle(tree:host_state_tree(),plan_text:plan.content) {
+  match prepared_bundle_published(tree:host_state_tree(),plan_text:plan.content) {
    PreparedBundleUnready {detail:_}=>InventoryRootRefused
+   PreparedBundleNotPrepared {residue:_}=>InventoryRootRefused
+   PreparedBundleAmbiguous {published:_}=>InventoryRootRefused
+   PreparedBundleCorrupt {detail:_}=>InventoryRootRefused
    PreparedBundleReady {bundle:bundle}=>match read_prepared_assembly(bundle:bundle) {
     Absent=>InventoryRootRefused
     Present {value:prepared}=>match printed_assembly_root_from_wire(s:prepared.root_wire) {

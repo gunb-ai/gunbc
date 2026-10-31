@@ -1,49 +1,117 @@
 module test.claim.prepared_bundle_store_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { string_contains }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.host_state_root { isolated_host_state_tree }
-import product.printed_chassis.prepared_bundle_store { prepared_bundle, PreparedBundle, PreparedBundleReady, PreparedBundleUnready, prepared_bundle_directory, prepared_bundle_write_receipt, PreparedReceiptWritten, PreparedReceiptRefused }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready, prepared_bundle_directory }
 
-fn bundle_over(dir: String, plan: String) -> PreparedBundle? {
-  match prepared_bundle(tree: isolated_host_state_tree(dir: dir as NonEmptyStr), plan_text: plan) {
-    PreparedBundleReady { bundle: b } => Present { value: b }
-    PreparedBundleUnready { detail: _ } => none
-  }
+fn inputs(recipe: String, revision: String) -> PreparationInputs {
+  PreparationInputs { recipe: recipe, source_revision: revision, assembly_root: "residential-cassette", runtime_receipt_sha256: "r1", slicer_archive_sha256: "s1", profiles_sha256: "p1" }
 }
 
-// The bundle is addressed by the plan: the same plan bytes name the same directory, other bytes another.
-test fn w_a_bundle_is_keyed_by_its_plan() -> Bool {
-  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
-  match bundle_over(dir: dir, plan: "plan-a") {
-    Absent => false
-    Present { value: a } => match bundle_over(dir: dir, plan: "plan-a") {
-      Absent => false
-      Present { value: again } => match bundle_over(dir: dir, plan: "plan-b") {
-        Absent => false
-        Present { value: other } => prepared_bundle_directory(bundle: a) == prepared_bundle_directory(bundle: again) && prepared_bundle_directory(bundle: a) != prepared_bundle_directory(bundle: other) && starts_with(s: prepared_bundle_directory(bundle: a), prefix: concat(dir, "/prepared-plans/prepared-"))
-      }
+fn tree_in(dir: String) -> HostStateTree { isolated_host_state_tree(dir: dir as NonEmptyStr) }
+
+// One preparation: staged, one bundle file written under the staging directory, published.
+fn prepare_one(dir: String, plan: String, inp: PreparationInputs, body: String) -> Bool {
+  match prepared_bundle_stage(tree: tree_in(dir: dir), plan_text: plan) {
+    PreparedBundleStagingUnready { detail: _ } => false
+    PreparedBundleStagingReady { staging: s } => match prepared_bundle_stage_queues(staging: s, content: body) {
+      PreparedQueuesRefused { cause: _ } => false
+      PreparedQueuesWritten => match prepared_bundle_publish(staging: s, inputs: inp) { PreparedPublished => true PreparedPublishRefused { cause: _ } => false }
     }
   }
 }
 
-// RED: an empty plan names no bundle.
-test fn w_an_empty_plan_mints_no_bundle() -> Bool {
-  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
-  match bundle_over(dir: dir, plan: "") { Absent => true Present { value: _ } => false }
+fn bundle_dir(dir: String, plan: String) -> String {
+  match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: plan) {
+    PreparedBundleReady { bundle: b } => prepared_bundle_directory(bundle: b)
+    PreparedBundleNotPrepared { residue: _ } => ""
+    PreparedBundleAmbiguous { published: _ } => ""
+    PreparedBundleCorrupt { detail: _ } => ""
+    PreparedBundleUnready { detail: _ } => ""
+  }
 }
 
-// The receipt is create-once and reads back as written; a second write refuses and leaves the first.
-test fn w_the_receipt_is_create_once_and_read_back() -> Bool {
+// A published preparation reads back as exactly one verified bundle holding the bytes that were staged.
+test fn w_one_published_preparation_is_verified_and_read() -> Bool {
   let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
-  match bundle_over(dir: dir, plan: "plan-c") {
-    Absent => false
-    Present { value: b } => {
-      let first = match prepared_bundle_write_receipt(bundle: b, content: "[1]") { PreparedReceiptWritten => true PreparedReceiptRefused { cause: _ } => false }
-      let second = match prepared_bundle_write_receipt(bundle: b, content: "[2]") { PreparedReceiptWritten => false PreparedReceiptRefused { cause: _ } => true }
-      let kept = Filesystem.Read(path: concat(prepared_bundle_directory(bundle: b), "/prepared-queues.json"))
-      first && second && kept.success && kept.content == "[1]"
+  let made = prepare_one(dir: dir, plan: "plan-a", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  let read = Filesystem.Read(path: concat(bundle_dir(dir: dir, plan: "plan-a"), "/prepared-queues.json"))
+  made && read.success && read.content == "[1]"
+}
+
+// RED: an empty plan stages nothing and reads nothing.
+test fn w_an_empty_plan_names_no_bundle() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let staged = match prepared_bundle_stage(tree: tree_in(dir: dir), plan_text: "") { PreparedBundleStagingUnready { detail: _ } => true PreparedBundleStagingReady { staging: _ } => false }
+  let read = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "") { PreparedBundleUnready { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleCorrupt { detail: _ } => false }
+  staged && read
+}
+
+// An unpublished attempt is residue: reported, never read.
+test fn w_an_unpublished_attempt_is_residue_and_never_read() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  match prepared_bundle_stage(tree: tree_in(dir: dir), plan_text: "plan-r") {
+    PreparedBundleStagingUnready { detail: _ } => false
+    PreparedBundleStagingReady { staging: s } => {
+      let wrote = match prepared_bundle_stage_queues(staging: s, content: "[9]") { PreparedQueuesWritten => true PreparedQueuesRefused { cause: _ } => false }
+      let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-r") { PreparedBundleNotPrepared { residue: r } => count(r) == 1 PreparedBundleReady { bundle: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleCorrupt { detail: _ } => false PreparedBundleUnready { detail: _ } => false }
+      wrote && reading
     }
   }
+}
+
+// RED: two published preparations of one plan refuse Ambiguous, naming both identities; neither is read.
+test fn w_two_published_preparations_for_one_plan_refuse_ambiguous() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let a = prepare_one(dir: dir, plan: "plan-d", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  let b = prepare_one(dir: dir, plan: "plan-d", inp: inputs(recipe: "r", revision: "v2"), body: "[2]")
+  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-d") {
+    PreparedBundleAmbiguous { published: p } => count(p) == 2 && any(p, x => string_contains(s: x, pattern: "v1")) && any(p, x => string_contains(s: x, pattern: "v2"))
+    PreparedBundleReady { bundle: _ } => false
+    PreparedBundleNotPrepared { residue: _ } => false
+    PreparedBundleCorrupt { detail: _ } => false
+    PreparedBundleUnready { detail: _ } => false
+  }
+  a && b && reading
+}
+
+// Cross-input: the same plan under another recipe is a distinct bundle beside the first, whose bytes are unchanged.
+test fn w_another_recipe_is_a_distinct_bundle_and_leaves_the_first_unchanged() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let a = prepare_one(dir: dir, plan: "plan-e", inp: inputs(recipe: "r1", revision: "v1"), body: "[1]")
+  let first = bundle_dir(dir: dir, plan: "plan-e")
+  let b = prepare_one(dir: dir, plan: "plan-e", inp: inputs(recipe: "r2", revision: "v1"), body: "[2]")
+  let kept = Filesystem.Read(path: concat(first, "/prepared-queues.json"))
+  a && b && first != "" && kept.success && kept.content == "[1]"
+}
+
+// RED: publishing the identity that is already published for the plan refuses, and the first stays the only one read.
+test fn w_the_same_identity_cannot_be_published_twice() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let a = prepare_one(dir: dir, plan: "plan-f", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  let again = prepare_one(dir: dir, plan: "plan-f", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  a && !again && bundle_dir(dir: dir, plan: "plan-f") != ""
+}
+
+// RED: a published bundle file changed after publication refuses Corrupt on read; there is no fallback.
+test fn w_a_changed_bundle_file_refuses_corrupt() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let made = prepare_one(dir: dir, plan: "plan-g", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  let at = bundle_dir(dir: dir, plan: "plan-g")
+  let tampered = Filesystem.Write(path: concat(at, "/prepared-queues.json"), content: "[evil]").success
+  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-g") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleUnready { detail: _ } => false }
+  made && tampered && reading
+}
+
+// RED: a file added to a published bundle refuses Corrupt too (extra files are not covered by the receipt).
+test fn w_an_extra_bundle_file_refuses_corrupt() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_prepared_bundle.XXXXXX").path
+  let made = prepare_one(dir: dir, plan: "plan-h", inp: inputs(recipe: "r", revision: "v1"), body: "[1]")
+  let at = bundle_dir(dir: dir, plan: "plan-h")
+  let added = Filesystem.WriteCreateNew(path: concat(at, "/stray.txt"), content: "x").success
+  let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-h") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _ } => false PreparedBundleUnready { detail: _ } => false }
+  made && added && reading
 }

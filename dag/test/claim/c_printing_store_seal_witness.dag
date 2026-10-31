@@ -30,9 +30,9 @@ data forged_inventory_source: String = "module probe_c_printing_forged_inventory
 
 data forged_cad_source: String = "module probe_c_printing_forged_cad\nimport std.types { NonEmptyStr }\nimport product.printing.cad_runtime_store { CadRuntimeStore }\nfn forged(dir: NonEmptyStr) -> CadRuntimeStore {\n  CadRuntimeStore { root: dir, locks: dir }\n}\n"
 
-data forged_bundle_source: String = "module probe_c_printing_forged_bundle\nimport std.types { NonEmptyStr }\nimport product.printed_chassis.prepared_bundle_store { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir }\n}\n"
+data forged_bundle_source: String = "module probe_c_printing_forged_bundle\nimport std.types { NonEmptyStr }\nimport product.printed_chassis.prepared_bundle_store { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir, attempt: \"a\", identity: \"i\" }\n}\n"
 
-data twin_bundle_source: String = "module probe_c_printing_twin_bundle\nimport std.types { NonEmptyStr }\nimport test.fixture.c_printing_store_seal.unsealed { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir }\n}\n"
+data twin_bundle_source: String = "module probe_c_printing_twin_bundle\nimport std.types { NonEmptyStr }\nimport test.fixture.c_printing_store_seal.unsealed { PreparedBundle }\nfn forged(dir: NonEmptyStr) -> PreparedBundle {\n  PreparedBundle { root: dir, attempt: \"a\", identity: \"i\" }\n}\n"
 
 test fn a_forged_claims_store_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_claims_source, subject: "PrinterStartClaims"), holds: fn(n) { n == 1 }))
