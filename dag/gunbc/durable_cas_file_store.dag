@@ -552,13 +552,17 @@ fn cas_observe_window_once(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe?
   }
 }
 
+// THE FOLD'S INIT CARRIES ITS DECLARED TYPE: the v1 seed types `init: none` as the bare Optional and takes no
+// expected type from a `let` annotation into the init, so the accumulator would be emitted undeclared
+// (gunbc.recurring_failure_mode seed_fold_accumulator_declared_from_an_open_init).
+fn cas_no_observation() -> CasSlotProbe? { none }
+
 fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
   ]
 {
-  let unobserved: CasSlotProbe? = none
-  let observed = fold(cas_window_observation_attempts, init: unobserved, f: (acc, _) => match acc {
+  let observed = fold(cas_window_observation_attempts, init: cas_no_observation(), f: (acc, _) => match acc {
     Present { value: p } => Present { value: p }
     Absent => cas_observe_window_once(root: root, key: key)
   })

@@ -457,11 +457,12 @@ fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
 // RULE: the seed types a nullary generic with no expected type (`init: none`) as its bare declaration,
 // so a fold's accumulator payload is open and the effectful loop emits `let mut __fold_acc = None;`,
 // which rustc refuses (E0282; gunbc.recurring_failure_mode seed_fold_accumulator_declared_from_an_open_init).
-// The authored source supplies the type: the init is bound with its declared type (a declared type on the fold result does not reach the init), as
+// The authored source supplies the type: the init is a call with a declared return type (a `let` annotation does not reach the init), as
 // gunbc.durable_cas_file_store cas_observe_window does. The step reads Filesystem, as that one does.
+fn control_no_read() -> String? { none }
+
 fn control_first_present_read(paths: List<String>) -> String? {
-  let unobserved: String? = none
-  let observed = fold(paths, init: unobserved, f: (acc, p) => match acc {
+  let observed = fold(paths, init: control_no_read(), f: (acc, p) => match acc {
     Present { value: kept } => Present { value: kept }
     Absent =>
       let read = Filesystem.Read(path: p)
