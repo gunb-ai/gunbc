@@ -1846,7 +1846,7 @@ data attempt_worktree_restore_scaffold: Disposition = Scaffold {
 // a scaffold states its own population, and a state match must not stand in for the name).
 data attempt_worktree_restore_scaffold_attempt_key: String = "e5a42384c6a5e13d"
 
-data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: join(["Population: exactly the attempt named by attempt_worktree_restore_scaffold_attempt_key (", attempt_worktree_restore_scaffold_attempt_key, ") on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. The gate ENFORCES that name: belt_attempt_worktree_restore_for_instance selects no prior attempt other than it, so an attempt that merely RESEMBLES the state is untouched (no claim reopen, no worktree add) and the ordinary route refuses it with a typed refusal. The step runs at TWO call sites -- the spawn route (belt_actuate_spawn_for_instance) and the re-delivery wake entry (belt_redeliver_attempt_wake_admission) -- and the second adds no member and no lifetime. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore, attempt_worktree_restore_scaffold_attempt_key, belt_attempt_worktree_restore_for_instance and BOTH call sites in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal."], ""))
+data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: join(["Population: exactly the attempt named by attempt_worktree_restore_scaffold_attempt_key (", attempt_worktree_restore_scaffold_attempt_key, ") on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. The gate ENFORCES that name without moving the selection: belt_attempt_worktree_restore_for_instance still selects the first-per-node row the continuation decision reads, and acts only when THAT row is the approved attempt -- any other selected row is AttemptWorktreeNotNeeded (no claim reopen, no worktree add, and no skipping past it to an older named row), so an attempt that merely RESEMBLES the state is untouched and the ordinary route refuses it with a typed refusal. The step runs at TWO call sites -- the spawn route (belt_actuate_spawn_for_instance) and the re-delivery wake entry (belt_redeliver_attempt_wake_admission) -- and the second adds no member and no lifetime. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore, attempt_worktree_restore_scaffold_attempt_key, belt_attempt_worktree_restore_for_instance and BOTH call sites in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal."], ""))
 
 // THE CLAIM SUB-STEP'S OWN OUTCOME. It only ever ensures that an OPEN claim names the worktree path, so it does not
 // borrow AttemptWorktreeRestore's 'nothing to do' / 'branch absent' variants -- reusing that type for two roles would
@@ -1932,7 +1932,9 @@ fn belt_worktree_claim_ensure_open_for_instance(
 fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> AttemptWorktreeRestore {
   // The attempt to restore is the node's prior attempt -- the SAME first-per-node row the continuation decision
   // reads -- so the restore and the decision never disagree about WHICH attempt is being resumed (one selection
-  // rule), and that row is then narrowed to the ONE attempt the scaffold is approved for (the name, below).
+  // rule). That selected row is then PINNED to the ONE attempt the scaffold is approved for (the name, below);
+  // the pin never changes WHICH row is selected, because a pin that skipped a foreign row sitting ahead of
+  // the named one would restore an attempt the continuation is not resuming.
   // The GATE is RESUMABILITY, not ENDEDNESS: it reads the recovery reading (the attempt-state event
   // stream), which is TREE-INDEPENDENT. A reclaimed worktree makes the CONTINUATION Refused (its capture cannot
   // be read), so gating the restore on that standing would CYCLE -- missing tree => Refused => unknown => restore
@@ -1946,57 +1948,65 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
     AttemptsRefused { reason } =>
       AttemptWorktreeRestoreRefused { detail: join(["the prior-attempt ledger could not be read to decide whether a request-pending worktree needs restoring: ", reason], "") }
     AttemptsObserved { attempts } =>
-      // THE POPULATION IS A NAME, NOT A RESSEMBLANCE (operator decision msg_e623cf1e). The approval grants this
-      // scaffold to exactly ONE attempt, so the SELECTION itself is narrowed to attempt_worktree_restore_scaffold_attempt_key:
-      // a prior attempt that matches every state test below but is not that attempt selects nothing here -- Absent,
-      // NotNeeded, no claim reopen, no `git worktree add`, no touch of any kind -- and the ordinary route refuses
-      // it from the unchanged continuation. Narrowing the selection rather than adding a test inside the acting arm
-      // is what makes 'never touched' a fact of the code instead of a promise in a comment.
-      match (attempts |> filter(a => a.node_id as String == node_id as String) |> filter(a => a.attempt_key == attempt_worktree_restore_scaffold_attempt_key)).first() {
+      // THE POPULATION IS A NAME, NOT A RESSEMBLANCE (operator decision msg_e623cf1e), and the NAME IS APPLIED TO
+      // THE SELECTED ROW -- not folded into the selection. Selection stays the first-per-node row, identical to the
+      // one the continuation decision reads, so the restore and the decision can never disagree about WHICH attempt
+      // they are talking about (one selection rule). Folding the name into the selection would skip PAST a newer
+      // foreign row ahead of the named one and restore an older attempt the decision is not resuming: that breaks
+      // the rule, so it is the shape this must not take.
+      match (attempts |> filter(a => a.node_id as String == node_id as String)).first() {
         Absent => AttemptWorktreeNotNeeded
         Present { value: p } =>
-          match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key)) {
-          ResumabilityResumable => {
-            let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key)
-            let branch = dispatch_branch_name(node_id: node_id, attempt_key: p.attempt_key)
-            match belt_claim_tree_at(instance: instance, path: path) {
-              // The tree is already there: no restore, and the decision observes its head normally.
-              ClaimTreePresent => AttemptWorktreeNotNeeded
-              // An unobservable tree is UNKNOWN, not absent: refuse rather than restore onto a tree we cannot see (§5).
-              ClaimTreeUnobserved { detail } =>
-                AttemptWorktreeRestoreRefused { detail: join(["the worktree could not be observed before restoring it: ", detail, "; refusing to restore onto an unknown tree"], "") }
-              ClaimTreeAbsent =>
-                match belt_exec(cmd: git_rev_parse_verify_argv_for_instance(instance: instance, reference: branch), workdir: instance.repo_root as String) {
-                  // The branch is the durable record. Reopen/open the CLAIM first (mirroring the invariant that the
-                  // claim is recorded BEFORE `git worktree add`), so a tree is never created that no open record names;
-                  // only then re-materialize the tree from the branch.
-                  ExecOk { stdout: _ } =>
-                    match belt_worktree_claim_ensure_open_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key, worktree_path: path, branch: branch) {
-                      ClaimEnsured =>
-                        match belt_exec(cmd: git_worktree_add_branch_argv_for_instance(instance: instance, worktree_path: path, branch_name: branch), workdir: instance.repo_root as String) {
-                          ExecOk { stdout: _ } => AttemptWorktreeRestored { worktree_path: path, branch: branch }
-                          ExecFailed { program: _, exit_code, stderr } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree for attempt ", p.attempt_key, " from branch ", branch, " failed (exit ", to_string(value: exit_code), "): ", stderr], "") }
-                          ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree was refused: ", program, " -- ", reason], "") }
-                        }
-                      ClaimEnsureRefused { detail } => AttemptWorktreeRestoreRefused { detail: detail }
-                    }
-                  ExecFailed { program: _, exit_code, stderr: _ } =>
-                    if exit_code == 1 {
-                      AttemptWorktreeBranchAbsent { branch: branch, detail: join(["the request-pending attempt ", p.attempt_key, " has no worktree and its dispatch branch ", branch, " is gone: there is no durable record to re-materialize the worktree from"], "") }
-                    } else {
-                      AttemptWorktreeRestoreRefused { detail: join(["the branch existence check for ", branch, " could not be completed (exit ", to_string(value: exit_code), ")"], "") }
-                    }
-                  ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["the branch existence check was refused: ", program, " -- ", reason], "") }
-                }
+          // A prior attempt that matches every state test below but is NOT the approved attempt stops here, before
+          // any read that could act: NotNeeded, no claim reopen, no `git worktree add`, no touch of any kind -- and
+          // the ordinary route refuses it from the unchanged continuation. A state match never stands in for the
+          // name, and a foreign row sitting AHEAD of the named one does not make the named one selectable.
+          if p.attempt_key != attempt_worktree_restore_scaffold_attempt_key {
+            AttemptWorktreeNotNeeded
+          } else {
+            match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key)) {
+            ResumabilityResumable => {
+              let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key)
+              let branch = dispatch_branch_name(node_id: node_id, attempt_key: p.attempt_key)
+              match belt_claim_tree_at(instance: instance, path: path) {
+                // The tree is already there: no restore, and the decision observes its head normally.
+                ClaimTreePresent => AttemptWorktreeNotNeeded
+                // An unobservable tree is UNKNOWN, not absent: refuse rather than restore onto a tree we cannot see (§5).
+                ClaimTreeUnobserved { detail } =>
+                  AttemptWorktreeRestoreRefused { detail: join(["the worktree could not be observed before restoring it: ", detail, "; refusing to restore onto an unknown tree"], "") }
+                ClaimTreeAbsent =>
+                  match belt_exec(cmd: git_rev_parse_verify_argv_for_instance(instance: instance, reference: branch), workdir: instance.repo_root as String) {
+                    // The branch is the durable record. Reopen/open the CLAIM first (mirroring the invariant that the
+                    // claim is recorded BEFORE `git worktree add`), so a tree is never created that no open record names;
+                    // only then re-materialize the tree from the branch.
+                    ExecOk { stdout: _ } =>
+                      match belt_worktree_claim_ensure_open_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key, worktree_path: path, branch: branch) {
+                        ClaimEnsured =>
+                          match belt_exec(cmd: git_worktree_add_branch_argv_for_instance(instance: instance, worktree_path: path, branch_name: branch), workdir: instance.repo_root as String) {
+                            ExecOk { stdout: _ } => AttemptWorktreeRestored { worktree_path: path, branch: branch }
+                            ExecFailed { program: _, exit_code, stderr } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree for attempt ", p.attempt_key, " from branch ", branch, " failed (exit ", to_string(value: exit_code), "): ", stderr], "") }
+                            ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["re-materializing the worktree was refused: ", program, " -- ", reason], "") }
+                          }
+                        ClaimEnsureRefused { detail } => AttemptWorktreeRestoreRefused { detail: detail }
+                      }
+                    ExecFailed { program: _, exit_code, stderr: _ } =>
+                      if exit_code == 1 {
+                        AttemptWorktreeBranchAbsent { branch: branch, detail: join(["the request-pending attempt ", p.attempt_key, " has no worktree and its dispatch branch ", branch, " is gone: there is no durable record to re-materialize the worktree from"], "") }
+                      } else {
+                        AttemptWorktreeRestoreRefused { detail: join(["the branch existence check for ", branch, " could not be completed (exit ", to_string(value: exit_code), ")"], "") }
+                      }
+                    ExecRefused { program, reason } => AttemptWorktreeRestoreRefused { detail: join(["the branch existence check was refused: ", program, " -- ", reason], "") }
+                  }
+              }
             }
-          }
-          // Each non-resumable standing is its own arm (review 88393): none of them is a restore candidate, but
-          // the malformed stream refuses here, at the one reading, instead of leaning on the continuation.
-          ResumabilityMalformed { mismatch } =>
-            AttemptWorktreeRestoreRefused { detail: join(["the attempt-state stream is malformed, so the prior attempt cannot be classified for restore: ", mismatch], "") }
-          ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => AttemptWorktreeNotNeeded
-          ResumabilityRequestPendingNotResumable => AttemptWorktreeNotNeeded
-          ResumabilityNotRequestPending => AttemptWorktreeNotNeeded
+            // Each non-resumable standing is its own arm (review 88393): none of them is a restore candidate, but
+            // the malformed stream refuses here, at the one reading, instead of leaning on the continuation.
+            ResumabilityMalformed { mismatch } =>
+              AttemptWorktreeRestoreRefused { detail: join(["the attempt-state stream is malformed, so the prior attempt cannot be classified for restore: ", mismatch], "") }
+            ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => AttemptWorktreeNotNeeded
+            ResumabilityRequestPendingNotResumable => AttemptWorktreeNotNeeded
+            ResumabilityNotRequestPending => AttemptWorktreeNotNeeded
+            }
           }
       }
   }

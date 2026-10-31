@@ -49,6 +49,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore, AttemptWorktreeRestored,
   AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
   belt_claim_tree_at, belt_continuation_decision_for_node, belt_prior_attempt_recovery,
+  belt_attempts_observe_for_instance, AttemptsObserved, AttemptsRefused,
   attempt_worktree_restore_scaffold_attempt_key,
 }
 import gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationResume, ContinuationHoldUntil, ContinuationSpawnFresh, ContinuationRefused }
@@ -65,6 +66,12 @@ fn subject_key() -> String { attempt_worktree_restore_scaffold_attempt_key }
 // An attempt key OUTSIDE the population: a well-formed 16-hex key that the named pin must refuse, in the identical
 // state. Chosen to differ from the subject key in two digits, so a typo cannot quietly make them equal.
 fn outside_key() -> String { "f5a42384c6a5e13e" }
+
+// A key that sorts AHEAD of the subject key in the ledger's own ref order (the ledger is for-each-ref on
+// refs/heads/dispatch/, so 'ahead' is lexicographic). It exists to sit IN FRONT of the approved attempt on the
+// same node: a pin that folded the name into the SELECTION would skip past this row and restore the older named
+// attempt, while the decision talks about this one. The pin must instead refuse the row it actually selected.
+fn foreign_ahead_key() -> String { "0a1b2c3d4e5f6071" }
 
 fn fresh_instance(tag: String) -> HostDashboardInstance {
   let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_redeliver_wake_wet_", tag, ".XXXXXX"], "")).path
@@ -106,6 +113,23 @@ fn lay_repo_with_dispatch_branch(instance: HostDashboardInstance, node: RoadmapN
     && git_ok(dir: repo, args: ["add", "-A"])
     && git_ok(dir: repo, args: ["commit", "-q", "-m", "base"])
     && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: attempt_key)])
+}
+
+// The same node with TWO dispatch rows: `ahead_key` first in the ledger's own order, `behind_key` after it. Both
+// are branches, so both are ledger rows and both are restorable candidates -- which is what a selection that
+// filtered by name would silently skip past.
+fn lay_repo_with_two_dispatch_rows(instance: HostDashboardInstance, node: RoadmapNodeId, ahead_key: String, behind_key: String) -> Bool {
+  let root = instance.instance_root as String
+  let repo = instance.repo_root as String
+  git_ok(dir: root, args: ["init", "-q", repo])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && git_ok(dir: repo, args: ["config", "commit.gpgsign", "false"])
+    && Filesystem.Write(path: join([repo, "/file.txt"], ""), content: "base\n").success
+    && git_ok(dir: repo, args: ["add", "-A"])
+    && git_ok(dir: repo, args: ["commit", "-q", "-m", "base"])
+    && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: ahead_key)])
+    && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: behind_key)])
 }
 
 // Seed the worker's provider-events.jsonl with one resumable request-pending event at the exact path the recovery
@@ -171,6 +195,20 @@ fn is_not_needed(step: AttemptWorktreeRestore) -> Bool {
     AttemptWorktreeNotNeeded => true
     AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
     AttemptWorktreeRestoreRefused { detail: _ } => false
+  }
+}
+
+// Which prior attempt the ONE selection rule actually picks for this node -- the first row of that node in the
+// ledger's order. Asserted by the ordered-pair leg so 'the foreign row is the selected one' is a fact of the
+// fixture, not an assumption about ref order.
+fn ledger_selects_key(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsObserved { attempts } =>
+      match (attempts |> filter(a => a.node_id as String == node as String)).first() {
+        Present { value: p } => p.attempt_key == attempt_key
+        Absent => false
+      }
+    AttemptsRefused { reason: _ } => false
   }
 }
 
@@ -339,4 +377,26 @@ test fn a_spawn_fresh_only_node_is_refused_and_starts_nothing() -> Bool {
   let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
   let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
   cleaned(instance: instance, verdict: laid && decision_is_spawn_fresh(decision: decision) && admission_is_continuation_refused(admission: admission) && tree_absent(instance: instance, node: node, attempt_key: key))
+}
+
+// (9) THE PIN DOES NOT MOVE THE SELECTION. The node has a FOREIGN attempt K ahead of the approved one, in the
+// same restorable state, and the approved attempt is itself fully restorable (branch present, tree absent,
+// recovery resumable -- all asserted here). The step acts on nothing: it selects K, refuses K, and does NOT skip
+// past K to restore the older named attempt. So the restore and the decision keep talking about the same attempt
+// (one selection rule), the named tree is still absent, and no claim generation was written for it. A pin folded
+// into the selection would restore the named tree here and this leg would go red.
+test fn a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_nothing() -> Bool {
+  let instance = fresh_instance(tag: "pin-order")
+  let node = "n-redeliver-pin-order"
+  let named = subject_key()
+  let foreign = foreign_ahead_key()
+  let laid = lay_repo_with_two_dispatch_rows(instance: instance, node: node, ahead_key: foreign, behind_key: named)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: foreign)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: named)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: named)
+  let selected_is_foreign = ledger_selects_key(instance: instance, node: node, attempt_key: foreign)
+  let named_restorable = recovery_resumable(instance: instance, node: node, attempt_key: named) && tree_absent(instance: instance, node: node, attempt_key: named)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: named)
+  cleaned(instance: instance, verdict: laid && selected_is_foreign && named_restorable && is_not_needed(step: step) && admission_is_continuation_refused(admission: admission) && tree_absent(instance: instance, node: node, attempt_key: named) && !claim_slot_recorded(instance: instance, node: node, attempt_key: named))
 }

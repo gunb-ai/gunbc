@@ -3673,6 +3673,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_nothing" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.belt_capture_intent_wet_witness", function: "a_kill_after_the_scm_save_does_not_double_capture" },
       entry: "dag/test/claim/roadmap/belt_capture_intent_wet_witness.dag",
       function: "a_kill_after_the_scm_save_does_not_double_capture",
