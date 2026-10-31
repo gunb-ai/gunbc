@@ -7,7 +7,7 @@ import std.optional { Present, Absent }
 import gunbc.durable_append_log_store { AppendLogSlot, AppendLogListingVerdict, ListingClean, ListingUnlisted, ListingFramingMismatch, ListingDuplicateClaim, append_log_listing_verdict, append_log_census_policy_violations }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_exit, total_blocking_census, CensusVerdict }
-import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, SectionObservedComplete, SectionCompletionUnobservable }
 import std.durable_append_log {
   AppendFraming,
   AppendLogHead, NewlineDelimitedStream, RecordPerGeneration, AppendExpectation, AppendExpected, append_log_expectation,
@@ -17,6 +17,7 @@ import std.durable_append_log {
   MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, SandboxWriter,
   IntentCreateEmpty, IntentAppendRecord, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
   append_write_admission,
+  WriterExitObservation, WriterExitSeen, WriterExitUnseen, WriterExitedClean, append_window_completion,
 }
 
 // THE APPEND-LOG / MULTI-WRITER CONTRACT (std.durable_append_log, gunbc.durable_append_log_store).
@@ -206,6 +207,21 @@ test fn every_census_log_member_carries_the_sandbox_window_policy() -> Bool {
 test fn the_head_count_is_the_length_of_the_returned_records() -> Bool {
   match append_stream_readback(observed: obs(records: ["a", "b", "c"], settled: 6, tail: 0), standing: WriterWindowReleased {}) {
     AppendLogSettled { records: _, head: h } => h.record_count == 3
+    _ => false
+  }
+}
+
+// The window ends on evidence: a seen exit completes the section, an unseen one is not a completion.
+test fn a_seen_writer_exit_completes_the_window() -> Bool {
+  match append_window_completion(observed: WriterExitSeen { exit: WriterExitedClean {} }) {
+    SectionObservedComplete { observation: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unseen_writer_exit_does_not_complete_the_window() -> Bool {
+  match append_window_completion(observed: WriterExitUnseen { cause: "unit state unreadable" as NonEmptyStr }) {
+    SectionCompletionUnobservable { cause: _ } => true
     _ => false
   }
 }
