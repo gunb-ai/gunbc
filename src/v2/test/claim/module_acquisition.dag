@@ -1203,7 +1203,7 @@ fn depth_text_at(content: String, import_depth: Bool) -> String {
 }
 
 fn depth_subject() -> String {
-  "module v2.test.subject\nimport std.types { Bool }\n\nfn subject(x: Bool) -> Bool {\n  x\n}\n"
+  "module v2.test.subject\nimport std.types { Bool }\n\nfn subject(x: Bool) -> Bool {\n  v2.std.text.x_probe(y: x)\n}\n"
 }
 
 test fn the_import_depth_read_requests_the_imports_and_nothing_beside_them() -> Bool {
