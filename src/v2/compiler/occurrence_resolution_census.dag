@@ -1,6 +1,6 @@
 module v2.compiler.occurrence_resolution_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_keys, map_contains_key }
 import std.optional { Optional, Present, Absent }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import std.types { List, Map }
@@ -168,7 +168,7 @@ fn occurrence_resolution_locus_text(locus: Optional<SourceLineCol>) -> String {
 }
 
 fn occurrence_resolution_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceResolutionContribution {
-  let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_resolutions), key: fn(id) { id.value }, order: int_total_order())
+  let ids = list_sort_by_key(xs: map_keys(m: tree.occurrence_resolutions), key: fn(id) { id.value }, order: int_total_order())
   let split = unrecorded_split_walk(tree: tree, n: tree.root, order_head: false, acc: UnrecordedSplit { other: [], declared_order: [] })
   let unrecorded = split.other
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
@@ -437,8 +437,11 @@ fn occurrence_resolution_partial(module: String, entries: List<OccurrenceResolut
   let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
     if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
   })
-  let conflicting = map_support_keys(m: fold_list(xs: occurrence_resolution_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
-  let ids = list_sort_by_key(xs: map_support_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
+  // Bound before map_keys only to avoid gunbc.recurring_failure_mode
+  // by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow; unwind when its trigger lands.
+  let duplicate_set = fold_list(xs: occurrence_resolution_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) })
+  let conflicting = map_keys(m: duplicate_set)
+  let ids = list_sort_by_key(xs: map_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
     match map_lookup(m: records, key: id) {
       Absent => acc

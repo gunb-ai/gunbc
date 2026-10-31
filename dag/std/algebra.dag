@@ -1448,6 +1448,21 @@ fn map_insert_primitive_delegate<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K,
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   map_insert_primitive_delegate(m: m, key: key, value: value)
 }
+// THE KEY SET OF A MAP, the one declared home of the primitive `map_keys`: the support of the
+// FinitelySupportedFunction, in host-unspecified order (std.primitive_identity
+// primitive_map_keys_traversal). A caller reaches it by `import std.algebra { map_keys }`, not through
+// the ambient primitive tier; the std.primitives map_keys_contract row that admitted the bare name is
+// retired (one ambient name, one declared home: a root-coordinator decision by sleek-owl-397).
+// Realization: HostRealizedSeam self-call, selected by this declaration's std.primitive_projection row.
+// DISSOLUTION: the home is std.algebra for now; if #14876 moves Map's operations onto
+// FinitelySupportedFunction's own home, map_keys moves with them, because the keys are that
+// finitely supported function's support.
+fn map_keys_primitive_delegate<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
+  map_keys_primitive_delegate(m: m)
+}
+fn map_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
+  map_keys_primitive_delegate(m: m)
+}
 
 // LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
 // third state in which the map fails to say. So the total form is the primitive and the
@@ -1515,12 +1530,6 @@ fn list_at_reference<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
     ListAtFound { value: v } => optional_present(value: v)
     ListAtMissing { remaining: _ } => optional_absent()
   }
-}
-
-// The key set of a map: the support of its FinitelySupportedFunction. A method call to the `map_keys`
-// primitive (std.primitives map_keys_contract), so the realization is the one the method already has.
-fn map_support_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
-  m |> map_keys
 }
 
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {

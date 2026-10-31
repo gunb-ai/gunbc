@@ -21,7 +21,6 @@ import std.primitive_identity {
   primitive_duplicate_semantic_definition_violation,
   primitive_identity_eq,
   primitive_incompatible_invocation_assignment_violation,
-  primitive_map_keys,
   primitive_map_keys_definition,
   primitive_map_values,
   primitive_sorted_map_keys,
@@ -33,6 +32,7 @@ import std.primitive_identity {
   MeasurementOnly,
   surface_row,
 }
+import std.primitive_projection { primitive_map_keys }
 import gunbc.primitive_egress.d0_census {
   primitive_d0_derived_rows_missing_identity_count,
   primitive_d0_fold_list_registry_gap_holds,
@@ -41,7 +41,7 @@ import gunbc.primitive_egress.d0_census {
   primitive_d0_interpreter_rows_are_from_authority,
   primitive_d0_interpreter_census_matches_roster,
   primitive_d0_interpreter_surface_row_count,
-  primitive_d0_map_keys_five_surface_join_holds,
+  primitive_d0_map_keys_four_surface_join_holds,
   primitive_d0_open_denominator_receipt_holds,
   primitive_d0_surface_census,
   primitive_d0_surface_census_derived_row_count,
@@ -92,8 +92,8 @@ test fn w_derived_rows_marked_derived_from_authority() -> Bool {
   primitive_d0_derived_rows_are_from_authority()
 }
 
-test fn w_map_keys_joins_all_five_surfaces() -> Bool {
-  primitive_d0_map_keys_five_surface_join_holds()
+test fn w_map_keys_joins_four_surfaces_and_no_contract_row() -> Bool {
+  primitive_d0_map_keys_four_surface_join_holds()
 }
 
 test fn w_fold_list_spelling_fork_named_finding() -> Bool {
@@ -208,23 +208,23 @@ test fn w_red_surface_joins_two_identities() -> Bool {
 test fn w_red_cross_authority_identity_fork() -> Bool {
   let registry_row = surface_row(
     authority: BuiltinRegistry,
-    authored_symbol: "map_keys",
+    authored_symbol: "map_values",
     authority_ref: decl_ref(module_path: "std.primitives", decl_name: "builtin_registry_surface_names"),
-    primitive: Present { value: primitive_map_keys },
+    primitive: Present { value: primitive_map_values },
     provenance: MeasurementOnly,
   )
   let contract_row = surface_row(
     authority: PrimitiveContractRow,
-    authored_symbol: "map_keys",
-    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "map_keys_contract"),
-    primitive: Present { value: primitive_map_values },
+    authored_symbol: "map_values",
+    authority_ref: decl_ref(module_path: "std.primitives", decl_name: "map_values_contract"),
+    primitive: Present { value: primitive_map_keys },
     provenance: MeasurementOnly,
   )
   match primitive_surface_joins_two_identities_violation(left: registry_row, right: contract_row) {
     Present { value: IncompatibleInvocationAssignment { authored_symbol, first, second } } =>
-      (authored_symbol as String) == "map_keys"
-        && primitive_identity_eq(left: first, right: primitive_map_keys)
-        && primitive_identity_eq(left: second, right: primitive_map_values)
+      (authored_symbol as String) == "map_values"
+        && primitive_identity_eq(left: first, right: primitive_map_values)
+        && primitive_identity_eq(left: second, right: primitive_map_keys)
     Absent => false
     Present { value: SurfaceMissingPrimitiveIdentity { authority: _, authored_symbol: _ } } => false
     Present { value: SurfaceJoinsTwoIdentities { authority: _, authored_symbol: _, first: _, second: _ } } => false

@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow: RecurringFailureMode = RecurringFailureMode {
+  identity: "by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the Rust emitter types a by-ref primitive's argument from the callee's declared parameter before borrowing it, so a generic call argument is emitted at its declared carrier and rustc has no borrowed parameter to infer the call's generics from",
+    },
+  },
+
+  receipts: [
+    "**a by-ref primitive over a generic call argument lets rustc infer the generic from the borrowed parameter** INVALID STATE: a type-correct .dag call to a primitive whose rt_function_registry row passes by reference (extdeps.languages.rust.emit rt_function_registry, passes_by_ref: true; first instance map_keys), whose argument is itself a call to a GENERIC declaration (first instance std.algebra fold_list). The emitter writes v1_rt::map_keys(&fold_list(..)): the generic call is borrowed without its type being fixed, so rustc infers fold_list's accumulator A from the borrowed parameter (&HashMap<K, V>) instead of from fold_list's own empty: argument (rc_empty_map, Rc<HashMap<K, V>>).",
+
+    "HARM: E0308 mismatched types at a site the .dag type checker accepted, so the source compiler admits a program its own Rust target cannot build -- the family of gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target, at a construction that row does not name. Measured on gunbc#15164 at 47612d0cb20d: v2-bootstrap run 40968160998 refused EmittedCompilerBuildFailed at the emitted v2_compiler_occurrence_resolution_census.rs, expected HashMap<_, _>, found Rc<HashMap<_, _>>, with rustc's own note that the argument influences the return type of fold_list. The .dag was map_keys(m: fold_list(xs: .., empty: empty_map(), cons: ..)) in v2.compiler.occurrence_resolution_census occurrence_resolution_partial. It was latent on main because the call went through std.algebra map_support_keys, whose parameter fixed the type before the borrow; removing that wrapper exposed it.",
+
+    "DISTINGUISHING FACTS: the same call with the argument bound to a let first compiles (the bound name has a concrete Rc type and &Rc<HashMap> deref-coerces), and so does a by-ref primitive over a non-generic argument. So the class is the conjunction by-ref borrow + generic call argument, not map_keys and not fold_list. RED fixture: fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_probe.dag; control differing only in the let: fixtures/fixture_closure_rustc/by_ref_primitive_bound_argument_probe.dag. Consumer: v1_compiler.emitted_closure_compile_host fixture_closure_rustc_verdict. The pair is NOT enrolled on the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so it executes on demand only and is not cited as rung 2. MEASURED 2026-10-30 (wise-moth-707): on srv1 at 47612d0cb20d, in an isolated clone, the opt-in v1-compiler lib test fixture_closure_rustc_discrimination was run with its green and red paths pointed, in an uncommitted local edit, at this control and this red; it passed (1 test, 204.75s), which by its assertions means the control's emitted crate compiled and rustc refused the red's with E0308 attributed to the red's own emitted module.",
+
+    "RUNG FOUND AT: mitigatable -- the refusal is loud and located at cargo on the required v2-bootstrap path, but nothing in acceptance reports it. CEILING: structurally guaranteed -- the emitter has the callee's declared parameter type at the call site, so it can emit the argument at that carrier (or bind it) before borrowing; then no accepted program reaches this E0308. Not structurally impossible: the source can still write the shape, and the guarantee is the emitter's. NEXT TRIGGER is the capability named in trigger_capability; owner of the repair: the emission lane (clever-crane-830, routed by tidy-ant-251 2026-10-30).",
+
+    "WORKAROUND SITES, which the repair must find and unwind: v2.compiler.occurrence_resolution_census occurrence_resolution_partial binds duplicate_set before map_keys and cites this row's symbol at that let. When the trigger lands, delete that let, keep the RED fixture as a permanent regression control, and flip the pair's expectation (DESIGN 4b(4)).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.occurrence_resolution_census", decl_name: "occurrence_resolution_partial", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "map_keys", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "fold_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target", decl_name: "accepted_source_emits_uncompilable_target", field: WholeDeclaration },
+  ],
+}

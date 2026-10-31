@@ -4,7 +4,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Map }
 import std.optional { Optional, Absent, Present }
-import std.algebra { empty_map, map_insert, map_lookup, map_support_keys }
+import std.algebra { empty_map, map_insert, map_lookup, map_keys }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -256,7 +256,7 @@ fn census_histogram_keys_all_offset(
   right: Map<CensusKey, Int>,
   offset: fn(CensusKey) -> Int
 ) -> Bool {
-  map_support_keys(m: left) |> all(k => census_histogram_count(h: left, key: k) - census_histogram_count(h: right, key: k) == offset(k))
+  map_keys(m: left) |> all(k => census_histogram_count(h: left, key: k) - census_histogram_count(h: right, key: k) == offset(k))
 }
 
 // EXACT EQUALITY OF TWO CENSUSES, key by key in BOTH directions. A total can hide an offsetting pair
