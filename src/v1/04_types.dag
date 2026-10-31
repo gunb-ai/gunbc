@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -26,7 +26,8 @@ import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 
 import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, ArithmeticNoCarrier, ArithmeticCarrierAmbiguous, select_arithmetic_carrier, injection_targets }
-import gunbc.structural_realization_bindings { conversion_plan_rows }
+import gunbc.structural_realization_bindings { conversion_plan_rows, kernel_grounding_rows }
+import std.literal_elaboration { UnboundedIntegers }
 
 import v1.std.core { Unmarked,
   Node, make_param_node, param_node_type_expr,
@@ -1826,19 +1827,40 @@ fn carrier_defines_field(carrier: DeclarationRef, field: String) -> Bool {
   algebra_carriers() |> any(c => c.name == carrier.decl_name && (algebra_templates_for_profile(profile: c.profile) |> any(t => t.name == field)))
 }
 
+// THE CARRIER AN ARITHMETIC OPERAND DENOTES: its declaration, or -- for the kernel integer spelling, which
+// names no declaration -- the carrier gunbc.structural_realization_bindings kernel_grounding_rows grounds the
+// unbounded kernel integer in (std.integer Int). The same row the literal elaboration reads, so a kernel Int
+// operand meets the injection rows by identity rather than falling outside the fold.
+fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 16) {
+        Present { value: kernel } =>
+          if kernel != "Int" { none } else {
+            match kernel_grounding_rows |> filter(g => match g.extent { UnboundedIntegers => true  _ => false }) |> first {
+              Present { value: g } => Present { value: g.carrier }
+              Absent => none
+            }
+          }
+        Absent => none
+      }
+  }
+}
+
 // The one reading of the carrier an arithmetic operator lands in, from the operands' DECLARATIONS: a
 // candidate is an operand's carrier or one an implicit-safe injection (conversion_plan_rows InjectionPhase)
 // reaches from it, kept when its algebra profile defines the field. Absent means an operand names no resolved
 // declaration, so the operand-algebra reading decides as before; two DIFFERENT resolved declarations of which one has no
 // algebra row are ArithmeticNoCarrier (refused), never the left operand's typing; the ambiguity arm is refused by the caller.
 fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
-  match type_reference_declaration_ref(n: left_type, source_indices: source_indices, env: env) {
+  match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
     Absent => none
     Present { value: left } =>
       let rows = conversion_plan_rows
       let right = match right_type {
         Absent => none
-        Present { value: rt } => type_reference_declaration_ref(n: rt, source_indices: source_indices, env: env)
+        Present { value: rt } => operand_carrier_ref(n: rt, source_indices: source_indices, env: env)
       }
       let right_missing = match right_type {
         Absent => false
@@ -1859,7 +1881,7 @@ fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: N
 // The type node of a selected carrier: an operand's own node when the carrier is its declaration (so a
 // same-carrier operation is exactly the pre-existing answer), else the carrier's nominal reference.
 fn arithmetic_carrier_type(selected: DeclarationRef, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
-  let left_is = match type_reference_declaration_ref(n: left_type, source_indices: source_indices, env: env) {
+  let left_is = match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
     Present { value: d } => declaration_ref_eq(a: d, b: selected)
     Absent => false
   }
@@ -1867,7 +1889,7 @@ fn arithmetic_carrier_type(selected: DeclarationRef, left_type: Node, right_type
     let right_is = match right_type {
       Absent => none
       Present { value: rt } =>
-        match type_reference_declaration_ref(n: rt, source_indices: source_indices, env: env) {
+        match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
           Present { value: d } => if declaration_ref_eq(a: d, b: selected) { Present { value: rt } } else { none }
           Absent => none
         }
