@@ -3285,6 +3285,11 @@ type NativeSelfHostFrontierOutput {
   exit: Int
 }
 
+fn native_self_host_frontier_output(manifest_text: String, verdict_text: String, observed_text: String) -> NativeSelfHostFrontierOutput {
+  let report = self_host_frontier_report(manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+  NativeSelfHostFrontierOutput { lines: report.lines, exit: report.exit }
+}
+
 type NativeCensusModule {
   module: String
   path: Symbol
