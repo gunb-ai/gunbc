@@ -3,7 +3,9 @@ module test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness
 // WET WITNESS FOR THE RE-DELIVERY WAKE'S ADMISSION ORDER (gunbc.roadmap.roadmap_belt_tick_cli,
 // belt_redeliver_attempt_wake_admission), ON THE STATE THE WEDGE NEEDS: a request-pending attempt whose dispatch
 // branch is PRESENT and whose worktree is ABSENT (a reclaim, not a crash). Real git, real worktree root, real
-// provider-events.jsonl; nothing mocked. WHY WET: the ORDER is the whole claim, and an order is only evidence when
+// provider-events.jsonl, AND the attempt's own modeled standing (current-attempt-key pointer plus admission
+// receipt), so the provider ledger is the seeded stream rather than a refused legacy read and the decision reaches
+// its capture leg for the same reason it did on srv1. Nothing is mocked. WHY WET: the ORDER is the whole claim, and an order is only evidence when
 // an actuation happens in the middle -- a worktree that did not exist when the call started and exists when it
 // returns cannot be faked by a stub, so 'the step ran before the decision was read' is shown, not asserted.
 //
@@ -42,8 +44,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_branch_name,
+  host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_events_path_for_instance,
+  dispatch_current_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_branch_name,
 }
+import gunbc.roadmap.roadmap_dispatch_environment { dispatch_environment_admission_json, EnvironmentAdmitted }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exec, ExecOk, ExecFailed, ExecRefused,
   belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore, AttemptWorktreeRestored,
@@ -132,6 +136,28 @@ fn lay_repo_with_two_dispatch_rows(instance: HostDashboardInstance, node: Roadma
     && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: behind_key)])
 }
 
+// STAGE THE ATTEMPT'S OWN MODELED STANDING: the node's current-attempt-key pointer naming this attempt, plus the
+// admission receipt that pointer requires. Without these two records the attempt reads as a pre-modeled legacy
+// attempt whose provider ledger is REFUSED (WorkflowModeledStateAbsent), and the continuation stops at 'this worker
+// is not terminal' before it ever reaches the capture leg -- the wedge would then be witnessed for the wrong reason
+// or not at all, and whether it appeared at all would depend on the runner's tmux and systemctl. With them the
+// provider ledger IS the seeded stream, whose standing request is a terminal provider state (ProviderRequestPending,
+// roadmap_belt_obligation), which is exactly the shape srv1 showed at 17:01Z: pending lineage, capture unreadable in
+// the reaped tree, decision Refused.
+fn stage_attempt_state(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  let pointer = dispatch_current_attempt_key_path_for_instance(instance: instance, node_id: node)
+  let admission = dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)
+  mkdir_p(path_parent_directory(path: pointer))
+    && Filesystem.Write(path: pointer, content: attempt_key).success
+    && mkdir_p(path_parent_directory(path: admission))
+    && Filesystem.Write(
+         path: admission,
+         content: dispatch_environment_admission_json(
+           admission: EnvironmentAdmitted { receipts: [], validation_summary: "gunbc run --claim-run" },
+         ),
+       ).success
+}
+
 // Seed the worker's provider-events.jsonl with one resumable request-pending event at the exact path the recovery
 // reading reads. This is the worktree-INDEPENDENT half of the wake's standing: it reads the same with the tree
 // present or absent, which is exactly why a refusal that turns on the tree cannot be a verdict about the lineage.
@@ -172,12 +198,23 @@ fn tree_present(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_ke
 // asserted here so a refusal can be attributed to the NAME and not to the state.
 fn recovery_resumable(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
   match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: attempt_key)) {
+    // THE ONE CASE THE WEDGE NEEDS: a standing request is pending and nothing declares it unresumable --
+    // this is the worktree-INDEPENDENT half of the attempt's standing, which is why a refusal that turns on
+    // the tree cannot be a verdict about the lineage.
     ResumabilityResumable => true
-    // Every other case of the typed reading is named rather than wildcarded: an interrupted or
-    // malformed stream must read as 'not the state the wedge needs', not fall into a default.
+    // Pending, and the stream itself says it may not be resumed (a turn ended past the resumable point).
+    // Nothing may be re-delivered, so a refusal here is the gate's own verdict -- the leg's claim that ONLY
+    // the name refused would be false, which is why the legs stage this arm and no other.
     ResumabilityRequestPendingNotResumable => false
+    // Pending but with provider calls interrupted mid-flight: resuming could re-run work whose interruption
+    // is unobserved, so the restore gate refuses it. Named, not defaulted: an interrupted stream is a
+    // different fact from an unresumable one and must not read as either.
     ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => false
+    // The stream contradicts itself: the standing is UNKNOWN, and unknown refuses (DESIGN 5) -- it is never
+    // the restorable state, and a leg that passed over it would be proving nothing about the pin.
     ResumabilityMalformed { mismatch: _ } => false
+    // Not a request-pending lineage at all: there is nothing to re-deliver, which is why the restore step
+    // reports NotNeeded for it on its own, with no pin involved.
     ResumabilityNotRequestPending => false
   }
 }
@@ -267,6 +304,7 @@ test fn a_woken_attempt_with_its_worktree_reaped_refuses_its_own_continuation() 
   let key = subject_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let resumable = recovery_resumable(instance: instance, node: node, attempt_key: key)
   let absent = tree_absent(instance: instance, node: node, attempt_key: key)
@@ -283,6 +321,7 @@ test fn the_wake_entry_restores_before_it_reads_the_continuation() -> Bool {
   let key = subject_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let absent_before = tree_absent(instance: instance, node: node, attempt_key: key)
   let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
@@ -298,6 +337,7 @@ test fn the_continuation_read_after_the_step_names_the_woken_attempt() -> Bool {
   let key = subject_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
   let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
@@ -314,6 +354,7 @@ test fn a_wake_naming_another_attempt_key_is_refused_after_the_step() -> Bool {
   let key = subject_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: outside_key())
   let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
@@ -330,6 +371,7 @@ test fn an_unnamed_attempt_in_the_identical_state_is_not_selected_by_the_step() 
   let key = outside_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let resumable = recovery_resumable(instance: instance, node: node, attempt_key: key)
   let absent_before = tree_absent(instance: instance, node: node, attempt_key: key)
@@ -346,6 +388,7 @@ test fn the_unnamed_attempt_is_never_restored_at_the_wake_and_its_claim_slot_is_
   let key = outside_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
   let clean_before = !claim_slot_recorded(instance: instance, node: node, attempt_key: key)
@@ -362,6 +405,7 @@ test fn the_named_attempt_is_restored_and_its_claim_slot_is_reopened() -> Bool {
   let key = subject_key()
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let clean_before = !claim_slot_recorded(instance: instance, node: node, attempt_key: key)
   let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
@@ -397,6 +441,7 @@ test fn a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_no
   let laid = lay_repo_with_two_dispatch_rows(instance: instance, node: node, ahead_key: foreign, behind_key: named)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: foreign)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: named)
+    && stage_attempt_state(instance: instance, node: node, attempt_key: foreign)
     && prepare_claim_store(instance: instance, node: node, attempt_key: named)
   let selected_is_foreign = ledger_selects_key(instance: instance, node: node, attempt_key: foreign)
   let named_restorable = recovery_resumable(instance: instance, node: node, attempt_key: named) && tree_absent(instance: instance, node: node, attempt_key: named)
