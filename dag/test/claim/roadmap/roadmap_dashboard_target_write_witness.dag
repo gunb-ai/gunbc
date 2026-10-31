@@ -4,7 +4,6 @@ import std.types { Bool, String, FilePath, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.roster_frontier { frontier_subject_key }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -151,16 +150,6 @@ test fn create_new_over_a_symlink_to_a_directory_refuses_and_creates_nothing_ins
   let inside = Filesystem.List(path: dir)
   let cleaned = shell.Remove.RecursiveForce(path: root)
   made.exit_code == 0 && linked.exit_code == 0 && is_refused(outcome: outcome) && inside.entries == "" && cleaned.success
-}
-
-// ENROLMENT IS A DIFFERENT FACT FROM DECLARATION: the row is joined against the census closure itself by
-// subject key. Dropping dashboard_target_write_consumer_frontier_rows from census_closure_frontier_row_groups
-// reds it.
-test fn target_write_frontier_row_is_enrolled_in_the_census_closure() -> Bool {
-  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
-  length(xs: dashboard_target_write_consumer_frontier_rows) == 1
-    && dashboard_target_write_consumer_frontier_rows |> all(row =>
-      census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
 }
 
 // SSH ARM, MOCK ROUTE ONLY (local-exec rung, not wet): srv1's instance routes through

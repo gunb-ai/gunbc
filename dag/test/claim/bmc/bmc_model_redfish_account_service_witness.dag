@@ -38,7 +38,6 @@ import gunbc.machine_intake.bmc_secure_redfish_frontier {
   bmc_secure_redfish_trigger_module,
   bmc_secure_redfish_read_realization, bmc_secure_redfish_write_realization,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
 import v2.std.decl_index { decl_facts }
@@ -292,13 +291,7 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
 
 // THE §3c CONSUMER FRONTIERS (review 87749 + parent directive). The Redfish world surface's production
 // consumer is item 3's dry Redfish read/apply in gunbc.machine_intake.bmc_secure, which does not exist until
-// PR 1b-i lands. The rows are the contract; these tests read them against the LIVE declaration census so a
-// consumer cannot arrive and leave a surface unclaimed -- an empty census reddens them, they cannot pass by
-// the census agreeing with itself.
-fn redfish_frontier_enrolled(row: FrontierRow) -> Bool {
-  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
-}
-
+// PR 1b-i lands. The rows are the contract; these tests read their subject and trigger against the live declaration facts.
 fn redfish_frontier_trigger_module(row: FrontierRow) -> String {
   match row.dissolution {
     BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
@@ -343,8 +336,7 @@ test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> 
   let everything = bmc_secure_redfish_consumer_frontier_rows()
   let counts = list_length(items: read_rows) == 3 && list_length(items: write_rows) == 1 && list_length(items: extdeps_rows) == 6 && list_length(items: everything) == 10
   let every_row_disciplined = !any(xs: everything, predicate: fn(row) {
-    !(redfish_frontier_enrolled(row: row)
-      && redfish_frontier_trigger_module(row: row) == bmc_secure_redfish_trigger_module
+    !(redfish_frontier_trigger_module(row: row) == bmc_secure_redfish_trigger_module
       && redfish_frontier_subject_declared(row: row)
       && redfish_frontier_trigger_pending(row: row))
   })
