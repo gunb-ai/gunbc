@@ -48,6 +48,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inherited_grant, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   approval_ntfy_retire_root_scopes,
@@ -223,22 +224,58 @@ data ntfy_retire_legs: List<NtfyRetireLeg> = [
 ]
 
 // ── The readback ───────────────────────────────────────────────────────────────────────────────
-// ABSENCE IS READ BY EACH MEMBER'S OWN TEST, not by the exit code of the leg that removed it.
-// A path probe exits non-zero exactly when the path is not there; the account is read through
-// getent, whose not-found exit is its own; the unit is read through systemd's LoadState, which
-// answers not-found rather than failing; the front door is read from tailscale's own status, which
-// is the only account of what tailscale serves.
+// ABSENCE IS READ BY EACH MEMBER'S OWN TEST, not by the exit code of the leg that removed it, and
+// every test here has THREE outcomes: the member is ABSENT, the member is STILL PRESENT, or the read
+// is UNREADABLE and says nothing about the member at all. The third is neither of the other two, and
+// printing it as either one -- above all as absence -- is the fabricated default DESIGN.md 5 refuses:
+// a run that observed nothing must not report a retirement.
 
-// A path probe: `test -e <path>` over the elevated transport. Exit 0 means the path is STILL there,
-// which is a failure of the retirement; non-zero means it is gone.
+// A PATH PROBE: `test -e <path>` over the elevated transport. test(1) exits 0 when the operand is
+// there and 1 when it is not; it exits 2 on its OWN error -- a parent it cannot stat, an operand it
+// cannot parse -- and `sudo -n` exits 1 when it refuses to run non-interactively. So the exit code by
+// itself cannot separate "the path is gone" from "the probe never ran", and treating any non-zero
+// exit as absence is a silent widen: it prints `absent:` for a read that never happened. Only exit 1
+// is absence, and the elevation control below is what makes exit 1 worth believing.
 fn ntfy_retire_path_probe_argv(path: NonEmptyStr) -> List<String> {
   ["test", "-e", path as String]
 }
 
+data ntfy_retire_present_path_exit: Int = 0
 data ntfy_retire_absent_path_exit: Int = 1
 
+// THE ELEVATION CONTROL, run before any absence is claimed. A probe that answers "not there" is only
+// evidence if the same probe could have answered "there", and `/` is always there: `test -d /` over
+// the same elevated transport must exit 0. When it does not, sudo refused, the transport is broken,
+// or the host is not the host the roster describes -- and in every one of those cases the run refuses
+// to read ANY absence rather than reporting a retirement it never observed. This is also what keeps a
+// sudo refusal (exit 1, the same code as absence) from being mistaken for a retired member.
+data ntfy_retire_elevation_control_argv: List<String> = ["test", "-d", "/"]
+
+fn ntfy_retire_elevation_control_is_proven(exit_code: Int) -> Bool {
+  exit_code == ntfy_retire_present_path_exit
+}
+
+type NtfyRetirePathRead
+  = PathReadAbsent
+  | PathReadPresent
+  | PathReadUnreadable { exit_code: Int }
+
+fn ntfy_retire_path_read(exit_code: Int) -> NtfyRetirePathRead {
+  if exit_code == ntfy_retire_present_path_exit {
+    PathReadPresent
+  } else if exit_code == ntfy_retire_absent_path_exit {
+    PathReadAbsent
+  } else {
+    PathReadUnreadable { exit_code: exit_code }
+  }
+}
+
 fn ntfy_retire_path_is_absent(exit_code: Int) -> Bool {
-  exit_code != 0
+  match ntfy_retire_path_read(exit_code: exit_code) {
+    PathReadAbsent => true
+    PathReadPresent => false
+    PathReadUnreadable { exit_code: _ } => false
+  }
 }
 
 // THE UNIT. systemd answers for a unit it cannot load with LoadState=not-found and exit 0, so the
@@ -246,15 +283,31 @@ fn ntfy_retire_path_is_absent(exit_code: Int) -> Bool {
 // from the exit code. "not-found" is the only LoadState word containing that substring -- a loaded
 // unit answers "loaded", a masked one "masked" -- so the read is exact without a parser.
 data ntfy_retire_unit_load_state_absent: String = "not-found"
+data ntfy_retire_unit_load_state_loaded: String = "loaded"
 
 fn ntfy_retire_unit_is_absent(show_output: String) -> Bool {
   string_contains(s: show_output, pattern: ntfy_retire_unit_load_state_absent)
+}
+
+// The reading is closed, not open: a systemctl answer that is neither not-found nor loaded is a read
+// this model does not understand, and an unread answer is not an absent unit.
+fn ntfy_retire_unit_read_is_unreadable(exit_code: Int, show_output: String) -> Bool {
+  exit_code != ntfy_retire_present_path_exit
+    || !(string_contains(s: show_output, pattern: ntfy_retire_unit_load_state_absent)
+      || string_contains(s: show_output, pattern: ntfy_retire_unit_load_state_loaded))
 }
 
 // THE ACCOUNT. getent exits with its not-found code and prints nothing when the name resolves to no
 // passwd entry.
 fn ntfy_retire_account_is_absent(exit_code: Int, stdout: String) -> Bool {
   exit_code == getent_key_not_found_exit && stdout == ""
+}
+
+// getent's own usage error (exit 2 with a usage line, or any other exit) is not a resolved account
+// and not an absent one either.
+fn ntfy_retire_account_read_is_unreadable(exit_code: Int, stdout: String) -> Bool {
+  !(exit_code == getent_key_not_found_exit && stdout == "")
+    && !(exit_code == ntfy_retire_present_path_exit && stdout != "")
 }
 
 // THE FRONT DOOR. tailscale's status is the account of what is served; the route key is the port and
@@ -270,13 +323,27 @@ fn ntfy_retire_front_door_is_absent(status_json: String) -> Bool {
   }
 }
 
+fn ntfy_retire_front_door_read_is_unreadable(status_json: String) -> Bool {
+  match tailscale_serve_status_route_proxy_targets(
+    status_json: status_json,
+    key: tailscale_serve_route_key(endpoint: ntfy_retire_front_door_endpoint),
+  ) {
+    ServeStatusProxies { targets: _ } => false
+    ServeStatusUnreadable => true
+  }
+}
+
 // ── The receipt ────────────────────────────────────────────────────────────────────────────────
 // THE RUN'S ANSWER, one line per member, each naming the test that decided it. This is what the
 // operator reads after the fact, and what a later reader of the run log reads instead of a claim.
 
+// THREE STATES, because the reads have three states. A member whose read could not be understood is
+// reported as UNREADABLE and fails the run: it is not absent, and calling it still-present would be
+// just as much a claim about the host as calling it gone.
 type NtfyRetireVerdict
   = RetireMemberAbsent { member: NonEmptyStr, evidence: String }
   | RetireMemberPresent { member: NonEmptyStr, evidence: String }
+  | RetireMemberUnreadable { member: NonEmptyStr, evidence: String }
 
 fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
   match v {
@@ -284,6 +351,67 @@ fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
       concat("absent: ", concat(member_text(member: m), concat(" -- ", e)))
     RetireMemberPresent { member: m, evidence: e } =>
       concat("STILL PRESENT: ", concat(member_text(member: m), concat(" -- ", e)))
+    RetireMemberUnreadable { member: m, evidence: e } =>
+      concat("UNREADABLE: ", concat(member_text(member: m), concat(" -- ", e)))
+  }
+}
+
+// THE VERDICT IS CHOSEN BY THE READ, never by the code that prints it. Every verdict below is built
+// from the read itself by one of these four functions, and the run has no other way to make a
+// verdict: a construction site that named a state directly -- `RetireMemberAbsent { ... }` written
+// out with a condition only inside its evidence -- would print and count a member as absent whatever
+// the host answered, which is the exact shape this review found once. gunbc.test.claim.approval_ntfy_retirement_witness
+// red_a_read_that_was_never_made_never_becomes_an_absent_verdict pins the four functions instead.
+fn ntfy_retire_path_verdict(member: NonEmptyStr, exit_code: Int) -> NtfyRetireVerdict {
+  match ntfy_retire_path_read(exit_code: exit_code) {
+    PathReadAbsent =>
+      RetireMemberAbsent { member: member, evidence: "test -e exited 1: the path is not there" }
+    PathReadPresent =>
+      RetireMemberPresent { member: member, evidence: "test -e exited 0: the path is still there" }
+    PathReadUnreadable { exit_code: code } =>
+      RetireMemberUnreadable {
+        member: member,
+        evidence: concat("test -e exited ", concat(to_string(code), ": a probe error, not an absence")),
+      }
+  }
+}
+
+fn ntfy_retire_unit_verdict(read: SshSessionExecResult) -> NtfyRetireVerdict {
+  if ntfy_retire_unit_read_is_unreadable(exit_code: read.exit_code, show_output: read.stdout) {
+    RetireMemberUnreadable {
+      member: "unit" as NonEmptyStr,
+      evidence: concat("systemctl LoadState read failed with exit ", concat(to_string(read.exit_code), ": not a LoadState answer")),
+    }
+  } else if ntfy_retire_unit_is_absent(show_output: read.stdout) {
+    RetireMemberAbsent { member: "unit" as NonEmptyStr, evidence: "systemd LoadState is not-found" }
+  } else {
+    RetireMemberPresent { member: "unit" as NonEmptyStr, evidence: "systemd still answers for the unit" }
+  }
+}
+
+fn ntfy_retire_account_verdict(read: SshSessionExecResult) -> NtfyRetireVerdict {
+  if ntfy_retire_account_read_is_unreadable(exit_code: read.exit_code, stdout: read.stdout) {
+    RetireMemberUnreadable {
+      member: "account" as NonEmptyStr,
+      evidence: concat("getent passwd exited ", concat(to_string(read.exit_code), ": neither a resolved entry nor a not-found answer")),
+    }
+  } else if ntfy_retire_account_is_absent(exit_code: read.exit_code, stdout: read.stdout) {
+    RetireMemberAbsent { member: "account" as NonEmptyStr, evidence: "getent passwd resolves no entry" }
+  } else {
+    RetireMemberPresent { member: "account" as NonEmptyStr, evidence: "getent passwd still resolves the account" }
+  }
+}
+
+fn ntfy_retire_front_door_verdict(read: SshSessionExecResult) -> NtfyRetireVerdict {
+  if ntfy_retire_front_door_read_is_unreadable(status_json: read.stdout) {
+    RetireMemberUnreadable {
+      member: "front door" as NonEmptyStr,
+      evidence: "tailscale serve status did not parse: the listener's state is unknown",
+    }
+  } else if ntfy_retire_front_door_is_absent(status_json: read.stdout) {
+    RetireMemberAbsent { member: "front door" as NonEmptyStr, evidence: "tailscale serve status lists no route on the retired port" }
+  } else {
+    RetireMemberPresent { member: "front door" as NonEmptyStr, evidence: "tailscale serve status still lists a route" }
   }
 }
 
@@ -298,10 +426,12 @@ fn ntfy_retire_receipt_is_clean(vs: List<NtfyRetireVerdict>) -> Bool {
   let absent = filter(vs, v => match v {
     RetireMemberAbsent { member: m, evidence: _ } => true
     RetireMemberPresent { member: _, evidence: _ } => false
+    RetireMemberUnreadable { member: _, evidence: _ } => false
   })
   all(ntfy_retire_members, m => count(filter(absent, v => match v {
     RetireMemberAbsent { member: seen, evidence: _ } => seen == m
     RetireMemberPresent { member: _, evidence: _ } => false
+    RetireMemberUnreadable { member: _, evidence: _ } => false
   })) == 1)
 }
 
@@ -443,98 +573,79 @@ fn ntfy_retire_elevated_exec(
 fn ntfy_retire_readback(target: SshTarget, context: FleetSshExecutionContext) -> ProcessExit
   uses net: std.resources.Network
 {
-  match ntfy_retire_probe_exec(target: target, context: context, command: systemctl_show_load_state_argv(unit: ntfy_retire_unit_name), step: "unit-load-state-read") {
-    TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
-    TypedArgvExecConverged { result: unit_read } =>
-      match ntfy_retire_probe_exec(target: target, context: context, command: ["getent", "passwd", ntfy_retire_account_name as String], step: "account-read") {
+  // THE ELEVATION CONTROL RUNS FIRST. Every absence below comes from a probe whose answer is "not
+  // there"; this one asks about a directory that is always there, so a non-zero answer means the
+  // elevated channel is not working -- sudo refused (which exits 1, the SAME code absence exits
+  // with), the transport is broken, or the host is not the roster's host -- and then no probe result
+  // says anything about the roster at all. The run stops there rather than printing six absences it
+  // never read.
+  match ntfy_retire_probe_exec(target: target, context: context, command: ntfy_retire_elevation_control_argv, step: "elevation-control") {
+    TypedArgvExecRefused { reason: why } =>
+      exit_failure(reason: concat("approval ntfy retirement: the elevation control probe could not reach the host: ", why))
+    TypedArgvExecConverged { result: control } =>
+      if !ntfy_retire_elevation_control_is_proven(exit_code: control.exit_code) {
+        exit_failure(reason: concat("approval ntfy retirement: the elevated probe channel did not prove itself (test -d / exited ", concat(to_string(control.exit_code), "): no absence is read from a probe that never ran")))
+      } else {
+        match ntfy_retire_probe_exec(target: target, context: context, command: systemctl_show_load_state_argv(unit: ntfy_retire_unit_name), step: "unit-load-state-read") {
         TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
-        TypedArgvExecConverged { result: account_read } =>
-          match ntfy_retire_probe_exec(target: target, context: context, command: tailscale_serve_status_json_argv(), step: "serve-status-read") {
+        TypedArgvExecConverged { result: unit_read } =>
+          match ntfy_retire_probe_exec(target: target, context: context, command: ["getent", "passwd", ntfy_retire_account_name as String], step: "account-read") {
             TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
-            TypedArgvExecConverged { result: serve_read } =>
-              match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_unit_path) {
-                PathProbeTransportRefused { reason: _ } =>
-                  exit_failure(reason: "approval ntfy retirement: the unit path probe could not reach the host")
-                PathProbeObserved { exit_code: unit_path_exit } =>
-                  match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_config_dir) {
+            TypedArgvExecConverged { result: account_read } =>
+              match ntfy_retire_probe_exec(target: target, context: context, command: tailscale_serve_status_json_argv(), step: "serve-status-read") {
+                TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
+                TypedArgvExecConverged { result: serve_read } =>
+                  match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_unit_path) {
                     PathProbeTransportRefused { reason: _ } =>
-                      exit_failure(reason: "approval ntfy retirement: the config directory probe could not reach the host")
-                    PathProbeObserved { exit_code: config_exit } =>
-                      match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_state_root) {
+                      exit_failure(reason: "approval ntfy retirement: the unit path probe could not reach the host")
+                    PathProbeObserved { exit_code: unit_path_exit } =>
+                      match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_config_dir) {
                         PathProbeTransportRefused { reason: _ } =>
-                          exit_failure(reason: "approval ntfy retirement: the state root probe could not reach the host")
-                        PathProbeObserved { exit_code: state_exit } =>
-                          match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_binary_path) {
+                          exit_failure(reason: "approval ntfy retirement: the config directory probe could not reach the host")
+                        PathProbeObserved { exit_code: config_exit } =>
+                          match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_state_root) {
                             PathProbeTransportRefused { reason: _ } =>
-                              exit_failure(reason: "approval ntfy retirement: the binary probe could not reach the host")
-                            PathProbeObserved { exit_code: binary_exit } => {
-                              let verdicts: List<NtfyRetireVerdict> = [
-                                RetireMemberAbsent {
-                                  member: "unit" as NonEmptyStr,
-                                  evidence: if ntfy_retire_unit_is_absent(show_output: unit_read.stdout) {
-                                    "systemd LoadState is not-found"
-                                  } else {
-                                    "systemd still answers for the unit"
-                                  },
-                                },
-                                RetireMemberAbsent {
-                                  member: "front door" as NonEmptyStr,
-                                  evidence: if ntfy_retire_front_door_is_absent(status_json: serve_read.stdout) {
-                                    "tailscale serve status lists no route on the retired port"
-                                  } else {
-                                    "tailscale serve status still lists a route"
-                                  },
-                                },
-                                RetireMemberAbsent {
-                                  member: "account" as NonEmptyStr,
-                                  evidence: if ntfy_retire_account_is_absent(exit_code: account_read.exit_code, stdout: account_read.stdout) {
-                                    "getent passwd resolves no entry"
-                                  } else {
-                                    "getent passwd still resolves the account"
-                                  },
-                                },
-                                RetireMemberAbsent {
-                                  member: "config directory" as NonEmptyStr,
-                                  evidence: if ntfy_retire_path_is_absent(exit_code: config_exit) {
-                                    "the config path does not exist"
-                                  } else {
-                                    "the config path still exists"
-                                  },
-                                },
-                                RetireMemberAbsent {
-                                  member: "state root" as NonEmptyStr,
-                                  evidence: if ntfy_retire_path_is_absent(exit_code: state_exit) {
-                                    "the state root does not exist"
-                                  } else {
-                                    "the state root still exists"
-                                  },
-                                },
-                                RetireMemberAbsent {
-                                  member: "binary" as NonEmptyStr,
-                                  evidence: if ntfy_retire_path_is_absent(exit_code: binary_exit) {
-                                    "the binary path does not exist"
-                                  } else {
-                                    "the binary path still exists"
-                                  },
-                                },
-                              ]
-                              match ntfy_retire_receipt_write(text: ntfy_retire_receipt_text(vs: verdicts)) {
-                                RetireReceiptWritten { path: _ } =>
-                                  if ntfy_retire_receipt_is_clean(vs: verdicts) {
-                                    ExitSuccess
-                                  } else {
-                                    exit_failure(reason: "approval ntfy retirement: the readback found a roster member still on the host")
+                              exit_failure(reason: "approval ntfy retirement: the state root probe could not reach the host")
+                            PathProbeObserved { exit_code: state_exit } =>
+                              match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_binary_path) {
+                                PathProbeTransportRefused { reason: _ } =>
+                                  exit_failure(reason: "approval ntfy retirement: the binary probe could not reach the host")
+                                PathProbeObserved { exit_code: binary_exit } => {
+                                  // EVERY VERDICT IS CHOSEN BY THE READ, through the four functions
+                                  // that classify it. Nothing here names a state by hand: a
+                                  // construction site that did -- `RetireMemberAbsent { ... }` with
+                                  // the condition only inside its evidence -- would print and count
+                                  // the member as absent whatever the host answered, and the receipt
+                                  // would go clean on a host that still had everything on it. A probe
+                                  // that exits with its own error, and anything the control above did
+                                  // not rule out, lands as UNREADABLE and fails the run.
+                                  let verdicts: List<NtfyRetireVerdict> = [
+                                    ntfy_retire_unit_verdict(read: unit_read),
+                                    ntfy_retire_front_door_verdict(read: serve_read),
+                                    ntfy_retire_account_verdict(read: account_read),
+                                    ntfy_retire_path_verdict(member: "config directory" as NonEmptyStr, exit_code: config_exit),
+                                    ntfy_retire_path_verdict(member: "state root" as NonEmptyStr, exit_code: state_exit),
+                                    ntfy_retire_path_verdict(member: "binary" as NonEmptyStr, exit_code: binary_exit),
+                                  ]
+                                  match ntfy_retire_receipt_write(text: ntfy_retire_receipt_text(vs: verdicts)) {
+                                    RetireReceiptWritten { path: _ } =>
+                                      if ntfy_retire_receipt_is_clean(vs: verdicts) {
+                                        ExitSuccess
+                                      } else {
+                                        exit_failure(reason: "approval ntfy retirement: the readback did not read every roster member absent")
+                                      }
+                                    RetireReceiptWriteFailed { reason: why } =>
+                                      exit_failure(reason: concat("approval ntfy retirement: the readback receipt could not be written: ", why))
                                   }
-                                RetireReceiptWriteFailed { reason: why } =>
-                                  exit_failure(reason: concat("approval ntfy retirement: the readback receipt could not be written: ", why))
+                                }
                               }
-                            }
                           }
-                      }
                   }
               }
           }
+        }
       }
+  }
   }
 }
 

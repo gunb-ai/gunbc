@@ -13,12 +13,17 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_members, ntfy_retire_legs, ntfy_retire_receipt_text,
   ntfy_retire_receipt_is_clean, ntfy_retire_unit_is_absent, ntfy_retire_account_is_absent,
   ntfy_retire_path_is_absent, ntfy_retire_front_door_is_absent, ntfy_retire_verdict_text,
-  RetireMemberAbsent, RetireMemberPresent, NtfyRetireVerdict,
+  RetireMemberAbsent, RetireMemberPresent, RetireMemberUnreadable, NtfyRetireVerdict,
+  NtfyRetirePathRead, PathReadAbsent, PathReadPresent, PathReadUnreadable, ntfy_retire_path_read,
+  ntfy_retire_path_verdict, ntfy_retire_unit_verdict, ntfy_retire_account_verdict,
+  ntfy_retire_front_door_verdict, ntfy_retire_elevation_control_argv,
+  ntfy_retire_elevation_control_is_proven,
   ntfy_retire_unit_name, ntfy_retire_account_name, ntfy_retire_config_dir, ntfy_retire_state_root,
   ntfy_retire_binary_path, ntfy_retire_unit_path,
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
 }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
   srv1_root_removal_scope_at,
@@ -132,6 +137,7 @@ test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
         RetireMemberAbsent { member: m, evidence: e }
       }
     RetireMemberPresent { member: m, evidence: e } => RetireMemberPresent { member: m, evidence: e }
+    RetireMemberUnreadable { member: m, evidence: e } => RetireMemberUnreadable { member: m, evidence: e }
   })
   !ntfy_retire_receipt_is_clean(vs: one_present)
     && string_contains(s: ntfy_retire_receipt_text(vs: one_present), pattern: "STILL PRESENT")
@@ -143,6 +149,7 @@ test fn red_a_roster_member_never_read_makes_the_receipt_unclean() -> Bool {
   let five = filter(verdict_all_absent, v => match v {
     RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
     RetireMemberPresent { member: _, evidence: _ } => true
+    RetireMemberUnreadable { member: _, evidence: _ } => true
   })
   count(five) == 5 && !ntfy_retire_receipt_is_clean(vs: five)
 }
@@ -164,9 +171,96 @@ test fn the_account_absence_is_getent_not_found_and_no_line() -> Bool {
     && !ntfy_retire_account_is_absent(exit_code: 1, stdout: "")
 }
 
-// A PATH. The probe exits non-zero exactly when the path is not there.
-test fn a_path_probe_reads_nonzero_as_absent() -> Bool {
-  ntfy_retire_path_is_absent(exit_code: 1) && !ntfy_retire_path_is_absent(exit_code: 0)
+// A PATH. test(1) exits 0 when the operand is there and 1 when it is not, and exits 2 on its OWN
+// error -- and `sudo -n` exits 1 when it refuses to run at all. So only exit 1 is absence: reading
+// every non-zero exit as absence is a silent widen that prints `absent:` for a read that never
+// happened, which is exactly what DESIGN.md 5 refuses.
+test fn a_path_probe_reads_only_exit_one_as_absent() -> Bool {
+  ntfy_retire_path_is_absent(exit_code: 1)
+    && !ntfy_retire_path_is_absent(exit_code: 0)
+    && !ntfy_retire_path_is_absent(exit_code: 2)
+    && !ntfy_retire_path_is_absent(exit_code: 127)
+    && match ntfy_retire_path_read(exit_code: 1) { PathReadAbsent => true _ => false }
+    && match ntfy_retire_path_read(exit_code: 0) { PathReadPresent => true _ => false }
+    && match ntfy_retire_path_read(exit_code: 2) { PathReadUnreadable { exit_code: 2 } => true _ => false }
+}
+
+// RED: A PROBE THAT ERRORED IS NOT AN ABSENT MEMBER. Exit 2 -- a parent test could not stat, a
+// malformed operand, a sudo refusal -- must come out UNREADABLE, must make the receipt unclean, and
+// must never be printed as absent.
+test fn red_a_probe_that_errored_is_not_read_as_absent() -> Bool {
+  let errored = ntfy_retire_path_verdict(member: "binary" as NonEmptyStr, exit_code: 2)
+  match errored {
+    RetireMemberUnreadable { member: m, evidence: _ } => m == ("binary" as NonEmptyStr)
+    RetireMemberAbsent { member: _, evidence: _ } => false
+    RetireMemberPresent { member: _, evidence: _ } => false
+  }
+    && !string_contains(s: ntfy_retire_verdict_text(v: errored), pattern: "absent:")
+    && string_contains(s: ntfy_retire_verdict_text(v: errored), pattern: "UNREADABLE")
+    && !ntfy_retire_receipt_is_clean(vs: [
+      RetireMemberAbsent { member: "unit" as NonEmptyStr, evidence: "x" },
+      RetireMemberAbsent { member: "front door" as NonEmptyStr, evidence: "x" },
+      RetireMemberAbsent { member: "account" as NonEmptyStr, evidence: "x" },
+      RetireMemberAbsent { member: "config directory" as NonEmptyStr, evidence: "x" },
+      RetireMemberAbsent { member: "state root" as NonEmptyStr, evidence: "x" },
+      errored,
+    ])
+}
+
+// RED: A READ THAT WAS NEVER MADE NEVER BECOMES AN ABSENT VERDICT. The run builds every verdict
+// through these four functions, so pinning the functions pins the run: a systemctl read that failed,
+// a getent that exited 0 with no line, a tailscale status that will not parse, and a path probe that
+// errored must all come out UNREADABLE rather than absent. This is the shape the review found once:
+// a verdict constructed by hand with the condition only inside its evidence, which printed and
+// counted every member absent whatever the host answered.
+test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool {
+  let unit_failed = ntfy_retire_unit_verdict(read: SshSessionExecResult { exit_code: 3, success: false, stdout: "", stderr: "boom" })
+  let unit_garbage = ntfy_retire_unit_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "yes", stderr: "" })
+  let account_hollow = ntfy_retire_account_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" })
+  let account_error = ntfy_retire_account_verdict(read: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "" })
+  let door_unparsed = ntfy_retire_front_door_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "{\"TCP\":{", stderr: "" })
+  let path_error = ntfy_retire_path_verdict(member: "state root" as NonEmptyStr, exit_code: 2)
+  all([unit_failed, unit_garbage, account_hollow, account_error, door_unparsed, path_error], v =>
+    match v {
+      RetireMemberUnreadable { member: _, evidence: _ } => true
+      RetireMemberAbsent { member: _, evidence: _ } => false
+      RetireMemberPresent { member: _, evidence: _ } => false
+    })
+}
+
+// A read that DID happen still says what it says: not-found is absent, a resolved line is present.
+test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
+  match ntfy_retire_unit_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }) {
+    RetireMemberAbsent { member: _, evidence: _ } => true
+    _ => false
+  }
+    && match ntfy_retire_unit_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "loaded\n", stderr: "" }) {
+      RetireMemberPresent { member: _, evidence: _ } => true
+      _ => false
+    }
+    && match ntfy_retire_account_verdict(read: SshSessionExecResult { exit_code: 2, success: false, stdout: "", stderr: "" }) {
+      RetireMemberAbsent { member: _, evidence: _ } => true
+      _ => false
+    }
+    && match ntfy_retire_front_door_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:18789\"}}}}}", stderr: "" }) {
+      RetireMemberAbsent { member: _, evidence: _ } => true
+      _ => false
+    }
+    && match ntfy_retire_front_door_verdict(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "{\"TCP\":{\"8443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:8443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" }) {
+      RetireMemberPresent { member: _, evidence: _ } => true
+      _ => false
+    }
+}
+
+// THE ELEVATION CONTROL. sudo -n refuses with exit 1, the same code absence exits with, so the exit
+// code of a path probe cannot on its own tell "gone" from "never ran". The control asks about a
+// directory that is always there: only exit 0 proves the channel, and the argv is the fixed literal
+// test -d / -- never a roster path, so the control cannot accidentally be a probe of the roster.
+test fn the_elevation_control_proves_the_channel_before_any_absence_is_claimed() -> Bool {
+  ntfy_retire_elevation_control_argv == ["test", "-d", "/"]
+    && ntfy_retire_elevation_control_is_proven(exit_code: 0)
+    && !ntfy_retire_elevation_control_is_proven(exit_code: 1)
+    && !ntfy_retire_elevation_control_is_proven(exit_code: 2)
 }
 
 // THE FRONT DOOR. tailscale's own status is the account of what it serves: a route on the retired
