@@ -1,0 +1,99 @@
+module test.claim.outcome_laundering_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict, deleted_callable_route_is_gone, retained_callable_route_resolves }
+import std.process { ProcessExit }
+
+// THE OUTCOME-LAUNDERING FOLDS ARE GONE, each held by a keyed RED beside a lawful-path control.
+// Outcome types (CasOutcome, FilesystemCreateNew, FileHoldReleaseOutcome, ...) are unsealed and .dag has no
+// private fns, so an exported fn taking such an outcome and returning a success-bearing value lets any module
+// author the outcome and obtain the success with no effect. Three folds of that shape stood on main:
+//   - gunbc.durable_cas_file_store cas_outcome_from_create(attempt, target, created: FilesystemCreateNew, post)
+//     answered CasCommitted for an authored FilesystemCreated;
+//   - gunbc.deploy_transition_lease_store transition_lease_release_committed(location, outcome:
+//     FileHoldReleaseOutcome) answered TransitionLeaseReleased for an authored FileHoldReleased;
+//   - gunbc.host.managed_host_unit_hold probe_hold_release_committed(outcome: FileHoldReleaseOutcome) answered
+//     ProbeHoldReleased for an authored FileHoldReleased (found by sunny-swift-495, outside the first sweep);
+// All three are deleted; each success arm is inline beside the effect that earns it (cas_commit_at beside
+// Filesystem.WriteCreateNew*; transition_lease_release and kvm_observer_release_on_store_host beside
+// file_hold_release_commit). A foreign module cannot
+// import a function that does not exist, so each RED imports the deleted name in its import list and asserts
+// EXACTLY ONE blocking MissingExport keyed on that name, with the same-closure delta on top. Restore any fold
+// and its keyed row goes to zero and its claim reds, whatever else the closure carries. Each control imports
+// the lawful callable that stays (the refusal-only folds, the effectful release) and draws no MissingExport.
+// The RED and control helpers are shared: gunbc.compile_census_probe deleted_callable_route_is_gone.
+
+fn cas_probe(name: String, callable: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { NonEmptyStr, String }\n",
+    "import std.durable_compare_and_set { CasAttempt, CasOutcome, CasGeneration, CasSlotObservation }\n",
+    "import extdeps.filesystem.filesystem_io { FilesystemCreateNew, FilesystemCreated }\n",
+    "import gunbc.durable_cas_file_store { ", callable, " }\n",
+    body,
+  ], "")
+}
+
+fn release_probe(name: String, callable: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { NonEmptyStr, String }\n",
+    "import std.durable_compare_and_set { CasGeneration }\n",
+    "import gunbc.durable_exclusive_hold_file_store { FileHoldReleaseOutcome, FileHoldReleased }\n",
+    "import gunbc.deploy_transition_lease_store { TransitionLeaseHeld, TransitionLeaseRelease, ", callable, " }\n",
+    body,
+  ], "")
+}
+
+data cas_fold_route_source: String = cas_probe(name: "probe_outcome_laundering_cas_fold", callable: "cas_outcome_from_create", body: "fn f(a: CasAttempt<NonEmptyStr>, p: CasSlotObservation<NonEmptyStr>) -> CasOutcome<NonEmptyStr> {\n  cas_outcome_from_create(attempt: a, target: 1, created: FilesystemCreated { path: \"/cas/forged\" }, post: p)\n}\n")
+
+data cas_lawful_source: String = cas_probe(name: "probe_outcome_laundering_cas_lawful", callable: "cas_create_refusal", body: "fn f(a: CasAttempt<NonEmptyStr>, p: CasSlotObservation<NonEmptyStr>) -> CasOutcome<NonEmptyStr>? {\n  cas_create_refusal(attempt: a, created: FilesystemCreated { path: \"/cas/x\" }, post: p)\n}\n")
+
+data cas_baseline_source: String = cas_probe(name: "probe_outcome_laundering_cas_baseline", callable: "cas_create_refusal", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+
+data release_fold_route_source: String = release_probe(name: "probe_outcome_laundering_release_fold", callable: "transition_lease_release_committed", body: "fn f(l: String, k: NonEmptyStr, g: CasGeneration) -> TransitionLeaseRelease {\n  transition_lease_release_committed(location: l, outcome: FileHoldReleased { slot_key: k, generation: g })\n}\n")
+
+data release_lawful_source: String = release_probe(name: "probe_outcome_laundering_release_lawful", callable: "transition_lease_release", body: "fn f(h: TransitionLeaseHeld, by: NonEmptyStr) -> TransitionLeaseRelease {\n  transition_lease_release(held: h, released_by: by)\n}\n")
+
+data release_baseline_source: String = release_probe(name: "probe_outcome_laundering_release_baseline", callable: "transition_lease_release", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+
+fn host_probe(name: String, callable: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { Int, NonEmptyStr }\n",
+    "import gunbc.durable_exclusive_hold_file_store { FileHoldReleaseOutcome, FileHoldReleased }\n",
+    "import std.durable_exclusive_hold { DurableHoldReleaseRefusal }\n",
+    "import gunbc.host.managed_host_unit_hold { ProbeHoldReleaseOutcome, ", callable, " }\n",
+    body,
+  ], "")
+}
+
+data host_fold_route_source: String = host_probe(name: "probe_outcome_laundering_host_fold", callable: "probe_hold_release_committed", body: "fn f(k: NonEmptyStr, g: Int) -> ProbeHoldReleaseOutcome {\n  probe_hold_release_committed(outcome: FileHoldReleased { slot_key: k, generation: g })\n}\n")
+
+data host_lawful_source: String = host_probe(name: "probe_outcome_laundering_host_lawful", callable: "probe_hold_release_refused", body: "fn f(r: DurableHoldReleaseRefusal) -> ProbeHoldReleaseOutcome {\n  probe_hold_release_refused(refusal: r)\n}\n")
+
+data host_baseline_source: String = host_probe(name: "probe_outcome_laundering_host_baseline", callable: "probe_hold_release_refused", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+
+test fn no_outcome_can_be_folded_into_a_cas_commit() -> ProcessExit {
+  deleted_callable_route_is_gone(source: cas_fold_route_source, baseline: cas_baseline_source, deleted_callable: "cas_outcome_from_create")
+}
+
+test fn the_cas_refusal_only_fold_still_resolves() -> ProcessExit {
+  retained_callable_route_resolves(source: cas_lawful_source, baseline: cas_baseline_source, callable: "cas_create_refusal")
+}
+
+test fn no_outcome_can_be_folded_into_a_lease_release() -> ProcessExit {
+  deleted_callable_route_is_gone(source: release_fold_route_source, baseline: release_baseline_source, deleted_callable: "transition_lease_release_committed")
+}
+
+test fn the_effectful_lease_release_still_resolves() -> ProcessExit {
+  retained_callable_route_resolves(source: release_lawful_source, baseline: release_baseline_source, callable: "transition_lease_release")
+}
+
+test fn no_outcome_can_be_folded_into_a_probe_hold_release() -> ProcessExit {
+  deleted_callable_route_is_gone(source: host_fold_route_source, baseline: host_baseline_source, deleted_callable: "probe_hold_release_committed")
+}
+
+test fn the_probe_hold_refusal_classifier_still_resolves() -> ProcessExit {
+  retained_callable_route_resolves(source: host_lawful_source, baseline: host_baseline_source, callable: "probe_hold_release_refused")
+}

@@ -927,10 +927,17 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
 // the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
 // An authored `_` pattern is conserved by the wildcard pattern form lowering mints at its occurrence
 // (v2.std.node_query is_wildcard_pattern_identity); the form is the `_`'s lowering, not a different atom.
+// An authored `_` PARAMETER is conserved by the slot label v2.std.anonymous_binder mints on the SAME
+// declaration edge (the index entry is keyed by that edge's DeclaresAt occurrence, so the label read
+// here is the one minted for this very parameter). It is the only minted family that replaces an
+// authored atom's spelling: the fresh type, constructor-use, fold and return variables name no
+// authored atom, so no authored occurrence can reach them and they need no arm. Any other atom
+// meeting a minted label is still RespelledInNormalizedTree.
 fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
   found == identity
     || found == kernel_type_spelling_of(sym: identity)
     || ((identity == pattern_wildcard_name()) && is_wildcard_pattern_identity(sym: found))
+    || ((identity == pattern_wildcard_name()) && is_anonymous_param_label(sym: found))
 }
 
 // WHERE AN ERASED ATOM IS COUNTED. The module header first (its item is -1), then an atom whose

@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.procps.ps { ps_unit_runs_command }
 import extdeps.systemd { UnitLoadError, Failed }
-import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationReading,
@@ -17,6 +17,9 @@ import gunbc.runner.runner_slot_actuation {
   slot_drain_plan, slot_drain_read_back_holds,
   slot_actuation_reading_of,
   slot_activity_of_listing,
+  slot_task_count_of_show,
+  slot_activity_with_task_count,
+  SlotCgroupAbsent, SlotTasks, SlotTasksUnread,
   slot_actuation_reading_typed,
   SlotReadingTyped, SlotReadingUnknownWord,
   slot_actuation_argvs,
@@ -228,6 +231,64 @@ test fn a_missing_unit_is_not_installed_not_masked() -> Bool {
     && string_contains(s: slot_actuation_outcome_wire(o: SlotNotInstalled { unit: slot_u }), pattern: "not-installed")
     && !string_contains(s: slot_actuation_outcome_wire(o: SlotNotInstalled { unit: slot_u }), pattern: "masked-and-stopped")
     && slot_actuation_settled(o: SlotNotInstalled { unit: slot_u })
+}
+
+// A CRASH-LOOPING SLOT IS DRAINABLE, AND ONLY THE MANAGER'S OWN COUNT SAYS SO (srv1-02, 2026-10-30,
+// NRestarts 1714). The listing below attributes nothing; the show is what srv1 prints for an `activating`
+// slot in its restart delay -- a cgroup with zero tasks -- or for a unit with no workload cgroup. Either is
+// idle, so the drain plan masks and stops. The same blind listing beside a nonzero count is something alive
+// that ps did not attribute, and stays refused; an unparseable count refuses too; and a listing that does
+// show a Runner.Worker keeps the job, whatever the count says.
+data blind_listing: String = "- Runner.Worker\n- Runner.Listener\n"
+data crashloop_show: String = "ControlGroup=/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-02.service\nTasksCurrent=0\n"
+data no_cgroup_show: String = "ControlGroup=\nTasksCurrent=[not set]\n"
+data busy_show: String = "ControlGroup=/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-02.service\nTasksCurrent=7\n"
+data unset_show: String = "ControlGroup=/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-02.service\nTasksCurrent=[not set]\n"
+
+fn blind_with(show: String) -> SlotActivityObservation {
+  slot_activity_with_task_count(listing: slot_activity_of_listing(listing: blind_listing, unit: slot_u), tasks: slot_task_count_of_show(show_stdout: show))
+}
+
+test fn an_empty_crashlooping_slot_reads_idle_and_drains() -> Bool {
+  (match slot_task_count_of_show(show_stdout: crashloop_show) { SlotTasks { count: n } => n == 0  SlotCgroupAbsent => false  SlotTasksUnread { cause: _ } => false })
+    && (match slot_task_count_of_show(show_stdout: no_cgroup_show) { SlotCgroupAbsent => true  SlotTasks { count: _ } => false  SlotTasksUnread { cause: _ } => false })
+    && (match blind_with(show: no_cgroup_show) { SlotIdle => true  SlotActivityUnobserved { cause: _ } => false  SlotHasLiveWorker => false })
+    && (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "activating"), worker: blind_with(show: crashloop_show)) {
+      DrainSteps { steps: ss } => any(ss, st => st == systemctl_stop_argv(unit: slot_u))
+      DrainRefused { reason: _ } => false
+      DrainWaitForJob { mask: _ } => false
+      DrainWaitForStop { mask: _ } => false
+      DrainAlreadyMasked => false
+      DrainUnitNotInstalled => false
+    })
+}
+
+// RED: the blind listing with something alive under the unit, or with a count that is not a number,
+// still refuses the drain -- the task count admits only an empty or absent cgroup.
+test fn a_nonzero_or_unread_task_count_keeps_the_blind_listing_refused() -> Bool {
+  (match blind_with(show: busy_show) { SlotActivityUnobserved { cause: c } => string_contains(s: c as String, pattern: "TasksCurrent=7")  SlotIdle => false  SlotHasLiveWorker => false })
+    && (match blind_with(show: unset_show) { SlotActivityUnobserved { cause: _ } => true  SlotIdle => false  SlotHasLiveWorker => false })
+    && (match blind_with(show: "TasksCurrent=0\n") { SlotActivityUnobserved { cause: _ } => true  SlotIdle => false  SlotHasLiveWorker => false })
+    && (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: blind_with(show: busy_show)) {
+      DrainRefused { reason: _ } => true
+      DrainSteps { steps: _ } => false
+      DrainWaitForJob { mask: _ } => false
+      DrainWaitForStop { mask: _ } => false
+      DrainAlreadyMasked => false
+      DrainUnitNotInstalled => false
+    })
+}
+
+// The listing's own answers are not overridden: an attributed Runner.Worker is a job even beside a zero count.
+test fn an_attributed_worker_is_a_job_whatever_the_count() -> Bool {
+  match slot_activity_with_task_count(
+    listing: slot_activity_of_listing(listing: "actions-runner@srv3-18.service Runner.Worker\n", unit: slot_u),
+    tasks: SlotTasks { count: 0 },
+  ) {
+    SlotHasLiveWorker => true
+    SlotIdle => false
+    SlotActivityUnobserved { cause: _ } => false
+  }
 }
 
 // BLOCKER RED (review on ff67e67949): a listing whose unit column does not name the slot -- ps without
