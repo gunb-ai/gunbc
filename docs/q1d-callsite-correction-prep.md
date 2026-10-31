@@ -1,5 +1,7 @@
 # Q1d false-registry correction prep: the call-site side (read-only, nothing run)
 
+SCOPED OBSERVATION, not an inventory or a gate (DESIGN section 6): name-keyed syntactic extraction, misses aliased calls, not executed; first committed at revision 7a51287da5e1.
+
 Base: origin/main as fetched 2026-10-31 for call sites and host arms; registry rows are `builtin_signature` in src/v1/04_method.dag. Authority for each row is the HOST realization (src/v1/stage0/src/v1_interpreter.rs `arm "free_call.<name>"`). Companion to q1d-registry-census-note @ 2440bc94b281. Call sites were enumerated by paren-balanced argument extraction over every `.dag` under dag/ and src/v2/ (comment lines skipped): this is a name-keyed syntactic census, so it also counts uses that shadow the name and misses aliased calls; none was observed. Not executed through the checker.
 
 Method for "would refuse under Q1d": a call site refuses if the type of its argument at a position does not inhabit that position's DECLARED type in the current row. Types below are read from the call text and the enclosing fn signature, not measured.
@@ -7,7 +9,7 @@ Method for "would refuse under Q1d": a call site refuses if the type of its argu
 ## 1. compile_dag_rust_emit_check
 - Host arm: `(source: Str, file_path: Str, includes: List<Str>, excludes: List<Str>) -> Bool` (expect_str, expect_str, expect_str_list, expect_str_list).
 - Registry: `source, entry, expected, mode` all String. WRONG SIDE: the registry row. Names are stale and positions 3 and 4 are Lists.
-- Call sites: 635, ALL arity 4, ALL positional. 633 pass a list literal at positions 3 and 4; the other two pass a variable (match_arm_pattern_identity_emission_witness.dag:28 `markers`, `[]`; src/v2/test/claim/manual/unary_prefix_values.dag:91 `includes`, `excludes`). Every site matches the HOST. So every one of the 635 would refuse under a Q1d check against the CURRENT row (List at String, twice per site); none refuses against the corrected row. 129 files; list in docs/q1d-compile_dag_rust_emit_check-callsites.tsv (file, line, enclosing fn). Four are under src/v2/test.
+- Call sites: 635, ALL arity 4, ALL positional. 633 pass a list literal at positions 3 and 4; the other two pass a variable (match_arm_pattern_identity_emission_witness.dag:28 `markers`, `[]`; src/v2/test/claim/manual/unary_prefix_values.dag:91 `includes`, `excludes`). Every site matches the HOST. So every one of the 635 would refuse under a Q1d check against the CURRENT row (List at String, twice per site); none refuses against the corrected row. 129 files (the per-site listing was a one-off with no consumer and is not kept; re-derive with the same extraction). Four are under src/v2/test.
 - Corrected row text:
   `"compile_dag_rust_emit_check": BuiltinSignature { params: [BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "file_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "includes", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "excludes", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: bool_type },`
 - Consequence: Q1d must land WITH this row, or the check refuses 635 correct sites.
