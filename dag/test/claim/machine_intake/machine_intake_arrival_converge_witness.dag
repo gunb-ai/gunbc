@@ -104,7 +104,10 @@ import gunbc.machine_intake.bmc_secure {
   observation_with_controller_clock, apply_with_diverged_controller_clock, controller_clock_reading_same,
   admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
   GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
+  bmc_secure_phase_noop, BmcSecurePhaseConverged, BmcSecurePhaseRefused, PhaseNotHeld, PhaseReadingUnobserved,
+  inspect_bmc_secure_state, BmcSecureStateInspected, BmcSecureStateUnobserved,
 }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.external_authority { ExternalAuthority }
@@ -1836,7 +1839,7 @@ test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
 // ONE UNIT, ONE RUN (the P1-a fix). Every record the row joins is srv13's, and every one comes from ONE run
 // of the real producers:
 //   the 403                          -- srv13's committed factory-login capture of the 03.22.00 push, read
-//                                       through the credential-policy row's own verdict (controller_forced_at);
+//                                       through the credential-policy row's own verdict (forced_state_at);
 //   the authenticated Manager read   -- read_srv13_current_manager_read: srv13's post-rotation Redfish Manager
 //                                       read, digest-checked against that directory's SHA256SUMS;
 //   the account read before the write, -- dry_read_bmc_account_state / plan_bmc_account_action /
@@ -2092,46 +2095,6 @@ fn forced_bmc_inputs(readback: BmcAccountStateObservation) -> BmcSecureInputs {
   }
 }
 
-// AN ADMISSION OF THE FORCED FIRST WRITE, read at `endpoint` under `attempt`: the 403 the vendor build
-// answers, the route candidate the response cites, and one approval under QualifyByRotation. The
-// mismatched-pair RED consumes it; the matching-pair REDs use the sequence's own admission instead.
-fn controller_forced_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
-  match admit_published_credential_change_forced(
-    reading: controller_reading(
-      endpoint: endpoint,
-      attempt: attempt,
-      board: asrock_altrad8ud_board_authority,
-      login: "root" as NonEmptyStr,
-      status: 403,
-      body: srv13_forced_change_body,
-      capture: srv13_capture,
-      firmware: ForcedChangeBuildUnreadable,
-    ),
-  ) {
-    ForcedChangeAdmitted { state: s } => Present { value: s }
-    ForcedChangeRefused { cause: _ } => none
-  }
-}
-
-fn admitted_forced_write_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> AdmittedForcedFirstRotation? {
-  match controller_forced_at(endpoint: endpoint, attempt: attempt) {
-    Absent => none
-    Present { value: forced } => {
-      let request = root_write()
-      let standing = candidate(endpoint: endpoint, firmware: build_3_22(), request: request)
-      match admit_forced_first_rotation(
-        forced: forced,
-        standing: standing,
-        request: request,
-        approval: go(standing: standing, request: request, purpose: QualifyByRotation),
-      ) {
-        ForcedFirstRotationAdmitted { admitted: a } => Present { value: a }
-        ForcedFirstRotationRefused { cause: _ } => none
-      }
-    }
-  }
-}
-
 // AN AUTHENTICATED READ OF THE SAME CONTROLLER, SUBJECT AND ATTEMPT AT ANOTHER BUILD: the read a post-write
 // controller answers when its firmware is not the build the 403 inferred. Same producers, same world, a
 // different build identity -- the disagreement RED (iv) consumes it.
@@ -2165,9 +2128,6 @@ fn srv13_read_at_build(subject: MachineIntakeSubject, firmware: BmcFirmwareRelea
   )
 }
 
-// THE FORCED DRIVER, one call shape for every test below: the run, its subject, the pending it mints under its
-// own AccessDiscover instance, the authenticated read, the identity inputs, the prior-life world, the write's
-// transition, the admitted write, and BmcSecure's inputs.
 fn forced_fold(
   run: ConvergenceRunId,
   subject: StepSubjectKey,
@@ -2267,11 +2227,12 @@ test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs:
 }
 
 // (i) RED. A NON-FORCING build cannot take the row. mtjade1's build row answers no forced-change verdict, so
-// admit_published_credential_change_forced mints no forced state at all and the row admission is never reached
-// -- condition (a) is carried by the sealed PublishedCredentialChangeForced, and re-testing the policy row
-// here would be a validation where construction holds (DESIGN §5). Paired positive: the srv13 control above,
-// which takes the row on the same call shape.
-// Rung: the real fold driver; the row admission refuses before any step runs.
+// admit_published_credential_change_forced mints no forced state at all -- condition (a) is carried by the
+// sealed PublishedCredentialChangeForced, and re-testing the policy row here would be a validation where
+// construction holds (DESIGN §5). The control's second half then shows the row cannot be borrowed either: hand
+// srv13's own admitted write to a fold running under mtjade1's subject, authenticated read and identity inputs,
+// and the row admission refuses. Paired positive: the srv13 control above, identical but for the unit.
+// Rung: the real credential-policy verdict, then the real fold driver over the real producers.
 test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Bool uses fs: std.resources.Filesystem {
   match admit_published_credential_change_forced(
     reading: controller_reading(
@@ -2287,40 +2248,39 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
   ) {
     ForcedChangeAdmitted { state: _ } => false
     ForcedChangeRefused { cause: _ } =>
-      match admitted_forced_write_at(endpoint: srv13(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
+      match captured_leg_for_run(
+        run: run_a,
+        began: t_srv13_write_began,
+        finished: t_srv13_write_finished,
+      ) {
         Absent => false
-        Present { value: write } =>
-          match captured_leg_for_run(
+        Present { value: leg } =>
+          match forced_fold(
             run: run_a,
-            began: t_srv13_write_began,
-            finished: t_srv13_write_finished,
+            subject: mtjade1_key,
+            pending: forced_pending_for(run: run_a, subject: mtjade1_key, forced: leg.sequence.transition.leg.write.forced),
+            read: read_mtjade1_current_manager_read(),
+            bind: mtjade1_identity_bind_inputs(),
+            world: prior_life_minimal_dry_world(),
+            transition: leg.sequence.transition,
+            write: leg.sequence.transition.leg.write,
+            bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
           ) {
-            Absent => false
-            Present { value: leg } =>
-              match forced_fold(
-                run: run_a,
-                subject: mtjade1_key,
-                pending: forced_pending_for(run: run_a, subject: mtjade1_key, forced: write.forced),
-                read: read_mtjade1_current_manager_read(),
-                bind: mtjade1_identity_bind_inputs(),
-                world: prior_life_minimal_dry_world(),
-                transition: leg.sequence.transition,
-                write: write,
-                bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-              ) {
-                // mtjade1's authenticated read is not srv13's controller: the join refuses. The non-forcing
-                // build never reaches the row at all -- there is no forced state to carry it.
-                ArrivalForcedRowNotAdmitted { key: _ } => true
-                _ => false
-              }
+            // srv13's write folded under mtjade1's run: the controller join refuses. A non-forcing build never
+            // reaches the row at all -- there is no forced state to carry it.
+            ArrivalForcedRowNotAdmitted { key: _ } => true
+            _ => false
           }
       }
   }
 }
 
-// (ii) RED. A forced state from ANOTHER run or ANOTHER controller cannot take the row: the two sides disagree
-// with each other. Paired positive: the srv13 control above.
-// Rung: the real fold driver.
+// (ii) RED. A forced state from ANOTHER controller cannot take the row: the pending carries srv13's forced
+// state, while the write handed the ladder was admitted from ANOTHER controller's own 403, route standing and
+// approval (srv4's producers, run under the same attempt). Both are real admissions of real readings; what
+// refuses is that they are not the same controller's. Paired positive: the srv13 control above, where every
+// record is srv13's.
+// Rung: the real fold driver over the real producers of both controllers.
 test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
   match captured_leg_for_run(
     run: run_a,
@@ -2329,7 +2289,11 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
   ) {
     Absent => false
     Present { value: leg } =>
-      match admitted_forced_write_at(endpoint: another_controller(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
+      match foreign_leg_for_run(
+        run: run_a,
+        began: t_srv13_write_began,
+        finished: t_srv13_write_finished,
+      ) {
         Absent => false
         // The pending names srv13's forced state; the write was admitted for another controller.
         Present { value: foreign } =>
@@ -2341,7 +2305,7 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
             bind: srv13_identity_bind_inputs(),
             world: srv13_post_world(),
             transition: leg.sequence.transition,
-            write: foreign,
+            write: foreign.sequence.transition.leg.write,
             bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
           ) {
             ArrivalForcedRowNotAdmitted { key: _ } => true
@@ -2668,13 +2632,6 @@ test fn diag_positive_converged_prior_life_carries_inference() -> Bool uses fs: 
   }
 }
 
-test fn diag_foreign_write_admits() -> Bool {
-  match admitted_forced_write_at(endpoint: another_controller(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 test fn diag_non_forcing_credential_refused() -> Bool {
   match admit_published_credential_change_forced(
     reading: controller_reading(
@@ -2690,5 +2647,83 @@ test fn diag_non_forcing_credential_refused() -> Bool {
   ) {
     ForcedChangeAdmitted { state: _ } => false
     ForcedChangeRefused { cause: _ } => true
+  }
+}
+
+// ── TEMPORARY DIAGNOSTICS (deleted before the final evidence run) ─────────────────────────────
+test fn diag_phase_noop_converges() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match bmc_secure_phase_noop(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecurePhaseConverged { receipt: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn diag_phase_refused_reading_unobserved() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match bmc_secure_phase_noop(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecurePhaseRefused { cause: PhaseReadingUnobserved { cause: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn diag_phase_refused_not_held() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match bmc_secure_phase_noop(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecurePhaseRefused { cause: PhaseNotHeld { decision: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn diag_assessment_satisfied() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } => match a { GoalSatisfied { evidence: _ } => true  _ => false }
+        BmcSecureStateUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn diag_assessment_diverged() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } => match a { GoalDiverged { deviations: _ } => true  _ => false }
+        BmcSecureStateUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn diag_assessment_indeterminate() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } => match a { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
+        BmcSecureStateUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn diag_assessment_refused() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
+        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } => match a { GoalAssessmentRefused { cause: _ } => true  _ => false }
+        BmcSecureStateUnobserved { cause: _ } => false
+      }
   }
 }
