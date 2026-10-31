@@ -21,7 +21,9 @@ import gunbc.durable_append_log_store {
   AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
   append_log_census_slot, MemberCensusRow, MigrateToLogStore,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
+import std.durable_append_log { MemberWriterPolicy, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, AppendWriteIntent, IntentCreateEmpty, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, AppendWriterStanding, WriterWindowReleased, append_write_admission }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt {
   verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename,
@@ -652,4 +654,69 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
         else
           AttemptAppendLogUnready { detail: join(["the member directory ", member_dir, " could not be listed; a member is never treated as absent from a failed read"], "") }
     }
+}
+
+// THE HOST-SIDE CREATE, through the SEALED store, for the HostCreatesThenSandboxWrites window. The host's only
+// write under that window is this create, admitted only while the member does not exist; the window then passes
+// to the sandbox by the member's existence (contract: std.durable_append_log append_write_admission, standing
+// WriterWindowReleased -- NO hold to acquire or release). The dedicated-account branch keeps the old
+// group-writable mode at creation; the service-user branch was historically an overwrite-capable Write, but the
+// store op is CREATE-NEW on BOTH branches so an existing member is a typed outcome (AlreadyExists), never an
+// overwrite. Business key only; the path is derived from the sealed attempt-state record, never supplied.
+// The dedicated-account events member is group-writable AT CREATION (owner rw, group rw, other none), never
+// widened afterwards -- the same FileMode value dispatch_attempt_events_initialize_for_instance created it with
+// (declared there as dispatch_attempt_events_group_writable_mode). Declared here as a local copy because the
+// seal module must not import the dispatch actuator (it would cycle: the actuator already imports this module).
+// PR body notes the single-source intent.
+data attempt_append_log_events_group_writable_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: true, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+type AttemptAppendLogHostCreate
+  = AttemptAppendLogCreated { path: String }
+  | AttemptAppendLogAlreadyExists { path: String }
+  | AttemptAppendLogCreateRefused { detail: String }
+  | AttemptAppendLogUnready { detail: String }
+  | AttemptAppendLogLegacyRefused { cause: AppendLogLegacyCause }
+
+fn attempt_append_log_refusal_detail(refusal: AppendWriteRefusal) -> String {
+  match refusal {
+    WriterNotAuthorizedByPolicy => "the host is not the authorized writer for this member"
+    WriterWindowHeldByAnother { holder: _ } => "the writer window is held by another principal"
+    WriterWindowNotOpen => "the writer window is not open"
+    HostWriteDuringSandboxWindow { holder: _ } => "a host write was attempted during the sandbox window"
+    WriterStandingUnknown { cause: c } => join(["the writer standing is unobserved: ", c], "")
+    CreateOverExistingMember => "the member already exists; create-new will not overwrite it"
+  }
+}
+
+fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> AttemptAppendLogHostCreate {
+  match attempt_append_log_store_open(instance: instance, node: node, attempt_key: attempt_key, member: member) {
+    AttemptAppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+    AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
+    AttemptAppendLogReady { store: sealed } => match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+      AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
+      AttemptStateReady { store: as_store } =>
+        let member_path = attempt_state_member_path(store: as_store, member: member)
+        let exists_read = Filesystem.Read(path: member_path)
+        let member_exists = exists_read.success
+        match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: member_exists) {
+          AppendWriteAdmitted => match instance.worker {
+            WorkerDedicatedAccount =>
+              let created = Filesystem.WriteCreateNewWithMode(path: member_path, content: "", mode: file_mode_bits(mode: attempt_append_log_events_group_writable_mode))
+              if created.success { AttemptAppendLogCreated { path: member_path } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+            WorkerIsServiceUser =>
+              let created = Filesystem.WriteCreateNew(path: member_path, content: "")
+              if created.success { AttemptAppendLogCreated { path: member_path } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+          }
+          AppendWriteRefused { refusal: r } => match r {
+            CreateOverExistingMember => AttemptAppendLogAlreadyExists { path: member_path }
+            _ => AttemptAppendLogCreateRefused { detail: attempt_append_log_refusal_detail(refusal: r) }
+          }
+        }
+    }
+  }
 }
