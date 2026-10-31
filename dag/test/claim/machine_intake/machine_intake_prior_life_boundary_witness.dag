@@ -25,6 +25,7 @@ import gunbc.fleet.convergence_fold {
 import test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness { srv13_forced_write_transition }
 import gunbc.machine_intake.bmc_credential_policy { FactoryLoginForcesPasswordChange }
 import gunbc.machine_intake.prior_life_boundary { ForcedWritePreservesArchiveInference, PriorLifeForcedWriteContext, prior_life_forced_write_context, forced_write_preserves_archive_inference }
+import gunbc.machine_intake.bmc_rotation_route { RedfishAccountPasswordWrite }
 import std.scoped_authorization { AttemptIdentity }
 import std.types { EpochMs }
 import gunbc.machine_intake.prior_life_boundary {
@@ -465,18 +466,19 @@ fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs) -> PriorLifeArchiv
 fn forced_ctx(pre: PriorLifeArchive?, began: EpochMs, finished: EpochMs) -> PriorLifeForcedWriteContext? {
   match srv13_forced_write_transition(subject: subject_p(), pre_capture: pre, began_millis: began, finished_millis: finished) {
     Absent => none
-    Present { value: tr } =>
-      match forced_write_preserves_archive_inference(
-        write: tr.leg.write,
-        vendor_row: tr.leg.write.forced.key,
-        vendor_behaviour: FactoryLoginForcesPasswordChange {
-          requirement: tr.leg.write.forced.requirement,
-          evidence: tr.leg.write.forced.policy_evidence,
-        },
-      ) {
-        Absent => none
-        Present { value: inf } => prior_life_forced_write_context(inference: inf, transition: tr)
-      }
+    Present { value: tr } => Present {
+      value: prior_life_forced_write_context(
+        inference: forced_write_preserves_archive_inference(
+          write: tr.leg.write,
+          vendor_row: tr.leg.write.forced.key,
+          vendor_behaviour: FactoryLoginForcesPasswordChange {
+            requirement: tr.leg.write.forced.requirement,
+            evidence: tr.leg.write.forced.policy_evidence,
+          },
+        ),
+        transition: tr,
+      ),
+    }
   }
 }
 
@@ -541,7 +543,10 @@ test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bo
             // run keeps names the write the inference is about, so "the write changes only the password"
             // stays an inference on the record rather than an assertion in a comment.
             PriorLifeArchiveEstablished { receipt: r } => match r.forced_write_inference {
-              Present { value: i } => (i.write.request.account as String) == "root"
+              Present { value: i } => match i.write.request {
+                RedfishAccountPasswordWrite { account: acct, transport_operation: _, action_shape: _ } => (acct as String) == "root"
+                _ => false
+              }
               Absent => false
             }
             _ => false

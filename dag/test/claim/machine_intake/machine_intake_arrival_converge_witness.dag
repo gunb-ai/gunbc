@@ -1962,7 +1962,7 @@ fn forced_bmc_inputs(subject: MachineIntakeSubject, readback: BmcAccountStateObs
 // answers, the route candidate the response cites, and one approval under QualifyByRotation. The
 // mismatched-pair RED consumes it; the matching-pair REDs use the sequence's own admission instead.
 fn controller_forced_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
-  admit_published_credential_change_forced(
+  match admit_published_credential_change_forced(
     reading: controller_reading(
       endpoint: endpoint,
       attempt: attempt,
@@ -1973,7 +1973,10 @@ fn controller_forced_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentit
       capture: srv13_capture,
       firmware: ForcedChangeBuildUnreadable,
     ),
-  )
+  ) {
+    ForcedChangeAdmitted { state: s } => Present { value: s }
+    ForcedChangeRefused { cause: _ } => none
+  }
 }
 
 fn admitted_forced_write_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> AdmittedForcedFirstRotation? {
@@ -2381,7 +2384,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
                     && match l.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
                       Present { value: s } => match s {
                         InstanceRefused { key: _, cause: c } => match c {
-                          BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: _, read: _ } => true
+                          DomainRefused { cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: _, read: _ } } => true
                           _ => false
                         }
                         _ => false
