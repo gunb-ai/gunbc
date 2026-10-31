@@ -604,6 +604,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("roster-rehome-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_rehome.dag",
+                function: "rehome_controls_wire",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",

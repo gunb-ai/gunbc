@@ -858,6 +858,16 @@ fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
 }
 
+// The rehoming generator's controls (v2.workflow.roster_rehome): identity matching, the import move, qualified uses, the
+// planner record, the representation census and its refusals, plus the real Int pair's verdict.
+fn roster_rehome_controls_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-rehome-controls" } }
+}
+
+fn roster_rehome_controls_binding() -> TargetBinding {
+  TargetBinding { target: roster_rehome_controls_label() producer: CliWireProgramProducer { entry: "src/v2/workflow/roster_rehome.dag" function: "rehome_controls_wire" } }
+}
+
 fn append_chain_ladder_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "append-chain-ladder" } }
 }
@@ -1381,7 +1391,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
