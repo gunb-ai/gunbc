@@ -22,17 +22,19 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_admitted_revision_source, WorkerIsServiceUser, WorkerDedicatedAccount,
 }
 import gunbc.roadmap.roadmap_attempt_state_store {
-  AttemptStateMember, AttemptWorkerEvents,
+  AttemptWorkerEvents,
   attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
-  AttemptAppendLogCreateRefused, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
-  attempt_state_open, AttemptStateReady, AttemptStateUnready,
-  attempt_state_member_directory, attempt_state_directory_path, attempt_state_member_path,
+  AttemptAppendLogCreateRefused,
+  attempt_state_provision, AttemptStateProvision, attempt_state_provision_directory,
+  attempt_log_member_directory,
   attempt_append_log_events_group_writable_mode,
 }
 import std.durable_append_log {
   MemberWriterPolicy, HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty,
-  AppendWriteAdmitted, AppendWriteRefused, WriterStandingUnknown, append_write_admission,
+  AppendWriteAdmitted, AppendWriteRefused, WriterStandingUnknown, WriterStandingUnobserved, append_write_admission,
 }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_appendlog.XXXXXX").path
@@ -73,12 +75,9 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
 // The per-attempt member directory the dispatch prepare step would have made before the create; the create is
 // driven the way the provider drives it, over a directory that already exists.
 fn ensure_member_dir(instance: HostDashboardInstance) -> Bool {
-  match attempt_state_open(instance: instance, node: "wet-node", attempt_key: "wet-key") {
-    AttemptStateUnready { detail: _ } => false
-    AttemptStateReady { store: s } =>
-      let dir = attempt_state_directory_path(store: s, directory: attempt_state_member_directory(member: AttemptWorkerEvents))
-      shell.Mkdir.Parents(path: dir as FilePath).success
-  }
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptWorkerEvents))
+  shell.Mkdir.Parents(path: dir as FilePath).success
 }
 
 // WET GREEN, SERVICE USER: the host create makes the member and it reads back present.
@@ -114,7 +113,7 @@ fn dedicated_create_mode_cell(instance: HostDashboardInstance) -> Bool {
   match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
     AttemptAppendLogCreated { path: p, created_mode: m } =>
       match m {
-        Present { value: mode } => ensured && file_mode_octal(mode: mode) == "660" && Filesystem.Read(path: p).success
+        Present { value: mode } => ensured && file_mode_octal(mode: mode) == "0660" && Filesystem.Read(path: p).success
         Absent => false
       }
     _ => false
@@ -146,7 +145,7 @@ fn already_exists_cell(instance: HostDashboardInstance) -> Bool {
 // PURE (executed claim): the contract refuses a host create whose writer standing is unobserved -- the host cannot
 // mint its own standing to slip a create past the window.
 test fn the_unobserved_standing_refuses_a_host_create() -> Bool {
-  match append_write_admission(policy: HostCreatesThenSandboxWrites, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterStandingUnobserved { cause: "no window observed" }, member_exists: false) {
+  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterStandingUnobserved { cause: "no window observed" }, member_exists: false) {
     AppendWriteRefused { refusal: r } => match r {
       WriterStandingUnknown { cause: _ } => true
       _ => false
