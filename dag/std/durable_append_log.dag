@@ -1,11 +1,12 @@
 module std.durable_append_log
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.nat { Nat, nat_add }
-import std.measure { ByteSize, measure_add }
+import std.types { NonEmptyStr, String, Bool, Int, List, list_length }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { ByteSize }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set {
-  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasUnreadableSlot,
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasUnreadableSlot, CasUnreadableMalformed,
   cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted, cas_generation,
 }
 import std.durable_exclusive_hold {
@@ -100,21 +101,24 @@ type AppendLogReadback
   | AppendLogStandingUnobserved { cause: NonEmptyStr }
   | AppendLogUnreadable { cause: CasUnreadableSlot }
 
-// THE RECORD COUNT IS DERIVED, never carried beside the records: a second count could disagree with the list
-// and position the next append over a record that already exists.
-fn append_record_count(records: List<String>) -> Nat {
-  match records {
-    Empty {} => 0
-    Cons { head: _, tail: rest } => nat_add(a: 1, b: append_record_count(records: rest))
+// THE RECORD COUNT IS DERIVED from the returned records by the one list length (std.types list_length) and
+// the one checked crossing to a natural number, never carried beside them: a second count could disagree with
+// the list and position the next append over a record that already exists.
+fn append_stream_head(observed: AppendStreamObservation) -> AppendLogHead? {
+  match checked_int_to_nat(n: list_length(items: observed.complete_records)) {
+    Present { value: n } => Present { value: AppendLogHead { record_count: n, byte_length: observed.settled_bytes } }
+    Absent => Absent
   }
 }
 
-fn append_stream_head(observed: AppendStreamObservation) -> AppendLogHead {
-  AppendLogHead { record_count: append_record_count(records: observed.complete_records), byte_length: observed.settled_bytes }
+fn append_stream_readback(observed: AppendStreamObservation, standing: AppendWriterStanding) -> AppendLogReadback {
+  match append_stream_head(observed: observed) {
+    Absent => AppendLogUnreadable { cause: CasUnreadableMalformed { detail: "record count is not a natural number" as NonEmptyStr } }
+    Present { value: head } => append_stream_readback_at(observed: observed, standing: standing, head: head)
+  }
 }
 
-fn append_stream_readback(observed: AppendStreamObservation, standing: AppendWriterStanding) -> AppendLogReadback {
-  let head = append_stream_head(observed: observed)
+fn append_stream_readback_at(observed: AppendStreamObservation, standing: AppendWriterStanding, head: AppendLogHead) -> AppendLogReadback {
   match standing {
     WriterStandingUnobserved { cause: c } => AppendLogStandingUnobserved { cause: c }
     WriterHoldsWindow { owner: o } => AppendLogOpenPrefix { records: observed.complete_records, head: head, writer: o }

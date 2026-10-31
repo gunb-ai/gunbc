@@ -3,6 +3,7 @@ module gunbc.durable_append_log_store
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.durable_cas_file_store { cas_key_generation_of_name }
 import std.durable_append_log {
@@ -40,6 +41,11 @@ type AppendLogStore sole_constructor {
   parent: NonEmptyStr
   slot: AppendLogSlot
 }
+
+// THE MINT'S CONSUMER IS A DECLARED FRONTIER, not a gap: the typed row below names the consumer and the trigger.
+data append_log_mint_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "append_log_store_mint is called by no code today because the only producer of an AppendLogParent is the owning cohort's sealed store, and the attempt-state store (gunbc.roadmap.roadmap_attempt_state_store) does not yet declare its log members as AppendLogSlot rows. DISSOLVES WHEN the implementation lane that flips floor_expected_red_chunk_append_log_store makes the attempt-state store mint each census MigrateToLogStore member through append_log_store_mint over its own parent handle, SUFFICIENT FOR the two expecting-red claims to pass and for a generic attempt_state_write of a log member to be refused",
+)
 
 // THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
 // different framing (a generation file where a stream is declared, or the reverse) or a second file claiming
