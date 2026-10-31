@@ -1651,10 +1651,12 @@ pub fn global_bare_owner_module(
             module_path: mp,
             binding: b,
             ..
-        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
-            true => Some(mp.clone()),
-            false => std::option::Option::None,
-        },
+        }) => {
+            match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+                true => Some(mp.clone()),
+                false => std::option::Option::None,
+            }
+        }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => match global_bare_policy_candidate(owner_module_path, cands.clone()) {
@@ -1948,13 +1950,35 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
+pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    if v1_rt::name_resolution_policy_is_namespace_only() {
+        let declarer_segs = module_path_segments(declarer.clone());
+        segment_lcp_len(
+            declarer_segs.clone(),
+            module_path_segments(env.module_path.clone()),
+        ) == (declarer_segs.clone().len() as i64)
+            || (import_visible_name(env.clone(), name.clone())
+                && env.parents.iter().cloned().any(|p| p.module_path == declarer))
+    } else {
+        true
+    }
+}
+
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: declarer,
+            binding,
+            ..
+        }) => {
+            if global_bare_declarer_in_scope(env.clone(), name.clone(), declarer.clone()) {
+                Some(binding.clone())
+            } else {
+                std::option::Option::None
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -4569,7 +4593,9 @@ pub fn declaration_named_by_type_name(
                         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                             module_path: mp,
                             ..
-                        }) => Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone())),
+                        }) => {
+                            Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone()))
+                        }
                         _ => std::option::Option::None,
                     }
                 }
