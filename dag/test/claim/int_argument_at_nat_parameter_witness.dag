@@ -65,3 +65,16 @@ test fn a_non_negative_literal_at_a_nat_parameter_is_accepted() -> Bool {
 test fn a_negative_literal_at_a_nat_parameter_must_refuse() -> Bool {
   ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "-5")) >= 1
 }
+
+// CONTROL (widening, the converse direction): a Nat value at an Int parameter is admitted. Nat to Int is the
+// NonNegative injection std.integer declares for Int = NonNegative { n: Nat } | Negative { pred: Nat }: total and
+// exact, so it IS in the implicit-safe subset (DESIGN section 4). It shows the RED above refuses the NARROWING and
+// not every Nat/Int crossing. Status on the current seed is unknown until run; a refusal here is a separate finding
+// against the widening, not a verdict on the RED.
+fn ian_widening_source() -> String {
+  "module ian.widening\n\nimport std.types { Int, String }\n\nimport std.nat { Nat }\n\nfn take_int(i: Int) -> String {\n  \"\"\n}\n\nfn probe(v: Nat) -> String {\n  take_int(i: v)\n}\n"
+}
+
+test fn a_nat_value_at_an_int_parameter_is_accepted() -> Bool {
+  ian_refusal_count(source: ian_widening_source()) == 0
+}
