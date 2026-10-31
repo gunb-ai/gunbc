@@ -6,8 +6,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import extdeps.filesystem.linux {
   LinuxProcMountsParse, LinuxProcMountsParsed, LinuxProcMountsRefused, LinuxProcMountRow,
-  linux_filesystem_is_memory_backed, linux_proc_mount_is_read_only,
-  LinuxOverlayFs, LinuxSquashFs, LinuxJffs2, OtherLinuxFilesystem, LinuxFilesystemKind,
+  linux_proc_mount_is_read_only, linux_filesystem_mount_type, linux_filesystem_persistence,
+  LinuxFilesystemKeepsNothing, LinuxFilesystemMayPersist, LinuxFilesystemPersistenceUncited,
 }
 import gunbc.runner.runner_lost_boot_sweep_run { CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved }
 import gunbc.runner.runner_teardown_receipt {
@@ -34,19 +34,30 @@ import gunbc.runner.runner_teardown_receipt {
 type MachineBootVolatility
   = MachineBootRamOnly
   | MachineBootHoldsWritablePersistence { target: NonEmptyStr, filesystem: NonEmptyStr }
+  | MachineBootMountUncited { target: NonEmptyStr, filesystem: NonEmptyStr, read_obligation: NonEmptyStr }
   | MachineBootMountsUnread { cause: NonEmptyStr }
 
-fn mount_type_text(kind: LinuxFilesystemKind) -> NonEmptyStr {
-  match kind {
-    LinuxOverlayFs => "overlay" as NonEmptyStr
-    LinuxSquashFs => "squashfs" as NonEmptyStr
-    LinuxJffs2 => "jffs2" as NonEmptyStr
-    OtherLinuxFilesystem { mount_type: t } => t
+// ONE MOUNT'S STANDING: a read-only mount keeps nothing the attempt wrote, whatever its kind; a writable one keeps
+// nothing only when its kind is memory-only and cited (extdeps.filesystem.linux linux_filesystem_persistence).
+fn mount_volatility(row: LinuxProcMountRow) -> MachineBootVolatility {
+  if linux_proc_mount_is_read_only(row: row) {
+    MachineBootRamOnly
+  } else {
+    let fs = linux_filesystem_mount_type(kind: row.mount.filesystem)
+    match linux_filesystem_persistence(kind: row.mount.filesystem) {
+      LinuxFilesystemKeepsNothing { filesystem: _ } => MachineBootRamOnly
+      LinuxFilesystemMayPersist => MachineBootHoldsWritablePersistence { target: row.mount.target, filesystem: fs }
+      LinuxFilesystemPersistenceUncited { filesystem: _, read_obligation: o } =>
+        MachineBootMountUncited { target: row.mount.target, filesystem: fs, read_obligation: o }
+    }
   }
 }
 
-fn mount_keeps_nothing(row: LinuxProcMountRow) -> Bool {
-  linux_proc_mount_is_read_only(row: row) || linux_filesystem_is_memory_backed(kind: row.mount.filesystem)
+fn volatility_is_ram_only(v: MachineBootVolatility) -> Bool {
+  match v {
+    MachineBootRamOnly => true
+    _ => false
+  }
 }
 
 // A WRITABLE MOUNT THAT IS NOT MEMORY-BACKED REFUSES, whatever it is: a disk, an overlay (its upper layer is not
@@ -61,10 +72,9 @@ fn machine_boot_volatility(mounts: LinuxProcMountsParse) -> MachineBootVolatilit
       if rows.length() == 0 {
         MachineBootMountsUnread { cause: "the boot's /proc/mounts named no mount, so its persistence is unread" as NonEmptyStr }
       } else {
-        match rows |> filter(row => !mount_keeps_nothing(row: row)) |> first {
+        match rows |> map(row => mount_volatility(row: row)) |> filter(v => !volatility_is_ram_only(v: v)) |> first {
           Absent => MachineBootRamOnly
-          Present { value: row } =>
-            MachineBootHoldsWritablePersistence { target: row.mount.target, filesystem: mount_type_text(kind: row.mount.filesystem) }
+          Present { value: v } => v
         }
       }
   }
@@ -89,6 +99,8 @@ fn admit_machine_boot_inventory(boot: CurrentBootObservation, mounts: LinuxProcM
       } else {
         match machine_boot_volatility(mounts: mounts) {
           MachineBootMountsUnread { cause: c } => MachineBootRefused { cause: c }
+          MachineBootMountUncited { target: t, filesystem: f, read_obligation: o } =>
+            MachineBootRefused { cause: join(["the boot's writable ", f as String, " mount at ", t as String, " is classed memory-only without a citation: ", o as String], "") as NonEmptyStr }
           MachineBootHoldsWritablePersistence { target: t, filesystem: f } =>
             MachineBootRefused { cause: join(["the boot holds a writable ", f as String, " mount at ", t as String, ", so powering it off does not tear the attempt down"], "") as NonEmptyStr }
           MachineBootRamOnly =>

@@ -12,7 +12,10 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 import product.host_identity { HostIdentity }
 import extdeps.exec.command { argv_words }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
-import extdeps.filesystem.linux { linux_proc_mounts_parse }
+import extdeps.filesystem.linux {
+  linux_proc_mounts_parse, linux_filesystem_kind_from_mount_type, linux_memory_only_filesystems, linux_memory_only_filesystem_row,
+  linux_filesystem_persistence, LinuxMemoryOnlyFs, LinuxFilesystemKeepsNothing,
+}
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
 import gunbc.runner.runner_usage_receipt { RunnerAttemptSubject }
@@ -68,6 +71,18 @@ test fn a_boot_whose_writable_mounts_are_all_memory_backed_is_ram_only() -> Bool
     MachineBootRamOnly => true
     _ => false
   }
+}
+
+// THE PARSER'S ROSTER IS THE TYPE'S: every memory-only arm's wire name parses back to that arm, its persistence is
+// keeps-nothing (its row is cited), and no two arms share a wire name.
+test fn every_memory_only_filesystem_round_trips_through_the_parser_and_keeps_nothing() -> Bool {
+  let names = linux_memory_only_filesystems |> map(f => linux_memory_only_filesystem_row(filesystem: f).mount_type as String)
+  linux_memory_only_filesystems |> all(f => {
+      let kind = linux_filesystem_kind_from_mount_type(mount_type: linux_memory_only_filesystem_row(filesystem: f).mount_type)
+      (kind == LinuxMemoryOnlyFs { filesystem: f })
+        && (match linux_filesystem_persistence(kind: kind) { LinuxFilesystemKeepsNothing { filesystem: g } => g == f _ => false })
+    })
+    && names |> all(n => (names |> filter(m => m == n)).length() == 1)
 }
 
 // RED: each writable persistent mount refuses on its own, beside an otherwise RAM-only table -- a disk, firmware

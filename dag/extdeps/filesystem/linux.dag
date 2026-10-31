@@ -4,9 +4,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { trim }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Https, Uri }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, cited_figure_read_obligation }
+import extdeps.uri { Https, Uri, uri_https }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,7 +34,34 @@ type LinuxFilesystemKind
   = LinuxOverlayFs
   | LinuxSquashFs
   | LinuxJffs2
+  | LinuxMemoryOnlyFs { filesystem: LinuxMemoryOnlyFilesystem }
   | OtherLinuxFilesystem { mount_type: NonEmptyStr }
+
+// THE KERNEL FILESYSTEMS WHOSE CONTENT EXISTS ONLY IN MEMORY: tmpfs and ramfs (and the initramfs rootfs, one of them)
+// hold pages and nothing else, and the rest are kernel interfaces with no backing store, so a mount of one keeps
+// nothing across a power cycle. Each arm's wire name and the authority that says so are linux_memory_only_filesystem_row.
+// Deliberately NOT here: efivarfs and pstore (interfaces to firmware NVRAM, which persists), overlay (its persistence
+// is its upper layer's), squashfs and jffs2 (images on a device). A type that is not an arm stays OtherLinuxFilesystem,
+// which may persist: absence from this type is never evidence of volatility.
+type LinuxMemoryOnlyFilesystem
+  = LinuxTmpfs
+  | LinuxRamfs
+  | LinuxRootfs
+  | LinuxProcFs
+  | LinuxSysfs
+  | LinuxDevtmpfs
+  | LinuxDevpts
+  | LinuxCgroupV1
+  | LinuxCgroupV2
+  | LinuxMqueue
+  | LinuxSecurityfs
+  | LinuxDebugfs
+  | LinuxTracefs
+  | LinuxConfigfs
+  | LinuxFusectl
+  | LinuxBpfFs
+  | LinuxHugetlbfs
+  | LinuxBinfmtMisc
 
 // LinuxFilesystemKind is the upstream /proc/mounts filesystem-type wire axis needed to distinguish an overlay mount from squashfs/JFFS2 backing storage. It is not std.os.types.FileSystemSemantics, whose Posix/Ntfs/Apfs/WslPathTranslation arms describe cross-platform path and process semantics. Linux mount-type names are an open kernel/userspace vocabulary, so OtherLinuxFilesystem preserves the exact unrecognized wire value and cannot be mistaken for any persistence-relevant known arm.
 type LinuxMountObservation {
@@ -111,7 +139,87 @@ type LinuxFilePublicationProtocol
 
 data linux_synchronized_rename_replace_publication: LinuxFilePublicationProtocol = LinuxSynchronizedRenameReplacePublication
 
+type LinuxMemoryOnlyFilesystemRow {
+  mount_type: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn linux_memory_only_cited(locator: NonEmptyStr) -> CitedFigureStanding {
+  CitedToAuthority { authority: ExternalAuthority { uri: uri_https(locator: locator) } }
+}
+
+fn linux_memory_only_filesystem_row(filesystem: LinuxMemoryOnlyFilesystem) -> LinuxMemoryOnlyFilesystemRow {
+  match filesystem {
+    LinuxTmpfs => LinuxMemoryOnlyFilesystemRow { mount_type: "tmpfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/tmpfs.html") }
+    LinuxRamfs => LinuxMemoryOnlyFilesystemRow { mount_type: "ramfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/ramfs-rootfs-initramfs.html") }
+    LinuxRootfs => LinuxMemoryOnlyFilesystemRow { mount_type: "rootfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/ramfs-rootfs-initramfs.html") }
+    LinuxProcFs => LinuxMemoryOnlyFilesystemRow { mount_type: "proc", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/proc.html") }
+    LinuxSysfs => LinuxMemoryOnlyFilesystemRow { mount_type: "sysfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/sysfs.html") }
+    LinuxDevtmpfs => LinuxMemoryOnlyFilesystemRow { mount_type: "devtmpfs", standing: linux_memory_only_cited(locator: "github.com/torvalds/linux/blob/v6.8/drivers/base/devtmpfs.c") }
+    LinuxDevpts => LinuxMemoryOnlyFilesystemRow { mount_type: "devpts", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/devpts.html") }
+    LinuxCgroupV1 => LinuxMemoryOnlyFilesystemRow { mount_type: "cgroup", standing: linux_memory_only_cited(locator: "docs.kernel.org/admin-guide/cgroup-v1/cgroups.html") }
+    LinuxCgroupV2 => LinuxMemoryOnlyFilesystemRow { mount_type: "cgroup2", standing: linux_memory_only_cited(locator: "docs.kernel.org/admin-guide/cgroup-v2.html") }
+    LinuxMqueue => LinuxMemoryOnlyFilesystemRow { mount_type: "mqueue", standing: linux_memory_only_cited(locator: "man7.org/linux/man-pages/man7/mq_overview.7.html") }
+    LinuxSecurityfs => LinuxMemoryOnlyFilesystemRow { mount_type: "securityfs", standing: linux_memory_only_cited(locator: "github.com/torvalds/linux/blob/v6.8/security/inode.c") }
+    LinuxDebugfs => LinuxMemoryOnlyFilesystemRow { mount_type: "debugfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/debugfs.html") }
+    LinuxTracefs => LinuxMemoryOnlyFilesystemRow { mount_type: "tracefs", standing: linux_memory_only_cited(locator: "docs.kernel.org/trace/ftrace.html") }
+    LinuxConfigfs => LinuxMemoryOnlyFilesystemRow { mount_type: "configfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/configfs.html") }
+    LinuxFusectl => LinuxMemoryOnlyFilesystemRow { mount_type: "fusectl", standing: linux_memory_only_cited(locator: "docs.kernel.org/filesystems/fuse.html") }
+    LinuxBpfFs => LinuxMemoryOnlyFilesystemRow { mount_type: "bpf", standing: linux_memory_only_cited(locator: "github.com/torvalds/linux/blob/v6.8/kernel/bpf/inode.c") }
+    LinuxHugetlbfs => LinuxMemoryOnlyFilesystemRow { mount_type: "hugetlbfs", standing: linux_memory_only_cited(locator: "docs.kernel.org/admin-guide/mm/hugetlbpage.html") }
+    LinuxBinfmtMisc => LinuxMemoryOnlyFilesystemRow { mount_type: "binfmt_misc", standing: linux_memory_only_cited(locator: "docs.kernel.org/admin-guide/binfmt-misc.html") }
+  }
+}
+
+// THE PARSER'S ROSTER OF THE ARMS ABOVE. An arm missing here parses as OtherLinuxFilesystem, which may persist, so the
+// omission refuses rather than admits; the witness round-trips every arm through the parser.
+data linux_memory_only_filesystems: List<LinuxMemoryOnlyFilesystem> = [
+  LinuxTmpfs, LinuxRamfs, LinuxRootfs, LinuxProcFs, LinuxSysfs, LinuxDevtmpfs, LinuxDevpts, LinuxCgroupV1, LinuxCgroupV2,
+  LinuxMqueue, LinuxSecurityfs, LinuxDebugfs, LinuxTracefs, LinuxConfigfs, LinuxFusectl, LinuxBpfFs, LinuxHugetlbfs,
+  LinuxBinfmtMisc,
+]
+
+fn linux_filesystem_mount_type(kind: LinuxFilesystemKind) -> NonEmptyStr {
+  match kind {
+    LinuxOverlayFs => "overlay" as NonEmptyStr
+    LinuxSquashFs => "squashfs" as NonEmptyStr
+    LinuxJffs2 => "jffs2" as NonEmptyStr
+    LinuxMemoryOnlyFs { filesystem: f } => linux_memory_only_filesystem_row(filesystem: f).mount_type
+    OtherLinuxFilesystem { mount_type: t } => t
+  }
+}
+
+// WHETHER A MOUNT OF THIS KIND CAN KEEP ANYTHING ACROSS A POWER CYCLE, a property of the kind. A memory-only kind
+// keeps nothing only while its row is cited: an uncited row is a bet (DESIGN 4d) and refuses with its read obligation.
+type LinuxFilesystemPersistence
+  = LinuxFilesystemKeepsNothing { filesystem: LinuxMemoryOnlyFilesystem }
+  | LinuxFilesystemMayPersist
+  | LinuxFilesystemPersistenceUncited { filesystem: LinuxMemoryOnlyFilesystem, read_obligation: NonEmptyStr }
+
+fn linux_filesystem_persistence(kind: LinuxFilesystemKind) -> LinuxFilesystemPersistence {
+  match kind {
+    LinuxMemoryOnlyFs { filesystem: f } =>
+      match cited_figure_read_obligation(standing: linux_memory_only_filesystem_row(filesystem: f).standing) {
+        Absent => LinuxFilesystemKeepsNothing { filesystem: f }
+        Present { value: o } => LinuxFilesystemPersistenceUncited { filesystem: f, read_obligation: o }
+      }
+    LinuxOverlayFs => LinuxFilesystemMayPersist
+    LinuxSquashFs => LinuxFilesystemMayPersist
+    LinuxJffs2 => LinuxFilesystemMayPersist
+    OtherLinuxFilesystem { mount_type: _ } => LinuxFilesystemMayPersist
+  }
+}
+
 fn linux_filesystem_kind_from_mount_type(
+  mount_type: NonEmptyStr,
+) -> LinuxFilesystemKind {
+  match linux_memory_only_filesystems |> filter(f => linux_memory_only_filesystem_row(filesystem: f).mount_type == mount_type) |> first {
+    Present { value: f } => LinuxMemoryOnlyFs { filesystem: f }
+    Absent => linux_filesystem_kind_from_other_mount_type(mount_type: mount_type)
+  }
+}
+
+fn linux_filesystem_kind_from_other_mount_type(
   mount_type: NonEmptyStr,
 ) -> LinuxFilesystemKind {
   if mount_type == "overlay" {
@@ -287,44 +395,9 @@ fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
   folded.parse
 }
 
-data linux_proc_mounts_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "man7.org/linux/man-pages/man5/proc_mounts.5.html",
-  },
-}
-
-data linux_filesystems_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "docs.kernel.org/filesystems/index.html",
-  },
-}
-
 // proc_mounts(5) / fstab(5): the fourth field is the comma-separated mount options, and `ro` is the read-only one.
 fn linux_proc_mount_is_read_only(row: LinuxProcMountRow) -> Bool {
   row.options |> any(option => trim(option) == "ro")
-}
-
-// THE KERNEL FILESYSTEMS WHOSE CONTENT EXISTS ONLY IN MEMORY (docs.kernel.org/filesystems): tmpfs and ramfs (and the
-// initramfs `rootfs`, which is one of them) hold pages and nothing else; proc, sysfs, devtmpfs, devpts, cgroup,
-// cgroup2, mqueue, securityfs, debugfs, tracefs, configfs, fusectl, bpf, hugetlbfs and binfmt_misc are kernel
-// interfaces with no backing store. A mount of one of these keeps nothing across a power cycle. Deliberately NOT
-// here: efivarfs and pstore, which are interfaces to firmware NVRAM and persist across power cycles; overlay, whose
-// persistence is its upper layer's; squashfs and jffs2, which are images on a device. An unlisted type is not memory-backed --
-// absence from this list is never evidence of volatility.
-data linux_memory_backed_mount_types: List<String> = [
-  "tmpfs", "ramfs", "rootfs", "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "mqueue", "securityfs",
-  "debugfs", "tracefs", "configfs", "fusectl", "bpf", "hugetlbfs", "binfmt_misc",
-]
-
-fn linux_filesystem_is_memory_backed(kind: LinuxFilesystemKind) -> Bool {
-  match kind {
-    LinuxOverlayFs => false
-    LinuxSquashFs => false
-    LinuxJffs2 => false
-    OtherLinuxFilesystem { mount_type: t } => linux_memory_backed_mount_types |> any(m => m == (t as String))
-  }
 }
 
 fn linux_proc_mount_row_for_target(
