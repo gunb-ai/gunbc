@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, exit_failure }
 import std.measure { second }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
-import gunbc.fleet.printer_execution_hold {with_execution_hold,PrinterExecutionHoldStore}
+import gunbc.fleet.printer_execution_hold {with_execution_hold, PrinterExecutionHoldStore, printer_operator_approval_window}
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
 import gunbc.fleet.printer_actuation { PrinterStartClaims, print_request, start_authorized, printer_state_generation, report_allows_start }
@@ -51,7 +51,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
     Present { value: request } => match approval_instant_now() {
       Absent => exit_failure(reason: "Cannot read clock")
       Present { value: now } => {
-        let expires = approval_expires_at(issued: now, window: second(count: 900))
+        let expires = approval_expires_at(issued: now, window: printer_operator_approval_window)
         let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
         match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
           ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
