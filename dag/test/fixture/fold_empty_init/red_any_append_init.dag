@@ -1,0 +1,9 @@
+module test.fixture.fold_empty_init.red_any_append_init
+
+import std.types { Int, List, String }
+
+fn distinct_string_count(values: List<String>) -> Int {
+  count(fold(values, init: [], f: fn(acc, v) {
+    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+  }))
+}
