@@ -4450,105 +4450,128 @@ fn roster_variant_tags(decl: Node) -> List<String> {
   }
 }
 
-// READ ONCE PER RUN: a module's normalized tree and a module's closure are each acquired once however many RenameHead rows
-// name them (std.algebra is the home of most rows). The memo is carried through the fold over the rows; a lookup hit costs
-// nothing, a miss reads once and records.
-type RosterModuleCached { name: String, read: RosterModuleRead }
+// THE DEMAND OF THE COMPANION PASS IS A SET OF MODULES, NOT A PRODUCT OF ROWS (DESIGN section 2, step 1: the repetition was
+// authored duplication, and the rows' least common ancestor is the row list). Many RenameHead rows share one home and one
+// owner (std.algebra homes most rows), so the run names its distinct modules once and reads each once:
+//   1. the rows' homes are read once each;
+//   2. each row derives its owner from its home's read;
+//   3. the owners not already read are read once each;
+//   4. every distinct owner's closure comes from ONE verified acquisition (roster_homes_closures_read, the sweep's one
+//      route for a closure), never one acquisition per row.
+// A module table is a Map keyed by module name (a lookup is logarithmic, an insert never rescans), not a list scan.
+type RosterOwner
+  = OwnerDerived { owner: String }
+  | OwnerUnderivable { companion: RosterCompanion }
 
-type RosterClosureCached { module: String, closure: RosterHomeClosure }
-
-type RosterCompanionMemo { modules: List<RosterModuleCached>, closures: List<RosterClosureCached> }
-
-type RosterCompanionStep { companion: RosterCompanion, memo: RosterCompanionMemo }
-
-type RosterCompanionFold { companions: List<RosterCompanion>, memo: RosterCompanionMemo }
-
-type RosterModuleStep { read: RosterModuleRead, memo: RosterCompanionMemo }
-
-type RosterClosureStep { closure: RosterHomeClosure, memo: RosterCompanionMemo }
-
-fn roster_memo_empty() -> RosterCompanionMemo {
-  RosterCompanionMemo { modules: [], closures: [] }
+fn roster_modules_read_into(reads: Map<String, RosterModuleRead>, names: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> Map<String, RosterModuleRead> {
+  fold_list(xs: names, empty: reads, cons: fn(acc, n) {
+    if map_contains_key(m: acc, key: n) { acc } else { map_insert(m: acc, key: n, value: roster_module_read(name: n, prepared: prepared, lex: lex)) }
+  })
 }
 
-fn roster_memo_module_read(memo: RosterCompanionMemo, name: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterModuleStep {
-  match fold_list(xs: memo.modules, empty: Absent, cons: fn(acc, m) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if m.name == name { Present { value: m.read } } else { Absent }
-    }
-  }) {
-    Present { value: r } => RosterModuleStep { read: r, memo: memo }
-    Absent =>
-      let r = roster_module_read(name: name, prepared: prepared, lex: lex)
-      RosterModuleStep { read: r, memo: RosterCompanionMemo { modules: list_snoc_item(xs: memo.modules, item: RosterModuleCached { name: name, read: r }), closures: memo.closures } }
+fn roster_distinct(xs: List<String>) -> List<String> {
+  let seen: Map<String, Bool> = empty_map()
+  let folded = fold_list(xs: xs, empty: RosterDistinctFold { kept: [], seen: seen }, cons: fn(acc, x) {
+    if map_contains_key(m: acc.seen, key: x) { acc } else { RosterDistinctFold { kept: list_snoc_item(xs: acc.kept, item: x), seen: map_insert(m: acc.seen, key: x, value: true) } }
+  })
+  folded.kept
+}
+
+type RosterDistinctFold { kept: List<String>, seen: Map<String, Bool> }
+
+fn roster_module_of_read(reads: Map<String, RosterModuleRead>, name: String) -> RosterModuleRead {
+  match map_lookup(m: reads, key: name) {
+    Present { value: r } => r
+    Absent => ModuleReadFailed { detail: "module " + name + " was not read" }
   }
 }
 
-fn roster_memo_closure_read(memo: RosterCompanionMemo, module: String) -> RosterClosureStep {
-  match fold_list(xs: memo.closures, empty: Absent, cons: fn(acc, c) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if c.module == module { Present { value: c.closure } } else { Absent }
+fn roster_closure_of_home(closures: List<RosterHomeClosure>, module: String) -> RosterHomeClosure {
+  fold_list(xs: closures, empty: RosterClosureUnread { home: module }, cons: fn(acc, c) {
+    match c {
+      RosterClosureRead { home: h, modules: _ } => if h == module { c } else { acc }
+      RosterClosureUnread { home: h } => if h == module { c } else { acc }
     }
-  }) {
-    Present { value: cl } => RosterClosureStep { closure: cl, memo: memo }
-    Absent =>
-      let cl = roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: ""))
-      RosterClosureStep { closure: cl, memo: RosterCompanionMemo { modules: memo.modules, closures: list_snoc_item(xs: memo.closures, item: RosterClosureCached { module: module, closure: cl }) } }
-  }
+  })
 }
 
-fn roster_companion_of(row: RosterHeadRow, to: String, memo: RosterCompanionMemo, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanionStep {
+// A row's owner: the module that declares its callee's declared return type, read from the home's own read.
+fn roster_companion_owner(row: RosterHeadRow, to: String, reads: Map<String, RosterModuleRead>) -> RosterOwner {
   let home = roster_qn_text(qn: row.home)
-  let step = roster_memo_module_read(memo: memo, name: home, prepared: prepared, lex: lex)
-  match step.read {
-    ModuleReadFailed { detail: d } => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: d }, memo: step.memo }
+  match roster_module_of_read(reads: reads, name: home) {
+    ModuleReadFailed { detail: d } => OwnerUnderivable { companion: CompanionUnderivable { call: row.call, to: to, detail: d } }
     ModuleReadOk { root: hroot, imports: himports } =>
       match roster_declaration_node(root: hroot, name: to) {
-        Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: "home " + home + " declares no " + to }, memo: step.memo }
+        Absent => OwnerUnderivable { companion: CompanionUnderivable { call: row.call, to: to, detail: "home " + home + " declares no " + to } }
         Present { value: callee } =>
           match roster_return_head(arrow: callee) {
-            Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" }, memo: step.memo }
+            Absent => OwnerUnderivable { companion: CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" } }
             Present { value: ret } =>
               match roster_type_owner(home: home, imports: himports, root: hroot, spelling: ret) {
-                Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }, memo: step.memo }
-                Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, memo: step.memo, prepared: prepared, lex: lex)
+                Absent => OwnerUnderivable { companion: CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home } }
+                Present { value: owner } => OwnerDerived { owner: owner }
               }
           }
       }
   }
 }
 
-fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, memo: RosterCompanionMemo, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanionStep {
+fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, reads: Map<String, RosterModuleRead>, closures: List<RosterHomeClosure>) -> RosterCompanion {
   let module = roster_dotted_init(q: owner)
-  let step = roster_memo_module_read(memo: memo, name: module, prepared: prepared, lex: lex)
-  match step.read {
-    ModuleReadFailed { detail: d } => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: d }, memo: step.memo }
+  match roster_module_of_read(reads: reads, name: module) {
+    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
     ModuleReadOk { root: mroot, imports: _ } =>
       match roster_declaration_node(root: mroot, name: roster_dotted_last(q: owner)) {
-        Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }, memo: step.memo }
+        Absent => CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }
         // A return type that is not a coproduct has no tags an ambient pattern could stand in for: nothing to import.
         Present { value: decl } =>
-          let closed = roster_memo_closure_read(memo: step.memo, module: module)
-          RosterCompanionStep { companion: CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: closed.closure }, memo: closed.memo }
+          CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: roster_closure_of_home(closures: closures, module: module) }
       }
   }
 }
 
-// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every module and closure is read
-// once per run (the memo), however many rows name it.
+fn roster_rename_target(r: RosterHeadRow) -> Optional<String> {
+  match r.head {
+    KeepHead => Absent
+    RenameHead { to: t, positional: _, appended: _ } => Present { value: t }
+  }
+}
+
+fn roster_owner_modules(owners: List<RosterRenameOwner>) -> List<String> {
+  roster_distinct(xs: fold_list(xs: owners, empty: [], cons: fn(acc, o) {
+    match o.owner {
+      OwnerDerived { owner: q } => list_snoc_item(xs: acc, item: roster_dotted_init(q: q))
+      OwnerUnderivable { companion: _ } => acc
+    }
+  }))
+}
+
+// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every distinct module is read
+// once and every distinct owner's closure is acquired once, however many rows name them.
 fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
-  let folded = fold_list(xs: rows, empty: RosterCompanionFold { companions: [], memo: roster_memo_empty() }, cons: fn(acc, r) {
-    match r.head {
-      KeepHead => acc
-      RenameHead { to: t, positional: _, appended: _ } =>
-        let step = roster_companion_of(row: r, to: t, memo: acc.memo, prepared: prepared, lex: lex)
-        RosterCompanionFold { companions: list_snoc_item(xs: acc.companions, item: step.companion), memo: step.memo }
+  let renames = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    match roster_rename_target(r: r) {
+      Present { value: t } => list_snoc_item(xs: acc, item: RosterRename { row: r, to: t })
+      Absent => acc
     }
   })
-  folded.companions
+  let empty_reads: Map<String, RosterModuleRead> = empty_map()
+  let home_reads = roster_modules_read_into(reads: empty_reads, names: list_map(xs: renames, f: fn(x) { roster_qn_text(qn: x.row.home) }), prepared: prepared, lex: lex)
+  let owners = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
+  let owner_modules = roster_owner_modules(owners: owners)
+  let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
+  let closures = roster_homes_closures_read(homes: owner_modules, bindings: roster_repository_bindings(root: ""))
+  list_map(xs: owners, f: fn(p) {
+    match p.owner {
+      OwnerUnderivable { companion: c } => c
+      OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: closures)
+    }
+  })
 }
+
+type RosterRename { row: RosterHeadRow, to: String }
+
+type RosterRenameOwner { rename: RosterRename, owner: RosterOwner }
 
 // THE COMPANION PASS, run on a file whose rows and labels have converged (Clean). For each companion whose renamed callee
 // the file now imports from its home: the companion's tags the file uses at an AMBIENT pattern-tag position (lexically
