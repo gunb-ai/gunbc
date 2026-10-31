@@ -6,8 +6,6 @@ import std.compiler_entry {
   CompilerEntryDriver,
   SourceRootEvalDriver,
 }
-// THE FRONTIER RATCHET JOINS THIS CLOSURE HERE: the emitted driver main renders a call to it, and the emitted crate carries a module only when this closure reaches it.
-import v2.workflow.native_frontier_ratchet { native_frontier_verdict }
 import v2.workflow.v2_native_route {
   NativeRouteEmittedBuild,
   NativeRouteMalformedControl,
@@ -20,6 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -28,6 +27,10 @@ import gunbc.native_route_universe {
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.
+import v2.workflow.native_frontier_ratchet { native_frontier_verdict }
+import gunbc.source_layout_namespaces {
+  layout_namespaces,
+}
 import v2.workflow.floor_discovery_row {
   FloorDiscoveryRow,
 }
@@ -78,7 +81,17 @@ import v2.compiler.type_declaration_use_census {
 import v2.compiler.occurrence_resolution_census {
   occurrence_resolution_contribution, occurrence_resolution_contribution_lines, occurrence_resolution_partial_lines, occurrence_resolution_locus_text
 }
-import v2.compiler.name_resolve { resolution_context_with_blocked_members, closure_declarations_demand, Admission, ResolutionSubject, ResolutionContext, resolution_context, resolve_walk_in_context, resolve_in_context }
+import v2.compiler.name_resolve {
+  resolution_context_namespace,
+  resolution_context_with_blocked_members,
+  closure_declarations_demand,
+  Admission,
+  ResolutionSubject,
+  ResolutionContext,
+  resolution_context,
+  resolve_walk_in_context,
+  resolve_in_context,
+}
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
@@ -87,7 +100,8 @@ import std.occurrence_identity {
   OccurrenceProjected,
   OccurrenceSynthetic,
   authored_occurrence_of,
-  occurrence_id_allocator_initial
+  occurrence_id_allocator_initial,
+  scoped_occurrence_allocator,
 }
 import v2.std.dependency {
   DataDependsOn,
@@ -163,7 +177,11 @@ import std.cache_identity {
   native_module_resolve_artifact_kind,
   native_test_identity_artifact_kind,
 }
-import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome, program_assembly_read_to_normalized_root_seeded }
+import v2.compiler.program_assembly {
+  program_assembly_ingest_scope_outcome,
+  program_assembly_phase_tokenize,
+  program_assembly_read_to_normalized_root_seeded,
+}
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   ModuleFileRef,
@@ -245,10 +263,35 @@ import v2.compiler.native_test_vocabulary {
   NativeRouteMemberRow,
   NativeRouteTestIdentity,
 }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize {
+  normalize,
+  normalize_scoped,
+}
+import v2.compiler.dependency_demand {
+  FunctionFact,
+  OperationFact,
+}
 import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.dependency_demand_census {
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  AuthoredUsesFunction,
+  DemandCensusAuthoredReading,
+  DemandCensusModuleStanding,
+  DemandCensusReport,
   DemandCensusUnboundLocus,
+  DemandCensusUnreadable,
+  DemandCensusUnreadableStage,
+  DemandModuleResolveRefused,
+  DemandModuleResolved,
+  UnreadableAtParse,
+  UnreadableAtTokenize,
+  demand_census_authored_readings,
+  demand_census_exit,
+  demand_census_lines,
+  demand_census_module_facts,
+  demand_census_report,
+  demand_census_strip,
   demand_census_unbound_locus_from_diagnostics,
   demand_census_unbound_site_text,
 }
@@ -256,9 +299,16 @@ import v2.compiler.normalized_tree {
   NormalizedTree,
   normalized_tree_import_bindings,
 }
-import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
+import v2.compiler.parse {
+  parse,
+  parse_module_prepared_seeded,
+  prepare_grammar,
+  PreparedGrammar,
+}
 import v2.compiler.resolve {
   OccurrenceResolutionEntry,
+  ResolveContext,
+  resolve_ctx_init,
   ObservationComplete,
   ObservationIncomplete,
   ObservationCompleteness,
@@ -267,7 +317,7 @@ import v2.compiler.resolve {
   ResolveWalkRefused,
   resolve,
   resolved_tree_of,
-  ResolvedTree
+  ResolvedTree,
 }
 import v2.compiler.tokenize {
   PreparedLexRules,
@@ -298,6 +348,7 @@ import std.algebra {
   Empty,
   FreeMonoid,
   FreeSemigroup,
+  string_contains,
   trim,
   list_append,
   list_snoc_item,
@@ -312,7 +363,7 @@ import std.algebra {
   map_contains_key,
   map_insert,
   map_lookup,
-  map_support_keys
+  map_support_keys,
 }
 import v2.std.integer {
   Int,
@@ -1513,6 +1564,7 @@ type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusVerb { verb: NativeCensusVerbWord, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
   | NativeDriverSelfHostFrontier { manifest_path: String, verdict_path: String, observed_path: String }
@@ -1529,6 +1581,10 @@ data native_driver_verb_census_resolve: String = "census-resolve"
 // for the folds that read inferred trees. Not census-resolve widened -- that verb's cost and meaning
 // stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
 data native_driver_verb_census_infer: String = "census-infer"
+
+// THE CENSUS VERBS ARE ROWS, NOT VARIANTS: one plan (NativeDriverCensusVerb), one parse state and one
+// emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
+// verb to its fold. The closed verb type and its spelling are gunbc.native_census_verb.
 
 // THE SELF-HOST FRONTIER MODE (v2.compiler.self_host.seed_retention_frontier self_host_frontier_report): three
 // operands, each a FILE the self-host step wrote or the seed emitted -- the emitted-population
@@ -1552,7 +1608,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths>"
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths> | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1584,6 +1640,7 @@ type NativeDriverParseState
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
+  | DriverCensusVerbRoots { verb: NativeCensusVerbWord, roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
   | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
@@ -1599,7 +1656,14 @@ type NativeDriverParseState
   | DriverParseRefused { reason: Symbol, detail: String }
 
 fn native_driver_unknown_verb_detail(word: String) -> String {
-  concat(concat("REFUSED: unknown mode ", word), " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier")
+  concat(
+    concat("REFUSED: unknown mode ", word),
+    fold_list(
+      xs: native_census_verbs,
+      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier",
+      cons: fn(acc, v) { concat(concat(acc, ", "), native_census_verb_word(v: v)) }
+    )
+  )
 }
 
 // A REFUSED STATE ABSORBS THE REST OF ARGV rather than reconsidering it. The first bad word is the
@@ -1623,9 +1687,13 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
-        DriverParseRefused {
-          reason: ^native_driver_unknown_verb,
-          detail: native_driver_unknown_verb_detail(word: word)
+        match native_census_verb_of_word(word: word) {
+          Present { value: v } => DriverCensusVerbRoots { verb: v, roots: [] }
+          Absent =>
+            DriverParseRefused {
+              reason: ^native_driver_unknown_verb,
+              detail: native_driver_unknown_verb_detail(word: word)
+            }
         }
       }
     DriverCensusRoots { roots: roots } =>
@@ -1634,6 +1702,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusInferRoots { roots: roots } =>
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      DriverCensusVerbRoots { verb: verb, roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
@@ -1733,6 +1803,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
     DriverCensusInferRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusVerb { verb: verb, source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
@@ -1785,6 +1857,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
+        NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
         NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => []
@@ -2971,16 +3044,245 @@ fn native_lane_identity_row(
 // those facts run the floor's discovery fold over a universe member, and a census asks for none of it
 // but the module header. Over the whole tree that fold would be paid once per module to read one line
 // each time. The header is read by native_lane_declared_module_name, the fact's one home.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D13 DEPENDENCY-DEMAND CENSUS: THE WHOLE-CLOSURE ROUTE (`demand-census`)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A FRONT END OF ITS OWN, ENTERED PHASE BY PHASE. Production lowering refuses every fn with a
+// `uses` clause, and native_test_context_absorb drops a refused file from the roots and the source
+// root index -- so in the production context a uses fn's module is absent, and so are the
+// operations and fns it declares. A census that stripped one module at a time would read every edge
+// into such a module as outside the closure. So this route folds the whole ingest once with the
+// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
+// uses: the only difference from native_test_context_fold_step is the strip, which is why that step
+// is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
+//
+// THE CONTEXT NEVER LEAVES THIS ROUTE. native_demand_census_report returns a DemandCensusReport --
+// rows of authored rows, derived demand and verdicts -- and no tree, context or prepared module, so
+// nothing the elided front end produced can reach infer, eval or emission. Its one caller is the
+// emitted driver's `demand-census` verb, run by `gunbc test //gunbc/instruments:dependency-demand-census`.
+
+type NativeDemandCensusFoldState {
+  context: NativeTestContextFoldState
+  authored: List<AuthoredUsesFunction>
+  file_refused: List<AuthoredUsesFunction>
+  unreadable: List<DemandCensusUnreadable>
+}
+
+fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
+  fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_unreadable(
+  read: DagSourceReadWitness,
+  stage: DemandCensusUnreadableStage,
+  d: NonEmptyDiagnostics
+) -> DemandCensusUnreadable {
+  DemandCensusUnreadable {
+    file_path: read.artifact.file_path,
+    stage: stage,
+    reason: diagnostics_fatal_reason(d: d)
+  }
+}
+
+fn native_demand_census_read(
+  state: NativeDemandCensusFoldState,
+  read: DagSourceReadWitness,
+  front: NativeTestFrontEnd,
+  scope: Fnv1a64Structural
+) -> NativeDemandCensusFoldState {
+  let module_qn = match native_refused_file_module(content: read.source.carried) {
+    Present { value: qn } => qn
+    Absent => Empty
+  }
+  match program_assembly_phase_tokenize(read: read, lex: front.lex) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
+        authored: state.authored,
+        file_refused: state.file_refused,
+        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d))
+      }
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc) {
+        Rejected { diagnostics: d } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
+            authored: state.authored,
+            file_refused: state.file_refused,
+            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
+          }
+        Accepted { value: artifact, diagnostics: _ } =>
+          let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
+            Rejected { diagnostics: d } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
+                authored: state.authored,
+                file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+                unreadable: state.unreadable
+              }
+            Accepted { value: scoped, diagnostics: _ } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
+                authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+                file_refused: state.file_refused,
+                unreadable: state.unreadable
+              }
+          }
+      }
+  }
+}
+
+type NativeDemandCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+  standings: List<DemandCensusModuleStanding>
+}
+
+// The module's root scope, as resolution itself built it for the module just resolved: the namespace
+// provider answers from its cache, so this produces no second namespace.
+fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: admitted, diagnostics: _ } =>
+          optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
+      }
+  }
+}
+
+fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
+    Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
+    Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
+  }
+}
+
+fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      let outcomes = native_demand_census_closure_outcomes(context: step.context)
+      match step.resolved {
+        Rejected { diagnostics: d } =>
+          // A Rejected module always files the refused standing, even when every census-authored
+          // function is declaration_available (empty split.refused). Omitting it undercounts
+          // resolve_refused_modules. Available authored still get DemandModuleResolved beside it.
+          let split = native_demand_census_split_authored(mine: mine, outcomes: outcomes)
+          let with_refused = list_snoc_item(
+            xs: w.standings,
+            item: native_demand_census_resolve_refused(
+              context: step.context,
+              module_qn: module_qn,
+              authored: split.refused,
+              d: d
+            )
+          )
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: w.functions,
+            operations: w.operations,
+            audited: w.audited,
+            standings: match length(xs: split.available) > 0 {
+              true =>
+                list_snoc_item(xs: with_refused, item: DemandModuleResolved {
+                  readings: fold_list(xs: split.available, empty: Empty, cons: fn(acc, a) {
+                    list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                      authored: a,
+                      readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                    })
+                  })
+                })
+              false => with_refused
+            }
+          }
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            audited: fold_list(xs: facts.audited, empty: w.audited, cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }),
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolved {
+              readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+                list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                  authored: a,
+                  readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                })
+              })
+            })
+          }
+      }
+  }
+}
+
+fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeDemandCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          audited: Empty,
+          standings: Empty
+        },
+        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
+      )
+      outcome_accepted(value: demand_census_report(
+        uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
+        functions: walked.functions,
+        operations: walked.operations,
+        audited: walked.audited,
+        standings: walked.standings,
+        file_refused: folded.file_refused,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable: folded.unreadable
+      ))
+    })
+  })
+}
+
+// THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
+// v2.compiler.dependency_demand_census demand_census_exit -- held (0), a census whose rows do not account
+// for every uses fn read (1), or no observation (2): a read refused before authorship, or a context that
+// would not build, whose diagnostics are the line.
+type NativeDemandCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
+  match native_demand_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusOutput { lines: [concat("[demand-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeDemandCensusOutput {
+        lines: demand_census_lines(r: report),
+        exit: demand_census_exit(r: report)
+      }
+  }
+}
+
 // THE FRONTIER VERB'S ANSWER: the report and exit are v2.compiler.self_host.seed_retention_frontier
 // self_host_frontier_report's; the host only reads the three files and prints.
 type NativeSelfHostFrontierOutput {
   lines: List<String>
   exit: Int
-}
-
-fn native_self_host_frontier_output(manifest_text: String, verdict_text: String, observed_text: String) -> NativeSelfHostFrontierOutput {
-  let report = self_host_frontier_report(manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
-  NativeSelfHostFrontierOutput { lines: report.lines, exit: report.exit }
 }
 
 type NativeCensusModule {
@@ -4016,7 +4318,8 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 // THE FIRST REFUSAL OF A MODULE THAT REFUSED AT RESOLVE, as the census-infer row carries it: the fatal's
 // reason SYMBOL and the unbound reference the resolver located, at the position the census's own position
 // table gives. WHY IT IS AN ACCESSOR AND NOT A FIELD: the two facts are not derived here. They are the
-// SAME derivation as the compile CLI's unbound-name rendering --
+// SAME derivation the resolve-standing verdict is made of (native_demand_census_unbound_standing, which is
+// what `gunbc test //gunbc/instruments:dependency-demand-census` prints `at=`/`unbound_ref=` from) --
 // diagnostics_fatal_reason over the fatal plus demand_census_unbound_locus_from_diagnostics, and
 // native_census_locate_fatal for the position -- applied to the outcome's fatal. A row-shaped copy of that
 // walk would be a second authority for which refusal is first (DESIGN section 3), and the two could then
@@ -5335,6 +5638,22 @@ fn native_demand_drain(
   }
 }
 
+// THE DEMAND'S STAGE, FOR THE COST ROW IT IS CHARGED TO. The driver needs to know which exclusive
+// row a step's span belongs to, and that is a property of the demand's subject rather than
+// something the driver should re-derive from the key.
+fn native_demand_stage_label(plan: NativeDemandPlan, identity: DemandIdentity) -> String {
+  match native_demand_binding(plan: plan, id: identity) {
+    Absent => "unbound"
+    Present { value: subject } =>
+      match subject {
+        NativeResolveSubject { entry: _ } => "resolve"
+        NativeInferSubject { entry: _ } => "infer"
+        NativeOccurrenceCensusSubject { entry: _ } => "occurrence_census"
+        NativeEvalSubject { module: _, declaration: _ } => "eval"
+      }
+  }
+}
+
 // THE POPULATION IS ASSEMBLED FROM THE SAME ARMS THE LOOP PUSHED FROM. A refusing resolve or infer
 // contributes its decided rows -- one per declaration, produced by the refusing stage -- and an
 // evaluated identity contributes its own row. Nothing here mints a verdict.
@@ -5699,6 +6018,10 @@ fn native_demand_prepare_refused(run: NativeDemandRun) -> Int {
 // took as it worked, so the driver reports a reading rather than deriving one.
 fn native_demand_scheduling_nanos(run: NativeDemandRun) -> Int {
   run.scheduling_nanos
+}
+
+fn native_demand_unclassified_transitions(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).unclassified
 }
 
 fn native_demand_run_empty(plan: NativeDemandPlan) -> NativeDemandRun {
@@ -6697,6 +7020,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "native_demand_rollup_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
 
+type NativeDemandCensusAuthoredSplit {
+  available: List<AuthoredUsesFunction>
+  refused: List<AuthoredUsesFunction>
+}
+
 type NativeDemandStepResult {
   run: NativeDemandRun
   context: NativeTestContext
@@ -6724,6 +7052,63 @@ fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines:
   }
 }
 
+fn native_demand_census_split_authored(
+  mine: List<AuthoredUsesFunction>,
+  outcomes: List<ModuleOutcome>
+) -> NativeDemandCensusAuthoredSplit {
+  fold_list(
+    xs: mine,
+    empty: NativeDemandCensusAuthoredSplit { available: Empty, refused: Empty },
+    cons: fn(acc, a) {
+      if native_demand_census_function_available(outcomes: outcomes, authored: a) {
+        NativeDemandCensusAuthoredSplit {
+          available: list_snoc_item(xs: acc.available, item: a),
+          refused: acc.refused
+        }
+      } else {
+        NativeDemandCensusAuthoredSplit {
+          available: acc.available,
+          refused: list_snoc_item(xs: acc.refused, item: a)
+        }
+      }
+    }
+  )
+}
+
+// A refused resolve is filed at its root. When the module's import target was refused at ingest, every
+// name it imports is unbound only because the target never entered the member index, so the standing names
+// the refused importee and its cause (native_import_target_attribution, the same decision the production
+// lane reports as native_prepare_reason_import_target_file_refused); only otherwise is the first unbound
+// name the finding.
+fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: QualifiedName, authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  match native_import_target_attribution(context: context, module: module_qn) {
+    NativeImportTargetRefused { target: t } =>
+      DemandModuleImporteeRefused { authored: authored, importee_file: t.path, importee_cause: native_test_file_refusal_fatal_reason(fr: t) }
+    NativeImportTargetsAdmitted => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetsUnreadable { reason: _ } => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetNotAsked => native_demand_census_unbound_standing(authored: authored, d: d)
+  }
+}
+
+fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_census_unbound_locus_from_diagnostics(d: d) }
+}
+
+fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).module_outcomes
+  }
+}
+
+fn native_demand_census_function_available(outcomes: List<ModuleOutcome>, authored: AuthoredUsesFunction) -> Bool {
+  match authored.name {
+    Absent => false
+    Present { value: name } =>
+      declaration_available(outcomes: outcomes, path: qualified_name_snoc(qn: authored.owner, segment: name))
+  }
+}
+
 // THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
 // THE STEP FORM RETURNS THE CONTEXT THE DRAIN ENDED WITH, so a consumer can observe that a
 // later resolve demand read the closure index the first one wrote (DESIGN section 5: the
@@ -6748,4 +7133,19 @@ fn native_demand_schedule_universe_step(
     compiler: compiler,
     fuel: native_demand_plan_size(plan: plan) + 1
   )
+}
+
+// THE ONE DISPATCH FROM A CENSUS VERB WORD TO ITS FOLD (the emitted driver's run function calls only this).
+// The match is exhaustive over the closed verb type, so there is no default arm.
+type NativeCensusVerbOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootIngest) -> NativeCensusVerbOutput {
+  match verb {
+    CensusVerbDemand =>
+      let o = native_demand_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+  }
 }

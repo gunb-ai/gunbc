@@ -4,6 +4,8 @@ import v2.compiler.source_root_eval {
   native_test_context_from_ingest,
   native_lane_file_refusal_index,
   native_module_resolve_verdict,
+  native_demand_census_closure_outcomes,
+  native_demand_census_function_available,
   NativeTestContext,
   NativeModuleResolveVerdict,
   NativeModuleResolveAccepted,
@@ -18,6 +20,7 @@ import v2.compiler.resolve {
   ModuleOutcome,
   ModuleUnavailable
 }
+import v2.compiler.dependency_demand_census { AuthoredUsesFunction, UsesAliasBindUnique }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
@@ -299,6 +302,27 @@ test fn dpo_mutual_pair_with_one_bad_member_refuses_both() -> Bool {
           Absent => false
           Present { value: v } => dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
         }
+  }
+}
+
+fn dpo_census_authored(owner: String, name: Symbol) -> AuthoredUsesFunction {
+  AuthoredUsesFunction { owner: dpo_path(dotted: owner), name: optional_present(value: name), types: [], alias_bind: UsesAliasBindUnique }
+}
+
+// The census asks through native_demand_census_function_available, the shared authority's caller, over the
+// outcomes the census itself reads (native_demand_census_closure_outcomes). Bad is refused beside Ok, so a
+// census that answered "available" for everything, or consulted another source, goes red on Bad.
+test fn dpo_census_shares_declaration_available() -> Bool {
+  match dpo_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let outcomes = native_demand_census_closure_outcomes(context: context)
+        native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Ok))
+          && native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.ok_user", name: ^f))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Bad))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Dep))
+      }
   }
 }
 

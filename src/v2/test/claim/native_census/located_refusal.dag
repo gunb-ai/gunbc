@@ -281,7 +281,8 @@ test fn colliding_occurrence_ids_do_not_borrow_the_other_file_position_holds() -
 // THE RED SPECIMEN: a module that refuses at RESOLVE carries, in its own census row, the FIRST
 // refusal -- the reason symbol and the located site. The cause is not a stamp the row invents: it is
 // the fatal reason of the chain the walk stopped on, read through the same authority the
-// compile CLI reads (v2.std.diagnostic diagnostics_fatal_reason), and the locus is the same occurrence located in the position
+// dependency-demand census reads (v2.std.diagnostic diagnostics_fatal_reason, beside
+// native_demand_census_unbound_standing), and the locus is the same occurrence located in the position
 // table the walk itself built. `cl_first_unbound_a` is the first unbound name of the
 // depth-first walk (line 6); the fixture carries a SECOND one (line 10) so a row produced by a later
 // or differently-gathered refusal -- or by a second traversal -- fails here while a one-unbound

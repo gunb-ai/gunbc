@@ -38,7 +38,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, self_host_frontier_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
   ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
@@ -186,7 +186,7 @@ data instrument_dispatch_retention_days: Int = 30
 // is not available, and the interim's terms are the typed row below, not this note.
 data instrument_dispatch_timeout_minutes: Int = max_job_timeout_minutes
 
-data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the longest whole-pool instrument (formerly //gunbc/instruments:dependency-demand-census, retired) completes on the fleet inside the prior 240-minute dispatch bound once work item adhoc-c80c93d2-2b4 removes its walk cost; instrument_dispatch_timeout_minutes then returns to that bound. Raised to the extdeps.github.actions max_job_timeout_minutes ceiling under operator escalation msg_283bef99 (approved 2026-10-23) because the census was cut at the bound with no output (instrument-dispatch runs 39876983534, 39922406221, 39924275418, 39924278017) while completing on faster runners (39525096386, 39769560992, 39876986306). Binds to a DeclarationRef when that fix names the declaration it adds or retires.")
+data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the whole-pool //gunbc/instruments:dependency-demand-census completes on the fleet inside the prior 240-minute dispatch bound once work item adhoc-c80c93d2-2b4 removes its walk cost; instrument_dispatch_timeout_minutes then returns to that bound. Raised to the extdeps.github.actions max_job_timeout_minutes ceiling under operator escalation msg_283bef99 (approved 2026-10-23) because the census was cut at the bound with no output (instrument-dispatch runs 39876983534, 39922406221, 39924275418, 39924278017) while completing on faster runners (39525096386, 39769560992, 39876986306). Binds to a DeclarationRef when that fix names the declaration it adds or retires.")
 
 // THE DISPATCHABLE LABELS: instruments whose subject is too large for any per-change lane and is run
 // on purpose. The round-trip battery is the first (its own row says it is run by name, not a merge
@@ -205,7 +205,7 @@ data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unb
 // adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
-    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), self_host_frontier_label(),
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), effect_pair_census_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
@@ -291,6 +291,7 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // same work_default_build() operation and two captures. It shares the compute row, not the
     // whole-tree row (DESIGN §3 meaning fork).
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
+    InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
