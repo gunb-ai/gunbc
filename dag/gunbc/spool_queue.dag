@@ -164,13 +164,6 @@ fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
   }
 }
 
-fn spool_role_has_dir(kind: SpoolKind, role: SpoolRole) -> Bool {
-  match spool_role_dir(kind: kind, role: role) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // The assumption's trigger as a decision: an agreement-exclusive spool needs a claim stage the moment a second
 // drainer appears (the chain then gains the step; nothing else changes). PublicationServiceUnit is
 // gunbc.live_deploy.spec deployment_publication_service_unit_name, a systemd service unit (out of corpus enforcement).
@@ -355,10 +348,9 @@ fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
 
 fn spool_complete_into(kind: SpoolKind, target: SpoolRole) -> SpoolCompleteAssessment {
   if spool_role_is_terminal(kind: kind, role: target) {
-    if spool_role_has_dir(kind: kind, role: target) {
-      CompleteEligible { into: target }
-    } else {
-      CompleteRoleHasNoDirectory { role: target }
+    match spool_role_dir(kind: kind, role: target) {
+      Present { value: _ } => CompleteEligible { into: target }
+      Absent => CompleteRoleHasNoDirectory { role: target }
     }
   } else {
     CompleteRoleUndeclared { role: target }
