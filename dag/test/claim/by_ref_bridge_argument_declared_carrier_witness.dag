@@ -1,0 +1,67 @@
+module test.claim.by_ref_bridge_argument_declared_carrier_witness
+
+// THE BORROW SITE DECLARES A CALL ARGUMENT'S CARRIER.
+//
+// A by-ref runtime bridge (`extdeps.languages.rust.emit rt_function_registry` rows with
+// `passes_by_ref: true` — sorted_map_keys, map_keys, map_values, lookup, the string family) took its
+// argument as `&<expr>`. When `<expr>` is a call to a GENERIC declaration, rustc receives that borrow
+// as the only evidence for the call's own type arguments and uses it: `fold_list`'s accumulator is
+// pinned by the borrowed parameter instead of by its own `empty:` argument, so the emitted crate
+// refuses a program the .dag checker had accepted. That is
+// gunbc.recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow,
+// first measured on #15164 at 47612d0cb20d (v2-bootstrap run 40968160998, in
+// v2.compiler.occurrence_resolution_census).
+//
+// THE REPAIR IS AT THE BORROW, NOT AT THE NAME, AND THESE CLAIMS PIN THAT. In
+// `src/v1/05_emit_rust.dag`, `rust_by_ref_bridge_argument` now binds a CALL argument at the carrier
+// `Node.inferred` already resolved for it — the type v1 derived, rendered by `render_node_type`, the
+// same authority every other type position in the emitted program goes through — and borrows the
+// binding:
+// `v1_rt::sorted_map_keys(&{ let __by_ref_arg: Rc<HashMap<i64, bool>> = fold_list(..); __by_ref_arg })`.
+// Claim one asserts that form and forbids the old one, so deleting the rule reddens it twice over:
+// the required text disappears and the forbidden text returns.
+//
+// WHY THE SECOND CLAIM EXISTS. A name, a field or an index is already a place of a known carrier;
+// rustc has no type arguments to invent there, so wrapping it in a block would be redundant work
+// (DESIGN section 2) at each of the ~360 plain by-ref sites already in the committed mirrors. The
+// second claim asserts the plain borrow survives for a name, so widening the rule into a wrapper at
+// every borrow site reddens the floor too.
+//
+// WHAT THESE CLAIMS ARE NOT. fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_
+// probe.dag (red) and by_ref_primitive_bound_argument_probe.dag (the one-`let` control, which has
+// always compiled) are the rustc-level differential and the right evidence for the DIAGNOSIS, but
+// they are not enrolled on the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so
+// they run on demand only. What these two claims add is an executed pin on the thing this change
+// actually alters — the emitted text — at two seed compiles instead of a build of the whole closure.
+//
+// The programs below are kept in the exact spelling that was measured to emit the defect form, so a
+// reader can run either one through `gunbc compile` and diff it against the assertion.
+
+// A by-ref bridge over an unbound call to the generic `fold_list`: the red arm's shape, with the
+// same primitives as fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_probe.dag.
+fn by_ref_generic_call_argument_source() -> String {
+  "module byrefgenericarg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(ids: List<Int>) -> List<Int> {\n  sorted_map_keys(fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))\n}\n"
+}
+
+// The same bridge over a NAME: the shape that has always compiled and must keep its plain borrow.
+fn by_ref_plain_name_source() -> String {
+  "module byrefplainname\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
+}
+
+test fn by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_generic_call_argument_source(),
+    "src/byrefgenericarg.rs",
+    ["v1_rt::sorted_map_keys(&{ let __by_ref_arg: ", "; __by_ref_arg }"],
+    ["v1_rt::sorted_map_keys(&crate::std_algebra::fold_list("]
+  )
+}
+
+test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_plain_name_source(),
+    "src/byrefplainname.rs",
+    ["v1_rt::string_length(&s"],
+    ["v1_rt::string_length(&{"]
+  )
+}
