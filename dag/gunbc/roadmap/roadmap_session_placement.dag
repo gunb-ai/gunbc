@@ -973,6 +973,13 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
       match record {
         AttemptExitRecordNone => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit and it left no exit record" }
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
+        // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
+        // stop variables was created without the manager's substitution: the hook's writer is broken,
+        // and that says nothing about whether the process ended. It cannot keep the seat -- the answer
+        // comes from the unit's standing in the manager that ran it, the same as when the spool holds
+        // nothing. (What that standing is PROOF of belongs to the holder-death arms in
+        // gunbc.systemd_unit_invocation_liveness; it is never decided by the shape of a spool name.)
+        AttemptExitRecordWriterUnsubstituted { entries, variables } => UnitTerminatedCauseUnknown { detail: join(["the manager has no such unit, and its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is not evidence that the holder lives: ", join(entries, ", ")], "") }
         AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
       }
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
