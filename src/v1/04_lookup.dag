@@ -1,6 +1,5 @@
 module v1.compiler.infer_lookup
 
-import v1.compiler.infer_env { declared_module_owner }
 import std.induction { SubValueRelation }
 import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
@@ -52,7 +51,7 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
+  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declared_module_owner, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
   GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, global_bare_declarer_in_scope, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked

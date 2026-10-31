@@ -43,7 +43,6 @@ mod item_kind_dispatch_totality_test;
 mod litsymbol_is_symbol_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
-
 #[cfg(test)]
 mod none_undetermined_carrier_refuse_test;
 #[cfg(test)]
