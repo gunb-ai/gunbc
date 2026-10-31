@@ -312,13 +312,32 @@ fn proof_verdict(end: ProofState, head_text: String) -> EditProof {
   }
 }
 
-fn edit_proof(evidence: ModuleEvidence, prepared: PreparedGrammar, lex: PreparedLexRules, scopes: List<RosterHomeScope>, closures: List<RosterHomeClosure>) -> EditProof {
+// THE EVIDENCE GUARDS, stated once: unreadable text and identical base/head settle the proof without any recomputation.
+// Absent means the head must be compared with a recomputation from the base.
+fn evidence_settled_proof(evidence: ModuleEvidence) -> Optional<EditProof> {
   if !evidence.readable {
-    EditUnobserved { detail: "the base or head text of the module could not be read" }
+    Present { value: EditUnobserved { detail: "the base or head text of the module could not be read" } }
   } else if evidence.base_text == evidence.head_text {
-    EditProven { rounds: [] }
+    Present { value: EditProven { rounds: [] } }
   } else {
-    proof_verdict(end: recompute_wave_text(path: evidence.module, base_text: evidence.base_text, prepared: prepared, lex: lex, scopes: scopes, closures: closures), head_text: evidence.head_text)
+    Absent
+  }
+}
+
+fn edit_proof(evidence: ModuleEvidence, prepared: PreparedGrammar, lex: PreparedLexRules, scopes: List<RosterHomeScope>, closures: List<RosterHomeClosure>) -> EditProof {
+  match evidence_settled_proof(evidence: evidence) {
+    Present { value: settled } => settled
+    Absent => proof_verdict(end: recompute_wave_text(path: evidence.module, base_text: evidence.base_text, prepared: prepared, lex: lex, scopes: scopes, closures: closures), head_text: evidence.head_text)
+  }
+}
+
+// THE SAME PROOF over a recomputation the caller already holds: `end` must be recompute_wave_text over evidence.base_text
+// with the caller's scopes and closures. A caller judging several heads of one base computes the recomputation once and
+// carries it here, rather than paying edit_proof's full recompute per head.
+fn carried_edit_proof(evidence: ModuleEvidence, end: ProofState) -> EditProof {
+  match evidence_settled_proof(evidence: evidence) {
+    Present { value: settled } => settled
+    Absent => proof_verdict(end: end, head_text: evidence.head_text)
   }
 }
 
@@ -855,8 +874,12 @@ fn head_rows_rows(h: HeadRows) -> List<String> {
   h.rows
 }
 
-fn join_control_case(name: String, base_rows: List<String>, head_rows: List<String>, evidence: ModuleEvidence, prepared: PreparedGrammar, lex: PreparedLexRules, want_admitted: Int, want_refused: List<String>, closures: List<RosterHomeClosure>) -> String {
-  let deltas = occurrence_join_module(rows: join_control_rows(), module: "m", base_rows: base_rows, head_rows: head_rows, evidence: Present { value: evidence }, prepared: prepared, lex: lex, scopes: rows_proof_scopes(rows: join_control_rows()), closures: closures)
+fn join_control_case(name: String, base_rows: List<String>, head_rows: List<String>, evidence: ModuleEvidence, generated: ProofState, want_admitted: Int, want_refused: List<String>) -> String {
+  let deltas = if rows_multiset_equal(base_rows: base_rows, head_rows: head_rows) {
+    []
+  } else {
+    occurrence_join_with_proof(rows: join_control_rows(), renames: roster_head_rows(), module: "m", base_rows: base_rows, head_rows: head_rows, evidence: evidence, proof: carried_edit_proof(evidence: evidence, end: generated))
+  }
   join_control_verdict(name: name, deltas: deltas, want_admitted: want_admitted, want_refused: want_refused)
 }
 
@@ -882,13 +905,13 @@ fn occurrence_join_controls_outcome(prepared: PreparedGrammar, lex: PreparedLexR
     JoinControlsUnobserved { report: "occurrence-join control fixture: " + to_string(site_count) + " base sites, generator " + (if generated.done { "converged" } else { "stuck: " + generated.stuck }) + (if head_text == base_text { ", no edits made" } else { "" }) + "\n" }
   } else {
     let admit_rows = join_control_head_rows(head_text: head_text, wrong_index: 0 - 1, shifted_index: 0 - 1)
-    let report = join_control_case(name: "admit", base_rows: base_rows, head_rows: admit_rows, evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: [], closures: closures)
-      + join_control_case(name: "equal-count-relocated-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 0 - 1, shifted_index: 2), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 2, want_refused: ["Appeared", "Vanished"], closures: closures)
-      + join_control_case(name: "equal-count-wrong-home-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 2, shifted_index: 0 - 1), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 2, want_refused: ["TargetChanged"], closures: closures)
-      + join_control_case(name: "head is not the recomputation", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: base_text, head_text: head_text + "\n", readable: true }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["EditsNotGenerated"], closures: closures)
-      + join_control_case(name: "unreadable text", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: "", head_text: "", readable: false }, prepared: prepared, lex: lex, want_admitted: 0, want_refused: ["Unobserved"], closures: closures)
-      + join_control_case(name: "same rows in another print order (no change)", base_rows: base_rows, head_rows: list_reverse(xs: base_rows), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 0, want_refused: [], closures: closures)
-      + join_control_case(name: "malformed locus", base_rows: base_rows, head_rows: list_snoc_item(xs: admit_rows, item: "binding_partial\tm\tchars\t9\tdeclared\tstd.host_text.chars\t3:x"), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: ["MalformedLocus"], closures: closures)
+    let report = join_control_case(name: "admit", base_rows: base_rows, head_rows: admit_rows, evidence: evidence, generated: generated, want_admitted: 3, want_refused: [])
+      + join_control_case(name: "equal-count-relocated-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 0 - 1, shifted_index: 2), evidence: evidence, generated: generated, want_admitted: 2, want_refused: ["Appeared", "Vanished"])
+      + join_control_case(name: "equal-count-wrong-home-same-line-site", base_rows: base_rows, head_rows: join_control_head_rows(head_text: head_text, wrong_index: 2, shifted_index: 0 - 1), evidence: evidence, generated: generated, want_admitted: 2, want_refused: ["TargetChanged"])
+      + join_control_case(name: "head is not the recomputation", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: base_text, head_text: head_text + "\n", readable: true }, generated: generated, want_admitted: 0, want_refused: ["EditsNotGenerated"])
+      + join_control_case(name: "unreadable text", base_rows: base_rows, head_rows: admit_rows, evidence: ModuleEvidence { module: "m", base_text: "", head_text: "", readable: false }, generated: generated, want_admitted: 0, want_refused: ["Unobserved"])
+      + join_control_case(name: "same rows in another print order (no change)", base_rows: base_rows, head_rows: list_reverse(xs: base_rows), evidence: evidence, generated: generated, want_admitted: 0, want_refused: [])
+      + join_control_case(name: "malformed locus", base_rows: base_rows, head_rows: list_snoc_item(xs: admit_rows, item: "binding_partial\tm\tchars\t9\tdeclared\tstd.host_text.chars\t3:x"), evidence: evidence, generated: generated, want_admitted: 3, want_refused: ["MalformedLocus"])
       + generated_controls()
       + rename_controls()
       + pipe_end_to_end_control(prepared: prepared, lex: lex, closures: closures)
@@ -1104,7 +1127,7 @@ fn pipe_end_to_end_control(prepared: PreparedGrammar, lex: PreparedLexRules, clo
             let base_rows = ["binding_partial\tc.pipe\tmap_get\t0\tambient:primitive_authority\tstd.primitives.map_get_contract\t" + bl]
             let head_rows = ["binding_partial\tc.pipe\tmap_lookup\t0\tdeclared\tstd.algebra.map_lookup\t" + hl]
             let evidence = ModuleEvidence { module: "c/pipe.dag", base_text: base, head_text: head, readable: true }
-            join_control_verdict(name: "pipe end to end (generator plan, then join)", deltas: occurrence_join_with_proof(rows: join_control_rows(), renames: roster_head_rows(), module: "c.pipe", base_rows: base_rows, head_rows: head_rows, evidence: evidence, proof: edit_proof(evidence: evidence, prepared: prepared, lex: lex, scopes: scopes, closures: closures)), want_admitted: 1, want_refused: [])
+            join_control_verdict(name: "pipe end to end (generator plan, then join)", deltas: occurrence_join_with_proof(rows: join_control_rows(), renames: roster_head_rows(), module: "c.pipe", base_rows: base_rows, head_rows: head_rows, evidence: evidence, proof: carried_edit_proof(evidence: evidence, end: generated)), want_admitted: 1, want_refused: [])
         }
     }
   }
