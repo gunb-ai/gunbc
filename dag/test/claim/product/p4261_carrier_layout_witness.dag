@@ -140,6 +140,7 @@ import product.p4261_carrier_layout {
   e1_inductor_short_incident, e1_after_short_resistances, k1_l_4r7_near_resistance, k1_resistances, e1_u21, e1_u69, e1_u53, e1_u100,
   e1_converter_near, k1_converter_near, k1_converter_far, k1_u100, e1_converter_lead_resistances, k1_converter_lead_resistances, k1_near_converter_lead_resistances, e1_u100_lead_resistances, k1_u100_lead_resistances,
   k1_l_4r7_near_pad_resistances, p4261_near_4r7_converter_hypothesis, regulator_pins, pin_terminal_name, u100_lead_terminals,
+  e1_converter_pair_resistances, k1_converter_pair_resistances,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -1642,6 +1643,12 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // end, and its far end joins the traced point near U2_P5 but only links, at about 2 kohm, beyond it.
 // The via on lead b's node carries its two energized readings, and its reported 0.0 to lead b joins
 // it only on the baselined copy. The K1 renders its own, and the K1 with nothing measured renders none.
+// Since the pair readings of 2026-10-31, reading every reported zero as a join makes the live E1 record
+// contradict itself at exactly three readings, all from the first lead sweep on the converter's 0.5 mm
+// leads: SW to the return at 20 ohm and VIN to the return at 10 ohm, where SW to its pad, VIN to SW
+// and the pad to the return all read 0; and BST to SW open, where BST to the return read 0. The record
+// keeps them as contradictions (product.electrical.measured_netlist), and the converter hypothesis
+// names them as the readings to re-take held steady; nothing here reconciles them.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let live = board_netlist(b: e1_measured)
   let net = board_netlist(b: baselined_board(b: e1_measured))
@@ -1673,7 +1680,10 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: e1_q301_resistor_far, b: e1_route_near_u2) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_route_toward_j1)
     && count(filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_q301_b_via))) == 2
     && one_node(net: net, a: e1_q301_b_via, b: e1_q301_lead_b) && !one_node(net: live, a: e1_q301_b_via, b: e1_q301_lead_b)
-    && count(filter(net.links, l => !is_between(l: l))) == 0
+    && count(filter(net.links, l => !is_between(l: l))) == 3
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(SW)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 20, Absent => false })) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 10, Absent => false })) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && (link_reading(l: l).second.terminal as String).contains("(SW)"))) == 1
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
@@ -2543,7 +2553,7 @@ test fn the_inductor_short_is_an_incident_and_its_readings_follow_it() -> Bool {
     && count(e1_after_short_resistances) == 5 && all(e1_after_short_resistances, o => after_both_incidents(o: o))
     && count(filter(e1_after_short_resistances, o => reads_zero_to_return(o: o))) == 2
     && k1_ohms == 4000
-    && count(k1_measured.bench.resistances) == count(k1_resistances) + 1 + count(k1_l_4r7_near_pad_resistances) + count(k1_u100_lead_resistances) + count(k1_converter_lead_resistances) + count(k1_near_converter_lead_resistances)
+    && count(k1_measured.bench.resistances) == count(k1_resistances) + 1 + count(k1_l_4r7_near_pad_resistances) + count(k1_u100_lead_resistances) + count(k1_converter_lead_resistances) + count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances)
     && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-21 inductor short")
     && count(component_of(layout: p4261_e1_layout, c: e1_u21)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_u69)) == 1
     && all(concat(component_of(layout: p4261_e1_layout, c: e1_u21), component_of(layout: p4261_e1_layout, c: e1_u53)), c => match identified_row(c: c) { Present { value: r } => r.ordering_code == pca9617adp.ordering_code, Absent => false })
@@ -2605,9 +2615,16 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && match pin_reading(rs: k1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 134000, Absent => false } }
     && match pin_reading(rs: k1_near_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false } && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false } }
     && match pin_reading(rs: k1_near_converter_lead_resistances, name: "(SW)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 8000, Absent => false } }
-  let in_records = count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) == count(e1_converter_lead_resistances)
+  let vin_sw = count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 1
+    && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && (o.second.terminal as String).contains("(SW)") && match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false })) == 1
+    && all(e1_converter_pair_resistances, o => after_both_incidents(o: o))
+    && count(k1_converter_pair_resistances) == 1 && all(k1_converter_pair_resistances, o => is_reported_zero(o: o) && (o.first.terminal as String).contains("(SW)"))
+    && p4261_near_4r7_converter_hypothesis.claim.contains("joined at 0 ohm, which nothing in the datasheet's circuit but the device's high-side switch can do")
+  let in_records = vin_sw
+    && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) > count(e1_converter_lead_resistances)
     && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
-    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == count(k1_near_converter_lead_resistances)
+    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances)
+    && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) == count(e1_converter_lead_resistances) + count(filter(e1_converter_pair_resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near)))
     && count(component_of(layout: p4261_k1_layout, c: k1_converter_far)) == 1
     && all(component_of(layout: p4261_k1_layout, c: k1_converter_far), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
   let u100 = count(component_of(layout: p4261_k1_layout, c: k1_u100)) == 1
