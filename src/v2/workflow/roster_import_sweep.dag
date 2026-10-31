@@ -974,7 +974,7 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
       let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
       // ALL-OR-NOTHING (tidy-ant-251, 2026-10-31): every path is planned (read, swept, spliced) before any is written;
-      // one refusal anywhere reports and writes nothing, so a refused file never leaves another file's import without its rename.
+      // a refusal from PLANNING (path admission, read, sweep, splice) anywhere reports and writes nothing. A refusal during the COMMIT (lock lost, stale read, failed write) can follow earlier writes and leaves them: the apply is not atomic across files, and no control covers that phase.
       let plans = fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: [],
@@ -4178,7 +4178,7 @@ fn roster_lock_controls_report(root_dir: String) -> String {
     + roster_control_all_or_nothing(root_dir: root_dir)
 }
 
-// ALL-OR-NOTHING: one planned write beside one refused plan writes nothing, and reports the refusal.
+// PLANNING-REFUSAL ATOMICITY: one planned write beside one plan refused at planning writes nothing, and reports the refusal. Commit-phase refusals are not covered.
 fn roster_control_all_or_nothing(root_dir: String) -> String {
   let before = roster_control_source(module_name: "c.aon")
   let target = ".roster_control_aon.dag"
