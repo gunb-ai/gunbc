@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefuse
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
-import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, host_key_provenance_label, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
 import gunbc.host.anchored_host_transport {
   AnchoredHostRow,
@@ -143,6 +143,7 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
 
 // (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
 fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_per_boot_pin_carries_its_own_provenance_arm"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
@@ -652,6 +653,17 @@ fn per_boot_binding(console: String, expected_boot: NonEmptyStr, key_b64: String
 // POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
 test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
   per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "bound"
+}
+
+// A per-boot pin is neither trust-on-first-use nor an external join: its provenance is its own arm, so a policy
+// keyed on provenance can tell a BMC-console key from a bare network scan (review 89380). The static anchor's
+// arm is unchanged.
+test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
+  match per_boot_pin_from_console_line(row: anchored_fixture_row(), line: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String)) {
+    Present { value: pin } => host_key_provenance_label(p: pin.anchor.provenance) == "console-per-boot"
+    Absent => false
+  }
+  && host_key_provenance_label(p: the_present_anchor(row: anchored_fixture_row()).provenance) == "scanned-first-contact"
 }
 
 // RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
