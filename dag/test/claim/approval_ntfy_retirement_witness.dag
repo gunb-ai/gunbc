@@ -17,10 +17,11 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_unit_name, ntfy_retire_account_name, ntfy_retire_config_dir, ntfy_retire_state_root,
   ntfy_retire_binary_path, ntfy_retire_unit_path,
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
-  ntfy_retire_removal_argv,
+  ntfy_retire_removal_argv, ntfy_retire_roster_paths,
 }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
+  srv1_root_removal_scope_at,
 }
 
 // ── The approval the run asks for ──────────────────────────────────────────────────────────────
@@ -30,6 +31,18 @@ test fn the_retirement_scopes_are_covered_by_the_job_approval() -> Bool {
     Absent => true
     _ => false
   }
+}
+
+// THE APPROVAL NAMES THE SAME PATHS THE LEGS REMOVE. The arm's scope list and the retirement's
+// roster are two spellings of one fact in two modules, and this is what keeps them one fact: every
+// rostered path appears in the scope list as a removal scope over THAT path, never over the directory
+// around it. A scope over /usr/local/bin would cover the ntfy binary and every other binary in that
+// directory -- including the runner's own -- and that is not what the operator is asked to approve on
+// the phone.
+test fn every_roster_path_has_its_own_removal_scope_in_the_approval() -> Bool {
+  count(ntfy_retire_roster_paths) == 4
+    && all(ntfy_retire_roster_paths, p =>
+      any(approval_ntfy_retire_root_scopes, s => s == srv1_root_removal_scope_at(path: p)))
 }
 
 // A WRITE SCOPE IN THE ARM'S LIST MUST BE A REMOVAL, not an install: the arm inherits the job's

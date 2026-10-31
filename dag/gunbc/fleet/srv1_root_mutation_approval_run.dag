@@ -190,15 +190,21 @@ data srv1_root_serve_route_removal_scope: AuthorizationScope = AuthorizationScop
 // THE SCOPES THE ntfy RETIREMENT EXERCISES, read off the legs it runs
 // (gunbc.fleet.approval_ntfy_retirement ntfy_retire_legs): stop and disable the unit by name, remove
 // its file, reload the daemon, remove the account, remove its two trees, remove the hand-installed
-// binary, and take the front-door route off tailscale. The census row and the run's own inheritance
+// binary, and take the front-door route off tailscale. The four removal scopes name EACH PATH THE
+// RETIREMENT REMOVES, not the directory around it: an operator approving a removal on the phone is
+// approving the named path, and "/usr/local/bin" would have been an approval to remove anything in
+// /usr/local/bin -- including the runner's own binaries. The literals here and the roster there are
+// two spellings of one fact, so gunbc.test.claim.approval_ntfy_retirement_witness
+// every_roster_path_has_its_own_removal_scope_in_the_approval compares them path by path. The census
+// row and the run's own inheritance
 // check read this one value, so what the census says the effect needs and what the run asks the
 // grant for cannot drift apart.
 data approval_ntfy_retire_root_scopes: List<AuthorizationScope> = [
   srv1_root_service_stop_scope, srv1_root_service_disable_scope, srv1_root_daemon_reload_scope,
-  srv1_root_removal_scope_at(path: systemd_system_unit_directory as String),
+  srv1_root_removal_scope_at(path: "/etc/systemd/system/gunbc-ntfy.service"),
   srv1_root_removal_scope_at(path: "/etc/gunbc-ntfy"),
   srv1_root_removal_scope_at(path: "/var/lib/gunbc-ntfy"),
-  srv1_root_removal_scope_at(path: "/usr/local/bin"),
+  srv1_root_removal_scope_at(path: "/usr/local/bin/ntfy"),
   srv1_root_account_removal_scope, srv1_root_serve_route_removal_scope,
 ]
 
