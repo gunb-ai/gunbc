@@ -63,7 +63,7 @@ fn trust() -> List<MarkdownBlock> {
 
 fn effects() -> List<MarkdownBlock> {
   [
-    p(text: "Each effect executes a select_authorization_pattern choice (census enrollment is not required: retired by the 2026-10-30 process ruling, `gunbc.design_ruling bad_process_is_worse_than_no_process`; this does not establish corpus-wide coverage); none runs without merry-fox-82 relaying operator go. Effects: srv4 ProxyDHCP-only activation (router DHCP unchanged, no address leases), TFTP writes, target BMC override and held power cycle."),
+    p(text: "Classify/roster every effect through select_authorization_pattern/privileged_effect_census; none runs without merry-fox-82 relaying operator go. Effects: srv4 ProxyDHCP-only activation (router DHCP unchanged, no address leases), TFTP writes, target BMC override and held power cycle."),
   ]
 }
 

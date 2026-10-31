@@ -29,7 +29,7 @@ fn decisions() -> List<MarkdownBlock> {
 
 fn authorities() -> List<MarkdownBlock> {
   [
-    p(text: "Every new effect site executes a select_authorization_pattern choice (census enrollment is not required: retired by the 2026-10-30 process ruling, `gunbc.design_ruling bad_process_is_worse_than_no_process`; this does not establish corpus-wide coverage). Existing rows cover mint/deregister/sweep/dispatch/ref pins; custody is host_credential_custody_converge_ci_wet. Slot shape MemoryMax/High/SwapMax=0/TasksMax/CPUWeight comes once from gunbc_runner_slot_desired via ephemeral_slot_properties, shared by G/F. committed width is derived; RAM-host DiskWidthUnconstrained still charges workspace to memory."),
+    p(text: "Every new effect site receives privileged_effect_census enrollment and an executed select_authorization_pattern choice. Existing rows cover mint/deregister/sweep/dispatch/ref pins; custody is host_credential_custody_converge_ci_wet. Slot shape MemoryMax/High/SwapMax=0/TasksMax/CPUWeight comes once from gunbc_runner_slot_desired via ephemeral_slot_properties, shared by G/F. committed width is derived; RAM-host DiskWidthUnconstrained still charges workspace to memory."),
     p(text: "Memory envelope bounds the actual unit and refuses OOM or swap. runner_unit_live_read verifies declared shape before floor execution; live drift refuses. All host effects use anchored_host_transport_of; derive host from Bound transport, refuse every other arm. lost_boot_observed_over plus lost_boot_current_from_capture mints the single CurrentBootEvidence consumed by both service population and sweep."),
   ]
 }
