@@ -7,7 +7,11 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
 import std.measure { money_amount_micro_count, money_per_hour_micros, milliseconds_per_second }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileAbsent, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree,
+  FilesystemFileRead, FilesystemFileSubjectRefused, filesystem_file_observation, filesystem_listing_observation,
+  filesystem_read_outcome,
+}
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai {
@@ -318,6 +322,11 @@ fn flex_member_line(m: FlexMemberWalls) -> String {
 // path"). A SCHEDULED wet dispatch must move both files under the fleet-converge state root; that is the
 // go-wet slice's decision, not this one's, and it is named here so it is not lost.
 data flex_pass_carry_path: String = "target/flex-pass-carry.txt"
+// The SAME path split into the two parts a filesystem observation needs: the directory that is listed (which
+// is what establishes absence) and the entry name inside it. The invariant that these three literals denote
+// one path is pinned by a claim in test.claim.fabric.flex_pass_carry_witness, not left to convention.
+data flex_pass_carry_directory: String = "target"
+data flex_pass_carry_name: String = "flex-pass-carry.txt"
 
 data flex_carry_header: String = "flex-carry v1"
 data flex_carry_prefix_sightings_complete: String = "sightings complete"
@@ -327,6 +336,10 @@ data flex_carry_prefix_loading: String = "loading "
 data flex_carry_prefix_answered: String = "create answered "
 data flex_carry_prefix_lost: String = "create lost "
 data flex_carry_prefix_refused: String = "create refused "
+// The standing of the last ask is written as a WHOLE line, one of these two. A carry that states no standing
+// at all reads untrusted rather than defaulting to "no ask in flight".
+data flex_carry_line_standing_none: String = "standing none"
+data flex_carry_line_standing_unknown: String = "standing unknown"
 
 type FlexCarry {
   cooldown: FlexRentCooldown?
@@ -335,8 +348,24 @@ type FlexCarry {
   // least 0 seconds old". Anything less, and every absent id reads UNREAD.
   basis: FlexSightingsBasis
   sightings: List<FlexLoadingSighting>
-  standing: FlexCreateStanding?
+  standing: FlexCarryStanding
 }
+
+// THE STANDING OF THE LAST ASK, AS THE CARRY RECORDS IT. Three states, because there are three facts: no ask
+// is in flight (positively recorded by a pass that looked), an ask is in flight with this verdict, or the
+// standing is UNKNOWN. The third is the one that has to survive the write. A pass that could not read its
+// carry used to fold that into `standing: none` and then write a well-formed file over the corrupt one, so
+// ONE pass was enough to launder "I cannot tell" into "nothing is in flight", and the next pass planned a
+// second rent on top of a card the account was already paying for (review 89235 of gunbc#15462). Unknown now
+// round-trips through the file and keeps the create gate shut. The pass cannot repair it: it cannot tell
+// whether an ask it never saw is still going to land, and a complete roster walk does not settle that either,
+// because an ask that has produced no instance yet is invisible to the roster. The way out is a human: read
+// the account's asks and instances, then restate the standing (or write `standing none` once the account is
+// known clear).
+type FlexCarryStanding
+  = FlexCarryNoAsk
+  | FlexCarryAsk { ask: FlexCreateStanding }
+  | FlexCarryStandingUnknown { reason: NonEmptyStr }
 
 type FlexCarryLine
   = FlexCarrySightingsBasis { basis: FlexSightingsBasis }
@@ -346,6 +375,8 @@ type FlexCarryLine
   | FlexCarryLost { machine_id: Int, ask_id: Int }
   | FlexCarryRefused { machine_id: Int, ask_id: Int }
   | FlexCarryHeader
+  | FlexCarryNoAskLine
+  | FlexCarryStandingUnknownLine
   | FlexCarryLineUnread { text: String }
 
 type FlexCarryNums { first: Int?, second: Int?, third: Int? }
@@ -433,6 +464,10 @@ fn flex_carry_line(line: String) -> FlexCarryLine {
           Present { value: ask } => FlexCarryRefused { machine_id: machine, ask_id: ask }
         }
     }
+  } else if starts_with(s: line, prefix: flex_carry_line_standing_none) {
+    FlexCarryNoAskLine
+  } else if starts_with(s: line, prefix: flex_carry_line_standing_unknown) {
+    FlexCarryStandingUnknownLine
   } else {
     FlexCarryLineUnread { text: line }
   }
@@ -455,15 +490,30 @@ fn flex_carry_line(line: String) -> FlexCarryLine {
 // The go-wet slice (the schedule) is what creates the race, and it must move BOTH this file and the receipt
 // under the fleet-converge state root and take the CAS route; that obligation is named on this module's
 // census row and in the go-wet slice's scope, not hidden here.
+// THREE FACTS, NOT TWO. "There is no carry file" and "there is a carry file and it cannot be read" are
+// different facts, and collapsing them is the same mistake as laundering an unread standing into a clean
+// file, at the other end of this file: a fresh worktree would be indistinguishable from a corrupted carry,
+// so either the autoscaler can never start or a corrupted carry reads as a fresh start. Absence here is
+// ESTABLISHED, by listing the directory through extdeps.filesystem.filesystem_io (FilesystemFileAbsent),
+// never by a read that failed. The repo already refuses this collapse: test.claim.ci_app_key_rotation_witness
+// an_unreadable_mint_record_is_refused_as_unreadable_never_collapsed_into_absent.
 type FlexCarryReading
   = FlexCarryLoaded { carry: FlexCarry }
+  | FlexCarryAbsent
   | FlexCarryUnread { reason: NonEmptyStr }
 
-// What the pass may conclude from its carry. An unread reading makes the create gate refuse: the standing
-// of the last ask is unknown, and unknown is not "nothing in flight".
+// What the pass may conclude from its carry. An unread reading, or a loaded carry whose standing is recorded
+// UNKNOWN, makes the create gate refuse: the standing of the last ask is unknown, and unknown is not "nothing
+// in flight".
 fn flex_carry_trust(reading: FlexCarryReading) -> FlexCarryTrust {
   match reading {
-    FlexCarryLoaded { carry: _ } => FlexCarryTrusted
+    FlexCarryAbsent => FlexCarryTrusted
+    FlexCarryLoaded { carry: c } =>
+      match c.standing {
+        FlexCarryStandingUnknown { reason: r } => FlexCarryUntrusted { reason: r }
+        FlexCarryNoAsk => FlexCarryTrusted
+        FlexCarryAsk { ask: _ } => FlexCarryTrusted
+      }
     FlexCarryUnread { reason: r } => FlexCarryUntrusted { reason: r }
   }
 }
@@ -471,6 +521,7 @@ fn flex_carry_trust(reading: FlexCarryReading) -> FlexCarryTrust {
 fn flex_carry_cooldown(reading: FlexCarryReading) -> FlexRentCooldown? {
   match reading {
     FlexCarryLoaded { carry: c } => c.cooldown
+    FlexCarryAbsent => none
     FlexCarryUnread { reason: _ } => none
   }
 }
@@ -486,13 +537,25 @@ fn flex_carry_sightings(reading: FlexCarryReading) -> FlexLoadingSightings {
         FlexSightingsBaselineIncomplete =>
           FlexSightingsUnread { reason: "the sightings baseline was not taken from a complete roster walk" as NonEmptyStr }
       }
+    FlexCarryAbsent =>
+      FlexSightingsUnread { reason: "no carry has ever been written, so no loading sighting has ever been taken" as NonEmptyStr }
     FlexCarryUnread { reason: r } => FlexSightingsUnread { reason: r }
   }
 }
 
+// The planner still sees the two-valued question it asks ("is an ask in flight, and with what verdict?"), and
+// UNKNOWN answers it with `none` ONLY because the create gate is shut by flex_carry_trust before the planner
+// is reached. That is why trust is a separate input on FlexPassInput and not something the planner infers from
+// this Option: inferring it here would put the refusal one indirection away from the call that must not happen.
 fn flex_carry_standing(reading: FlexCarryReading) -> FlexCreateStanding? {
   match reading {
-    FlexCarryLoaded { carry: c } => c.standing
+    FlexCarryLoaded { carry: c } =>
+      match c.standing {
+        FlexCarryAsk { ask: ask } => Present { value: ask }
+        FlexCarryNoAsk => none
+        FlexCarryStandingUnknown { reason: _ } => none
+      }
+    FlexCarryAbsent => none
     FlexCarryUnread { reason: _ } => none
   }
 }
@@ -506,8 +569,9 @@ fn flex_carry_basis_word(carry: FlexCarry) -> String {
 
 fn flex_carry_standing_word(carry: FlexCarry) -> String {
   match carry.standing {
-    Present { value: _ } => " standing=yes"
-    Absent => " standing=no"
+    FlexCarryAsk { ask: _ } => " standing=yes"
+    FlexCarryNoAsk => " standing=no"
+    FlexCarryStandingUnknown { reason: _ } => " standing=UNKNOWN (the create gate stays shut)"
   }
 }
 
@@ -521,17 +585,36 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
     // The leading space in " ) --" is cosmetic, not a workaround: the parse failure this site went through
     // was an argument list left open, which the parser locates at the enclosing block's closing brace and
     // not at the call (see the note on flex_member_line and the recurring_failure_mode row filed for it).
+    FlexCarryAbsent =>
+      "carry=absent (no carry file at that path, absence established by listing the directory: no previous pass recorded anything)"
     FlexCarryUnread { reason: r } =>
       concat("carry=UNREAD (", concat(r, " ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed"))
   }
 }
 
+// The read is a TYPED FILESYSTEM OBSERVATION, not a success flag: presence is established by listing the
+// directory the carry lives in, so "no carry has ever been written" and "a carry is there and cannot be read"
+// reach the pass as different facts. The fold used is the repo's own (extdeps.filesystem.filesystem_io), which
+// also refuses the case where the listing says absent and the read still returned bytes.
 fn flex_carry_read(path: String) -> FlexCarryReading {
+  let listed = Filesystem.List(path: flex_pass_carry_directory)
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    FlexCarryUnread { reason: "the carry file could not be read" as NonEmptyStr }
-  } else {
-    flex_carry_gate(content: read.content)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: flex_pass_carry_directory,
+      success: listed.success,
+      entries: listed.entries,
+      error: listed.error,
+    ),
+    name: flex_pass_carry_name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(absence) => FlexCarryAbsent
+    FilesystemFileRead { content: content, path: _ } => flex_carry_gate(content: content)
+    FilesystemFileIndeterminate { cause: c } => FlexCarryUnread { reason: c as NonEmptyStr }
+    FilesystemFileObservationsDisagree { cause: c, path: _ } => FlexCarryUnread { reason: c as NonEmptyStr }
+    FilesystemFileSubjectRefused { cause: c, directory: _, name: _ } => FlexCarryUnread { reason: c as NonEmptyStr }
   }
 }
 
@@ -588,7 +671,10 @@ fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
           cooldown: none,
           basis: FlexSightingsBaselineIncomplete,
           sightings: [],
-          standing: none,
+          // A carry that never states its standing does NOT default to "no ask in flight": it reads UNKNOWN,
+          // which keeps the create gate shut. Every file this module writes states a standing line, so the
+          // only way to reach this init is a hand-edited or truncated file.
+          standing: FlexCarryStandingUnknown { reason: "the carry states no standing line, so the standing of the last ask is not recorded" },
         },
         f: (acc, line) =>
           match flex_carry_line(line: line) {
@@ -609,26 +695,35 @@ fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
                 sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_seen_ms: first_seen_ms }]),
                 standing: acc.standing,
               }
+            FlexCarryNoAskLine =>
+              FlexCarry { cooldown: acc.cooldown, basis: acc.basis, sightings: acc.sightings, standing: FlexCarryNoAsk }
+            FlexCarryStandingUnknownLine =>
+              FlexCarry {
+                cooldown: acc.cooldown,
+                basis: acc.basis,
+                sightings: acc.sightings,
+                standing: FlexCarryStandingUnknown { reason: "the carry records the standing of the last ask as unknown; a human must reconcile the account before a create is planned" },
+              }
             FlexCarryAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } =>
               FlexCarry {
                 cooldown: acc.cooldown,
                 basis: acc.basis,
                 sightings: acc.sightings,
-                standing: Present { value: FlexCreateAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } },
+                standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } },
               }
             FlexCarryLost { machine_id: machine_id, ask_id: ask_id } =>
               FlexCarry {
                 cooldown: acc.cooldown,
                 basis: acc.basis,
                 sightings: acc.sightings,
-                standing: Present { value: FlexCreateLost { ask_id: ask_id, machine_id: machine_id } },
+                standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: ask_id, machine_id: machine_id } },
               }
             FlexCarryRefused { machine_id: machine_id, ask_id: ask_id } =>
               FlexCarry {
                 cooldown: acc.cooldown,
                 basis: acc.basis,
                 sightings: acc.sightings,
-                standing: Present { value: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
+                standing: FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
               }
             FlexCarryLineUnread { text: _ } => acc
           },
@@ -648,13 +743,18 @@ fn flex_carry_render(carry: FlexCarry) -> String {
   }
   let loading_lines = map(carry.sightings, s =>
     concat(concat(flex_carry_prefix_loading, int_to_decimal_string(value: s.instance_id)), concat(" ", int_to_decimal_string(value: s.first_seen_ms))))
+  // Exactly one standing line is always written: the file states its standing or it does not load trusted.
+  // The UNKNOWN reason is not round-tripped as text -- the line records the STATE, and the reason the pass
+  // that found the corruption printed is in that pass's receipt; re-deriving a cause string from a file that
+  // lost the cause would be a fabricated explanation.
   let standing_lines = match carry.standing {
-    Absent => []
-    Present { value: FlexCreateAnswered { instance_id: id, machine_id: machine, ask_id: ask } } =>
+    FlexCarryNoAsk => [flex_carry_line_standing_none]
+    FlexCarryStandingUnknown { reason: _ } => [flex_carry_line_standing_unknown]
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: id, machine_id: machine, ask_id: ask } } =>
       [concat(concat(flex_carry_prefix_answered, int_to_decimal_string(value: id)), concat(concat(" ", int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask))))]
-    Present { value: FlexCreateLost { ask_id: ask, machine_id: machine } } =>
+    FlexCarryAsk { ask: FlexCreateLost { ask_id: ask, machine_id: machine } } =>
       [concat(concat(flex_carry_prefix_lost, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
-    Present { value: FlexCreateRefused { ask_id: ask, machine_id: machine } } =>
+    FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask, machine_id: machine } } =>
       [concat(concat(flex_carry_prefix_refused, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
   }
   join(
@@ -679,18 +779,30 @@ fn flex_carry_after(
 ) -> FlexCarry {
   let known = match prior {
     FlexCarryLoaded { carry: c } => c
-    FlexCarryUnread { reason: _ } =>
-      FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: none }
+    FlexCarryAbsent =>
+      FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: FlexCarryNoAsk }
+    // The unread prior does NOT become an empty carry: the standing it could not state is written forward as
+    // UNKNOWN, so the next pass reads the same fact this pass read (review 89235). The sightings and cooldown
+    // this pass observed are still written -- losing those would freeze the loading cut and stop the pass
+    // destroying a card it can already see is dead.
+    FlexCarryUnread { reason: r } =>
+      FlexCarry {
+        cooldown: none,
+        basis: FlexSightingsBaselineIncomplete,
+        sightings: [],
+        standing: FlexCarryStandingUnknown { reason: r },
+      }
   }
   let standing = match outcome {
-    FlexPassCreated { standing: s, cooldown: _, allocation: _ } => Present { value: s }
+    FlexPassCreated { standing: s, cooldown: _, allocation: _ } => FlexCarryAsk { ask: s }
     _ =>
       match known.standing {
-        Absent => none
-        Present { value: s } =>
+        FlexCarryNoAsk => FlexCarryNoAsk
+        FlexCarryStandingUnknown { reason: r } => FlexCarryStandingUnknown { reason: r }
+        FlexCarryAsk { ask: s } =>
           match flex_reconcile_acquisition(standing: s, roster: roster) {
-            FlexMayAcquire => none
-            _ => Present { value: s }
+            FlexMayAcquire => FlexCarryNoAsk
+            _ => FlexCarryAsk { ask: s }
           }
       }
   }
@@ -804,6 +916,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       // the observations it made are what the next pass needs either way.
       let prior_sightings = match carry {
         FlexCarryLoaded { carry: c } => c.sightings
+        FlexCarryAbsent => []
         FlexCarryUnread { reason: _ } => []
       }
       let carry_out = flex_carry_after(

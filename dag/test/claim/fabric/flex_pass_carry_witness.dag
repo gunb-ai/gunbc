@@ -15,6 +15,9 @@ import gunbc.fleet.flex_pass_run {
   FlexCarryReading, FlexCarryLoaded, FlexCarryUnread, flex_carry_wire, flex_carry_basis_word,
   flex_carry_gate, flex_carry_trust, flex_carry_header,
   flex_carry_cooldown, flex_carry_sightings, flex_carry_standing,
+  FlexCarryAbsent, FlexCarryNoAsk, FlexCarryAsk, FlexCarryStandingUnknown,
+  flex_carry_line_standing_none, flex_carry_line_standing_unknown,
+  flex_pass_carry_path, flex_pass_carry_directory, flex_pass_carry_name,
 }
 import product.fabric.flex_vast_loop {
   FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated, FlexCarryTrusted, FlexCarryUntrusted,
@@ -42,7 +45,7 @@ test fn the_carry_wire_round_trips_a_baseline_a_cooldown_two_sightings_and_an_an
       FlexLoadingSighting { instance_id: 57968351, first_seen_ms: w_now - 7200000 },
       FlexLoadingSighting { instance_id: 57968352, first_seen_ms: w_now },
     ],
-    standing: Present { value: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 7 } },
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 7 } },
   }
   let lines = map(split(s: flex_carry_render(carry: carry), delimiter: "\n"), l => flex_carry_line(line: l))
   length(lines) == 6
@@ -68,7 +71,7 @@ test fn an_incomplete_baseline_round_trips_and_makes_absent_ids_read_unread() ->
             cooldown: none,
             basis: FlexSightingsBaselineIncomplete,
             sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 7200000 }],
-            standing: none,
+            standing: FlexCarryNoAsk,
           }
         },
       ) {
@@ -79,7 +82,7 @@ test fn an_incomplete_baseline_round_trips_and_makes_absent_ids_read_unread() ->
                 cooldown: none,
                 basis: FlexSightingsBaselineComplete,
                 sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 7200000 }],
-                standing: none,
+                standing: FlexCarryNoAsk,
               }
             },
           ) {
@@ -121,7 +124,7 @@ test fn a_create_performed_this_pass_supersedes_the_ask_carried_in() -> Bool {
     cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
     basis: FlexSightingsBaselineComplete,
     sightings: [],
-    standing: Present { value: FlexCreateLost { ask_id: 7, machine_id: 404472 } },
+    standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 404472 } },
   } }
   let after = flex_carry_after(
     prior: prior,
@@ -135,7 +138,7 @@ test fn a_create_performed_this_pass_supersedes_the_ask_carried_in() -> Bool {
     now: w_now,
   )
   match after.standing {
-    Present { value: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 9 } } =>
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 9 } } =>
       match after.cooldown {
         Present { value: c } => c.asked_at == w_now && c.until == w_now + 900000
         Absent => false
@@ -152,7 +155,7 @@ test fn a_refused_ask_with_nothing_on_its_machine_is_retired_and_an_expired_cool
     cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
     basis: FlexSightingsBaselineComplete,
     sightings: [],
-    standing: Present { value: FlexCreateRefused { ask_id: 7, machine_id: 1 } },
+    standing: FlexCarryAsk { ask: FlexCreateRefused { ask_id: 7, machine_id: 1 } },
   } }
   let after = flex_carry_after(
     prior: prior,
@@ -161,7 +164,7 @@ test fn a_refused_ask_with_nothing_on_its_machine_is_retired_and_an_expired_cool
     outcome: FlexPassIdle,
     now: w_now,
   )
-  match after.standing { Absent => true  Present { value: _ } => false }
+  match after.standing { FlexCarryNoAsk => true  FlexCarryAsk { ask: _ } => false  FlexCarryStandingUnknown { reason: _ } => false }
     && match after.cooldown { Absent => true  Present { value: _ } => false }
 }
 
@@ -174,7 +177,7 @@ test fn an_answered_ask_whose_contract_the_account_does_not_show_is_still_carrie
     cooldown: none,
     basis: FlexSightingsBaselineComplete,
     sightings: [],
-    standing: Present { value: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } },
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } },
   } }
   let after = flex_carry_after(
     prior: prior,
@@ -184,7 +187,7 @@ test fn an_answered_ask_whose_contract_the_account_does_not_show_is_still_carrie
     now: w_now,
   )
   match after.standing {
-    Present { value: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } } => true
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } } => true
     _ => false
   }
 }
@@ -197,7 +200,7 @@ test fn an_ask_the_account_does_show_stays_carried_until_the_allocation_slice_re
     cooldown: none,
     basis: FlexSightingsBaselineComplete,
     sightings: [],
-    standing: Present { value: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
   } }
   let after = flex_carry_after(
     prior: prior,
@@ -207,7 +210,7 @@ test fn an_ask_the_account_does_show_stays_carried_until_the_allocation_slice_re
     now: w_now,
   )
   match after.standing {
-    Present { value: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } } => true
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } } => true
     _ => false
   }
 }
@@ -219,7 +222,7 @@ test fn a_partial_account_concludes_nothing_and_keeps_the_ask_carried() -> Bool 
     cooldown: none,
     basis: FlexSightingsBaselineComplete,
     sightings: [],
-    standing: Present { value: FlexCreateLost { ask_id: 7, machine_id: 2001 } },
+    standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 2001 } },
   } }
   let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
   let after = flex_carry_after(
@@ -230,7 +233,7 @@ test fn a_partial_account_concludes_nothing_and_keeps_the_ask_carried() -> Bool 
     now: w_now,
   )
   match after.standing {
-    Present { value: FlexCreateLost { ask_id: 7, machine_id: 2001 } } => true
+    FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 2001 } } => true
     _ => false
   }
 }
@@ -242,7 +245,7 @@ test fn an_incomplete_walk_writes_an_incomplete_baseline_and_says_so() -> Bool {
     cooldown: none,
     basis: FlexSightingsBaselineComplete,
     sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 3600000 }],
-    standing: none,
+    standing: FlexCarryNoAsk,
   } }
   let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
   let after = flex_carry_after(
@@ -276,7 +279,7 @@ test fn a_roster_that_cannot_be_read_builds_no_cards_and_says_which_kind_of_cann
     && string_contains(
       s: flex_reconcile_wire(
         reading: FlexCarryLoaded {
-          carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: none }
+          carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: FlexCarryNoAsk }
         },
         roster: exhausted(rows: []),
       ),
@@ -306,7 +309,7 @@ test fn a_read_carry_reports_the_baseline_the_sightings_and_the_standing_it_hold
       cooldown: none,
       basis: FlexSightingsBaselineComplete,
       sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now }],
-      standing: none,
+      standing: FlexCarryNoAsk,
     }
   }
   string_contains(s: flex_carry_wire(reading: read), pattern: "carry=read sightings=1")
@@ -324,7 +327,7 @@ test fn the_receipt_names_the_reconcile_it_did() -> Bool {
           cooldown: none,
           basis: FlexSightingsBaselineComplete,
           sightings: [],
-          standing: Present { value: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
+          standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
         }
       },
       roster: exhausted(rows: [our_running_row(id: 1001)]),
@@ -346,15 +349,114 @@ test fn a_carry_with_the_wrong_header_or_an_unreadable_line_reads_unread_and_cou
   let truncated = concat(flex_carry_header, "\ncreate lost 42\n")
   match flex_carry_gate(content: good) {
     FlexCarryLoaded { carry: c } => length(c.sightings) == 1
+    FlexCarryAbsent => false
     FlexCarryUnread { reason: _ } => false
   } && match flex_carry_gate(content: wrong_header) {
     FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "header is not")
+    FlexCarryAbsent => false
     FlexCarryLoaded { carry: _ } => false
   } && match flex_carry_gate(content: truncated) {
     FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "1 carry line")
+    FlexCarryAbsent => false
     FlexCarryLoaded { carry: _ } => false
   } && match flex_carry_trust(reading: flex_carry_gate(content: truncated)) {
     FlexCarryUntrusted { reason: r } => string_contains(s: r, pattern: "1 carry line")
     FlexCarryTrusted => false
   }
+}
+
+// THE UNREAD STANDING SURVIVES THE WRITE (review 89235 of gunbc#15462). A pass that could not read its carry
+// still writes one -- the sightings and cooldown it observed are worth keeping, and losing them would freeze
+// the loading cut -- but the standing it could not state is written forward as UNKNOWN, and the NEXT pass
+// reads UNKNOWN rather than "nothing in flight". Before this, one pass was enough to launder a truncated
+// carry into a well-formed file and plan a second rent on top of a card the account was already paying for.
+// This claim is the round trip the review asked for: unread prior -> render -> split -> parse -> trust.
+test fn an_unread_carry_written_forward_still_reads_untrusted_after_the_round_trip() -> Bool {
+  let prior = FlexCarryUnread { reason: "2 carry line(s) the pass could not parse" as NonEmptyStr }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried {
+      basis: FlexSightingsBaselineComplete,
+      sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now }],
+    },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  let text = flex_carry_render(carry: after)
+  match flex_carry_gate(content: text) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryUntrusted { reason: r } =>
+          string_contains(s: text, pattern: "standing unknown")
+            // The reason that reaches the refusal is the one the READER can stand behind (the file records the
+            // state, not the cause that the detecting pass printed into its own receipt).
+            && string_contains(s: r, pattern: "standing of the last ask as unknown")
+            && string_contains(s: flex_carry_wire(reading: FlexCarryLoaded { carry: c }), pattern: "standing=UNKNOWN")
+            && length(c.sightings) == 1
+        FlexCarryTrusted => false
+      }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// A CARRY THAT STATES NO STANDING DOES NOT DEFAULT TO EMPTY. The fold's initial standing is UNKNOWN, not
+// "no ask": the only way to reach it is a hand-edited or truncated file, and the safe reading of a file that
+// does not say is "unknown", which keeps the create gate shut.
+test fn a_carry_that_states_no_standing_line_reads_untrusted_not_empty() -> Bool {
+  match flex_carry_gate(content: concat(flex_carry_header, "\nsightings complete\n")) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryUntrusted { reason: r } => string_contains(s: r, pattern: "no standing line")
+        FlexCarryTrusted => false
+      }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// THE POSITIVE CASE IS STILL POSITIVE. A carry that says `standing none` is trusted, carries no ask to
+// reconcile, and renders the same line back -- so the refusal above is about the missing statement, not about
+// every carry being suspect.
+test fn a_carry_that_states_no_ask_is_trusted_and_carries_nothing_to_reconcile() -> Bool {
+  let text = concat(concat(flex_carry_header, "\nsightings complete\n"), flex_carry_line_standing_none)
+  match flex_carry_gate(content: text) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryTrusted =>
+          match flex_carry_standing(reading: FlexCarryLoaded { carry: c }) {
+            Absent => string_contains(s: flex_carry_render(carry: c), pattern: flex_carry_line_standing_none)
+              && string_contains(s: flex_carry_wire(reading: FlexCarryLoaded { carry: c }), pattern: "standing=no")
+            Present { value: _ } => false
+          }
+        FlexCarryUntrusted { reason: _ } => false
+      }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// ABSENT AND UNREAD ARE DIFFERENT FACTS. A fresh worktree has no carry file, and that is established by
+// listing the directory (extdeps.filesystem.filesystem_io FilesystemFileAbsent) -- it must not read as the
+// corrupted-carry case, or the autoscaler could never start; the corrupted case must not read as fresh, or a
+// laundered standing starts renting again.
+test fn an_absent_carry_is_trusted_and_is_not_the_same_fact_as_an_unread_one() -> Bool {
+  match flex_carry_trust(reading: FlexCarryAbsent) {
+    FlexCarryTrusted =>
+      string_contains(s: flex_carry_wire(reading: FlexCarryAbsent), pattern: "carry=absent")
+        && !string_contains(s: flex_carry_wire(reading: FlexCarryAbsent), pattern: "carry=UNREAD")
+        && match flex_carry_sightings(reading: FlexCarryAbsent) {
+          FlexSightingsUnread { reason: _ } => true
+          FlexSightingsKnown { sightings: _ } => false
+        }
+    FlexCarryUntrusted { reason: _ } => false
+  }
+}
+
+// THE THREE PATH LITERALS DENOTE ONE PATH. flex_carry_read lists one directory and reads a path built from
+// another literal; if they drift, absence is "established" for a directory the carry never lived in, and a
+// real carry reads absent -- which is exactly the widen this file refuses everywhere else.
+test fn the_carry_path_and_the_listed_directory_and_entry_name_denote_one_path() -> Bool {
+  flex_pass_carry_path == concat(concat(flex_pass_carry_directory, "/"), flex_pass_carry_name)
 }
