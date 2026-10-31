@@ -57,7 +57,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTre
 import gunbc.roadmap.roadmap_attempt_worktree_claim { worktree_claim_read, worktree_claim_reference, WorktreeClaimAbsent, WorktreeClaimHeld, WorktreeClaimUnreadable }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
 import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_attempt_wake_admission, belt_redeliver_attempt_continues, BeltRedeliverWakeAdmission, WakeAdmissionAdmitted, WakeAdmissionRestoreRefused, WakeAdmissionContinuationRefused }
-import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_resumability, ResumabilityResumable, ResumabilityNotRequestPending, ResumabilityMalformed }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_resumability, ResumabilityResumable, ResumabilityRequestPendingNotResumable, ResumabilityRequestPendingInterrupted, ResumabilityNotRequestPending, ResumabilityMalformed }
 
 // THE SUBJECT KEY OF THE POPULATION, read from the code that enforces it: the fixture never carries its own copy,
 // so a rename of the approved attempt moves the witness with the gate instead of leaving a green lie behind.
@@ -173,8 +173,12 @@ fn tree_present(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_ke
 fn recovery_resumable(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
   match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: attempt_key)) {
     ResumabilityResumable => true
-    ResumabilityNotRequestPending => false
+    // Every other case of the typed reading is named rather than wildcarded: an interrupted or
+    // malformed stream must read as 'not the state the wedge needs', not fall into a default.
+    ResumabilityRequestPendingNotResumable => false
+    ResumabilityRequestPendingInterrupted { interrupted_calls: _ } => false
     ResumabilityMalformed { mismatch: _ } => false
+    ResumabilityNotRequestPending => false
   }
 }
 
