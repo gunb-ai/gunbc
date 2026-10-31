@@ -4,12 +4,8 @@ import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
-import gunbc.runner.runner_revision_job_spec {
-  RevisionJobSpecDecoded, RevisionJobSpecRefused, SpecUnreadable, SpecMemberMissing, SpecMemberMalformed,
-  SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated, SpecRepositoryNotAdmitted,
-  decode_revision_job_spec, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved,
-  revision_job_standing,
-}
+import gunbc.runner.runner_revision_job_spec { RevisionJobSpecDecoded, RevisionJobSpecRefused, SpecUnreadable, SpecMemberMissing, SpecMemberMalformed, SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated, SpecRepositoryNotAdmitted, decode_revision_job_spec }
+import gunbc.runner.runner_claim_set_results { RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved, revision_job_standing }
 
 // THE SPEC AT ITS INTERFACE: supplied JSON, decoded by the job's own reader. Braces are spelled as
 // separate words because a `.dag` string interpolates `{...}`.

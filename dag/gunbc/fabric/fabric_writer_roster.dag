@@ -1,7 +1,6 @@
 module gunbc.fabric.fabric_writer_roster
 
 import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for }
-import gunbc.auth.request_api_key { RequestApiKeyUser }
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
 import product.host_identity { HostIdentity }
@@ -10,8 +9,8 @@ import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric.fabric_storage_binding { fabric_storage_placement }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
-import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
-import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorApiKeyUser, DoorUnattested }
+import std.fabric_storage { FabricStoreUnreachable }
+import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric.fabric_writer_identity_observe {
   FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, WriterLocalPeerObserved, NotAReadingOfTheDoor,
 }
@@ -88,15 +87,6 @@ fn fabric_served_writer_roster() -> List<NonEmptyStr> {
   fabric_served_writer_roster_of(observations: fabric_writer_identity_observations())
 }
 
-// THE DOOR'S TWO ROSTERS, ONE ADMISSION. A proxied request (the peer is the tailscale proxy) is
-// admitted by its login against the served roster above; a local peer is admitted by its account
-// against the door directory's dependents (gunbc.fabric.fabric_storage_placement
-// fabric_storage_door_local_writers), the same declaration the kernel enforces on the socket's
-// directory. A proxied request with no login, a local peer outside that roster, and a peer the
-// kernel did not attest are each refused, and each refusal is its own arm of std.fabric_storage FabricWriterRefusal.
-type FabricDoorWriterAdmission
-  = FabricDoorWriterAdmitted { principal: NonEmptyStr }
-  | FabricDoorWriterRefused { refusal: FabricWriterRefusal }
 
 fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> FabricDoorPrincipal {
   if peer_user == "" { DoorUnattested }
@@ -104,35 +94,6 @@ fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> Fa
   else { DoorLocalPeer { user: peer_user as NonEmptyStr } }
 }
 
-// The API-key verifier supplies a sealed stable user, not an invented proxy or
-// kernel peer. Its only HTTP consumer is the request submission/readback door.
-fn fabric_door_principal_from_api_key(verified: RequestApiKeyUser) -> FabricDoorPrincipal {
-  DoorApiKeyUser { verified: verified }
-}
-
-fn listed(roster: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
-  any(roster, r => (r as String) == (name as String))
-}
-
-// The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
-fn fabric_door_writer_admission_over(logins: List<NonEmptyStr>, locals: List<NonEmptyStr>, principal: FabricDoorPrincipal) -> FabricDoorWriterAdmission {
-  match principal {
-    DoorApiKeyUser { verified: user } => if listed(roster: logins, name: user.user) {
-      FabricDoorWriterAdmitted { principal: user.user }
-    } else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: user.user } } }
-    DoorUnattested => FabricDoorWriterRefused { refusal: WriterPeerUnattested }
-    DoorLocalPeer { user: u } =>
-      if listed(roster: locals, name: u) { FabricDoorWriterAdmitted { principal: u } }
-      else { FabricDoorWriterRefused { refusal: WriterPeerUnrostered { account: u } } }
-    DoorProxied { identity: i } =>
-      match i {
-        TailnetIdentityAbsent => FabricDoorWriterRefused { refusal: WriterLoginAbsent }
-        TailnetUser { login: l } =>
-          if listed(roster: logins, name: l) { FabricDoorWriterAdmitted { principal: l } }
-          else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: l } } }
-      }
-  }
-}
 
 fn fabric_door_local_roster() -> List<NonEmptyStr> {
   fabric_storage_door_local_writers()

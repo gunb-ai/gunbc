@@ -18,10 +18,8 @@ import gunbc.command_runner { run_shell_command_capture }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
 import gunbc.target_invocation { claim_route_verdict_exit }
 import gunbc.runner.runner_revision_job_stage { RevisionJobInputDigests }
-import gunbc.runner.runner_revision_job_spec {
-  RevisionJobSpec, RevisionJobProvenance, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld,
-  RevisionJobSomeUnobserved, revision_job_standing,
-}
+import gunbc.runner.runner_revision_job_spec { RevisionJobSpec, RevisionJobProvenance }
+import gunbc.runner.runner_claim_set_results { RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved, revision_job_standing }
 
 // THE REVISION JOB'S IMMUTABLE RECEIPT, AND WHERE A READER FINDS IT.
 //
@@ -29,7 +27,7 @@ import gunbc.runner.runner_revision_job_spec {
 // (repository, commit, tree, claims in order), the submitter's provenance exactly as submitted, the
 // input digests the job ran on (tree, lockfile, cargo identity, vendor set), the fabric Receipt the
 // cell was settled with (its key, attempt, lease and billable seconds), each claim's exit, and the
-// job's standing (gunbc.runner.runner_revision_job_spec RevisionJobStanding: all held / some did not
+// job's standing (gunbc.runner.runner_claim_set_results RevisionJobStanding: all held / some did not
 // hold / some unobserved -- only the first qualifies).
 //
 // PUBLICATION IS CONTENT-ADDRESSED AND CREATE-ONLY. The document is written to a staging name, its
