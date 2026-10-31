@@ -1,0 +1,89 @@
+module v2.test.claim.compiler.infer_int_argument_at_nat_parameter_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.algebra { Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  RcfVerdict,
+  rcf_read_in,
+  rcf_verdict
+}
+
+// AN INT ARGUMENT AT A NAT PARAMETER, THE v2 SIDE OF gunbc.recurring_failure_mode
+// an_int_argument_inhabits_a_nat_parameter_at_typecheck. AUTHORED, UNRUN. zesty-badger-599's v2 probe was
+// assembly-rejected even for its control and is INVALID (no verdict); this fixture is a fresh authoring, not a
+// repair of it, and it is a hypothesis until a run shows its control accepted.
+//
+// FIDELITY LIMIT, STATED: the ingest carries two-declaration STAND-INS for std.nat Nat and std.integer Int
+// (the shapes the real modules declare: Int = NonNegative { n: Nat } | Negative { pred: Nat }), because the
+// real modules' closure is out of scope for one claim. The stand-ins carry no kernel grounding, so a green RED
+// here shows only that the structural v2 judgment refuses Int at Nat; it does not exercise the real
+// std.nat/std.integer declarations. The pairing run over the real modules is the follow-up.
+//
+// RED: the Int parameter passed at the Nat parameter must refuse (any infer refusal; the reason symbol is not
+// asserted because it is unknown until a run). CONTROL: a Nat value at the Nat parameter is accepted.
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ian2_nat_source: String = "module std.nat\n\ntype Nat = Zero | Succ { prev: Nat }\n"
+data ian2_integer_source: String = "module std.integer\n\nimport std.nat { Nat }\n\ntype Int = NonNegative { n: Nat } | Negative { pred: Nat }\n"
+
+fn ian2_probe(module_name: String, parameter_type: String) -> String {
+  join(["module ", module_name, "\n\nimport std.nat { Nat }\n\nimport std.integer { Int }\n\nfn ian2_take(n: Nat) -> Int {\n  NonNegative { n: n }\n}\n\nfn ian2_probe(v: ", parameter_type, ") -> Int {\n  ian2_take(n: v)\n}\n"], "")
+}
+
+data ian2_red_source: String = ian2_probe(module_name: "gunbc.ian2_red", parameter_type: "Int")
+data ian2_control_source: String = ian2_probe(module_name: "gunbc.ian2_control", parameter_type: "Nat")
+
+data ian2_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: ian2_nat_source, id: ^ian2_nat_read, unit: ^ian2_nat_cu, path: "dag/std/nat.dag"),
+  rcf_read_in(tree: DagTree, source: ian2_integer_source, id: ^ian2_integer_read, unit: ^ian2_integer_cu, path: "dag/std/integer.dag"),
+  rcf_read_in(tree: DagTree, source: ian2_red_source, id: ^ian2_red_read, unit: ^ian2_red_cu, path: "dag/gunbc/ian2_red.dag"),
+  rcf_read_in(tree: DagTree, source: ian2_control_source, id: ^ian2_control_read, unit: ^ian2_control_cu, path: "dag/gunbc/ian2_control.dag")
+]
+
+fn ian2_verdict(subject: String) -> RcfVerdict {
+  match module_roots_from_source_root_ingest(ingest: ian2_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => RcfResolveRefused
+    Accepted { value: roots, diagnostics: _ } =>
+      rcf_verdict(resolved: resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved)
+  }
+}
+
+test fn ian2_an_int_parameter_passed_at_a_nat_parameter_refuses_holds() -> Bool {
+  match ian2_verdict(subject: "gunbc.ian2_red") {
+    RcfInferRefused { diagnostics: _ } => true
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+test fn ian2_a_nat_parameter_passed_at_a_nat_parameter_is_accepted_holds() -> Bool {
+  match ian2_verdict(subject: "gunbc.ian2_control") {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
