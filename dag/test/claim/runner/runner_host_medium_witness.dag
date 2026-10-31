@@ -36,7 +36,10 @@ import gunbc.runner.runner_host_medium {
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
   RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostMachineUnrecognized, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
   runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id, runner_host_medium_runner_account,
+  RunnerHostKeyObserved, RunnerHostKeyNotObserved, runner_host_key_observation,
+  runner_host_key_gen_script, runner_host_key_line_script, runner_host_key_sshd_script, runner_host_key_file,
 }
+import gunbc.host.anchored_host_transport { mtcollins1_anchored_host_row, per_boot_console_marker }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -76,7 +79,13 @@ fn sections_with_digest(install_exit: String, machine: String, tarball_digest: S
   sections_full(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: "0")
 }
 
+data key_line_body: String = "GUNBC-HOST-KEY boot_id=aaaaaaaa-0000-4000-8000-000000000001 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBpinfixture00000000000000000000000000000000 SHA256:pinfixture0000000000000000000000000000000000\n"
+
 fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
+  sections_keyed(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: account_exit, key_exit: "0", sshd_exit: "0", key_line_body: key_line_body)
+}
+
+fn sections_keyed(install_exit: String, machine: String, tarball_digest: String, account_exit: String, key_exit: String, sshd_exit: String, key_line_body: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
@@ -85,6 +94,9 @@ fn sections_full(install_exit: String, machine: String, tarball_digest: String, 
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
     section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
+    section(name: "host-key-gen", argv: "(the rendered keygen)", body: "", exit_code: key_exit),
+    section(name: "host-key-line", argv: "(the rendered key line)", body: key_line_body, exit_code: "0"),
+    section(name: "host-key-sshd", argv: "sshd -h /run/gunbc-ssh/ssh_host_ed25519_key", body: "", exit_code: sshd_exit),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
     section(name: "nproc", argv: "nproc", body: "80\n", exit_code: "0"),
@@ -385,4 +397,49 @@ test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() 
     })
     _ => false
   })
+}
+
+// THE SOL READER (S4(c)). The pin is read from the CLOSED envelope bound to the machine, its expected boot id is the
+// envelope's own run identity, and every section the pin depends on must have exited 0. The inhabitance obligation
+// (DESIGN section 3: the real image emits exactly this line) is NOT discharged here: the capture below is SUPPLIED;
+// the open frontier row is per_boot_console_marker in anchored_host_transport_frontier_rows.
+fn observed_boot(capture: String) -> String {
+  match runner_host_key_observation(capture: capture, machine: "mtcollins1" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
+    RunnerHostKeyObserved { boot_id: b, pin: p } => if (p.boot_id as String) == (b as String) { b as String } else { "pin-boot-differs" }
+    RunnerHostKeyNotObserved { cause: _ } => "not-observed"
+  }
+}
+
+fn keyed_capture(key_exit: String, sshd_exit: String, body: String) -> String {
+  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, sshd_exit: sshd_exit, key_line_body: body), end_line))
+}
+
+test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envelope() -> Bool {
+  observed_boot(capture: keyed_capture(key_exit: "0", sshd_exit: "0", body: key_line_body)) == "aaaaaaaa-0000-4000-8000-000000000001"
+}
+
+// RED: a key whose daemon never started, or whose generation failed, is not a pin; neither is an absent line,
+// a malformed line, an open envelope, or an envelope for another machine.
+test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_open_envelope_and_another_machine() -> Bool {
+  observed_boot(capture: keyed_capture(key_exit: "0", sshd_exit: "1", body: key_line_body)) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "1", sshd_exit: "0", body: key_line_body)) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "0", sshd_exit: "0", body: "")) == "not-observed"
+  && observed_boot(capture: keyed_capture(key_exit: "0", sshd_exit: "0", body: "GUNBC-HOST-KEY boot_id=x ssh-ed25519\n")) == "not-observed"
+  && observed_boot(capture: concat(begin_line, sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: "0", sshd_exit: "0", key_line_body: key_line_body))) == "not-observed"
+  && (match runner_host_key_observation(capture: keyed_capture(key_exit: "0", sshd_exit: "0", body: key_line_body), machine: "othermachine" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
+    RunnerHostKeyObserved { boot_id: _, pin: _ } => false
+    RunnerHostKeyNotObserved { cause: _ } => true
+  })
+}
+
+// The three stages' rendered programs: the key lives only on tmpfs under the declared path, sshd is started with
+// exactly that HostKey, and the printed line carries the marker the fleet's parser reads. These are the image's
+// side of the grammar by construction (per_boot_console_marker is imported, not retyped).
+test fn the_host_key_stages_render_the_declared_path_marker_and_hostkey() -> Bool {
+  let gen = runner_host_key_gen_script()
+  let line = runner_host_key_line_script()
+  let sshd = runner_host_key_sshd_script()
+  string_contains(s: gen, pattern: "ssh-keygen") && string_contains(s: gen, pattern: runner_host_key_file as String)
+  && string_contains(s: line, pattern: per_boot_console_marker) && string_contains(s: line, pattern: "/proc/sys/kernel/random/boot_id")
+  && string_contains(s: sshd, pattern: "sshd") && string_contains(s: sshd, pattern: runner_host_key_file as String)
 }
