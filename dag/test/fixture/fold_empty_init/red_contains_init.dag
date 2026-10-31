@@ -1,0 +1,8 @@
+module test.fixture.fold_empty_init.red_contains_init
+
+import std.types { Int, List, String }
+import std.algebra { concat, contains, fold, length }
+
+fn distinct_string_count(values: List<String>) -> Int {
+  length(fold(values, init: [], f: (acc, v) => if contains(acc, v) { acc } else { concat(acc, [v]) }))
+}
