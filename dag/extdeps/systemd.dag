@@ -132,6 +132,11 @@ type SystemdUnitProperty
   // before it sends the final SIGKILL. The directive is settable under this name; the manager shows the value as
   // TimeoutStopUSec, which this vocabulary does not read.
   | TimeoutStopSecProperty
+  // systemd.unit(5) SuccessAction=/FailureAction=: what the MANAGER does when the unit stops cleanly or
+  // fails (extdeps.systemd.unit_file SystemdUnitStateAction is the value set). Both are [Unit] settings a
+  // transient unit accepts (systemd-run(1) --property), so the action belongs to the manager, not to a command.
+  | SuccessActionProperty
+  | FailureActionProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -225,6 +230,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     DelegateProperty => "Delegate" as NonEmptyStr
     RestartProperty => "Restart" as NonEmptyStr
     TimeoutStopSecProperty => "TimeoutStopSec" as NonEmptyStr
+    SuccessActionProperty => "SuccessAction" as NonEmptyStr
+    FailureActionProperty => "FailureAction" as NonEmptyStr
   }
 }
 
@@ -304,6 +311,8 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     DelegateProperty => false
     RestartProperty => false
     TimeoutStopSecProperty => false
+    SuccessActionProperty => false
+    FailureActionProperty => false
   }
 }
 
