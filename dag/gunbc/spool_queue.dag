@@ -288,27 +288,14 @@ fn spool_stale_assess(observed: SpoolEntryState, liveness: SpoolClaimantLiveness
   }
 }
 
-// FRONTIER ROWS: declared, consumed by a named later change (DESIGN 3c), never silent.
-type SpoolFrontier {
-  subject: String
-  home: String
-  trigger: String
-}
-
-data spool_frontier_answers: SpoolFrontier = SpoolFrontier {
-  subject: "the publication spool's answers/ directory (and the attempt-unit spool's answers/): the reply record keyed to a request",
-  home: "an answer store, minted by request key, written by the drainer principal and read by the requester; not an op of this contract",
-  trigger: "the publication spool is migrated onto spool_queue; then the answer store is modeled as its own sealed face (inventory row to be added at the next census)",
-}
-
-data spool_frontier_writers_reader: SpoolFrontier = SpoolFrontier {
-  subject: "spool_writers_column_reader: gunbc.live_deploy.emit spells each spool directory's ownership beside host_layout's path functions",
-  home: "gunbc.live_deploy.emit derives directory ownership from spool_role_writer",
-  trigger: "the implementation PR migrates the three spools; the literal ownership spellings in emit are deleted in the same change",
-}
-
-data spool_frontier_out_of_corpus_writers: SpoolFrontier = SpoolFrontier {
-  subject: "an entry created in a spool directory by a process that never ran the corpus mint (the ExecStopPost hook is derived from the codec; any other principal is not)",
-  home: "a gunbc.rung_drop row filed by the implementation PR, when the seal establishes the rung it then drops from (no rung is established by this model-only change, so none is dropped)",
-  trigger: "restoration capability: each spool directory is creatable only by the principals spool_role_writer names, ownership derived from it, so a non-declared principal is refused by the kernel; a permission-bits readback does not retire it",
-}
+// FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
+// a String row that no fold reads is the dead data of DESIGN 4c. The implementation PR gives each a typed carrier.
+//  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
+//    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
+//  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
+//    spool_role_writer when the implementation PR migrates the three spools and deletes the literal spellings.
+//  - out-of-corpus writers (the ExecStopPost hook is derived from the codec; any other principal is not): no rung is
+//    established by this model-only change, so none is dropped here. The implementation PR files the gunbc.rung_drop
+//    row (previous rung, temporary rung, reason, population, trigger). Restoration capability: each spool directory
+//    creatable only by the principals spool_role_writer names, kernel-refusing others; a permission-bits readback
+//    does not retire it.

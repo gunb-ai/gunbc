@@ -5,6 +5,7 @@ import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdic
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spool_queue {
+  spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writer, PrincipalExternalHook, PrincipalDrainer,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
   ClaimEligible, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
@@ -83,6 +84,36 @@ test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
     ClaimAbsent => exit_failure(reason: "a pending entry reads as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "a pending entry reads as terminal")
     ClaimRefused { detail: _ } => exit_failure(reason: "a pending entry is refused")
+  }
+}
+
+test fn enqueue_over_absent_is_eligible_and_over_present_is_not() -> ProcessExit {
+  match spool_enqueue_assess(kind: SpoolAttemptUnit, observed: EntryAbsent) {
+    EnqueueEligible { into: _ } =>
+      match spool_enqueue_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RolePending }) {
+        EnqueueAlreadyPresent { state: _ } => ExitSuccess
+        EnqueueEligible { into: _ } => exit_failure(reason: "a present entry is enqueueable again")
+        _ => exit_failure(reason: "a present entry reads as refused")
+      }
+    _ => exit_failure(reason: "an absent entry is not enqueueable")
+  }
+}
+
+test fn only_a_claimed_entry_completes() -> ProcessExit {
+  match spool_complete_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RoleClaimed }, outcome: SpoolOutcomeDone) {
+    CompleteEligible { into: _ } =>
+      match spool_complete_assess(kind: SpoolAttemptExit, observed: EntryStanding { role: RolePending }, outcome: SpoolOutcomeDone) {
+        CompleteEligible { into: _ } => exit_failure(reason: "a pending entry completes without a claim")
+        _ => ExitSuccess
+      }
+    _ => exit_failure(reason: "a claimed entry does not complete")
+  }
+}
+
+test fn the_exit_spool_pending_writer_is_the_external_hook() -> ProcessExit {
+  match spool_role_writer(kind: SpoolAttemptExit, role: RolePending) {
+    PrincipalExternalHook => ExitSuccess
+    _ => exit_failure(reason: "the exit spool inbox is not written by the hook")
   }
 }
 
