@@ -167,8 +167,18 @@ type ServingLayoutResult
 
 // ---- THE DERIVATION
 
+// THE CAP GRANULE: every derived cap and retention budget is a whole number of these, because a cgroup's
+// MemoryMax is written in MiB. One fact; the rounding and the headroom it costs both read it.
+fn serving_cap_granule() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 1)) }
+
+// HOW MANY TIMES ONE REPLICA'S FIGURES ARE ROUNDED UP to the granule: its retention budget, then its cap
+// (serving_replica_config). Each rounding adds less than one granule, so this many granules bounds the
+// headroom one replica can cost beyond its unrounded need, however many conversations it is dealt.
+fn serving_roundings_per_replica() -> Nat { 2 }
+
 fn serving_mib_ceil(b: Nat) -> ByteSize {
-  byte_size(count: ((b + 1048575) / 1048576) * 1048576)
+  let g = byte_size_count(b: serving_cap_granule())
+  byte_size(count: ((b + g - 1) / g) * g)
 }
 
 fn serving_bytes_sum(xs: List<ByteSize>) -> Nat {
@@ -306,20 +316,21 @@ fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
 }
 
 // THE RAM ALLOCATION. The pool is what the host overhead and the shared artifacts leave. Every replica first
-// gets its fixed RAM and its minimum retention; what remains becomes whole additional max-context
-// conversations, dealt one per replica in group order until none fits; the rest is reported unallocated, not
-// spread. Each replica's cap is then its own need rounded up to a whole MiB.
+// gets its fixed RAM, its minimum retention and the rounding headroom of its own caps; what remains becomes
+// whole additional max-context conversations, dealt one per replica in group order until none fits; the rest
+// is reported unallocated, not spread. Each replica's cap is then its own need rounded up to the cap granule,
+// which the headroom already covers, so a dealt conversation costs its snapshot and nothing more.
 fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
   let n = groups.length()
   let pool_total = serving_grant_ram(g: g)
   let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => a.bytes))
   let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
-  let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + 2097152
+  let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + serving_roundings_per_replica() * byte_size_count(b: serving_cap_granule())
   let needed = reserved + n * per_replica_min
   if pool_total < needed {
     ServingLayoutRefused { refusal: ServingLayoutRamShort { needed: byte_size(count: needed), available: byte_size(count: pool_total) } }
   } else {
-    let extra = (pool_total - needed) / (snapshot + 1048576)
+    let extra = (pool_total - needed) / snapshot
     let configs = fold(groups, init: [] as List<ServingReplicaConfig>, f: (acc, gr) =>
       concat(acc, [serving_replica_config(gr: gr, b: b, r: r, swap: g.swap_bound, admitted: serving_dealt(index: acc.length(), replicas: n, base: r.min_retained_per_replica, extra: extra))]))
     let committed = reserved + serving_bytes_sum(xs: map(configs, c => c.memory_max))
