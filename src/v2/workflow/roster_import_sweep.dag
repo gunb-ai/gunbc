@@ -3738,10 +3738,11 @@ fn roster_catch_all_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -
   let head = "module c.catchall\n\nimport extdeps.uri { UriScheme, Http, Https }\n\nfn f(s: UriScheme) -> UriScheme {\n  match s {\n"
   let tail = "  }\n}\n"
   let src = head + "    Http => Http\n    Https => Https\n    other => other\n" + tail
-  let expanded = head + "    Http => Http\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
+  let head_imported = "module c.catchall\n\nimport extdeps.uri { UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }\n\nfn f(s: UriScheme) -> UriScheme {\n  match s {\n"
+  let expanded = head_imported + "    Http => Http\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
   let key = ["control/catchall.dag:9:5"]
   let leak_src = head + "    Http => other\n    Https => Https\n    other => other\n" + tail
-  let leak_after = head + "    Http => other\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
+  let leak_after = head_imported + "    Http => other\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
   let not_last = head + "    Http => Http\n    other => other\n    Https => Https\n" + tail
   let stale = head + "    Http => Http\n    Bogus => Bogus\n    other => other\n" + tail
   let shadow = head + "    Http => Http\n    Https => Https\n    other => { let other = Http\n other }\n" + tail
