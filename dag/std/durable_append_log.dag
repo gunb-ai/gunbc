@@ -195,11 +195,9 @@ fn append_stream_readback_at(observed: AppendStreamObservation, standing: Append
 // it. The contract is therefore a SEQUENCE of exclusive windows, never two writers at once:
 //   HostCreatesThenSandboxWrites   host create-new (empty), then ONE sandbox window, then host reads only.
 //   HostOnly                       the host is the only writer; the record shape is RecordPerGeneration.
-//   SandboxOnly                    the member is created by the sandbox; the host never creates it.
 type MemberWriterPolicy
   = HostOnly
   | HostCreatesThenSandboxWrites { principal: DurableHoldOwnerRef }
-  | SandboxOnly { principal: DurableHoldOwnerRef }
 
 type AppendWriter
   = HostWriter
@@ -248,10 +246,6 @@ fn append_write_admission(
           }
           IntentCreateEmpty => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
         }
-        SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, intent: intent, standing: standing, member_exists: member_exists)
-      }
-      SandboxOnly { principal: allowed } => match writer {
-        HostWriter => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
         SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, intent: intent, standing: standing, member_exists: member_exists)
       }
     }

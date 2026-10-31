@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.durable_cas_file_store { cas_key_generation_of_name }
 import std.durable_append_log {
   AppendFraming, RecordPerGeneration, NewlineDelimitedStream, InPlaceRecordFile,
-  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, SandboxOnly,
+  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites,
 }
 
 // THE SEALED SHAPE OF AN APPEND-LOG / MULTI-WRITER STORE, and the per-member disposition of every row the
@@ -88,8 +88,7 @@ fn append_log_entry_is_other_framing(slot: AppendLogSlot, entry: String) -> Bool
 type AppendLogListingVerdict
   = ListingClean
   | ListingUnlisted
-  | ListingFramingMismatch { entry: String }
-  | ListingDuplicateClaim { entries: List<String> }
+  | ListingLegacy { cause: AppendLogLegacyCause }
 
 fn append_log_listing_verdict(slot: AppendLogSlot, listing: List<String>?) -> AppendLogListingVerdict {
   match listing {
@@ -102,9 +101,9 @@ fn append_log_listed_verdict(slot: AppendLogSlot, entries: List<String>) -> Appe
   let mismatched = filter(entries, e => append_log_entry_is_other_framing(slot: slot, entry: e))
   let claimants = filter(entries, e => append_log_entry_claims(slot: slot, entry: e))
   match mismatched {
-    Cons { head: entry, tail: _ } => ListingFramingMismatch { entry: entry }
+    Cons { head: entry, tail: _ } => ListingLegacy { cause: LegacyFramingMismatch { entry: entry } }
     Empty {} => match claimants {
-      Cons { head: _, tail: Cons { head: _, tail: _ } } => ListingDuplicateClaim { entries: claimants }
+      Cons { head: _, tail: Cons { head: _, tail: _ } } => ListingLegacy { cause: LegacyDuplicateClaim { entries: claimants } }
       _ => ListingClean
     }
   }
@@ -113,8 +112,7 @@ fn append_log_listed_verdict(slot: AppendLogSlot, entries: List<String>) -> Appe
 fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: List<String>?) -> AppendLogMinting {
   match append_log_listing_verdict(slot: slot, listing: listing) {
     ListingUnlisted => AppendLogUnready { detail: "parent directory did not list" }
-    ListingFramingMismatch { entry: e } => AppendLogLegacyRefused { cause: LegacyFramingMismatch { entry: e } }
-    ListingDuplicateClaim { entries: es } => AppendLogLegacyRefused { cause: LegacyDuplicateClaim { entries: es } }
+    ListingLegacy { cause: c } => AppendLogLegacyRefused { cause: c }
     ListingClean => AppendLogReady { store: AppendLogStore { parent: parent.directory, slot: slot } }
   }
 }
@@ -261,7 +259,7 @@ data append_log_member_census: List<MemberCensusRow> = [
 ]
 
 // THE SLOT A CENSUS ROW DECLARES. The window law is the only policy a log member can carry, so the row holds
-// the member, framing and principal and the slot is built here: a HostOnly or SandboxOnly log row has no spelling.
+// the member, framing and principal and the slot is built here: a HostOnly log row has no spelling.
 fn append_log_census_slot(row: MemberCensusRow) -> AppendLogSlot? {
   match row.disposition {
     MigrateToLogStore { framing: f, principal: p } => Present { value: AppendLogSlot { member: row.member, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
