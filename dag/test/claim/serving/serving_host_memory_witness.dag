@@ -1,0 +1,163 @@
+module test.claim.serving.serving_host_memory_witness
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, token_count,
+  kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+}
+import gunbc.host.host_memory_observation { HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
+import gunbc.serving.serving_host_memory {
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread,
+  ServingEngineMemory, ServingDedicatedHostMemory,
+  ServingMemoryVerdict, ServingMemoryEngineSwapOverBound, ServingMemoryOversubscribed, ServingMemoryEngineOverCap,
+  ServingMemoryUndetermined, ServingMemoryFits,
+  serving_host_memory_verdict, serving_engine_cache_allowance, engine_warm_sessions, conversation_snapshot_bytes,
+  strata_iq3_s_snapshot_cost, host_6ce85c_serving_memory_observed, host_6ce85c_engine_as_launched,
+  srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory, serving_engine_missing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn shm_gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn shm_read(b: ByteSize) -> ServingMemoryReading {
+  ServingMemoryRead { bytes: b, provenance: "witness fixture" as NonEmptyStr }
+}
+
+fn is_may_swap(v: ServingMemoryVerdict) -> Bool {
+  match v { ServingMemoryEngineSwapOverBound { engine: _, swap_cap: _, bound: _ } => true  _ => false }
+}
+
+fn is_oversubscribed(v: ServingMemoryVerdict) -> Bool {
+  match v { ServingMemoryOversubscribed { committed_at_least: _, usable_ram: _ } => true  _ => false }
+}
+
+fn is_over_cap(v: ServingMemoryVerdict) -> Bool {
+  match v { ServingMemoryEngineOverCap { engine: _ } => true  _ => false }
+}
+
+fn is_undetermined(v: ServingMemoryVerdict) -> Bool {
+  match v { ServingMemoryUndetermined { missing: _ } => true  _ => false }
+}
+
+fn is_present_count(x: Nat?, n: Nat) -> Bool {
+  match x { Present { value: v } => v == n  Absent => false }
+}
+
+fn is_absent_count(x: Nat?) -> Bool {
+  match x { Present { value: _ } => false  Absent => true }
+}
+
+fn is_fits(v: ServingMemoryVerdict) -> Bool {
+  match v { ServingMemoryFits { spare: _ } => true  _ => false }
+}
+
+// h11 with every engine's swap cap set to zero and nothing else changed.
+fn h11_without_swap() -> ServingDedicatedHostMemory {
+  let h = host_6ce85c_serving_memory_observed
+  ServingDedicatedHostMemory {
+    host: h.host,
+    usable_ram: h.usable_ram,
+    overhead: h.overhead,
+    shared_resident: h.shared_resident,
+    swap_bound: h.swap_bound,
+    engines: map(h.engines, e => ServingEngineMemory {
+      name: e.name, memory_cap: e.memory_cap, swap_cap: shm_read(b: byte_size(count: 0)), base: e.base,
+      conversation_cache: e.conversation_cache, conversation_slots: e.conversation_slots,
+    }),
+  }
+}
+
+fn fixture_engine(name: String, cache: ByteSize, base: ServingMemoryReading) -> ServingEngineMemory {
+  ServingEngineMemory {
+    name: name as NonEmptyStr, memory_cap: shm_read(b: shm_gib(n: 12)), swap_cap: shm_read(b: byte_size(count: 0)), base: base,
+    conversation_cache: shm_read(b: cache), conversation_slots: Present { value: 6 },
+  }
+}
+
+// A four-engine h11 with every figure read: 12 GiB caps, no swap, a 6 GiB base and a given cache each.
+fn h11_four_engines(cache: ByteSize, base: ServingMemoryReading) -> ServingDedicatedHostMemory {
+  let h = host_6ce85c_serving_memory_observed
+  ServingDedicatedHostMemory {
+    host: h.host,
+    usable_ram: h.usable_ram,
+    overhead: HostFixedOverheadAllowance { bytes: shm_gib(n: 4), reason: "witness fixture" as NonEmptyStr },
+    shared_resident: h.shared_resident,
+    swap_bound: h.swap_bound,
+    engines: [
+      fixture_engine(name: "a", cache: cache, base: base), fixture_engine(name: "b", cache: cache, base: base),
+      fixture_engine(name: "c", cache: cache, base: base), fixture_engine(name: "d", cache: cache, base: base),
+    ],
+  }
+}
+
+// THE RULE FIRES ON WHAT RUNS TODAY: h11's engines are each allowed 32 GiB of swap, past the 2 GiB bound.
+test fn witness_h11_as_launched_is_refused_for_swap() -> Bool {
+  is_may_swap(v: serving_host_memory_verdict(h: host_6ce85c_serving_memory_observed))
+}
+
+// WITH SWAP REMOVED, THE SAME LAYOUT IS OVER BUDGET: six 16 GiB caps plus the 47 GiB locked weights exceed
+// 110 GiB, and that is shown while the host overhead and engine bases are still unread.
+test fn witness_h11_without_swap_is_oversubscribed() -> Bool {
+  is_oversubscribed(v: serving_host_memory_verdict(h: h11_without_swap()))
+}
+
+test fn witness_four_engine_layout_fits_and_its_overfull_twin_does_not() -> Bool {
+  is_fits(v: serving_host_memory_verdict(h: h11_four_engines(cache: shm_gib(n: 5), base: shm_read(b: shm_gib(n: 6)))))
+    && is_over_cap(v: serving_host_memory_verdict(h: h11_four_engines(cache: shm_gib(n: 7), base: shm_read(b: shm_gib(n: 6)))))
+}
+
+// A LAYOUT THAT WOULD FIT IS NOT CALLED FITS WHILE A FIGURE IT STANDS ON IS UNREAD.
+test fn witness_unread_base_is_undetermined_not_fits() -> Bool {
+  is_undetermined(v: serving_host_memory_verdict(h: h11_four_engines(cache: shm_gib(n: 5), base: ServingMemoryUnread { reason: "base unread" as NonEmptyStr })))
+}
+
+// FEWER ENGINES, MORE CACHE EACH; TOO MANY ENGINES, NONE. With h11's RAM and locked weights, a 4 GiB host
+// allowance and an 8 GiB engine base: six engines leave under 2 GiB each, four leave over 5 GiB, and a 10
+// GiB base leaves six engines nothing at all.
+test fn witness_cache_allowance_trades_engines_for_warm_sessions() -> Bool {
+  let ram = kibibyte_to_byte_size(k: kibibyte(count: 115192288))
+  let shared = host_6ce85c_serving_memory_observed.shared_resident
+  let six = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 8))
+  let four = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 4, base: shm_gib(n: 8))
+  let no_cache = serving_engine_cache_allowance(usable_ram: ram, overhead: shm_gib(n: 4), shared_resident: shared, engines: 6, base: shm_gib(n: 10))
+  match six {
+    Absent => false
+    Present { value: s } =>
+      match four {
+        Absent => false
+        Present { value: f } =>
+          byte_size_count(b: s) < byte_size_count(b: shm_gib(n: 2)) && byte_size_count(b: f) > byte_size_count(b: shm_gib(n: 5))
+            && (match no_cache { Absent => true  Present { value: _ } => false })
+      }
+  }
+}
+
+// AN 8 GiB, 6-SLOT ENGINE KEEPS FIVE 80K SESSIONS WARM AND THREE 176K ONES.
+test fn witness_warm_sessions_of_an_h11_engine() -> Bool {
+  let e = host_6ce85c_engine_as_launched(bus: "87")
+  is_present_count(x: engine_warm_sessions(e: e, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)), n: 5)
+    && is_present_count(x: engine_warm_sessions(e: e, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 176183)), n: 3)
+}
+
+// THE SNAPSHOT COST IS AN UPPER ENVELOPE OF WHAT THE ENGINE ACTUALLY PARKED (the four h11 log readings).
+test fn witness_snapshot_cost_covers_observed_parks() -> Bool {
+  let cost = strata_iq3_s_snapshot_cost
+  byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 5701))) >= 405726684
+    && byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 28477))) >= 729581564
+    && byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 65410))) >= 1299665064
+    && byte_size_count(b: conversation_snapshot_bytes(cost: cost, context: token_count(count: 176183))) >= 2420042020
+}
+
+// THE SHARED-HOST ROWS NAME WHAT IS UNREAD, AND AN UNREAD CACHE KEEPS NOTHING WARM; srv4's row is now read in full.
+test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
+  serving_engine_missing(e: srv1_vllm_engine_memory).length() == 1
+    && serving_engine_missing(e: srv3_strata_engine_memory).length() == 3
+    && serving_engine_missing(e: srv4_serving_engine_memory).length() == 0
+    && !is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
+}

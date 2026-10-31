@@ -113,7 +113,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -233,6 +233,8 @@ import gunbc.ci.ci_spec {
   gunbc_ci_live_deploy_transaction_invoke,
   gunbc_ci_approval_broker_dark_install_invoke,
   gunbc_ci_microvm_controller_install_invoke,
+  gunbc_ci_approval_ntfy_retire_invoke,
+  gunbc_ci_microvm_controller_install_admission_invoke,
   gunbc_ci_microvm_slot_start_invoke,
   gunbc_ci_microvm_slot_reserve_invoke,
   gunbc_ci_rlm_launch_deployment_receipt_invoke,
@@ -252,7 +254,6 @@ import gunbc.spark.credential_workflow { spark_administrator_credential_roster_h
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -353,6 +354,7 @@ type FleetConvergeWorkflowMode
   | RunnerHostFileObserve
   | HostMemoryObserve
   | ApprovalBrokerDarkInstall
+  | ApprovalNtfyRetire
   | MicrovmControllerInstall
   | MicrovmSlotReserve
   | MicrovmSlotStart
@@ -445,6 +447,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerHostFileObserve => "runner_host_file_observe"
     HostMemoryObserve => "host_memory_observe"
     ApprovalBrokerDarkInstall => "approval_broker_dark_install"
+    ApprovalNtfyRetire => "approval_ntfy_retire"
     MicrovmControllerInstall => "microvm_controller_install"
     MicrovmSlotReserve => "microvm_slot_reserve"
     MicrovmSlotStart => "microvm_slot_start"
@@ -525,7 +528,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, ApprovalNtfyRetire, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -561,6 +564,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkGrantsObserve => SixteenBinaryPack
     DashboardDeploy => SixteenBinaryPack
     ApprovalBrokerDarkInstall => SixteenBinaryPack
+    ApprovalNtfyRetire => SixteenBinaryPack
     MicrovmControllerInstall => SixteenBinaryPack
     MicrovmSlotReserve => SixteenBinaryPack
     MicrovmSlotStart => SixteenBinaryPack
@@ -683,6 +687,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkGrantsObserve => none
     DashboardDeploy => Present { value: LiveDeploy }
     ApprovalBrokerDarkInstall => none
+    ApprovalNtfyRetire => none
     MicrovmControllerInstall => none
     MicrovmSlotReserve => none
     MicrovmSlotStart => none
@@ -906,6 +911,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkGrantsObserve => FleetSshKeyConsumed
     DashboardDeploy => FleetSshKeyConsumed
     ApprovalBrokerDarkInstall => FleetSshKeyConsumed
+    ApprovalNtfyRetire => FleetSshKeyConsumed
     MicrovmControllerInstall => FleetSshKeyConsumed
     MicrovmSlotReserve => FleetSshKeyNotConsumed
     MicrovmSlotStart => FleetSshKeyNotConsumed
@@ -1506,18 +1512,23 @@ fn fleet_converge_plan_revision_job() -> Job {
   }
 }
 
-// THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, NOT BEFORE IT. The deploy slot's account holds
-// per-unit grants only (decision D5), so a dispatch routed there still needs the root switch to the
-// administrator edge to do what it does today under the whole-binary grants; routing early would
-// leave srv1 with no deploy route. The selector therefore follows deploy_route_switch_admitted over
-// the modeled slot's reading, which reads shared until the host readback is produced, and the
-// generated workflow keeps today's expression until then.
+// THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, PER JOB, NOT BEFORE IT. The deploy slot's
+// account holds per-unit grants only (decision D5), so a job routed there can do only what it does
+// over the administrator edge; a job whose root writes still run under the job user's whole-binary
+// grants (dashboard-deploy, the broker dark install, and the rest of this selector's consumers) would
+// have no route left. So every srv1-pinned job keeps the host selector, and only a job whose
+// root-reach effects all run over the administrator edge selects the deploy slot
+// (fleet_converge_administrator_edge_runner_spec). Selection is not admission: that job reads the
+// slot's tenancy back in-job before opening the edge (gunbc.live_deploy.apply
+// microvm_controller_install_wet).
 fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
-  if srv1_deploy_route_switch_admitted() {
-    RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
-  } else {
-    RunsOnExpression { expression: fleet_converge_host_runner_expression }
-  }
+  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+}
+
+// The selector of a job whose host-root effects run as the fleet administrator over its SSH edge:
+// srv1's deploy slot, and every other host's own selector unchanged.
+fn fleet_converge_administrator_edge_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
 }
 
 data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)
@@ -1768,6 +1779,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerHostFileObserve => ExecutorDomain
     HostMemoryObserve => OwnRunConfined
     ApprovalBrokerDarkInstall => ExecutorDomain
+    ApprovalNtfyRetire => ExecutorDomain
     MicrovmControllerInstall => ExecutorDomain
     MicrovmSlotReserve => ExecutorDomain
     MicrovmSlotStart => ExecutorDomain
@@ -4274,6 +4286,10 @@ fn fleet_converge_srv1_root_mutation_select_env(index: Int, inputs: List<String>
 data fleet_converge_dashboard_deploy_selected_inputs: List<String> = ["plan_workflow_run_id", "apply_workflow_run_id", "plan_artifact_hash", "expected_revision"]
 data fleet_converge_microvm_controller_install_selected_inputs: List<String> = ["workspace_image_run_id", "revision_job_image_run_id"]
 data fleet_converge_approval_broker_dark_install_selected_inputs: List<String> = []
+// THE RETIREMENT SELECTS NOTHING. What it removes is named by the ntfy roster in the model, and a
+// free-text path input would let the dispatch decide what the roster already decided -- the same
+// reason the dark install beside it takes no selection.
+data fleet_converge_approval_ntfy_retire_selected_inputs: List<String> = []
 
 fn fleet_converge_srv1_root_mutation_approval_step(selects: List<String>) -> Step {
   RunStep {
@@ -4446,7 +4462,8 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // THE SAME JOB SHAPE AS THE DARK INSTALL, with one difference that is the point: the install's
 // elevated legs run as the fleet administrator over its SSH edge, never under the job user's sudo
 // (gunbc.live_deploy.apply microvm_controller_install_wet), so the job materializes the fleet key --
-// AFTER the root-mutation approval, so no key exists in a run the operator has not approved -- and
+// AFTER its tenancy admission, so no key exists on a slot whose uid another job shares, and after the
+// root-mutation approval, so no key exists in a run the operator has not approved -- and
 // ends the masters and the agent whatever the install's fate. It copies from the release bins this
 // job downloaded and verified, and writes an additive locus + template unit that starts no instance.
 // It shares the host-mutation concurrency group so it cannot land inside a roadmap deploy or a
@@ -4460,6 +4477,24 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
     run: gunbc_ci_microvm_controller_install_invoke(),
     shell: none,
     env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+// THE TENANCY ADMISSION, before the operator is asked and before any key: the job's user, the deploy
+// group and the deploy slot's host half, read without the fleet key (gunbc.live_deploy.apply
+// microvm_controller_install_admission_wet). A refusal fails the step, so neither the approval, the
+// key nor the install runs.
+fn fleet_converge_microvm_controller_install_admission_step() -> Step {
+  RunStep {
+    name: Present { value: "Deploy slot tenancy admission: read the deploy group and the slot's host half without the fleet key; nothing later runs unless the slot is the sole tenant of its uid" },
+    id: Present { value: "microvm_controller_install_admission" },
+    run: gunbc_ci_microvm_controller_install_admission_invoke(),
+    shell: none,
+    env: Present { value: [kv(key: workload_identity_token_env as String, value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -4481,7 +4516,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
     name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
+    runner: fleet_converge_administrator_edge_runner_spec(),
     environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
       fleet_converge_event_sha_consumer_prelude_steps(),
@@ -4489,7 +4524,12 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
       ],
-      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_microvm_controller_install_selected_inputs),
+      [
+        ci_fleet_wif_auth_step(),
+        fleet_converge_microvm_controller_install_admission_step(),
+        fleet_converge_srv1_root_mutation_approval_step(selects: fleet_converge_microvm_controller_install_selected_inputs),
+        fleet_converge_srv1_root_mutation_approval_receipt_upload_step(),
+      ],
       [
         fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
           artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
@@ -4506,7 +4546,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_microvm_controller_install_step_if },
-    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -4541,6 +4581,72 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
     timeout_minutes: Present { value: minute_count(gunbc_ci_approval_broker_dark_install_job_backstop_timeout()) },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
+  }
+}
+
+// ── THE ntfy RETIREMENT ON srv1 (approval_ntfy_retire) ────────────────────────────────────────
+// THE SAME JOB SHAPE AS THE CONTROLLER INSTALL BESIDE IT, for the same reason: the retirement's
+// elevated legs run as the fleet administrator over the SSH edge, never under the job user's sudo
+// (gunbc.fleet.approval_ntfy_retirement approval_ntfy_retire_wet), so the job materializes the fleet
+// key AFTER the root-mutation approval -- no key exists in a run the operator has not approved --
+// and ends the masters and the agent whatever the retirement's fate. It downloads no artifact
+// because it installs nothing: every path it removes is a literal of the ntfy roster, and the fold
+// refuses to act on a target the roster does not state. It mints no live-deploy transaction receipt
+// either: a retirement replaces no running service, so there is no prior state for a transaction to
+// bind against, and what proves the run is the readback the fold writes itself -- every roster
+// member read absent, once each. ADDING THIS MODE IS NOT A NEW CI JOB:
+// gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster rules a mode of this
+// dispatch-only workflow outside job_roster_closed_to_growth, and the operator's GO of 2026-10-30
+// (work item adhoc-7b7b9aef) is the sign-off the retirement itself needs.
+data fleet_converge_approval_ntfy_retire_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: ApprovalNtfyRetire)
+
+fn fleet_converge_approval_ntfy_retire_step() -> Step {
+  RunStep {
+    name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
+    id: Present { value: "approval_ntfy_retire" },
+    run: gunbc_ci_approval_ntfy_retire_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_approval_ntfy_retire_job() -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: ApprovalNtfyRetire) as String,
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
+    steps: concat(
+      fleet_converge_event_sha_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+      ],
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_ntfy_retire_selected_inputs),
+      [
+        ci_fleet_key_agent_step(),
+        fleet_converge_approval_ntfy_retire_step(),
+        ci_fleet_key_agent_cleanup_step(),
+      ]
+    ),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ApprovalNtfyRetire)),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_approval_ntfy_retire_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -5519,6 +5625,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     SparkGrantsObserve => fleet_converge_shared_job_id
     DashboardDeploy => "dashboard-deploy" as NonEmptyStr
     ApprovalBrokerDarkInstall => "approval-broker-dark-install" as NonEmptyStr
+    ApprovalNtfyRetire => "approval-ntfy-retire" as NonEmptyStr
     MicrovmControllerInstall => "microvm-controller-install" as NonEmptyStr
     MicrovmSlotReserve => fleet_converge_shared_job_id
     MicrovmSlotStart => fleet_converge_shared_job_id
@@ -5632,6 +5739,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: DashboardDeploy), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalNtfyRetire), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String] },
@@ -5693,6 +5801,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_host_reset_return_job(),
     fleet_converge_dashboard_deploy_job(),
     fleet_converge_approval_broker_dark_install_job(),
+    fleet_converge_approval_ntfy_retire_job(),
     fleet_converge_microvm_controller_install_job(),
     fleet_converge_rlm_launch_deployment_receipt_job(),
     fleet_converge_gcp_iam_bootstrap_request_job(),
@@ -6763,7 +6872,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     type: InputString,
   },
   DispatchInput { name: "printer", description: Present { value: "Printer identity; required for printer mode" }, required: false, default: none, type: InputChoice { options: map(printer_access_code_loci,p=>p.printer as String) } },
-  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes." }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe, converge, or hold-release-request); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes. hold-release-request files the operator card for a stale printer-start hold this root cannot observe; it releases nothing." }, required: false, default: none, type: InputString },
   DispatchInput {
     name: "agent_state_slot",
     description: Present { value: "workspace_source_pack and workspace_transcript_rate_observe: the Claude auth slot whose agent state is packed, as <slot> in /home/briansrls/.claude@<slot> on srv1; admitted only if that directory exists, refused naming the observed slots otherwise; no default" },

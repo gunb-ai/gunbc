@@ -7,7 +7,7 @@ import std.optional { Present, Absent }
 import extdeps.bmc.megarac {
   megarac_firmware_0_32,
   megarac_firmware_0_45_3,
-  megarac_committed_hpm_read_release,
+  megarac_firmware_0_45_reported,
   megarac_redirection_status_of_wire,
   megarac_redirection_presentation_standing,
   RedirectionStatusKnown,
@@ -134,30 +134,29 @@ fn stop_evidence(readback: String) -> MegaRacDetachEvidence {
 }
 
 // THE EXPECTED RELEASE, WRITTEN IN THIS LANE ONLY HERE (the way a capture's digest is written only in a
-// witness). Production DERIVES the value -- extdeps.bmc.megarac megarac_committed_hpm_read_release parses
-// the committed hpm capture for the media table, gunbc.host.bmc_release_capability_catalog walks the same
-// bytes through the capability row's standing -- and every claim below is a CROSS-CHECK that both land
-// here. Re-typing "0.45.3" into production, or letting the parser drift, reds here instead of letting a
-// plausible build number become the default.
+// witness). extdeps.bmc.megarac DECLARES this release as the one the controller reports and keys its 0.45
+// redirection arm on it; gunbc.host.bmc_release_capability_catalog DERIVES it from the retained stdout of
+// this unit's boot run. Every claim below is a cross-check that the derivation lands on what is declared,
+// so re-typing "0.45.3" anywhere, or letting the parser drift, reds here instead of letting a plausible
+// build number become the default.
 data the_build_the_read_names: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45")
 
-// ONE RELEASE, DERIVED TWICE, PINNED EQUAL. extdeps cannot ask gunbc what this unit's build is (layer
-// order), so the media table parses the committed capture itself; the capability row goes through its
-// standing and keeps the refusal causes. They must name ONE release, or the row that licenses a boot and
-// the table that reads a session could drift apart. This is what makes that loud: raw "0.45", no semantic
-// version, equal to the capability row's derived export, and NOT equal to the vendor's page label.
-test fn w_the_media_table_key_and_the_capability_row_derive_the_same_release() -> Bool {
-  match megarac_committed_hpm_read_release {
+// THE JOIN, MADE A CLAIM. extdeps declares the release the controller REPORTS (raw "0.45", no semantic
+// version) and keys its 0.45 redirection arm there; the observing layer walks the retained stdout of this
+// unit's boot run through the parser and answers with causes. Nothing in the vendor model may parse a
+// machine's receipt -- so what holds the two together is THIS claim: the release this unit's committed read
+// establishes is the release the table catalogues, and it is not the vendor's page label. If the capture
+// stops parsing, this claim goes red and the join stops being claimed; the vendor table itself does not
+// quietly disappear for every caller.
+test fn w_the_committed_read_lands_on_the_release_the_media_table_catalogues() -> Bool {
+  match mtcollins1_current_build_firmware {
     Absent => false
-    Present { value: table_key } => match mtcollins1_current_build_firmware {
-      Absent => false
-      Present { value: row_identity } =>
-        bmc_firmware_release_identity_eq(a: table_key, b: row_identity)
-          && bmc_firmware_release_identity_eq(a: table_key, b: the_build_the_read_names)
-          && (table_key.raw_version as String) == "0.45"
-          && match table_key.semantic_version { Absent => true  Present { value: _ } => false }
-          && !bmc_firmware_release_identity_eq(a: table_key, b: megarac_firmware_0_45_3)
-    }
+    Present { value: read } =>
+      bmc_firmware_release_identity_eq(a: read, b: megarac_firmware_0_45_reported)
+        && bmc_firmware_release_identity_eq(a: read, b: the_build_the_read_names)
+        && (read.raw_version as String) == "0.45"
+        && match read.semantic_version { Absent => true  Present { value: _ } => false }
+        && !bmc_firmware_release_identity_eq(a: read, b: megarac_firmware_0_45_3)
   }
 }
 
