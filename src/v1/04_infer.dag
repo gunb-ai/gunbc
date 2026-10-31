@@ -28,7 +28,7 @@ import std.literal_elaboration {
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { ArithmeticCarrierAmbiguous, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { ArithmeticCarrierAmbiguous, ArithmeticNoCarrier, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -11137,6 +11137,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               [inference_error(
                 message: concat("arithmetic carrier is ambiguous: ", to_string(cs |> count), " incomparable carriers (", join(cs |> map(c => c.decl_name), ", "), ") define this operation for these operands through the declared implicit injections; name the conversion"),
                 span: span, module_name: scope.module_name)]
+            Present { value: ArithmeticNoCarrier } =>
+              [inference_error(
+                message: "no arithmetic carrier: no declared carrier defines this operation for these operands through the declared implicit injections",
+                span: span, module_name: scope.module_name)]
             _ => []
           }
       }
@@ -11156,10 +11160,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Not => bool_type
         Neg => infer_neg_type_node(operand_type: resolved_type(n: operand_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
       }
+      let neg_diags = match op {
+        Not => []
+        Neg =>
+          match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+            Present { value: ArithmeticNoCarrier } => [inference_error(message: "no arithmetic carrier: no declared carrier defines negation for this operand through the declared implicit injections", span: span, module_name: scope.module_name)]
+            Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => [inference_error(message: "arithmetic carrier is ambiguous for negation of this operand; name the conversion", span: span, module_name: scope.module_name)]
+            _ => []
+          }
+      }
       let uo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: uo_texpr,
-        emissions: operand_emissions
+        emissions: infer_emissions_concat(left: operand_emissions, right: infer_emissions_of_diagnostics(diagnostics: neg_diags))
       }
 
     ExprLambda =>
