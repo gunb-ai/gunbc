@@ -3014,6 +3014,12 @@ const STAGE0_CRATE_REL: &str = "src/v1/stage0";
 struct CargoBuildObservation {
     compiled_crates: u64,
     compiled_packages: Vec<String>,
+    /// cargo's own fingerprint log lines for this build (`CARGO_LOG=cargo::core::compiler::
+    /// fingerprint=info`), which say WHY each unit was rebuilt. The scope guard can otherwise only
+    /// name the packages it refused, not why they were dirty — the #14876 / #15310 / #15441 mtime
+    /// mechanism had to be INFERRED from the guard's package list because no fingerprint line was
+    /// ever captured. Kept in memory; surfaced only on a refusal.
+    fingerprint_reasons: Vec<String>,
 }
 
 const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
@@ -3730,6 +3736,14 @@ fn restore_regen_convergence_journal_for_subject(
             RegenPreStageState::PresentBeforeInstall { .. }
         ) {
             let prepared = restore_tmp.join(&entry.backup_name);
+            // SKIP A PATH THAT WAS NEVER MOVED. If the destination already holds the bytes the
+            // journal backed up, the rename is redundant work, and it bumps an mtime that cargo's
+            // path-dependency fingerprint reads as a change — the same defect the round-1 seed now
+            // avoids (#14876 specimen: an excluded crate recompiled because a restore rewrote a file
+            // whose bytes had never changed). DESIGN §2.
+            if destination_bytes_equal(&destination, &prepared)? {
+                continue;
+            }
             fs::rename(&prepared, &destination).map_err(|e| {
                 format!(
                     "rollback/restore refuses: atomic rename {} -> {}: {e}",
@@ -3750,6 +3764,15 @@ fn restore_regen_convergence_journal_for_subject(
     fs::remove_dir_all(&root)
         .map_err(|e| format!("remove restored journal {}: {e}", root.display()))?;
     Ok(restored)
+}
+
+/// True when both paths exist and hold the same bytes. An unreadable side is NOT equal: the caller
+/// then writes, so a comparison failure can never turn into a skipped restore.
+fn destination_bytes_equal(destination: &Path, prepared: &Path) -> Result<bool, String> {
+    let (Ok(current), Ok(wanted)) = (fs::read(destination), fs::read(prepared)) else {
+        return Ok(false);
+    };
+    Ok(current == wanted)
 }
 
 fn journal_stage0_paths_for_subject(
@@ -3943,6 +3966,11 @@ struct BaseRestore {
     base_commit: String,
     /// How many crate paths the round-1 seed actually built from the base commit's bytes.
     paths_restored: usize,
+    /// How many of those paths the seed actually wrote. A path whose base bytes already equal the
+    /// worktree's is NOT written (see `bootstrap_round_one_from_base_mirror`): rewriting identical
+    /// bytes bumps an mtime cargo reads as a change and drags excluded crates into the rebuild.
+    /// Zero is the shape of a PR that touches no stage0 file at all.
+    paths_rewritten: usize,
     /// How many paths the HEAD tracks that base does not have at all: they stay at the head, are
     /// journaled before the round touches them, and are counted rather than silent — a head-added
     /// support file is exactly where a new hand-written call to a new generated method lives, and
@@ -4033,13 +4061,27 @@ fn round_one_receipt_base_authority(
 ///   request's own hand-written Rust (review 87490 on #15339; `gunbc.heal_candidate_stage0`
 ///   `mirror_paths_of` filters by directory depth and suffix only, so such a file enters the
 ///   candidate). Base is what round 1 COMPILES and nothing else.
-/// - Every mirror it overwrites is journalled FIRST, under the same checkpoint subject the install
+/// - Only a path whose bytes ACTUALLY DIFFER is written, and only those paths are journalled. A
+///   rewrite of identical bytes is not a no-op: it bumps the file's mtime, and cargo fingerprints a
+///   path dependency by mtime, so the seed build and the measured partition rebuild recompile crates
+///   the round's own derived scope had EXCLUDED, and the scope guard refuses a round that did nothing
+///   wrong. Specimens: PR #14876 (heal run 41061363628, job 124081920078 — a `.dag`-only PR, so all
+///   306 crate paths are byte-identical to base, and `compiled excluded packages
+///   ["v1-stage0-runtime"]` with `package_closure=[std-core, v1-infer, std-surface,
+///   extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and PR #15310 (heal run 41098380134 —
+///   six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`,
+///   `closure=[v1-compiler]`). The guard is right and is NOT widened; the writer was doing redundant
+///   work (DESIGN §2), and mtimes are not restored either — a restored mtime is a second lie on the
+///   same file. `a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore` controls both
+///   halves, with a discriminator so the mtime assertion cannot pass vacuously.
+/// - Every path it DOES overwrite is journalled FIRST, under the same checkpoint subject the install
 ///   path uses: the snapshot holds the tree's OWN bytes, so the transaction's single existing
 ///   restore returns the worktree to the head state on every exit path. This is the same rollback,
-///   not a second one beside it.
+///   not a second one beside it. A head-added path the seed never writes is journalled by the
+///   install that overwrites it, not twice over.
 ///
-/// Idempotent: the heal round step runs once per image (a seed-handoff re-exec re-runs it), and
-/// base bytes written over base bytes are the same bytes.
+/// Idempotent: the heal round step runs once per image (a seed-handoff re-exec re-runs it), and a
+/// re-run finds the bytes already equal to base's, so it writes nothing and moves no mtime.
 fn bootstrap_round_one_from_base_mirror(
     workspace: &Path,
     base_commit_env: Option<&str>,
@@ -4062,21 +4104,24 @@ fn bootstrap_round_one_from_base_mirror(
         .difference(&from_base.keys().cloned().collect())
         .count();
 
-    // JOURNAL THE TREE'S OWN BYTES BEFORE ANY WRITE, under THE SAME SUBJECT the install path uses.
-    // One rollback, not a second one beside it: the pre-stage snapshot holds the head's bytes, and
-    // the transaction's existing restore returns every path the bootstrap touched. A path the
-    // install journals later keeps this first snapshot — the head's bytes, never base's.
-    // The head-added paths are journalled too: the round's own round-2 install overwrites them, and
-    // the restore must be able to return them.
-    let journal_paths: Vec<String> = restore.union(&in_worktree).cloned().collect();
-    let entries = journal_paths
-        .iter()
-        .map(|path| (path.clone(), workspace.join(path)))
-        .collect::<Vec<_>>();
-    journal_paths_for_subject(workspace, &entries, subject).map_err(|e| {
-        format!("BootstrapBaseMirrorJournal: journal the head bytes before the base restore: {e}")
-    })?;
-
+    // FETCH EVERY BASE BLOB ONCE AND WRITE ONLY THE PATHS WHOSE BYTES ACTUALLY DIFFER.
+    //
+    // A path whose base bytes already equal the worktree's needs no write, and writing it anyway is
+    // not harmless: it bumps that file's mtime, and cargo's fingerprint for a path dependency reads
+    // mtimes — so every crate that reads a rewritten file is rebuilt, including crates the round's
+    // derived scope had correctly EXCLUDED. That is the #14876 specimen of this failure mode
+    // (run 41061363628, job 124081920078): the PR touches no stage0 or runtime file, so all 306
+    // crate paths are byte-identical to base, the seed and the restore still rewrote all 306, and
+    // the round-2 rebuild recompiled `v1-stage0-runtime` — which the guard's own receipt had derived
+    // as out of scope (`changed_mirrors=[std_algebra.rs, v1_compiler_infer_{method,resolve,types}.rs]
+    // owning_packages=[v1-stage0-std-core, v1-stage0-v1-infer]`, closure = reverse deps, runtime not
+    // in it), so the scope guard refused a round that had done nothing wrong.
+    //
+    // The guard is right and stays exactly as it is; the writer is what was wrong. DESIGN §2: no
+    // redundant work. mtimes are not restored either — a restored mtime would be a second, stranger
+    // lie on the same file.
+    let mut base_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut to_write: BTreeSet<String> = BTreeSet::new();
     for path in &restore {
         let output = Command::new("git")
             .args(["show", &format!("{}:{}", base_commit, path)])
@@ -4091,16 +4136,46 @@ fn bootstrap_round_one_from_base_mirror(
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
+        let current = fs::read(workspace.join(path)).ok();
+        base_bytes.insert(path.clone(), output.stdout.clone());
+        if current.as_deref() != Some(output.stdout.as_slice()) {
+            to_write.insert(path.clone());
+        }
+    }
+
+    // JOURNAL THE TREE'S OWN BYTES BEFORE ANY WRITE, under THE SAME SUBJECT the install path uses.
+    // One rollback, not a second one beside it: the pre-stage snapshot holds the head's bytes, and
+    // the transaction's existing restore returns every path the bootstrap touched. A path the
+    // install journals later keeps this first snapshot — the head's bytes, never base's.
+    // ONLY THE PATHES THIS SEED ACTUALLY WRITES are journalled: a path the seed leaves alone has
+    // nothing to undo, and the round's own install journals whatever IT overwrites (head-added
+    // support files included), so journalling an untouched path would be redundant work and would
+    // make the journal's population stop meaning "what the seed moved".
+    let journal_paths: Vec<String> = to_write.iter().cloned().collect();
+    let entries = journal_paths
+        .iter()
+        .map(|path| (path.clone(), workspace.join(path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject).map_err(|e| {
+        format!("BootstrapBaseMirrorJournal: journal the head bytes before the base restore: {e}")
+    })?;
+
+    for path in &to_write {
         let destination = workspace.join(path);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        fs::write(&destination, &output.stdout)
+        fs::write(&destination, &base_bytes[path])
             .map_err(|e| format!("write {}: {e}", destination.display()))?;
     }
     Ok(BaseRestore {
         base_commit,
+        // The population the round holds at base bytes — which for a PR that touches no stage0 file
+        // is the whole crate, even though nothing had to be written to get there.
         paths_restored: restore.len(),
+        // How many of those the seed actually moved on disk. Zero means base's bytes and the head's
+        // were already the same bytes, which is the #14876 shape and the reason no mtime moved.
+        paths_rewritten: to_write.len(),
         paths_absent_at_base,
     })
 }
@@ -4438,14 +4513,28 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
             "--bin",
             "claim_executor",
         ])
+        // Ask cargo WHY it rebuilt each unit. The guard below reads `Compiling` lines and can name
+        // the packages a scoped rebuild touched, but a refusal that names only them leaves the
+        // mechanism to be inferred: three heal refusals (#14876 job 124081920078, #15310 run
+        // 41098380134, #15441 run 41121984158) carried no evidence of WHY the excluded packages
+        // were dirty. Logging only — it changes no route and no decision (DESIGN section 5) — and
+        // the lines reach a refusal's text, never a digest.
+        .env("CARGO_LOG", "cargo::core::compiler::fingerprint=info")
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn cargo build ({label}): {e}"))?;
     v1_rt::trace_mark(format!("{label}.done"));
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
-        let tail: Vec<&str> = stderr.lines().rev().take(40).collect::<Vec<_>>();
-        let tail: Vec<&str> = tail.into_iter().rev().collect();
+        // The fingerprint log is noise in a FAILURE tail: the compiler's own diagnostics must stay
+        // the last thing a reader sees, not a `Dirty` line (§5: a refusal names the error).
+        let kept: Vec<&str> = stderr
+            .lines()
+            .filter(|line| !line.contains("fingerprint"))
+            .rev()
+            .take(40)
+            .collect();
+        let tail: Vec<&str> = kept.into_iter().rev().collect();
         return Err(format!(
             "refusal: cargo build ({label}) failed with {} — last lines:\n{}",
             output.status,
@@ -4459,9 +4548,15 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
         .map(|name| name.to_string())
         .collect::<Vec<_>>();
     let compiled_crates = compiled_packages.len() as u64;
+    let fingerprint_reasons: Vec<String> = stderr
+        .lines()
+        .filter(|line| line.contains("fingerprint"))
+        .map(|line| line.trim().to_string())
+        .collect();
     Ok(CargoBuildObservation {
         compiled_crates,
         compiled_packages,
+        fingerprint_reasons,
     })
 }
 
@@ -5179,9 +5274,33 @@ fn partitioned_rebuild_from_installed(
         .filter(|package| actuation.excluded_packages.contains(package))
         .collect::<Vec<_>>();
     if !widened.is_empty() {
+        // The guard names what it refused; cargo knows WHY it rebuilt it. Prefer the lines that
+        // mention a refused package, and fall back to the whole capture so a refusal of this shape
+        // never arrives without the reason attached.
+        let mut reasons: Vec<&String> = observation
+            .fingerprint_reasons
+            .iter()
+            .filter(|line| {
+                widened
+                    .iter()
+                    .any(|package| line.contains(package.as_str()))
+            })
+            .collect();
+        if reasons.is_empty() {
+            reasons = observation.fingerprint_reasons.iter().collect();
+        }
+        let shown: Vec<&str> = reasons
+            .iter()
+            .take(24)
+            .map(|reason| reason.as_str())
+            .collect();
         return Err(format!(
-            "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {}",
-            actuation.decision_line
+            "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {} — cargo fingerprint \
+             reasons for this build ({} captured, {} shown): [{}]",
+            actuation.decision_line,
+            observation.fingerprint_reasons.len(),
+            shown.len(),
+            shown.join(" | ")
         ));
     }
     Ok(observation)
@@ -6612,8 +6731,11 @@ pub fn run_regen_round_cost(
         // distinguish a base byte from a head byte without re-running anything.
         println!(
             "regen-round-cost: round 1 builds the whole {STAGE0_CRATE_REL} crate from the base \
-             mirror commit={} paths={} head_added_paths_kept={}",
-            restored.base_commit, restored.paths_restored, restored.paths_absent_at_base
+             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={}",
+            restored.base_commit,
+            restored.paths_restored,
+            restored.paths_rewritten,
+            restored.paths_absent_at_base
         );
         Some(restored)
     } else {
@@ -6709,10 +6831,12 @@ pub fn run_regen_round_cost(
         let reverted = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
-        // bytes from one that quietly kept compiling base's into the candidate.
+        // bytes from one that quietly kept compiling base's into the candidate. The count is the
+        // paths the restore actually rewrote: a journalled path the seed never moved already holds
+        // the head's bytes, and rewriting it would be mtime churn cargo reads as a change.
         println!(
-            "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths hold \
-             the head's own bytes before the candidate is observed"
+            "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
+             rewritten to the head's own bytes (the rest already held them)"
         );
     }
 
@@ -7481,24 +7605,24 @@ mod heal_round_one_base_mirror_tests {
         let put_back =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
-        // The journal covers every path the round can touch, not only the paths the seed WROTE: the
-        // head-added paths are journalled too, because the round's own round-2 install overwrites
-        // them and the rollback must be able to return them. So the teardown's population is the
-        // seeded population PLUS the paths base has no form of — and the sum, not the seed count, is
-        // what must come back, or a head-added hand-written file stays at base bytes.
+        // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
+        // head's is never written (a rewrite would bump an mtime cargo misreads as a change — the
+        // #14876 / #15310 specimen), so it is never journalled and has nothing to put back; a
+        // head-added path is journalled by the install that overwrites it, not by the seed. So the
+        // teardown's count is the seed's rewrite count, and the byte assertions below are what prove
+        // no base byte survives where the candidate reads.
         assert_eq!(
-            put_back,
-            restored.paths_restored + restored.paths_absent_at_base,
-            "the teardown did not return every journalled path (seeded {} + head-added {}), so a \
-             base byte is still on disk where the candidate reads",
-            restored.paths_restored,
-            restored.paths_absent_at_base
+            put_back, restored.paths_rewritten,
+            "the teardown did not return every path the seed moved ({}), so a base byte is still on \
+             disk where the candidate reads",
+            restored.paths_rewritten
         );
         assert_eq!(
-            (restored.paths_restored, restored.paths_absent_at_base),
-            (5, 2),
-            "the fixture's population moved: base carries 5 paths under {STAGE0_CRATE_REL} and the \
-             head adds 2, and this control's arithmetic reads those numbers"
+            (restored.paths_restored, restored.paths_rewritten, restored.paths_absent_at_base),
+            (5, 4, 2),
+            "the fixture's population moved: base carries 5 paths under {STAGE0_CRATE_REL}, the head \
+             rewrites 4 of them (its build script is committed identically, so the seed must skip \
+             it), and the head adds 2 — this control's arithmetic reads those numbers"
         );
         assert!(put_back > 0, "the teardown reported restoring nothing");
         for (path, needle, what) in [
@@ -7628,11 +7752,10 @@ mod heal_round_one_base_mirror_tests {
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
                 .expect("the round's teardown restores what the parent seeded"),
-            restored.paths_restored + restored.paths_absent_at_base,
-            "the teardown did not return every journalled path (seeded {} + head-added {}), so the \
-             child touched the tree or the journal",
-            restored.paths_restored,
-            restored.paths_absent_at_base
+            restored.paths_rewritten,
+            "the teardown did not return every path the parent seed moved ({}), so the child touched \
+             the tree or the journal",
+            restored.paths_rewritten
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -8046,6 +8169,141 @@ mod heal_round_one_base_mirror_tests {
             (5, 2),
             "the receipt's counts moved off the fixture's population, so the line it feeds no \
              longer describes what the seed built"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+    /// Every mtime under the crate, for the control that asserts the seed and the restore leave an
+    /// untouched tree alone. `.git` is skipped: the round's own `git show` calls do not write there,
+    /// and a control that watched it would be measuring git, not the writer.
+    fn mtimes_under(dir: &Path) -> BTreeMap<PathBuf, std::time::SystemTime> {
+        let mut out = BTreeMap::new();
+        let mut walk = std::collections::VecDeque::new();
+        walk.push_back(dir.to_path_buf());
+        while let Some(dir) = walk.pop_front() {
+            for entry in
+                fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+            {
+                let path = entry.unwrap().path();
+                if path.file_name() == Some(std::ffi::OsStr::new(".git")) {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk.push_back(path);
+                } else {
+                    out.insert(
+                        path.clone(),
+                        fs::metadata(&path)
+                            .unwrap_or_else(|e| panic!("stat {}: {e}", path.display()))
+                            .modified()
+                            .unwrap_or_else(|e| panic!("mtime {}: {e}", path.display())),
+                    );
+                }
+            }
+        }
+        out
+    }
+
+    /// THE CONTROL FOR THE #14876 / #15310 SPECIMENS: a PR that touches no stage0 file must not move
+    /// a single mtime, in the seed or in the restore.
+    ///
+    /// Round 1 seeds base's bytes over the whole base crate population because it cannot know which
+    /// paths the PR edited — and for a `.dag`-only PR that population is 306 paths of byte-identical
+    /// content. Writing identical bytes is not a no-op: it bumps the mtime, and cargo fingerprints a
+    /// path dependency by mtime, so the seed build and then the measured partition rebuild recompile
+    /// crates the round's own derived scope had EXCLUDED. The scope guard refuses correctly; the
+    /// writer was doing redundant work (DESIGN §2). Heal run 41061363628 / job 124081920078 on #14876
+    /// (`compiled excluded packages ["v1-stage0-runtime"]`, closure `[std-core, v1-infer, std-surface,
+    /// extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and run 41098380134 on #15310
+    /// (six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`, closure
+    /// `[v1-compiler]`) are the two specimens.
+    ///
+    /// The second half is the DISCRIMINATOR: the same measurement on a tree that DOES differ must
+    /// show the differing paths' mtimes move and the identical path's stay put. Without it, a fixture
+    /// that never wrote anything, or a filesystem with a coarse clock, would pass the first half for
+    /// the wrong reason.
+    #[test]
+    fn a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore() {
+        // ARM 1 — THE CI SHAPE THAT WAS REFUSED: the PR edits only `.dag` authorities, so every crate
+        // path in the worktree already holds base's bytes.
+        let (root, _stage0, base_commit) = base_mirror_fixture();
+        let checkout = Command::new("git")
+            .args(["checkout", &base_commit, "--", STAGE0_CRATE_REL])
+            .current_dir(&root)
+            .output()
+            .expect("git checkout of the crate from base");
+        assert!(
+            checkout.status.success(),
+            "the fixture could not reset the crate to base's bytes: {}",
+            String::from_utf8_lossy(&checkout.stderr)
+        );
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let before = mtimes_under(&crate_dir);
+        assert!(!before.is_empty(), "the fixture's crate is empty");
+
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs");
+        assert_eq!(
+            (restored.paths_restored, restored.paths_rewritten),
+            (5, 0),
+            "a tree identical to base must hold the whole population as base's bytes (5) while the \
+             seed writes NONE of them; the seed wrote {}, which is the mtime churn that drags \
+             excluded crates into the rebuild",
+            restored.paths_rewritten
+        );
+        assert_eq!(
+            restored.paths_absent_at_base, 2,
+            "the head-added paths are still head-added, and the install journals them when it \
+             overwrites them — the seed must not journal them"
+        );
+        assert_eq!(
+            mtimes_under(&crate_dir),
+            before,
+            "the seed rewrote a path whose bytes already equalled base's"
+        );
+
+        // The restore of a journal that moved nothing must also touch nothing.
+        assert_eq!(
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round's teardown runs"),
+            0,
+            "the teardown wrote back paths the seed never moved"
+        );
+        assert_eq!(
+            mtimes_under(&crate_dir),
+            before,
+            "the restore rewrote a path it had never moved"
+        );
+        let _ = fs::remove_dir_all(&root);
+
+        // ARM 2 — THE DISCRIMINATOR: on a tree that differs, the differing paths' mtimes MUST move
+        // and the one path committed identically on both sides (the crate's build script) must not.
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let build_script = crate_dir.join("build.rs");
+        let emitted = stage0.join("fixture_emitted.rs");
+        let before = mtimes_under(&crate_dir);
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs on a differing tree");
+        assert_eq!(
+            restored.paths_rewritten, 4,
+            "the fixture's head edits 4 crate paths"
+        );
+        let after = mtimes_under(&crate_dir);
+        assert_ne!(
+            after[&emitted], before[&emitted],
+            "a path whose bytes differ was not rewritten, so arm 1 above proves nothing"
+        );
+        assert_eq!(
+            after[&build_script], before[&build_script],
+            "the seed rewrote the one crate path committed identically on both sides"
         );
         let _ = fs::remove_dir_all(&root);
     }
