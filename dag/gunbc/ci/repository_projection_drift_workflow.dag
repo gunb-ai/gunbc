@@ -1,0 +1,469 @@
+module gunbc.ci.repository_projection_drift_workflow
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { byte_size_count, minute_count }
+import std.optional { Optional, Present, Absent }
+import std.algebra { list_map }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, kv, YamlKeyValue }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.github.actions {
+  Job,
+  Opened,
+  PullRequest,
+  PullRequestActivity,
+  Push,
+  ReadyForReview,
+  Reopened,
+  RunStep,
+  Schedule,
+  Step,
+  UsesStep,
+  Workflow,
+  WorkflowDispatch,
+  WorkflowPermissions,
+  PermNone,
+  PermRead,
+  WorkflowTrigger
+}
+import gunbc.action_use_admission { upload_artifact_action }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.ci.repository_ci_profile {
+  DagInvocation,
+  HealSeal,
+  OverlayIngest,
+  ProjectionDrift,
+  PublicSeed,
+  RepositoryCiProfile,
+  gunbc_roster_gate,
+  profile_overlay,
+}
+import gunbc.ci.repository_compose_overlay {
+  SealEnvBinding,
+  composed_source_roots,
+  compose_gunbc_run_statements,
+  compose_preamble_statements,
+  head_tree_compose_statements,
+  heal_seal_env,
+  local_runs_note,
+  merge_checkout_compose,
+  only_at_a_pull_request,
+  overlay_note,
+  seal_ran_and_repo_alive
+}
+import gunbc.ci.repository_seed_steps {
+  repository_checkout_step,
+  seed_build_step,
+  seed_checkout_step,
+  record_seed_revision_step,
+  toolchain_install_step
+}
+
+// repository_projection_drift_workflow.dag — THE ONE drift-check emitter, for a repository whose
+// authorities live in a SEED checked out beside it. The question is the same one gunbc's own drift watch
+// asks -- is every committed generated artifact byte-equal to what its authority emits right now -- and
+// the shape differs in exactly two ways, both of which are data: the authority is not in this tree, so
+// the job checks the seed out and composes the repository's overlay into it before asking; and a mirror
+// additionally SEALS a repair candidate at the pull request head, so the publisher has something to
+// publish that names the commit a reviewer is looking at.
+//
+// WHY THIS FILE AND gunbc/drift_watch_workflow.dag ARE TWO FILES ABOUT ONE QUESTION. gunbc's drift watch
+// is a POLLER: a cadence row, a read-only comparison, and nothing else -- it exists to catch what no
+// commit touched, which is why its emitter refuses a row with no cadence. A mirror's drift job runs at
+// every checkout (the moment the seed could have moved) and carries the seal. Folding the two into one
+// emitter would mean one job with a conditional cadence and an optional half-job, and the seal -- the
+// load-bearing half, because an unsealed candidate is not publishable -- would be a special case inside a
+// file whose own committed YAML has never had one. What IS shared here is the machinery: the seed steps
+// (gunbc.ci.repository_seed_steps), the composition (gunbc.ci.repository_compose_overlay), and the
+// refusal-before-emit discipline.
+//
+// THE SEAL RUNS AT THE PULL REQUEST HEAD, NOT AT THE MERGE. The publisher pushes to the pull request
+// branch, so a candidate generated from anything else is a candidate for a commit nobody submitted -- and
+// a candidate generated from the MERGE would publish bytes that never existed in any reviewed commit.
+
+data drift_no_job_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: this repository's CI profile declares no drift check (RepositoryCiProfile.drift is Absent), so there is nothing to emit. Declare the job or delete its workflow file."
+
+data drift_no_seed_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: a drift check that regenerates from a sealed seed needs that seed (RepositoryCiProfile.public_seed is Absent). Emission that claims to check against a seed it never checks out is a check that always passes."
+
+data drift_no_overlay_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: the mirror's drift check and seal both run from the composed overlay, so the profile must declare the ingest (RepositoryCiProfile.roster.route.Overlay.composition). Without that row the emitted job could not name the copy it reads, and the copy is precisely the step that must be visible in the committed YAML."
+
+// PRESENCE READ BY MATCHING, NOT BY COMPARING AN OPTIONAL TO A SENTINEL. Each arm of the row that this
+// emitter cannot work without -- the drift check, the seed it regenerates from, the overlay ingest that
+// says where the mirror's rows are copied -- is matched, and its absence refuses with the reason an
+// operator can act on. A Bool asking each arm "are you there" would put the decision one `if` away from
+// the render, which is exactly the distance a fabricated fallback used to fill.
+fn projection_drift_refusal(profile: RepositoryCiProfile) -> Optional<String> {
+  match profile.drift {
+    Absent => Present { value: drift_no_job_refusal_reason }
+    Present { value: _ } =>
+      match profile.public_seed {
+        Absent => Present { value: drift_no_seed_refusal_reason }
+        Present { value: _ } =>
+          match profile_overlay(profile: profile) {
+            Absent => Present { value: drift_no_overlay_refusal_reason }
+            Present { value: _ } => Absent
+          }
+      }
+  }
+}
+
+// WHAT THE REPOSITORY SAYS AT EACH STEP, as opposed to what each step DOES. The names and banners are the
+// voice of the job; the invocations, the artifact and the timeouts are rows.
+type DriftProgram {
+  checkout_step_name: NonEmptyStr
+  toolchain_step_name: NonEmptyStr
+  check_step_name: NonEmptyStr
+  check_authority_banner: NonEmptyStr
+}
+
+// THE MEMORY CEILING, as a row rather than a constant: the budget belongs to the machine the job runs on,
+// and a runner with different RAM is a row edit rather than an edit to a shell string.
+fn memory_budget_rows(profile: RepositoryCiProfile) -> List<YamlKeyValue> {
+  match profile.roster.memory_budget {
+    Present { value: budget } => [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: byte_size_count(b: budget)))]
+    Absent => []
+  }
+}
+
+// THE CHECK: compose from the CHECKED-OUT tree, then ask the project's own drift claim whether the
+// committed bytes equal what the authorities emit. The banner is the first statement the step runs, so a
+// failing run says what it was checking before it says anything else.
+fn drift_check_statements(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  check: DagInvocation
+) -> List<Node> {
+  let roots = composed_source_roots(
+    profile_roots: profile.roster.source_roots,
+    overlay: overlay
+  )
+  let notes = [
+    program.check_authority_banner as String,
+    overlay_note(overlay: overlay),
+    local_runs_note(overlay: overlay)
+  ]
+  concat(
+    compose_preamble_statements(seed: seed, c: merge_checkout_compose(seed: seed, overlay: overlay, notes: notes)),
+    compose_gunbc_run_statements(
+      overlay: overlay,
+      source_roots: roots,
+      entry: check.entry,
+      function: check.function
+    )
+  )
+}
+
+fn drift_check_script(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  check: DagInvocation
+) -> Outcome<String> {
+  bash_emit_stmts(
+    statements: drift_check_statements(
+      profile: profile,
+      seed: seed,
+      overlay: overlay,
+      program: program,
+      check: check
+    ),
+    set_e: true
+  )
+}
+
+// THE SEAL: compose at the pull request HEAD and run the project's regenerate-and-seal target. The cache
+// clears are the same discipline as the check - a composition must not inherit a cache from a previous
+// tree, or a candidate can be assembled out of bytes that are not in the commit being sealed.
+fn heal_seal_statements(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> List<Node> {
+  let roots = composed_source_roots(
+    profile_roots: roster_source_roots(),
+    overlay: overlay
+  )
+  concat(
+    head_tree_compose_statements(
+      seed: seed,
+      overlay: overlay,
+      head_tree_dir_name: seal.head_tree_dir_name,
+      head_link_name: seal.head_link_name,
+      compose_dir_name: seal.compose_dir_name
+    ),
+    compose_gunbc_run_statements(
+      overlay: overlay,
+      source_roots: roots,
+      entry: seal.invocation.entry,
+      function: seal.invocation.function
+    )
+  )
+}
+
+fn heal_seal_script(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> Outcome<String> {
+  bash_emit_stmts(statements: heal_seal_statements(seed: seed, overlay: overlay, seal: seal), set_e: true)
+}
+
+// A job with no seal step needs no seal script; an accepted empty script is that case, so the step
+// builder below matches one shape of outcome rather than two.
+fn no_seal_script() -> Outcome<String> {
+  bash_emit_stmts(statements: [], set_e: true)
+}
+
+// A row that declares no seal has no seal script to refuse; the accepted empty script is that case, so
+// the generator matches one shape at this point rather than testing for a seal twice.
+fn seal_script_or_empty(seed: PublicSeed, overlay: OverlayIngest, drift: ProjectionDrift) -> Outcome<String> {
+  match drift.seal {
+    Present { value: seal } => heal_seal_script(seed: seed, overlay: overlay, seal: seal)
+    Absent => no_seal_script()
+  }
+}
+
+// THE SEAL COMPOSES THE SAME SOURCE TREES THE GATE CHECKS, because the candidate must be produced by the
+// set of roots the gate's verdict is about. One row, read twice -- not two lists kept equal by hand.
+fn roster_source_roots() -> List<String> {
+  gunbc_roster_gate().source_roots
+}
+
+fn projection_drift_steps(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String,
+  record_step: Step
+) -> List<Step> {
+  let budget = memory_budget_rows(profile: profile)
+  let check_step = RunStep {
+    name: Present { value: program.check_step_name },
+    id: none,
+    run: check_body,
+      shell: none,
+      env: Present { value: budget },
+      working_directory: none,
+      if_condition: none,
+      continue_on_error: none,
+      timeout_minutes: none
+    }
+      let seal_steps = match drift.seal {
+        Present { value: seal } => [
+          RunStep {
+            name: Present { value: seal.seal_step_name },
+            id: Present { value: seal.seal_step_id },
+            run: seal_body,
+            shell: none,
+            env: Present { value: concat(budget, seal_env_rows()) },
+            working_directory: none,
+            if_condition: Present { value: only_at_a_pull_request() },
+            continue_on_error: none,
+            timeout_minutes: none
+          },
+          UsesStep {
+            name: Present { value: seal.upload_step_name },
+            id: none,
+            uses: upload_artifact_action,
+            with: Present {
+              value: [
+                kv(key: "name", value: yaml_string(s: seal.candidate_artifact as String)),
+                kv(
+                  key: "path",
+                  value: yaml_string(
+                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", seal.candidate_artifact as String, "/"], "")
+                  )
+                ),
+                kv(key: "if-no-files-found", value: yaml_string(s: "error"))
+              ]
+            },
+            env: none,
+            if_condition: Present { value: seal_ran_and_repo_alive() },
+            continue_on_error: none,
+            timeout_minutes: none
+          }
+        ]
+        Absent => []
+      }
+        concat(
+          [
+          repository_checkout_step(step_name: program.checkout_step_name),
+          seed_checkout_step(seed: seed),
+          record_step,
+          toolchain_install_step(step_name: program.toolchain_step_name),
+          seed_build_step(seed: seed),
+          check_step
+          ],
+          seal_steps
+        )
+}
+
+// THE SEAL'S ENVIRONMENT, in the order a reader of the YAML sees it: the ceiling first (it is the reason
+// the step is allowed to run at all), then the facts the candidate must name. The NAMES are shared
+// vocabulary rather than configuration -- the publisher's admit step reads exactly these, so a repository
+// that renamed one would publish a candidate its own publisher refuses.
+fn seal_env_rows() -> List<YamlKeyValue> {
+  list_map(
+    xs: heal_seal_env(),
+    f: fn(binding) { kv(key: binding.key as String, value: yaml_string(s: binding.value as String)) }
+  )
+}
+
+fn projection_drift_job(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String,
+  record_step: Step
+) -> Job {
+  Job {
+    id: drift.job_id,
+    name: none,
+    runner: ci_runner_target_spec(target: drift.runner),
+    environment: none,
+    steps: projection_drift_steps(
+      profile: profile,
+      seed: seed,
+      overlay: overlay,
+      program: program,
+      drift: drift,
+      check_body: check_body,
+      seal_body: seal_body,
+      record_step: record_step
+    ),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: minute_count(m: drift.timeout) },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+// THE TRIGGERS. Every checkout of a mirror commit -- the moment the seed could have moved -- plus a
+// dispatch for a human, plus the cadence when the row declares one. A pull request is included because
+// the seal is a pull-request-only step and it must be able to run before merge.
+fn projection_drift_triggers(drift: ProjectionDrift, default_branch: NonEmptyStr) -> List<WorkflowTrigger> {
+  let branch = default_branch as String
+    let cadence = match drift.cron {
+      Present { value: schedule } => [Schedule { cron: schedule }]
+      Absent => []
+    }
+      concat(
+        cadence,
+        [
+          WorkflowDispatch { inputs: [] },
+          Push { branches: [branch], paths: [] },
+          PullRequest {
+            branches: [branch],
+            types: [Opened, Synchronize, Reopened, ReadyForReview],
+            paths: []
+          }
+        ]
+      )
+}
+
+data drift_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermNone },
+  id_token: none
+}
+
+fn projection_drift_workflow(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram,
+  drift: ProjectionDrift,
+  check_body: String,
+  seal_body: String,
+  record_step: Step
+) -> Workflow {
+  Workflow {
+    name: drift.workflow_name as String,
+    run_name: none,
+    on: projection_drift_triggers(drift: drift, default_branch: profile.default_branch),
+    concurrency: none,
+    env: none,
+    permissions: Present { value: drift_permissions },
+    jobs: [
+      projection_drift_job(
+        profile: profile,
+        seed: seed,
+        overlay: overlay,
+        program: program,
+        drift: drift,
+        check_body: check_body,
+        seal_body: seal_body,
+        record_step: record_step
+      )
+    ]
+  }
+}
+
+type ProjectionDriftWorkflowGenerationOutcome
+  = ProjectionDriftWorkflowGenerated { content: String }
+  | ProjectionDriftWorkflowGenerationRefused { reason: String }
+
+// THE COMMITTED BYTES, or the refusal that explains why there are none. The committed workflow a reader
+// believes is generated is only as trustworthy as the emitter that can prove it, so the same call both
+// regenerates the file and answers the drift check.
+fn expected_projection_drift_workflow_yml(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  program: DriftProgram
+) -> ProjectionDriftWorkflowGenerationOutcome {
+  match projection_drift_refusal(profile: profile) {
+    Present { value: reason } => ProjectionDriftWorkflowGenerationRefused { reason: reason as String }
+    Absent =>
+      match drift_row(profile: profile) {
+        Present { value: drift } =>
+          match drift_check_script(
+            profile: profile,
+            seed: seed,
+            overlay: overlay,
+            program: program,
+            check: drift.check
+          ) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the drift check script, so no workflow is emitted rather than one carrying a step no grammar row accounts for"
+            }
+            Accepted { value: check_body, diagnostics: _ } =>
+          match seal_script_or_empty(seed: seed, overlay: overlay, drift: drift) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the heal seal script, so no workflow is emitted rather than one publishing a candidate no grammar row accounted for"
+            }
+            Accepted { value: seal_body, diagnostics: _ } =>
+          match record_seed_revision_step(seed: seed) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the seed-revision receipt step, so no workflow is emitted rather than one whose drift check judges an unnamed compiler"
+            }
+            Accepted { value: record_step, diagnostics: _ } =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body, record_step: record_step))) {
+            EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } =>
+              ProjectionDriftWorkflowGenerationRefused {
+                reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
+              }
+          }
+          }
+          }
+          }
+        Absent => ProjectionDriftWorkflowGenerationRefused { reason: drift_no_job_refusal_reason }
+      }
+  }
+}
+
+fn drift_row(profile: RepositoryCiProfile) -> Optional<ProjectionDrift> {
+  profile.drift
+}

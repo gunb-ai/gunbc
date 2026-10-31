@@ -13,8 +13,22 @@ data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubi
 
 type CiRunnerTarget
   = FleetSelfHosted
+  | FleetSelfHostedInDeclaredGroup { group: DeclaredRunnerGroup }
   | UbicloudRunner { row: UbicloudRunnerCatalogRow }
   | GithubHostedRunner { row: GithubHostedRunnerCatalogRow }
+
+// A RESTRICTED RUNNER GROUP ON THE FLEET MACHINE, named by the subject that ensures it.
+// WHY THIS IS A TARGET AND NOT A LABEL STRING. A repository whose publisher must not run on the
+// fleet's shared pool still runs on the same machine class; what differs is WHICH runners may take the
+// job, which is a runner-group resource, not a different computer. gunbc.runner
+// .runner_group_restriction_ensure is the authority that creates those groups and documents a group's
+// name as the label its runners register with, so carrying the name here derives the label from the
+// resource instead of typing it a second time where a typo would silently schedule nothing. An
+// undeclared name is refused before a byte is emitted (gunbc.ci.repository_ci_profile
+// profile_runner_group_is_declared), which is the difference between selecting a pool and wishing for one.
+type DeclaredRunnerGroup {
+  name: NonEmptyStr
+}
 
 type RunnerMemoryRegime
   = SlotCarved { desired: RunnerSlotDesired }
@@ -23,8 +37,21 @@ type RunnerMemoryRegime
 fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
   match target {
     FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+    FleetSelfHostedInDeclaredGroup { group: group } =>
+      with_declared_group_label(spec: runner_spec_from_offer(offer: gunbc_ci_fleet_offer), group: group)
     UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
     GithubHostedRunner { row: row } => HostedRunner { label: row.runs_on_label }
+  }
+}
+
+// THE GROUP LABEL IS ADDED TO THE FLEET LABELS, not substituted for them: the runner agent still applies
+// its default provenance, OS and architecture labels, and the group label only narrows who may take the
+// job. A hosted spec has no group to join, so the restricted shape keeps the fleet labels it came from
+// rather than publishing an unrestricted hosted job under a group-restricted selection.
+fn with_declared_group_label(spec: RunnerSpec, group: DeclaredRunnerGroup) -> RunnerSpec {
+  match spec {
+    SelfHosted { labels: labels } => SelfHosted { labels: concat(labels, [group.name as String]) }
+    _ => SelfHosted { labels: [group.name as String] }
   }
 }
 
@@ -40,6 +67,9 @@ fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
 fn ci_runner_target_memory_regime(target: CiRunnerTarget) -> RunnerMemoryRegime {
   match target {
     FleetSelfHosted => SlotCarved { desired: gunbc_runner_slot_desired() }
+    // The same machine with a narrower audience: carving and the RAM-speed budget are properties of the
+    // host, so restricting WHICH runners may take the job changes neither.
+    FleetSelfHostedInDeclaredGroup { group: _ } => SlotCarved { desired: gunbc_runner_slot_desired() }
     UbicloudRunner { row: row } => WholeMachine { ram: row.memory_bytes }
     GithubHostedRunner { row: row } => WholeMachine { ram: row.memory_bytes }
   }

@@ -1,0 +1,716 @@
+module gunbc.witness.repository_witness_workflow
+
+import std.types {
+  Bool,
+  List,
+  String,
+  NonEmptyStr
+}
+import std.measure { byte_size_count, minute_count }
+import std.optional {
+  Optional,
+  Present,
+  Absent
+}
+import extdeps.languages.yaml.types {
+  yaml_int,
+  kv,
+  YamlKeyValue
+}
+import std.dissolution {
+  dissolution_description,
+  DissolutionCondition,
+  unbound_dissolution
+}
+import extdeps.languages.yaml.emit {
+  emit_yaml,
+  YamlEmitResult,
+  EmittedYaml,
+  YamlEmitRefused
+}
+import extdeps.languages.yaml.gha_workflow {
+  project_workflow_to_yaml
+}
+import extdeps.github.actions {
+  Workflow,
+  Job,
+  Step,
+  WorkflowTrigger,
+  Push,
+  PullRequest,
+  Schedule,
+  WorkflowDispatch,
+  Opened,
+  Synchronize,
+  Reopened,
+  ReadyForReview,
+  WorkflowPermissions,
+  PermRead
+}
+
+import gunbc.ci.repository_ci_profile {
+  RepositoryCiProfile,
+  PublicSeed,
+  OverlayIngest,
+  ComposedOverlayInterpreterRoster,
+  AnnotationStep,
+  repository_ci_profile_refusal,
+}
+import gunbc.ci.repository_compose_overlay {
+  composed_source_roots,
+  compose_preamble_statements,
+  merge_checkout_compose,
+  overlay_note,
+  local_runs_note,
+  echo_stmt,
+  command_words,
+  path_under,
+  unset_may_be_absent,
+  runner_tmp_root_stmts
+}
+import v2.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  bind_outcome
+}
+import v2.std.node {
+  Node
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit,
+  bash_build_word_var,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_cmdsubst,
+  bash_build_command_with_words,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_stmt_list_from_nodes,
+  bash_build_if,
+  bash_build_if_else,
+  bash_build_and_then,
+  bash_build_negation,
+  bash_build_test_bracket,
+  bash_build_or_else,
+  bash_build_pipe,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_exit
+}
+import gunbc.witness.witness_roster {
+  RosterEntry,
+  enforced_entries,
+  roster_enforced_verdict,
+  roster_known_red_statements,
+  roster_must_not_compile_statements,
+  RosterAggregate
+}
+import gunbc.ci.ci_runner_target {
+  ci_runner_target_spec
+}
+import gunbc.ci.repository_seed_steps {
+  repository_checkout_step,
+  seed_checkout_step,
+  record_seed_revision_step,
+  toolchain_install_step,
+  seed_build_step,
+  emit_run_step
+}
+
+// THE REQUIRED GATE FOR A REPOSITORY WHOSE CLAIMS ARE RUN BY ANOTHER REPOSITORY'S COMPILER.
+//
+// This is the workflow a repository's branch protection names, so everything it omits becomes invisible
+// and everything it prints becomes evidence. It is emitted from one profile row
+// (gunbc.ci.repository_ci_profile RepositoryCiProfile) plus the repository's own roster rows
+// (gunbc.witness.witness_roster RosterEntry), which is the whole point of the module: gunbc and its
+// private mirror previously ran two DIFFERENT implementations of this file, and a fork of the file that
+// gates promotion is how a fix to the public repository's required check stops reaching the repository
+// that also claims to be gated.
+//
+// THE LANES ARE NOT MERGED, AND THAT IS A STATED LIMIT RATHER THAN A SILENCE. A repository that compiles
+// itself runs its required gate as the compiler-emission lane (gunbc.witness.compiler_gate_workflow):
+// one labelled subject per build-gate row, judged by the instrument dispatcher. A mirror runs THIS lane:
+// each row driven through the seed's interpreter over a composed root, with the arms that read declared
+// causes. Those two bodies share their triggers, permissions, checkout, toolchain and seed-build steps
+// with each other through this module and the profile, but merging the bodies is a separate change with
+// its own evidence bar, because the compiler-emission lane is the load-bearing wall of the public
+// repository and its emitted bytes are the thing a mirror must not have to disturb. Until then the
+// roster route on the profile says which lane a repository is in, and taking this lane requires declaring
+// the hand-shell divergence it carries.
+//
+// WHY THE COMPOSED ROOT AND NOT THE CHECKOUT. The runner takes its workspace root from the working
+// directory, so a compiler invoked in a checkout that holds only the mirror's rows resolves a corpus
+// without the compiler's own modules, and one invoked in the seed's checkout resolves one without the
+// mirror's. The composed detached worktree is the only tree where both are present - and it lives outside
+// every repository root precisely because archive-time auto-push once published an in-repo overlay copy
+// of the mirror's content into the public repository. See gunbc.ci.repository_compose_overlay.
+
+// THE ROSTER, AS THE PROFILE PLUS THE ROWS THE REPOSITORY OWNS. Rows are arguments rather than module
+// data so the public corpus never has to name a mirror's subjects.
+// THE VOICE OF THE GATE, supplied with the rows rather than stored on the repository's identity row.
+// Step names and banners are how an emitter talks about itself ("Checkout the repository", "these rows are
+// quarantined, not deleted"), which is prose the repository owning the gate should choose - but it is not
+// repo identity, and putting it on the profile would give gunbc's row strings that only the mirror's lane
+// ever renders. So the shared emitter is given (profile, program) and neither side holds the other's facts.
+type RosterProgram {
+  entries: List<RosterEntry>
+  aggregate: Optional<RosterAggregate>
+  roster_authority: NonEmptyStr
+  scaffold_banner: NonEmptyStr
+  checkout_step_name: NonEmptyStr
+  toolchain_step_name: NonEmptyStr
+}
+
+// WHAT THIS LANE REFUSES, AND WHY, BEFORE A BYTE IS RENDERED.
+// - a profile whose halves do not agree, or whose job pins itself to a runner group nothing ensures.
+// - the instrument lane, which is not this emitter's subject: it would emit a gate that runs no rows.
+// - a roster with declared-red or must-not-compile rows on a route with no arms to read them: the step
+//   would print a pass for a row nobody checked, which is how a quarantine becomes a way to be green.
+// - a mirror with no seed to build the compiler from.
+fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: RosterProgram) -> Optional<NonEmptyStr> {
+  match repository_ci_profile_refusal(profile: profile) {
+    Present { value: reason } => Present { value: reason }
+    Absent =>
+      match profile.roster.route {
+        InstrumentLabelRows => Present { value: "REFUSE: this profile's roster runs through the instrument dispatcher, which is the compiler-emission lane (gunbc.witness.compiler_gate_workflow). Do not emit a second required gate for the same repository: two workflows claiming one required context means whichever runs last decides promotion." }
+        ComposedOverlayInterpreterRoster { overlay: _ } =>
+          match profile.public_seed {
+            Absent => Present { value: "REFUSE: the composed-overlay roster needs the seed repository whose compiler runs the claims (gunbc.ci.repository_ci_profile PublicSeed). A repository that builds its own compiler takes the instrument lane instead." }
+            Present { value: _ } =>
+              if count(enforced_entries(entries: program.entries)) == 0 {
+                Present { value: "REFUSE: a required gate that runs no enforced row is a check that cannot fail. Enroll a roster entry, or delete the workflow." }
+              } else {
+                Absent
+              }
+          }
+      }
+  }
+}
+
+// THE GATE'S STEPS, in the order that makes each later step's premises true: check out this repository,
+// check out the seed, RECORD the seed revision the claims were checked against, install the toolchain,
+// build the compiler, run the roster over the composed root, then (for a profile that enrols it) the
+// DESIGN 4c compile. The record step is not decoration: a green run must be attributable to the exact
+// seed revision, or "the claims pass" silently means "the claims pass against whatever main was at
+// checkout time".
+fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<List<Step>> {
+  bind_outcome(
+    o: record_seed_revision_step(seed: seed),
+    f: fn(record) {
+      bind_outcome(
+        o: run_roster_step(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+        f: fn(roster) {
+          bind_outcome(
+            o: annotation_steps(profile: profile, seed: seed, program: program),
+            f: fn(annotation) {
+              Accepted {
+                value: concat(
+                  [
+                    repository_checkout_step(step_name: program.checkout_step_name),
+                    seed_checkout_step(seed: seed),
+                    record,
+                    toolchain_install_step(step_name: program.toolchain_step_name),
+                    seed_build_step(seed: seed),
+                    roster
+                  ],
+                  annotation
+                ),
+                diagnostics: None
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// THE ROSTER RUN: compose, then one process per row, with the arms that read each row's declared causes.
+// The memory budget is a row (profile.roster.memory_budget) rather than a constant because the
+// ceiling belongs to the machine the job runs on: a hosted runner with a different RAM figure is a row
+// edit, not an edit to a shell string.
+fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<Step> {
+  emit_run_step(
+    name: roster_run_step_name(profile: profile),
+    statements: roster_run_statements(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+    set_e: true,
+    env: memory_budget_env(profile: profile),
+    if_condition: none
+  )
+}
+
+fn roster_run_step_name(profile: RepositoryCiProfile) -> NonEmptyStr {
+  match profile.roster.route {
+    ComposedOverlayInterpreterRoster { overlay: _, run_roster_step_name: name } => name
+    InstrumentLabelRows => profile.roster.job_display_name
+  }
+}
+
+fn memory_budget_env(profile: RepositoryCiProfile) -> Optional<List<YamlKeyValue>> {
+  match profile.roster.memory_budget {
+    Present { value: bytes } => Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: byte_size_count(b: bytes)))] }
+    Absent => none
+  }
+}
+
+// THE RUN SCRIPT. One process per row, deliberately: running the whole closure in one process is cheaper
+// but a single panic inside it takes the rest of the roster's verdicts with it, and the roster's purpose
+// is to say which claim failed. The four-arm structure (enforced, declared red, must-not-compile, exit
+// status) is the evidence; the hand-written shell around it is a declared divergence whose trigger the
+// step prints, so nobody has to read this module to learn what would replace it.
+fn roster_run_statements(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> List<Node> {
+  match profile.roster.route {
+    InstrumentLabelRows => [] as List<Node>
+    ComposedOverlayInterpreterRoster { overlay: overlay } => concat(
+      compose_statements,
+      composed_roster_statements(profile: profile, program: program, overlay: overlay)
+    )
+  }
+}
+
+// THE COMPOSITION, RENDERED ONCE FOR THE JOB. The compose preamble is the one part of the mirror's
+// pipeline that is not this module's business - it is gunbc.ci.repository_compose_overlay's, where the
+// gate, the drift check and the heal seal all take the same composed root from the same rows - so it is
+// built there as a statement tree and threaded in. Rendering it here too would give the job two ideas of
+// where the composed tree lives, and the roster's verdict would be about whichever tree the last built.
+fn mirror_compose_statements(profile: RepositoryCiProfile, seed: PublicSeed) -> List<Node> {
+  compose_preamble_statements(
+    seed: seed,
+    c: merge_checkout_compose(
+      seed: seed,
+      overlay: overlay_of_lane(profile: profile),
+      notes: [
+        overlay_note(overlay: overlay_of_lane(profile: profile)),
+        local_runs_note(overlay: overlay_of_lane(profile: profile))
+      ]
+    )
+  )
+}
+
+// THE COMPOSED ROSTER SCRIPT, as statements: the composition it runs over, the aggregate's one-process
+// verdict, then one verdict arm per declared red and per declared wall, then the gate's own exit. The two
+//
+// The obligations with teeth - the copy is generated and must not be edited, and it must be composed in a
+// temporary directory rather than a session worktree - are echoed by the preamble that CREATES the copy,
+// in gunbc.ci.repository_compose_overlay, and not restated here: one fact, printed where it is true.
+fn composed_roster_statements(profile: RepositoryCiProfile, program: RosterProgram, overlay: OverlayIngest) -> List<Node> {
+  let roots = composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)
+  concat(
+    [bash_build_assign_lit(name: "fail", text: "0")],
+    concat(
+      aggregate_statements(program: program, profile: profile, overlay: overlay),
+      concat(
+        roster_known_red_statements(
+          entries: program.entries,
+          overlay: overlay,
+          source_roots: roots,
+          roster_authority: program.roster_authority,
+          scaffold_banner: program.scaffold_banner
+        ),
+        concat(
+          roster_must_not_compile_statements(entries: program.entries, overlay: overlay, source_roots: roots),
+          [bash_build_exit(code: "$fail")]
+        )
+      )
+    )
+  )
+}
+
+// THE ENFORCED VERDICT, printed by the aggregate run when the repository declares one. Without an
+// aggregate row the enforced entries are still each run - the aggregate is the single-process verdict a
+// repository may opt into, not the mechanism that runs the rest.
+fn aggregate_statements(program: RosterProgram, profile: RepositoryCiProfile, overlay: OverlayIngest) -> List<Node> {
+  match program.aggregate {
+    Present { value: aggregate } => roster_enforced_verdict(
+      aggregate: aggregate,
+      overlay: overlay,
+      source_roots: composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)
+    )
+    Absent => [] as List<Node>
+  }
+}
+
+// THE DESIGN 4c STEP, ENROLLED BY THE PROFILE. It compiles the roster's closure and fails when a source
+// annotation has drifted outside module-item grain - and it refuses rather than passing when the compile
+// observed nothing, because a check whose negative case cannot be distinguished from its silence is a
+// check that is always green. gunbc does not enrol it yet: the population it would gate is unproven and
+// the required job's wall time is the cost, so enrolling the public repository is a change to the
+// required gate and gets its own evidence, rather than riding in on a mirror's adoption.
+fn annotation_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> Outcome<List<Step>> {
+  match profile.roster.annotation {
+    Present { value: annotation } => bind_outcome(
+      o: annotation_compile_step(profile: profile, seed: seed, annotation: annotation),
+      f: fn(step) {
+        Accepted { value: [step], diagnostics: None }
+      }
+    )
+    Absent => Accepted { value: [] as List<Step>, diagnostics: None }
+  }
+}
+
+fn annotation_compile_step(profile: RepositoryCiProfile, seed: PublicSeed, annotation: AnnotationStep) -> Outcome<Step> {
+  emit_run_step(
+    name: annotation.step_name,
+    statements: annotation_compile_statements(profile: profile, seed: seed, annotation: annotation),
+    set_e: false,
+    env: memory_budget_env(profile: profile),
+    if_condition: Present { value: "!cancelled()" }
+  )
+}
+
+// THE COMPILER'S OWN TERMINAL SUMMARY LINE, named rather than spelled twice inside a script. `gunbc compile`
+// closes its output with one count line on stderr - "<n> error(s)", beside the policy-suffixed
+// "<n> blocking error(s), <m> advisory diagnostic(s)" form - at src/v1/stage0/src/main.rs, and that line is
+// the only channel between the compile process and this check. The check reads it instead of trusting the
+// exit code alone: a compile that exited 1 without ever printing its summary died before it could report,
+// and that is a REFUSE rather than a pass. Named here so the pattern cannot drift from the line the seed
+// prints; if that line changes, the check goes red rather than quietly matching nothing.
+data compile_terminal_error_count_pattern: NonEmptyStr = "error\\(s\\)"
+
+// THE 4c SCRIPT, as statements. Three properties make it a check rather than a compile: the composed root
+// must exist (a step that observed nothing is a REFUSE, not a pass), the compile may exit only 0 or 1 (any
+// other code means it never got as far as reporting), and the refusal reader's own exit status is read -
+// grep exits 1 when nothing matched, and a reader that failed to read would otherwise report a clean
+// repository. The medium is v2.extdeps.languages.bash_build, the same one
+// gunbc.instruments.instrument_dispatch_workflow uses for the committed instrument-dispatch step.
+fn annotation_compile_statements(profile: RepositoryCiProfile, seed: PublicSeed, annotation: AnnotationStep) -> List<Node> {
+  match profile.roster.route {
+    InstrumentLabelRows => [] as List<Node>
+    ComposedOverlayInterpreterRoster { overlay: overlay } => {
+      let roots = composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)
+      concat(
+        [command_words(rest: ["set", "-u"]), seed_gunbc_checkout_assign_stmt(seed: seed)],
+        concat(
+          runner_tmp_root_stmts(fallback: overlay.compose_root_env_default),
+          [
+            bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: overlay.compose_dir_name as String)),
+            bash_build_assign(name: "OUT", value: path_under(name: "RUNNER_TMP_ROOT", tail: annotation.output_dir_suffix as String)),
+            refuse_when_composition_absent(overlay: overlay),
+            command_words(rest: ["cd", "$COMPOSE"]),
+            echo_stmt(text: join([
+              annotation.subject_banner as String,
+              " Dissolves when: ",
+              dissolution_description(condition: annotation.closure_narrowing_dissolves_when)
+            ], "")),
+            command_words(rest: ["rm", "-rf", "$OUT", "$OUT.log"]),
+            unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
+            unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT"),
+            capture_compile_exit_code(roots: roots, overlay: overlay, annotation: annotation),
+            echo_stmt(text: "gunbc compile exited $code"),
+            refuse_unless_clean_or_rendered_refusal(),
+            refuse_refusal_without_terminal_count(),
+            bash_build_or_else(
+              left: bash_build_pipe(left: terminal_count_reader(), right: command_words(rest: ["tail", "-n", "1"])),
+              right: command_words(rest: ["true"])
+            ),
+            read_refusals_or_refuse(annotation: annotation),
+            refuse_on_other_refusal(),
+            echo_stmt(text: concat("PASS  section 4c: no source-annotation refusal over the closure of ", annotation.invocation.entry as String)),
+          ]
+        )
+      )
+    }
+  }
+}
+
+// THE SEED'S OWN BINARY, at the path the build step left it, read from where the runner put the checkout.
+fn seed_gunbc_checkout_assign_stmt(seed: PublicSeed) -> Node {
+  bash_build_assign(
+    name: "GUNBC",
+    value: bash_build_word_concat_from_nodes(parts: [
+      bash_build_word_var(name: "PWD"),
+      bash_build_word_lit(text: concat("/", join([seed.checkout_path as String, "/", seed.seed_binary_relative_path as String], "")))
+    ])
+  )
+}
+
+fn statements_of(stmts: List<Node>) -> Node {
+  bash_build_stmt_list_from_nodes(stmts: stmts)
+}
+
+fn compiled_program_words(roots: List<String>, overlay: OverlayIngest, annotation: AnnotationStep) -> List<Node> {
+  concat(
+    concat(
+      concat(
+        [bash_build_word_var(name: "GUNBC"), bash_build_word_lit(text: "compile")],
+        list_flat_map(xs: roots, f: root => [bash_build_word_lit(text: "--source-root"), bash_build_word_lit(text: root)])
+      ),
+      [
+        bash_build_word_lit(text: "--entry"),
+        bash_build_word_lit(text: concat(overlay.entry_prefix as String, annotation.invocation.entry as String)),
+        bash_build_word_lit(text: "--output-dir"),
+        bash_build_word_var(name: "OUT")
+      ]
+    ),
+    [bash_build_word_lit(text: "--target"), bash_build_word_lit(text: "dag")]
+  )
+}
+
+// A compiled tree that was never composed is not a check: the annotation population this step gates lives
+// in the copied overlay, so an absent composed root means the roster step never reached composition.
+fn refuse_when_composition_absent(overlay: OverlayIngest) -> Node {
+  bash_build_if(
+    cond: bash_build_negation(
+      inner: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-d"),
+        path_under(name: "COMPOSE", tail: concat(overlay.overlay_dir_name as String, "/dag"))
+      ])
+    ),
+    body: statements_of(stmts: [
+      echo_stmt(text: "::error::REFUSE section 4c check observed nothing: the composed root $COMPOSE is absent, so the roster step did not reach composition."),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+// `if <compile> > log 2>&1; then code=0; else code=$?; fi`. The exit code becomes DATA from here, because
+// the three checks below each read it and a bare `set -e` would end the script at the first refusal,
+// reporting a compile that refused as a step that never finished.
+fn capture_compile_exit_code(roots: List<String>, overlay: OverlayIngest, annotation: AnnotationStep) -> Node {
+  bash_build_if_else(
+    cond: bash_build_with_redir(
+      inner: bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: compiled_program_words(roots: roots, overlay: overlay, annotation: annotation)),
+        path: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "OUT"), bash_build_word_lit(text: ".log")])
+      ),
+      redir: ^bash_production_fold_redir_stderr_to_stdout
+    ),
+    then_body: statements_of(stmts: [bash_build_assign_lit(name: "code", text: "0")]),
+    else_body: statements_of(stmts: [bash_build_assign(name: "code", value: bash_build_word_cmdsubst(body: bash_build_word_lit(text: "?")))])
+  )
+}
+
+fn code_compared(op: NonEmptyStr, value: String) -> Node {
+  bash_build_test_bracket(words: [
+    bash_build_word_var(name: "code"), bash_build_word_lit(text: op as String), bash_build_word_lit(text: value)
+  ])
+}
+
+fn tail_the_log() -> Node {
+  command_words(rest: ["tail", "-n", "40", "$OUT.log"])
+}
+
+// AN EXIT THAT IS NEITHER CLEAN NOR A RENDERED REFUSAL MEANS THE STEP OBSERVED NOTHING.
+fn refuse_unless_clean_or_rendered_refusal() -> Node {
+  bash_build_if(
+    cond: bash_build_and_then(left: code_compared(op: "!=", value: "0"), right: code_compared(op: "!=", value: "1")),
+    body: statements_of(stmts: [
+      tail_the_log(),
+      echo_stmt(text: "::error::REFUSE section 4c check observed nothing: gunbc compile exited $code, which is neither a clean compile nor a rendered refusal."),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+fn terminal_count_reader() -> Node {
+  command_words(rest: ["grep", "-E", compile_terminal_error_count_pattern as String, "$OUT.log"])
+}
+
+// A REFUSAL THAT NEVER PRINTED ITS SUMMARY LINE IS NOT THE REFUSAL THE COMPILER RENDERS.
+fn refuse_refusal_without_terminal_count() -> Node {
+  bash_build_if(
+    cond: bash_build_and_then(
+      left: code_compared(op: "=", value: "1"),
+      right: bash_build_negation(inner: command_words(rest: ["grep", "-qE", compile_terminal_error_count_pattern as String, "$OUT.log"]))
+    ),
+    body: statements_of(stmts: [
+      tail_the_log(),
+      echo_stmt(text: "::error::REFUSE section 4c check observed nothing: gunbc compile exited 1 without its terminal error-count line."),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+// THE REFUSAL READER'S OWN EXIT STATUS IS READ. grep exits 1 when nothing matched; anything else is a read
+// failure, and a reader that failed to read would otherwise be reported as a clean repository.
+fn read_refusals_or_refuse(annotation: AnnotationStep) -> Node {
+  bash_build_if_else(
+    cond: bash_build_with_redir_to_file(
+      inner: command_words(rest: ["grep", "-F", "--", annotation.refusal_prefix as String, "$OUT.log"]),
+      path: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "OUT"), bash_build_word_lit(text: ".annotations")])
+    ),
+    then_body: statements_of(stmts: [
+      command_words(rest: ["cat", "$OUT.annotations"]),
+      echo_stmt(text: "::error::FAIL section 4c: source annotations outside module-item grain, each located above. Move each above the module-scope declaration it describes."),
+      bash_build_exit(code: "1")
+    ]),
+    else_body: statements_of(stmts: [
+      bash_build_assign(name: "reader", value: bash_build_word_cmdsubst(body: bash_build_word_lit(text: "?"))),
+      bash_build_if(
+        cond: bash_build_negation(
+          inner: bash_build_test_bracket(words: [
+            bash_build_word_var(name: "reader"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "1")
+          ])
+        ),
+        body: statements_of(stmts: [
+          echo_stmt(text: "::error::REFUSE section 4c check observed nothing: the diagnostic reader exited $reader, which is a read failure and not the no-match status 1."),
+          bash_build_exit(code: "1")
+        ])
+      )
+    ])
+  )
+}
+
+// A COMPILE THAT REFUSED FOR SOMETHING ELSE CANNOT ESTABLISH THE CHECK.
+fn refuse_on_other_refusal() -> Node {
+  bash_build_if(
+    cond: code_compared(op: "!=", value: "0"),
+    body: statements_of(stmts: [
+      tail_the_log(),
+      echo_stmt(text: "::error::REFUSE section 4c check not established: gunbc compile refused on diagnostics outside the section 4c family, so it may have stopped before annotation attachment ran. Fix those diagnostics; only a compile that exits 0 can pass this step."),
+      bash_build_exit(code: "1")
+    ])
+  )
+}
+
+// THE TRIGGERS. A required gate must run on the paths that can change the verdict (push, pull request),
+// must be manually runnable, and runs on a cadence so that a silent infrastructure change is caught by
+// something other than the next commit. The cadence is a row: a mirror that polls for drift the seed
+// branch can introduce without a commit here needs it, and a repository that does not can leave it empty.
+fn repository_witness_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
+  [
+    WorkflowDispatch { inputs: [] },
+    Push { branches: [profile.default_branch], paths: [] },
+    PullRequest {
+      branches: [profile.default_branch],
+      types: [Opened, Synchronize, Reopened, ReadyForReview],
+      paths: []
+    }
+  ]
+    |> concat(schedule_triggers(profile: profile))
+}
+
+fn schedule_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
+  match profile.roster.schedule {
+    Present { value: cron } => [Schedule { cron: cron }]
+    Absent => []
+  }
+}
+
+// THE GATE'S JOB. The runner is a CiRunnerTarget projected to a spec
+// (gunbc.ci.ci_runner_target ci_runner_target_spec) rather than a label list, so moving a repository's
+// CI to another machine class is one row in one authority and every derivation - labels, memory regime,
+// RAM budget - follows instead of being remembered. Permissions are contents:read: the required gate
+// reads source and reports a verdict; anything more is a credential in the place that runs the most code.
+fn repository_witness_job(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<Job> {
+  bind_outcome(
+    o: repository_witness_steps(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+    f: fn(steps) {
+      Accepted { value: repository_witness_job_from_steps(profile: profile, steps: steps), diagnostics: None }
+    }
+  )
+}
+
+fn repository_witness_job_from_steps(profile: RepositoryCiProfile, steps: List<Step>) -> Job {
+  Job {
+    id: profile.roster.job_id,
+    name: none,
+    runner: ci_runner_target_spec(target: profile.roster.runner),
+    environment: none,
+    steps: steps,
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: minute_count(m: profile.roster.timeout),
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+fn repository_witness_workflow(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<Workflow> {
+  bind_outcome(
+    o: repository_witness_job(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+    f: fn(job) {
+      Accepted { value: repository_witness_workflow_from_job(profile: profile, job: job), diagnostics: None }
+    }
+  )
+}
+
+fn repository_witness_workflow_from_job(profile: RepositoryCiProfile, job: Job) -> Workflow {
+  Workflow {
+    name: profile.roster.workflow_name,
+    run_name: none,
+    on: repository_witness_triggers(profile: profile),
+    concurrency: none,
+    jobs: [job],
+    env: none,
+    permissions: Present { value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    } }
+  }
+}
+
+// THE COMMITTED BYTES, or the refusal that explains why there are none. A YAML file that a reader believes
+// is generated is only as trustworthy as the emitter that can prove it; this is the function a drift check
+// compares the committed workflow against, and the same call is what regenerates it.
+fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> String {
+  yaml_emission_text(result: repository_witnesses_yml_emission(profile: profile, seed: seed, program: program))
+}
+
+fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> YamlEmitResult {
+  match repository_witness_lane_refusal(profile: profile, program: program) {
+    Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
+    Absent => match repository_witness_workflow(
+      profile: profile,
+      seed: seed,
+      program: program,
+      compose_statements: mirror_compose_statements(profile: profile, seed: seed)
+    ) {
+      Accepted { value: workflow, diagnostics: _ } => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+      Rejected { diagnostics: _ } => YamlEmitRefused {
+        path: profile.roster.workflow_file as String,
+        reason: "gunbc.witness.repository_witness_workflow: v2.workflow.bash_emit refused a run body of the gate, so no workflow is emitted rather than one whose required job lost a step"
+      }
+    }
+  }
+}
+
+// The overlay of the lane this profile routes its roster through; the instrument lane has none, and the
+// composition (and therefore its refusal) only exists for the composed lane.
+fn overlay_of_lane(profile: RepositoryCiProfile) -> OverlayIngest {
+  match profile.roster.route {
+    InstrumentLabelRows => no_overlay_lane()
+    ComposedOverlayInterpreterRoster { overlay: overlay } => overlay
+  }
+}
+
+// The instrument lane composes nothing, so its preamble is the accepted empty script: a job whose rows the
+// checkout's own compiler runs needs no second tree, and threading an empty script keeps one shape at the
+// call site instead of two.
+fn no_overlay_lane() -> OverlayIngest {
+  OverlayIngest {
+    overlay_dir_name: "dag",
+    entry_prefix: "dag/",
+    repo_link_name: "repo",
+    compose_dir_name: "compose",
+    compose_root_env_default: "/tmp",
+    overlay_copy_dissolves_when: instrument_lane_never_composes(),
+    local_runs_warning: "the instrument lane composes nothing; there is no overlay to create locally"
+  }
+}
+
+fn instrument_lane_never_composes() -> DissolutionCondition {
+  unbound_dissolution(description: "the instrument lane composes no tree: the checkout's own compiler runs every row, so there is no copy and no composed root to retire")
+}
+
+fn yaml_emission_text(result: YamlEmitResult) -> String {
+  match result {
+    EmittedYaml { text } => text
+    YamlEmitRefused { path, reason } => join(["YAML EMISSION REFUSED at '", path, "': ", reason], "")
+  }
+}
+
+fn yaml_emission_admitted(result: YamlEmitResult) -> Bool {
+  match result {
+    EmittedYaml { text } => true
+    YamlEmitRefused { path, reason } => false
+  }
+}
+

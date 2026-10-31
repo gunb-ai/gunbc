@@ -4391,15 +4391,6 @@ fn gunbc_ci_seed_build_artifacts_regen_invoke() -> String {
   )
 }
 
-fn gunbc_ci_tier_o_drift_check_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_tier_o_drift_check_target.entry,
-    function: gunbc_ci_tier_o_drift_check_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
 
 // THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
 // federates, so a candidate that does not admit never causes a token to be minted.

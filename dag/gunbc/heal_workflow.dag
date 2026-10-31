@@ -4,6 +4,7 @@ import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplat
 
 
 import std.types { Bool, Int, List, String }
+import std.measure { minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
@@ -28,7 +29,8 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.ci.repository_ci_profile { gunbc_heal_job, HealWorkflowPolicy }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_spec {
@@ -123,12 +125,12 @@ data heal_dispatch_base_sha_input: DispatchInput = DispatchInput {
 // a different purpose; the round's seed needs a COMMIT and must not read a name another step owns.
 data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 
-data heal_workflow_name: String = "heal"
-
-data heal_workflow_job_id: String = "heal-generated-artifacts"
-
-data heal_workflow_timeout_minutes: Int = 90
-
+// THE HEAL JOB'S NAME, ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW: a repository that
+// commits no generated mirror deletes the heal row and this file with it, and a repository that does
+// keeps them - with one description of the job rather than this module and the profile each carrying one.
+// The committed bytes are the evidence, and the comparison belongs to the authority that owns generated
+// artifacts (dag/gunbc/instruments/tier_o_drift_check.dag, repaired by generated_artifact_gate.dag main_wet);
+// a claim holding a second copy of this file's text would only be another thing to keep equal.
 data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 
 data heal_build_step_name: String = "Build the regenerator this job runs against its own checkout"
@@ -379,18 +381,18 @@ data heal_workflow_job_permissions: WorkflowPermissions = WorkflowPermissions {
   id_token: none
 }
 
-fn heal_workflow_job() -> Job {
+fn heal_workflow_job(job: HealWorkflowPolicy) -> Job {
   Job {
-    id: heal_workflow_job_id,
+    id: job.job_id as String,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: ci_runner_target_spec(target: job.runner),
     environment: none,
     steps: list_map(xs: heal_workflow_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
     if_condition: Present { value: heal_workflow_job_condition() },
-    timeout_minutes: Present { value: heal_workflow_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(m: job.timeout) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_workflow_job_permissions }
@@ -401,11 +403,13 @@ data heal_fork_notice_job_id: String = "heal-fork-skipped"
 
 // A FORK PULL REQUEST GETS A VISIBLE NOTICE, NEVER SILENCE. The job holds no checkout and no grant
 // beyond the workflow's read; it exists only so the skip is an annotation on the run.
-fn heal_fork_notice_job() -> Job {
+fn heal_fork_notice_job(job: HealWorkflowPolicy) -> Job {
   Job {
     id: heal_fork_notice_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    // The notice job shares the heal job's machine class: it is the same workflow's second job, and
+    // splitting a workflow across machine classes is a decision its profile row should say so in.
+    runner: ci_runner_target_spec(target: job.runner),
     environment: none,
     steps: [RunStep {
       name: Present { value: "Say that a fork pull request is not repaired" },
@@ -446,8 +450,9 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 // its 26.4 minutes, measured on run 35475373850) again on every push, for the same repair.
 // The workflow stays registered, committed and dispatchable so an operator can still run a repair
 // by hand; the emitted file is unchanged apart from its trigger.
-data heal_workflow: Workflow = Workflow {
-  name: heal_workflow_name,
+fn heal_workflow_of(job: HealWorkflowPolicy) -> Workflow {
+  Workflow {
+  name: job.workflow_name as String,
   run_name: none,
   on: [PullRequest { branches: [gunbc_default_branch_name], types: [Opened, Synchronize, Reopened], paths: heal_trigger_paths() }, WorkflowDispatch { inputs: [
     heal_dispatch_pull_number_input,
@@ -472,7 +477,8 @@ data heal_workflow: Workflow = Workflow {
       id_token: none
     }
   },
-  jobs: [heal_workflow_job(), heal_fork_notice_job()]
+  jobs: [heal_workflow_job(job: job), heal_fork_notice_job(job: job)]
+}
 }
 
 // ── The isolation invariant, asked of the emitted job ────────────────────────────────────────
@@ -516,9 +522,10 @@ fn job_federates_to_a_cloud_identity(job: Job) -> Bool {
   any(job.steps, s => step_uses_action(step: s, action: google_auth_action))
 }
 
-fn heal_job_holds_publication_credential() -> Bool {
-  job_permissions_carry_write(permissions: heal_workflow_job().permissions)
-    || job_federates_to_a_cloud_identity(job: heal_workflow_job())
+fn heal_job_holds_publication_credential(job: HealWorkflowPolicy) -> Bool {
+  let candidate = heal_workflow_job(job: job)
+  job_permissions_carry_write(permissions: candidate.permissions)
+    || job_federates_to_a_cloud_identity(job: candidate)
 }
 
 type HealWorkflowGenerationOutcome
@@ -529,25 +536,36 @@ data heal_workflow_credential_refusal_reason: String = "REFUSED gunbc.heal_workf
 
 data heal_workflow_capability_refusal_reason: String = "REFUSED gunbc.heal_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in the job's annotations, or the order of the steps themselves."
 
+// THE HEAL EMITTER, REFUSING BEFORE IT RENDERS. There is no fabricated heal row to fall back to: the
+// emitter matches on its repository's declared row and refuses when the row is absent, so a repository that
+// commits no generated mirror has no heal.yml because the emitter cannot produce one, not because a branch
+// was remembered. The row then threads through every builder, which is what makes the workflow's identity
+// (name, job id, runner, timeout) a single read of that row.
+data heal_workflow_no_row_refusal_reason: String = "REFUSED gunbc.heal_workflow: this repository's gunbc.ci.repository_ci_profile row declares no heal job, so there is nothing to regenerate and no candidate to seal. Declare heal: Present { value: HealWorkflowPolicy { ... } } if this repository commits generated mirrors; delete heal.yml if it does not."
+
 fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: heal_workflow, declared: [heal_checkout_ref]) {
+  match gunbc_heal_job() {
+    Absent => HealWorkflowGenerationRefused { reason: heal_workflow_no_row_refusal_reason }
+    Present { value: job } =>
+      match admit_workflow_checkout_refs(workflow: heal_workflow_of(job: job), declared: [heal_checkout_ref]) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: heal_workflow) {
+      match admit_workflow_toolchain_homes(workflow: heal_workflow_of(job: job)) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if heal_job_holds_publication_credential() {
+      if heal_job_holds_publication_credential(job: job) {
         HealWorkflowGenerationRefused { reason: heal_workflow_credential_refusal_reason }
       } else if !heal_workflow_capability_closure_holds() {
         HealWorkflowGenerationRefused { reason: heal_workflow_capability_refusal_reason }
       } else {
-        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_workflow)) {
+        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_workflow_of(job: job))) {
           EmittedYaml { text: t } => HealWorkflowGenerated { content: t }
           YamlEmitRefused { path: p, reason: r } => HealWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_workflow", path: p, reason: r) }
         }
       }
+  }
   }
   }
 }

@@ -2,7 +2,8 @@ module gunbc.heal_publisher_workflow
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.optional { Present, Absent }
+import std.measure { minute_count }
+import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
@@ -29,9 +30,11 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_materialization { step_display_name }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.ci.repository_ci_profile { gunbc_heal_publisher_job, HealPublisherPolicy, gunbc_heal_job }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
-  heal_workflow_name, heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
+  heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
 }
 import gunbc.heal_publication_boundary {
   heal_repair_candidate_artifact_name, heal_repair_candidate_blob_file_prefix,
@@ -66,11 +69,13 @@ import gunbc.ci.ci_spec {
 // if a candidate admits does the auth step run and a token get minted at all, so a malformed or stale
 // candidate never causes a credential to exist.
 
-data heal_publisher_workflow_name: String = "heal-publish"
-
-data heal_publisher_workflow_job_id: String = "publish"
-
-data heal_publisher_timeout_minutes: Int = 45
+// THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
+// literals used to sit beside the step list while the profile also described the job; the row is now the
+// single description and this emitter is a projection of it. The committed bytes are compared against this
+// emission by the authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag),
+// which is the check the drift-watch job already runs; a claim re-quoting this file would be a second
+// description of the same bytes.
+data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
 
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
@@ -350,30 +355,43 @@ data heal_publisher_job_permissions: WorkflowPermissions = WorkflowPermissions {
   id_token: Present { value: PermWrite }
 }
 
-fn heal_publisher_job() -> Job {
+// THE PUBLISHER JOB, BUILT FROM THE ROW THE EMITTER WAS GIVEN: its id, its machine class and its ceiling
+// are reads of that one row, so a repository that declares no publisher has no publisher job -- not a job
+// with a placeholder id downloading a candidate nothing sealed.
+fn heal_publisher_job(job: HealPublisherPolicy) -> Job {
   Job {
-    id: heal_publisher_workflow_job_id,
+    id: job.job_id as String,
     name: none,
-    runner: HostedRunner { label: Ubuntu2404Arm },
+    // THE RUNNER IS A TARGET, PROJECTED. Stating the machine class here as a label was a third place that
+    // had to know the publisher runs on a hosted runner - beside the profile row and the federation
+    // condition that requires runner_environment == github-hosted. Selecting the target keeps the label,
+    // the memory regime and the federation premise coming from one row.
+    runner: ci_runner_target_spec(target: job.runner),
     environment: none,
     steps: list_map(xs: heal_publisher_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
     if_condition: Present { value: heal_publisher_job_condition() },
-    timeout_minutes: Present { value: heal_publisher_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(m: job.timeout) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_publisher_job_permissions }
   }
 }
 
-data heal_publisher_workflow: Workflow = Workflow {
-  name: heal_publisher_workflow_name,
+fn heal_publisher_workflow_of(job: HealPublisherPolicy) -> Workflow {
+  Workflow {
+  name: job.workflow_name as String,
   run_name: none,
   on: [
     WorkflowRunTriggered {
-      workflows: [heal_workflow_name],
+      // THE WORKFLOW THAT SEALS THE CANDIDATE THIS JOB PUBLISHES, named by the profile rather than
+      // imported from the heal emitter: workflow_run fires on a NAME, and a name the profile does not
+      // declare is a publisher that never runs. The profile admits that pairing
+      // (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared), so the trigger and the
+      // sealing job cannot drift apart silently.
+      workflows: [job.trigger_workflow as String],
       branches: heal_publisher_triggering_branches,
       activity: WorkflowRunCompletedActivity
     }
@@ -385,7 +403,8 @@ data heal_publisher_workflow: Workflow = Workflow {
     ]
   },
   permissions: none,
-  jobs: [heal_publisher_job()]
+  jobs: [heal_publisher_job(job: job)]
+}
 }
 
 // ── The isolation invariant, asked of both emitted jobs ──────────────────────────────────────
@@ -410,15 +429,24 @@ fn checkout_step_names_another_subject(step: Step) -> Bool {
     && any(step_input_names(step: step), k => k == "ref" || k == "repository")
 }
 
-fn publisher_job_executes_candidate_code() -> Bool {
-  any(heal_publisher_job().steps, s => checkout_step_names_another_subject(step: s))
+fn publisher_job_executes_candidate_code(job: HealPublisherPolicy) -> Bool {
+  any(heal_publisher_job(job: job).steps, s => checkout_step_names_another_subject(step: s))
 }
 
-fn heal_publication_phases_isolated() -> Bool {
+// The candidate side of the boundary is the heal row of THIS repository's profile, read by matching: a
+// repository with no heal job has no candidate, and the boundary is then vacuous rather than assumed safe.
+fn publication_candidate_holds_publication_credential() -> Bool {
+  match gunbc_heal_job() {
+    Absent => false
+    Present { value: policy } => heal_job_holds_publication_credential(job: policy)
+  }
+}
+
+fn heal_publication_phases_isolated(job: HealPublisherPolicy) -> Bool {
   phases_are_isolated(s: phase_isolation(
-    candidate_holds_publication_credential: heal_job_holds_publication_credential(),
+    candidate_holds_publication_credential: publication_candidate_holds_publication_credential(),
     candidate_credential_detail: "the heal candidate job carries a write grant or federates to a cloud identity",
-    publication_executes_candidate_code: publisher_job_executes_candidate_code(),
+    publication_executes_candidate_code: publisher_job_executes_candidate_code(job: job),
     publication_execution_detail: "the publisher job checks out a ref or repository other than its own default-branch commit"
   ))
 }
@@ -431,25 +459,38 @@ data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publi
 
 data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
 
+// WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: a publisher job for a repository that declares no
+// publisher is a job that downloads a candidate nothing seals.
+
+
+// THE PUBLISHER EMITTER, REFUSING BEFORE IT RENDERS. `gunbc#10887`'s shape -- a heal-publish.yml with no
+// heal.yml behind it, a job that fires with nothing to publish -- was reachable here because the emitter
+// could still build a publisher job when the profile declared none: the placeholder row kept the id, the
+// runner and the trigger rendering happily. Now presence is a match, the placeholder rows are deleted, and
+// a repository with no publisher gets a refusal that says what to delete or what to declare.
 fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: heal_publisher_workflow, declared: []) {
+  match gunbc_heal_publisher_job() {
+    Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
+    Present { value: job } =>
+      match admit_workflow_checkout_refs(workflow: heal_publisher_workflow_of(job: job), declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow) {
+      match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow_of(job: job)) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if !heal_publication_phases_isolated() {
+      if !heal_publication_phases_isolated(job: job) {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_isolation_refusal_reason }
       } else if !heal_publisher_capability_closure_holds() {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_capability_refusal_reason }
       } else {
-        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_publisher_workflow)) {
+        match emit_yaml(v: project_workflow_to_yaml(workflow: heal_publisher_workflow_of(job: job))) {
           EmittedYaml { text: t } => HealPublisherWorkflowGenerated { content: t }
           YamlEmitRefused { path: p, reason: r } => HealPublisherWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_publisher_workflow", path: p, reason: r) }
         }
       }
+  }
   }
   }
 }
