@@ -38,10 +38,10 @@ import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEsta
 import product.fabric.identity { OfferKey }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.flex_policy { FlexPolicy, flex_horizon_duration }
-import product.fabric.arbitration { DemandAdmitted, CommandRefused }
+import product.fabric.arbitration { DemandAdmitted, CommandRefused, decide_demand_command }
 import product.fabric.demand {
   DemandPopulation, CoreCommand, DemandRefusal, SatisfactionDirective,
-  decide_demand_command, NoTerminalReceipt, population_demands,
+  NoTerminalReceipt, population_demands,
   RequireNewAttempt, AttachToExistingExecution, AwaitAdmission, SatisfiedByTerminalReceipt,
   ReuseAcceptedStepReceipts, RefuseStepReuseAtDeclaredFrame, StepReusePolicy,
 }
@@ -275,6 +275,7 @@ type FlexPassSelection
   | FlexSelectionNotSeeking { directive: SatisfactionDirective }
   | FlexSelectionCandidatesUnestablished { offer_key: OfferKey, missing: List<NonEmptyStr> }
   | FlexSelectionRequirementsUnread { reason: NonEmptyStr }
+  | FlexSelectionWorkChanged { word: NonEmptyStr }
   | FlexSelectionNoOffer { considered: Int }
 
 // THE DEMAND STANDING THIS PASS HAS. Unread, by construction, until the front door's callout exists.
@@ -306,6 +307,17 @@ fn flex_pass_select(
     FlexDemandRead { population: population, core: core } =>
       match decide_demand_command(registry: population, grants: [], terminal: NoTerminalReceipt, core: core) {
         CommandRefused { refusal: r } => FlexSelectionDemandRefused { refusal: r }
+        // The other four effects are not "no demand": they are a command that changed the WORK's
+        // standing (a withdraw or a supersede), and none of them authorizes a new purchase. The pass says
+        // which one it saw, in the fold's own words, and seeks no offer on it.
+        WorkStillRequiredAttemptContinues { population: _, remaining: remaining, attempts: _ } =>
+          FlexSelectionWorkChanged { word: concat("work-still-required attempt-continues remaining=", int_to_decimal_string(value: length(remaining))) }
+        WorkStillRequiredNothingRunning { population: _, remaining: remaining } =>
+          FlexSelectionWorkChanged { word: concat("work-still-required nothing-running remaining=", int_to_decimal_string(value: length(remaining))) }
+        WorkReleasedAttemptStops { population: _, work: w } =>
+          FlexSelectionWorkChanged { word: concat("work-released attempt-stops ", w.key) }
+        WorkReleasedNothingRunning { population: _, work: w } =>
+          FlexSelectionWorkChanged { word: concat("work-released nothing-running ", w.key) }
         DemandAdmitted { population: _, directive: directive } =>
           match directive {
             // The fold says a NEW ATTEMPT is required. What to buy is still not known here: the flex
@@ -378,7 +390,7 @@ fn flex_select_offers(
 // THE DEMAND STANDING IN WORDS: what the pass was asked for, or why it does not know.
 fn flex_demand_word(d: FlexDemandStanding) -> NonEmptyStr {
   match d {
-    FlexDemandRead { population: p, core: _ } => concat("read population=", int_to_decimal_string(value: length(population_demands(registry: p))))
+    FlexDemandRead { population: p, core: _ } => concat("read population=", int_to_decimal_string(value: length(population_demands(p: p))))
     FlexDemandUnread { reason: r } => concat("unread: ", r)
   }
 }
@@ -397,6 +409,7 @@ fn flex_selection_wire(s: FlexPassSelection) -> NonEmptyStr {
     FlexSelectionCandidatesUnestablished { offer_key: k, missing: m } =>
       concat("candidates-unestablished offer=", k, " missing=", join(m, "; "))
     FlexSelectionRequirementsUnread { reason: r } => concat("requirements-unread: ", r)
+    FlexSelectionWorkChanged { word: w } => concat("work-changed: ", w)
     FlexSelectionNoOffer { considered: n } => concat("no-admissible-offer considered=", int_to_decimal_string(value: n))
   }
 }

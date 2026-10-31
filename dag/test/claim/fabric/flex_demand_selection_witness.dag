@@ -1,0 +1,222 @@
+module test.claim.fabric.flex_demand_selection_witness
+
+// WITNESSES FOR THE PASS'S DEMAND AND SELECTION ROUTE (gunbc.fleet.flex_pass_run).
+//
+// THE DEMAND HERE IS SUPPLIED, NOT OBSERVED. The producer does not exist yet: the fabric front door's
+// admission callout (front_door_admit_on_store, proud-bear-756's S3) is owed, and the frontier row
+// product.fabric.flex_vast_loop flex_demand_producer_frontier carries that fact and its trigger. So the
+// demand below is minted the way a binding mints one -- product.fabric.demand admit_command over an
+// attested principal -- and decided by product.fabric.arbitration decide_demand_command. What these
+// claims establish is the CONSUMER half of the interface: which directive leads to which typed stop, and
+// which refusal reaches the receipt. What they do NOT establish is the pairing with a live front door;
+// that claim is named unverified on the row and in the PR, and no witness here can make it true until
+// the callout exists (DESIGN 3: a witness discriminates at one interface).
+import std.types { NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.demand {
+  Demand, DemandPopulation, DemandCommand, AdmissionTerms, BuyTerms, SatisfactionRequirement, SubmitDemand,
+  CommandAttestation, CoreCommand, admission_terms, admit_command, CommandAdmitted, CommandAdmissionRefused,
+  attest_command_principal, empty_demand_population, NoTerminalReceipt, debt_payoff_objective,
+}
+import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
+import product.fabric.flex_vast_shadow { flex_trial_policy }
+import gunbc.fleet.flex_pass_run {
+  FlexDemandStanding, FlexDemandRead, FlexDemandUnread, FlexPassSelection, FlexSelectionUnreadDemand,
+  FlexSelectionRequirementsUnread, FlexSelectionNotSeeking, FlexSelectionDemandRefused,
+  flex_pass_select, flex_demand_standing, flex_demand_word, flex_selection_wire,
+}
+
+fn work_of(principal: NonEmptyStr, key: WorkKey) -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn terms() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "fleet-ci",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 100000),
+      maximum_buy_order: money_amount_micro(count: 200000),
+    },
+    deadline: none,
+    objective: debt_payoff_objective,
+  )
+}
+
+fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
+  attest_command_principal(
+    principal: principal,
+    evidence: "flex-lane-auth-1",
+    verification_authority: decl_ref(
+      module_path: "test.claim.fabric.flex_demand_selection_witness",
+      decl_name: "attesting",
+    ),
+  )
+}
+
+// A DEMAND THAT ASKS FOR A NEW ATTEMPT: this is the shape a refused or queued admission at the front door
+// turns into, and the only shape under which the flex pass is allowed to go looking for a card.
+fn seeking_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "flex-lane", key: "demand-flex-1"),
+    work: work_of(principal: "flex-lane", key: "work-flex-1"),
+    origin: "observation-flex-1",
+    submitted_at: "2026-10-30T00:00:00Z",
+    admission: terms(),
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: true,
+      step_reuse_permitted: false,
+    },
+  }
+}
+
+// A DEMAND THAT ATTACHES TO AN EXISTING EXECUTION: the same work, but the demand does not ask for a new
+// attempt, so the fold's directive is not to buy anything.
+fn attaching_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "flex-lane", key: "demand-flex-attach"),
+    work: work_of(principal: "flex-lane", key: "work-flex-attach"),
+    origin: "observation-flex-1",
+    submitted_at: "2026-10-30T00:00:00Z",
+    admission: terms(),
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+// THE ADMITTED CORE COMMAND, or nothing when the witness cannot attest its own command -- which would be
+// a bug in this file, not a result about the pass.
+fn admitted(command: DemandCommand<NonEmptyStr>) -> CoreCommand<NonEmptyStr>? {
+  match admit_command(attestation: attesting(principal: "flex-lane"), command: command) {
+    CommandAdmitted { core: c } => Present { value: c }
+    CommandAdmissionRefused { refusal: _ } => none
+  }
+}
+
+// THE POPULATION THE FRONT DOOR WOULD HAND THE PASS: the demand admitted once, read back out of the
+// fold's own effect rather than assembled by hand, so the pass is tested against a population the
+// authority itself produced.
+fn population_after_submit(demand: Demand<NonEmptyStr>) -> DemandPopulation<NonEmptyStr> {
+  match admitted(command: SubmitDemand { demand: demand }) {
+    Present { value: core } =>
+      match decide_demand_command(registry: empty_demand_population(), grants: [], terminal: NoTerminalReceipt, core: core) {
+        DemandAdmitted { population: p, directive: _ } => p
+        _ => empty_demand_population()
+      }
+    Absent => empty_demand_population()
+  }
+}
+
+// 1. AN UNREAD DEMAND STOPS THE SELECTION BEFORE ANY OFFER IS TOUCHED. The pass does not fall through to
+// a ranking of its own, and it does not report "no offers": it reports that it was never asked.
+test fn an_unread_demand_stops_the_selection_before_any_offer_is_touched() -> Bool {
+  let stop = flex_pass_select(
+    demand: FlexDemandUnread { reason: "no producer in this test" as NonEmptyStr },
+    policy: flex_trial_policy,
+    screened: [],
+  )
+  match stop {
+    FlexSelectionUnreadDemand { reason: r } =>
+      r == "no producer in this test" && string_contains(s: flex_selection_wire(s: stop), pattern: "unread-demand: no producer")
+    _ => false
+  }
+}
+
+// 2. AN ADMITTED DEMAND THAT REQUIRES A NEW ATTEMPT REACHES THE REQUIREMENTS GATE. The fold said buy;
+// the pass still cannot, because nothing turns the flex serving recipe into the fabric's
+// ExecutionRequirements. That gap is reported as a typed stop naming the producer owed -- it is NOT papered
+// over with a shape invented at the call site, which is the whole discipline of this route.
+test fn an_admitted_demand_that_requires_a_new_attempt_stops_at_the_requirements_gate() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: population_after_submit(demand: seeking_demand()), core: c },
+        policy: flex_trial_policy,
+        screened: [],
+      ) {
+        FlexSelectionRequirementsUnread { reason: r } =>
+          string_contains(s: r, pattern: "ExecutionRequirements")
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: population_after_submit(demand: seeking_demand()), core: c },
+                 policy: flex_trial_policy,
+                 screened: [],
+               )), pattern: "requirements-unread")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 3. AN ADMITTED DEMAND THAT DOES NOT REQUIRE A NEW ATTEMPT SEEKS NO OFFER. Same authority, same route,
+// opposite directive: the receipt says await-admission, and no candidate is ever bound. This is the claim
+// that makes test 2 mean something -- the pass is not simply always-stopped, it is stopped BY THE FOLD.
+test fn an_admitted_demand_that_does_not_require_a_new_attempt_seeks_no_offer() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: attaching_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
+        policy: flex_trial_policy,
+        screened: [],
+      ) {
+        FlexSelectionNotSeeking { directive: _ } =>
+          string_contains(s: flex_selection_wire(s: flex_pass_select(
+            demand: FlexDemandRead { population: empty_demand_population(), core: c },
+            policy: flex_trial_policy,
+            screened: [],
+          )), pattern: "directive=")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 4. A DEMAND THE FOLD REFUSES REACHES THE RECEIPT AS THAT REFUSAL, not as an absent demand. The
+// vocabulary is the fabric's own (product.fabric.demand's DemandRefusal); a duplicate submit over a
+// population that already holds the demand is the cheapest way to make the fold refuse, and the word the
+// receipt prints names the demand the refusal is about.
+test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool {
+  let held = population_after_submit(demand: seeking_demand())
+  let again = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match again {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: held, core: c },
+        policy: flex_trial_policy,
+        screened: [],
+      ) {
+        FlexSelectionDemandRefused { refusal: _ } =>
+          string_contains(s: flex_selection_wire(s: flex_pass_select(
+            demand: FlexDemandRead { population: held, core: c },
+            policy: flex_trial_policy,
+            screened: [],
+          )), pattern: "demand-refused: duplicate-demand demand-flex-1")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 5. THE PASS'S OWN DEMAND STANDING IS UNREAD, AND SAYS WHICH PRODUCER IT IS WAITING FOR. This is the
+// state of every live pass until the front door's callout exists; the receipt must carry the frontier row
+// name, so an operator reading a pass that rented nothing can find out who owes the missing input.
+test fn the_pass_reports_its_own_demand_as_unread_and_names_the_producer_it_waits_for() -> Bool {
+  match flex_demand_standing() {
+    FlexDemandUnread { reason: _ } =>
+      string_contains(s: flex_demand_word(d: flex_demand_standing()), pattern: "flex_demand_producer_frontier")
+        && string_contains(s: flex_demand_word(d: flex_demand_standing()), pattern: "unread")
+    FlexDemandRead { population: _, core: _ } => false
+  }
+}
