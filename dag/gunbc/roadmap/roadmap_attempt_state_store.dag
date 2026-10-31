@@ -166,6 +166,10 @@ fn attempt_log_member_text(instance: HostDashboardInstance, node_id: RoadmapNode
   attempt_log_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), member: member)
 }
 
+fn attempt_log_current_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, member: AttemptLogMember) -> String {
+  attempt_log_provision_path(provision: attempt_state_provision_current(instance: instance, node: node_id as String), member: member)
+}
+
 fn attempt_log_external_path(store: AttemptState, member: AttemptLogMember) -> String {
   attempt_log_member_path(store: store, member: member)
 }
