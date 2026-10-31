@@ -1129,7 +1129,7 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 // "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
 // alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
 // is this: every interlock release milestone (act0_release_milestones) clear AND every activation receipt held against the pinned base.
-// The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
+// The gate used to state those milestones as a PREREQUISITE, which made collecting evidence unstartable
 // until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
 // stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
 //
