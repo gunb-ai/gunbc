@@ -1,12 +1,14 @@
 module gunbc.cloudflare.zone_authorization
 
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import std.algebra { FreeSemigroup, non_empty_append, non_empty_singleton }
 import std.decl_ref { declaration_ref_eq }
 import std.human_intervention { FleetOnce }
 import gunbc.auth.fleet_workload_identity { convergence_principal }
-import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, FleetAccessorGrantRow }
+import gunbc.secret_provision { fleet_secret_ref }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityStanding,
   MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
@@ -66,10 +68,18 @@ fn zone_r2_custom_domain_bind_effect(identity: WorkloadIdentityStanding) -> Priv
 // The selected federated grant fetches a zone-scoped token from Secret Manager over workload identity, so it
 // is realized exactly when the fleet accessor roster carries a cell on that secret. The standing is a fold
 // over the real roster: landing the zone-token row in gunbc.auth.fleet_secret_accessor_roster flips it.
-data cloudflare_zone_token_secret_id: NonEmptyStr = "cloudflare-zone-token"
+// The token's identity is ONE SecretRef in the fleet secrets project; the future roster row consumes this
+// same ref, so the secret is named once and the realization check matches project and secret together.
+data cloudflare_zone_token_secret_ref: SecretRef = fleet_secret_ref(secret_id: "cloudflare-zone-token" as NonEmptyStr)
 
 fn zone_token_accessor_cell_landed() -> Bool {
-  fleet_accessor_grant_roster.any(row => row.target.secret == cloudflare_zone_token_secret_id)
+  zone_token_accessor_cell_in(roster: fleet_accessor_grant_roster)
+}
+
+fn zone_token_accessor_cell_in(roster: List<FleetAccessorGrantRow>) -> Bool {
+  roster.any(row =>
+    (row.target.project as String) == (cloudflare_zone_token_secret_ref.project as String)
+      && (row.target.secret as String) == (cloudflare_zone_token_secret_ref.secret as String))
 }
 
 // What a selected-but-unrealized route is missing, named once; zone_routes_unrealized carries it into the
@@ -80,7 +90,7 @@ data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append
       item: "a zone-scoped Cloudflare API token (zone-read, DNS-edit and R2 custom-domain scopes) minted through the mint route, never pasted by the operator" as NonEmptyStr
     ),
     right: non_empty_singleton(
-      item: "its Secret Manager container (under the fleet secrets project, named by cloudflare_zone_token_secret_id)" as NonEmptyStr
+      item: "its Secret Manager container (under the fleet secrets project, named by cloudflare_zone_token_secret_ref)" as NonEmptyStr
     )
   ),
   right: non_empty_singleton(

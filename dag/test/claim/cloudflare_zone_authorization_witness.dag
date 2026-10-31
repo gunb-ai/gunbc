@@ -12,9 +12,11 @@ import gunbc.auth.authorization_pattern_selection {
 import gunbc.cloudflare.zone_authorization {
   zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
   zone_routes_unrealized, zone_token_accessor_cell_landed,
+  zone_token_accessor_cell_in, cloudflare_zone_token_secret_ref,
 }
 import gunbc.cloudflare.zone { zone_route_gap, SelectedRouteUnrealized, CloudflareRecordListUnread }
-import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, FleetAccessorGrantRow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -78,4 +80,22 @@ test fn the_gap_arm_follows_the_landed_standing() -> Bool {
     CloudflareRecordListUnread { missing: _, basis: _ } => true
     _ => false
   }
+}
+
+// THE TOKEN'S IDENTITY IS PROJECT AND SECRET TOGETHER. POSITIVE: a row on the fleet ref itself lands the cell.
+test fn a_row_on_the_fleet_zone_token_ref_lands_the_cell() -> Bool {
+  zone_token_accessor_cell_in(roster: [FleetAccessorGrantRow { lane: "fixture", target: cloudflare_zone_token_secret_ref }])
+}
+
+// DISCRIMINATING: the same secret id in another project is a different secret and must not read as realized.
+test fn the_same_secret_id_in_another_project_does_not_land_the_cell() -> Bool {
+  !zone_token_accessor_cell_in(roster: [FleetAccessorGrantRow {
+    lane: "fixture",
+    target: SecretRef {
+      project: "some-other-project",
+      secret: cloudflare_zone_token_secret_ref.secret,
+      version: cloudflare_zone_token_secret_ref.version,
+      hash_state: cloudflare_zone_token_secret_ref.hash_state,
+    },
+  }])
 }
