@@ -1,0 +1,59 @@
+module gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+import gunbc.instrument_targets { v2_native_census_scoped_label }
+
+// THE DECLARED DROP FOR THE INTERIM CARRIER GROUNDING (the operator decision of 2026-10-23, recorded
+// in the repository as gunbc.design_ruling
+// interim_carrier_grounding_admits_non_literal_crossings, and carried as a lowered rung here: a
+// RungDrop row is the repo-checkable instrument for a lowered rung, DESIGN 4b(3); the prior rung, its
+// reason and its restoration trigger are the whole standing of this path, nothing else authorizes it).
+//
+// WHAT IS DROPPED. At a declared TYPE position, `T where p` grounds to its carrier T for inference
+// (v2.compiler.infer infer_refinement_carrier_grounding_row, the type side), and a NON-LITERAL value
+// crossing INTO such a position is accepted against the carrier with a counted, located advisory
+// (^refinement_carrier_grounding_crossing, the crossing side at v2.compiler.infer
+// infer_refinement_carrier_grounding_decision). The predicate p is NEVER JUDGED -- the 2026-10-02
+// retirement ruling stands and this grounds, it judges nothing. So NOTHING PREVENTS THE UNSOUNDNESS: a
+// value that would fail p can cross the refined position while the advisory rides, and the only thing
+// standing between such a crossing and silence is this advisory plus this row. That is the prior rung's
+// whole content, and it is declared, not hidden.
+//
+// WHY THE POPULATION IS A CENSUS ROW AND NOT A TRANSCRIPTION. The members are exactly the modules whose
+// [native-census-infer] line carries a non-zero row {reason: "refinement_carrier_grounding_crossing",
+// count: N} inside accepted_frontier.advisories -- the list the native census builds from every accepted
+// module's diagnostics (NativeInferAcceptedFrontier / native_infer_advisory_counts,
+// v2.compiler.source_root_eval; the generic {reason, count} fold, so no per-reason emitter exists and
+// none is needed) of the scoped census -- re-derived, never transcribed (DESIGN 6), so this row states
+// no count of its own and no member list that could go stale between this file and the next merge.
+//
+// THE LITERAL ARM IS NOT THIS ROW'S POPULATION. A LITERAL at a refined position stays a REFUSAL with
+// the position's own inhabitance reason -- witnessed by the claims rcg_a_literal_at_a_refined_declared_return_refuses
+// and rcg_b_literal_at_a_let_annotation_refuses_not_counted in
+// v2.test.claim.compiler.infer_refinement_carrier_grounding_witness; the admitted-literal judgment is a
+// separate lane's program, not this row's authority. A literal crosses nowhere and is counted nowhere here.
+//
+// THE TRIGGER NAMES A CAPABILITY. The checked-constructor retirement
+// (gunbc.design_ruling where_refinements_retire_for_checked_constructors, landed via #14869): every
+// where-refinement carrier is replaced by a checked constructor whose admission is the type, so a value
+// either is produced by that constructor or does not reach the position, and no crossing needs a
+// predicate judgment at all. At that change the grounding rows (both sides) and this row are deleted
+// together; deleting the advisory alone without the grounding is NOT a discharge -- it is the silence
+// this row exists to forbid.
+data non_literal_crossings_ground_to_the_refinement_carrier: RungDrop = RungDrop {
+  identity: "non_literal_crossings_ground_to_the_refinement_carrier" as NonEmptyStr,
+
+  subject: "non-literal values crossing INTO where-refined declared type positions, which the interim carrier grounding accepts against the refinement's carrier with a counted located advisory and no predicate judgment (v2.compiler.infer infer_refinement_carrier_grounding_row and infer_refinement_carrier_grounding_decision; the operator decision of 2026-10-23, recorded at gunbc.design_ruling interim_carrier_grounding_admits_non_literal_crossings)",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the NonEmptyStr structural cut of the refinement-deletion program: where-refinement carriers retire behind checked constructors (gunbc.design_ruling where_refinements_retire_for_checked_constructors), at which point no non-literal crossing into a refined position exists to ground" },
+    population: DerivedBy { label: v2_native_census_scoped_label() },
+    restoration_trigger: "the NonEmptyStr structural cut lands: every where-refinement carrier is replaced by a checked constructor whose admission is the type, the interim grounding rows on both sides are deleted with this row, and the accepted_frontier.advisories entry counting reason refinement_carrier_grounding_crossing on the native-census-infer line goes to zero with them"
+  } }
+}
