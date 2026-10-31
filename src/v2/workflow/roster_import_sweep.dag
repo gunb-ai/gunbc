@@ -213,7 +213,6 @@ type RosterRefusalReason
   | RefusalScopeSelectsNoRow { home: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
   | RefusalAppendedCalleeUncovered { row: String, callee: String }
-  | RefusalAppendedCalleeUncovered { row: String, callee: String }
   // A RenameHead row's call whose arguments the row's positional labels cannot place: EXACT ARITY is required (a different
   // number of positional arguments than the row declares refuses); an argument already named with the label the row declares
   // AT ITS POSITION is retained as authored, while a mismatched or reordered label refuses (the rewrite never reorders
@@ -276,7 +275,6 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
-    RefusalAppendedCalleeUncovered { row: k, callee: c } => "appended-callee-uncovered row=" + k + " callee=" + c
     RefusalAppendedCalleeUncovered { row: k, callee: c } => "appended-callee-uncovered row=" + k + " callee=" + c
     RefusalScopeSelectsNoRow { home: h, selection: sel } => "scope-selects-no-row home=" + h + " " + sel
     RefusalScopeSelectsSeveralRows { home: h, call: c, count: n } => "scope-selects-several-rows home=" + h + " call=" + c + " rows=" + int_to_decimal_string(value: n)
@@ -656,7 +654,7 @@ fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<Ros
               match a2 {
                 Present { value: _ } => a2
                 Absent =>
-                  if any_list(xs: table, pred: fn(t) { starts_with(s: arg.text, prefix: t.call + "(") }) { Absent } else { Present { value: RefusalAppendedCalleeUncovered { row: r.key, callee: arg.text } } }
+                  if fold_list(xs: table, empty: false, cons: fn(f, t) { f || starts_with(s: arg.text, prefix: t.call + "(") }) { Absent } else { Present { value: RefusalAppendedCalleeUncovered { row: r.key, callee: arg.text } } }
               }
             })
         }
