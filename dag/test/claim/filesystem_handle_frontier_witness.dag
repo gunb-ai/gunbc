@@ -1,0 +1,29 @@
+module test.claim.filesystem_handle_frontier_witness
+
+import std.types { Bool, List }
+import std.algebra { for_all }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import extdeps.filesystem.filesystem_io { filesystem_handle_frontier_rows }
+
+// The FilesystemHandle realization frontier is two rows (the Filesystem.Open mint; the read_staged_fabric_blob
+// migration), and both are in the aggregate gunbc.dissolution_census folds. Claimed: presence and well-formedness.
+// NOT claimed: that either dissolution has fired -- both are unbound because their triggers do not exist yet.
+
+fn w_handle_expected_subjects() -> List<FrontierSubject> {
+  [
+    DeclSubject { ref: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "FilesystemOpen") },
+    DeclSubject { ref: decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob") },
+  ]
+}
+
+test fn witness_handle_frontier_rows_are_well_formed_and_in_the_census() -> Bool {
+  frontier_rows_well_formed(rows: filesystem_handle_frontier_rows)
+    && for_all(xs: w_handle_expected_subjects(), predicate: fn(want) {
+      length(filter(xs: filesystem_handle_frontier_rows, predicate: fn(row) { frontier_subject_eq(a: row.subject, b: want) })) == 1
+    })
+    && for_all(xs: filesystem_handle_frontier_rows, predicate: fn(row) {
+      any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+    })
+}
