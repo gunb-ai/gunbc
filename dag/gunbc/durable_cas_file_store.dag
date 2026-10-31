@@ -557,10 +557,11 @@ fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
   ]
 {
-  match fold(cas_window_observation_attempts, init: none, f: (acc, _) => match acc {
+  let observed: CasSlotProbe? = fold(cas_window_observation_attempts, init: none, f: (acc, _) => match acc {
     Present { value: p } => Present { value: p }
     Absent => cas_observe_window_once(root: root, key: key)
-  }) {
+  })
+  match observed {
     Present { value: p } => p
     Absent => ProbedWindowHeadUnsettled { attempts: count(cas_window_observation_attempts) }
   }

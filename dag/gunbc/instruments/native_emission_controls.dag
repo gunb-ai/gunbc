@@ -454,6 +454,27 @@ fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: the seed types a nullary generic with no expected type (`init: none`) as its bare declaration,
+// so a fold's accumulator payload is open and the effectful loop emits `let mut __fold_acc = None;`,
+// which rustc refuses (E0282; gunbc.recurring_failure_mode seed_fold_accumulator_declared_from_an_open_init).
+// The authored source supplies the type: the fold result is bound with its declared type, as
+// gunbc.durable_cas_file_store cas_observe_window does. The step reads Filesystem, as that one does.
+fn control_first_present_read(paths: List<String>) -> String? {
+  let observed: String? = fold(paths, init: none, f: (acc, p) => match acc {
+    Present { value: kept } => Present { value: kept }
+    Absent =>
+      let read = Filesystem.Read(path: p)
+      if read.success { Present { value: p } } else { none }
+  })
+  observed
+}
+
+fn open_init_fold_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "open_init_fold_declared_result_absent_reads_answer_absent", held: control_first_present_read(paths: control_absent_paths()) == none }
+  ]
+}
+
 // RULE: a type parameter carries its own cardinality (v1.compiler.emit_rust rust_carrier_optional_wrap,
 // gunbc.recurring_failure_mode optional_type_parameter_emitted_without_its_cardinality). `get: K?` on a
 // generic record emitted `pub get: K`, so an Absent had no representation and this carrier's
@@ -725,6 +746,7 @@ data native_emission_expected_identities: List<String> = [
   "effectful_fold_step_counts_every_refused_read",
   "effectful_fold_step_red_seen_counts_elements",
   "effectful_fold_step_red_empty_keeps_init",
+  "open_init_fold_declared_result_absent_reads_answer_absent",
   "capability_alias_output_octet_in_range",
   "capability_alias_output_red_octet_out_of_range",
   "algebra_length_of_a_string_counts_scalars",
@@ -900,7 +922,7 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases()))
+  concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases())))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
