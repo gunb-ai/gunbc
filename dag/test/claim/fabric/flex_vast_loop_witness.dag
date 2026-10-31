@@ -2,7 +2,7 @@ module test.claim.fabric.flex_vast_loop_witness
 
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, List, Bool, Int, String }
+import std.types { NonEmptyStr, List, Bool, Int, String, list_length }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
 import std.decl_ref { decl_ref }
