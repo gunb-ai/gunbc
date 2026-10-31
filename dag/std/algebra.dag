@@ -989,7 +989,7 @@ fn total_order_templates() -> FreeMonoid<AlgebraFieldTemplate> {
 //
 // IT IS THE ORDERED RING'S SURFACE WITHOUT `negate`, and the omission is the content. A semiring
 // has no additive inverse: the naturals are closed under add and mul and not under subtraction
-// (std.coercion dag_subtraction_refinement types a difference of naturals as an Int). So `negate`
+// (std.coercion select_arithmetic_carrier types a difference of naturals as an Int). So `negate`
 // derives for Int and does not derive for Nat, from the two profiles rather than from a special
 // case -- which is what makes the inhabitance a claim that can be wrong.
 fn ordered_semiring_templates() -> FreeMonoid<AlgebraFieldTemplate> {
