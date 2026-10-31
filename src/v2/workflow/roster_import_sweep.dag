@@ -3215,7 +3215,7 @@ fn roster_requires_scope_controls(prepared: PreparedGrammar, lex: PreparedLexRul
     roster_control_verdict(name: "requires-scope-list-receiver-site-untouched", fail: roster_scope_expect_any_refusal(name: "requires-scope-list-receiver-site-untouched", outcome: roster_scope_outcome(rows: contains_rows, gates: roster_scope_gate(keys: ["control/scope.dag:7:3"], text: src), text: src, prepared: prepared, lex: lex))),
     roster_control_verdict(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", fail: roster_scope_expect_text(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", before: concat_src, outcome: roster_scope_outcome(rows: concat_rows, gates: [], text: concat_src, prepared: prepared, lex: lex), after: concat_after)),
     roster_control_verdict(name: "requires-scope-planted-any-site-row-no-longer-refuses", fail: roster_scope_planted_control(rows: any_site, text: planted_src, prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "requires-scope-sort-by-unscoped-run-refuses", fail: roster_scope_expect_refused(name: "requires-scope-sort-by-unscoped-run-refuses", outcome: roster_scope_outcome(rows: roster_row_by_key(key: "sort_by/symbol"), gates: [], text: sort_src, prepared: prepared, lex: lex), expected: "row-requires-occurrence-scope path=control/scope.dag call=sort_by key=sort_by/symbol")))
+    roster_control_verdict(name: "requires-scope-sort-by-unscoped-run-refuses", fail: roster_scope_expect_refused(name: "requires-scope-sort-by-unscoped-run-refuses", outcome: roster_scope_outcome(rows: roster_row_by_key(key: "sort_by/symbol"), gates: [], text: sort_src, prepared: prepared, lex: lex), expected: "row-requires-occurrence-scope path=control/scope.dag call=sort_by key=sort_by/symbol"))
   ]
 }
 
