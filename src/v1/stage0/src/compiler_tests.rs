@@ -2513,7 +2513,7 @@ mod compiler_tests {
                 // The signature reads the declaration...
                 assert!(
                     emitted.contains(
-                        "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
+                        "-> std::result::Result<(bool, String, String), std::boxed::Box<dyn std::error::Error>>"
                     ),
                     "signature must project the three declared output types, got:\n{}",
                     emitted
