@@ -4667,6 +4667,17 @@ fn application_argument_pairs_inhabitance(declared: List<Node>, produced: List<N
                   Inhabits => InhabitanceUndecidable { reason: r }
                   InhabitanceRefused { reason: _ } => acc
                   InhabitanceUndecidable { reason: _ } => acc
+                  InhabitanceUnmodeled => acc
+                },
+                scope: scope)
+            InhabitanceUnmodeled =>
+              application_argument_pairs_inhabitance(
+                declared: declared |> skip(1), produced: produced |> skip(1),
+                acc: match acc {
+                  Inhabits => InhabitanceUnmodeled
+                  InhabitanceRefused { reason: _ } => acc
+                  InhabitanceUndecidable { reason: _ } => acc
+                  InhabitanceUnmodeled => acc
                 },
                 scope: scope)
             Inhabits =>
