@@ -15,7 +15,7 @@ The default is delete-first with minimal Y able to hold the boundary immediately
 
 Existing plans supply evidence about terminal shapes and obligations, never authority to defer the cut through their old sequencing. Enumerate what is certainly scheduled for deletion and remove it before fix-forward work. Current, specifically superseding operator rulings still govern their stated scope.
 
-## Establish a discriminating census
+## Establish a discriminating control
 
 Deletion discovers loads and defects X concealed only where the actual acceptance path refuses broken dependencies. **Before interpreting destruction-green, destroy one genuinely required edge and exhibit RED on the same command, mode and reachable arm.** Discharge this per axis: a name-resolution red proves nothing about type binding. Without a reachable red, the missing wall is the finding; more green samples do not establish coverage.
 
@@ -42,7 +42,7 @@ A root is consumer-relative, not a file. If replacement `b1` covers the complete
 
 Every retained artifact must have a terminal consumer. Otherwise it belongs in branch-local experiments, historical quarry or the deletion population. A current caller establishes migration cost, **not correctness or a duty to survive**. Disposition obligations as unchanged retention, changed terminal contract, replacement by named Y, evidence-only for a surviving claim, or retirement with reason. Retention needs a surviving external contract, invariant, stored-artifact compatibility, independently useful consumer, deliberate transition or rollback commitment.
 
-Admission requires both `undispositioned consumers = 0` and `uncovered surviving consumers = 0`. Undecided blocks but is never presumed retained; retired obligations need no coverage. Internal delete-first obtains dispositions through breakage/fix-forward. Up-front census is required where deletion cannot be the instrument: gap-intolerant/frozen boundaries and silent residue.
+Admission requires both `undispositioned consumers = 0` and `uncovered surviving consumers = 0`. Undecided blocks but is never presumed retained; retired obligations need no coverage. Internal delete-first obtains dispositions through breakage/fix-forward. Where deletion cannot be the instrument (gap-intolerant/frozen boundaries, silent residue), enumerate consumers by cited `git grep` and source inspection, stating the population inspected and what remains unknown; no completeness claim and no corpus-wide census is owed (ruling `gunbc.design_ruling bad_process_is_worse_than_no_process`).
 
 `gunbc.replacement_cut` owns `ReplacementCut`, `ConsumerDisposition` and `admit_replacement_cut_plan`:
 
