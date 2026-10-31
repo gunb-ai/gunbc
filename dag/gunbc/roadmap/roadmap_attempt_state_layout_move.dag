@@ -116,3 +116,46 @@ fn move_readback_refusal(row: MoveRow, before_parent: String, after_parent: Stri
     ""
   }
 }
+
+// THE LEGACY WRITER MUST BE EXCLUDED BEFORE AND THROUGH THE MOVE, AND THAT IS AN OBSERVATION, NOT AN OPERATOR
+// NOTE. The old dispatcher claims an ordinal by creating a flat entry; once the flat entries have moved, its
+// first create-only claim on a node succeeds again and re-mints an ordinal the member already holds (a
+// duplicate attempt key). The old binary takes the first free ordinal per node, so a filesystem fence would have
+// to cover every node and ordinal, which is unbounded; the exclusion is therefore the old writer's own unit,
+// read from host authority: stopped now (is-active) AND masked (is-enabled), because a unit that is only
+// stopped or only disabled can be started again by a person or a dependency. A move over a non-excluded writer
+// is refused before any entry is touched. `LegacyWriterUndeclared` is the typed state of an instance whose
+// writer unit is not declared: it refuses too, never reads as excluded.
+type LegacyWriterFence
+  = LegacyWriterUnit { systemctl: NonEmptyStr, unit: NonEmptyStr }
+  | LegacyWriterUndeclared
+
+type LegacyWriterExclusion
+  = LegacyWriterExcluded
+  | LegacyWriterNotExcluded { reason: String }
+
+// The unit state words systemctl is-active prints for a unit that is not running.
+fn legacy_writer_state_is_stopped(active_state: String) -> Bool {
+  active_state == "inactive" || active_state == "failed"
+}
+
+fn legacy_writer_exclusion(unit: String, active_state: String, enabled_state: String) -> LegacyWriterExclusion {
+  if !legacy_writer_state_is_stopped(active_state: active_state) {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not stopped (is-active read '", active_state, "')"], "") }
+  } else if enabled_state != "masked" {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not masked (is-enabled read '", enabled_state, "'), so it can be started again"], "") }
+  } else {
+    LegacyWriterExcluded
+  }
+}
+
+type LegacyWriterUnitRow { instance_id: NonEmptyStr, unit: NonEmptyStr }
+
+// The fence an instance's declared row yields, or Undeclared when it has none.
+fn legacy_writer_fence_for(rows: List<LegacyWriterUnitRow>, instance_id: NonEmptyStr) -> LegacyWriterFence {
+  fold(
+    rows.filter(fn(r) { r.instance_id == instance_id }),
+    init: LegacyWriterUndeclared,
+    f: (acc, r) => LegacyWriterUnit { systemctl: "/usr/bin/systemctl" as NonEmptyStr, unit: r.unit },
+  )
+}

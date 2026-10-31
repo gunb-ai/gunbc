@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUndeclared, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -66,10 +66,24 @@ fn plant(i: HostDashboardInstance) -> Bool {
     && Filesystem.Write(path: join([parent_of(i: i), "/belt-last-tick.json"], ""), content: "{}").success
 }
 
+// A stand-in for systemctl, written executable into the fixture instance: it answers the two questions the
+// fence asks from two marker files beside it, so a test chooses what the host "says" by what it plants. The
+// real transport reaches /usr/bin/systemctl; the stand-in exercises the same argv through the same target.
+fn fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> LegacyWriterFence {
+  let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", enabled], "")
+  let body = join(["#!/bin/sh\ncase \"$1\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnit { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, unit: "legacy-dispatcher.service" as NonEmptyStr }
+}
+
+fn excluded_fence(i: HostDashboardInstance) -> LegacyWriterFence {
+  fence_stub(i: i, active: "inactive", enabled: "masked")
+}
+
 fn run_move(i: HostDashboardInstance) -> Bool {
   dashboard_apply_provision_op(
     instance: i,
-    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move },
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: excluded_fence(i: i) },
     temp_bundle: "/unused-bundle" as FilePath,
     temp_verify_repo: "/unused-verify" as FilePath,
   ).success
@@ -130,7 +144,7 @@ test fn a_collision_is_refused_and_nothing_moves() -> Bool {
   let seeded = Filesystem.Write(path: join([member_of(i: i), "/a-n1.1"], ""), content: "held|other").success
   let refused = dashboard_apply_provision_op(
     instance: i,
-    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move },
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: excluded_fence(i: i) },
     temp_bundle: "/unused-bundle" as FilePath,
     temp_verify_repo: "/unused-verify" as FilePath,
   )
@@ -143,7 +157,7 @@ test fn a_collision_is_refused_and_nothing_moves() -> Bool {
 fn move_of(i: HostDashboardInstance, row: MoveRow) -> DashboardExecResult {
   dashboard_apply_provision_op(
     instance: i,
-    op: DashboardMoveAttemptStateEntries { row: row },
+    op: DashboardMoveAttemptStateEntries { row: row, fence: excluded_fence(i: i) },
     temp_bundle: "/unused-bundle" as FilePath,
     temp_verify_repo: "/unused-verify" as FilePath,
   )
@@ -272,4 +286,44 @@ test fn a_carry_bytes_entry_the_transport_would_trim_is_refused_and_stays() -> B
   let refused = move_of(i: i, row: dogfood_start_slots.move)
   ready && !refused.success && string_contains(s: refused.stderr, pattern: "not read faithfully")
     && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.1")
+}
+
+fn move_with_fence(i: HostDashboardInstance, fence: LegacyWriterFence) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: fence },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 13, RED THEN GREEN ON THE SAME TREE: the legacy writer not excluded refuses the move with every flat entry
+// still in place and the member empty (a running unit; a stopped but unmasked one; an unreadable stand-in; an
+// undeclared unit); with the writer observed stopped AND masked the same tree moves.
+test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked() -> Bool {
+  let i = fresh_instance(tag: "fence")
+  let ready = plant(i: i)
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
+  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnit { systemctl: "/nonexistent/systemctl" as NonEmptyStr, unit: "legacy-dispatcher.service" as NonEmptyStr })
+  let undeclared = move_with_fence(i: i, fence: LegacyWriterUndeclared)
+  let untouched = string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
+    && string_length(s: Filesystem.List(path: member_of(i: i)).entries) == 0
+  let moved = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "is not stopped")
+    && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "no legacy dispatcher unit is declared")
+    && untouched
+    && moved.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && length(xs: split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")) == 3
+}
+
+// ARM 14: a Noop move needs no fence (nothing to move, no writer to exclude): the undeclared fence on a tree
+// with no flat entries still reads Noop, so srv2's 0-entry instance is not blocked.
+test fn a_noop_move_does_not_need_the_fence() -> Bool {
+  let i = fresh_instance(tag: "fencenoop")
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success && move_with_fence(i: i, fence: LegacyWriterUndeclared).success
 }

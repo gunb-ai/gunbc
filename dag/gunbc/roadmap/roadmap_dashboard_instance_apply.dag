@@ -78,7 +78,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, LegacyWriterUnit, LegacyWriterUndeclared, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -910,7 +910,7 @@ fn dashboard_apply_provision_op(
     // flat entry removed. Every outcome but CreateNewWritten is a refusal, and nothing is removed on one: no entry
     // is ever absent from the old place and unwritten in the new, and a rerun after any stop converges. The
     // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
-    DashboardMoveAttemptStateEntries { row: row } => {
+    DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
       let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
       let member = join([parent, "/", row.member as String], "")
       let before = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
@@ -925,7 +925,20 @@ fn dashboard_apply_provision_op(
           MoveRefused { collision: c } =>
             dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, " under another name; nothing was moved"], ""))
           MoveApply { entries: entries } => {
-            let moved = fold(
+            // THE LEGACY WRITER IS OBSERVED EXCLUDED before any entry is touched (legacy_writer_exclusion): the
+            // unit's is-active and is-enabled are read through the same target the move runs on. Anything but
+            // stopped AND masked, an unreadable unit, or an undeclared one refuses with nothing moved.
+            let excluded = match fence {
+              LegacyWriterUndeclared => LegacyWriterNotExcluded { reason: "no legacy dispatcher unit is declared for this instance (legacy_writer_units); the old writer cannot be observed excluded" }
+              LegacyWriterUnit { systemctl: ctl, unit: unit } => {
+                let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
+                let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
+                legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
+              }
+            }
+            let moved = match excluded {
+              LegacyWriterNotExcluded { reason: why } => dashboard_exec_refused(detail: join([why, "; nothing was moved"], ""))
+              LegacyWriterExcluded => fold(
               entries,
               init: dashboard_exec_ok(stdout: ""),
               f: (acc, e) => {
@@ -998,6 +1011,7 @@ fn dashboard_apply_provision_op(
                 }
               },
             )
+            }
             if !moved.success {
               moved
             } else {
@@ -2338,7 +2352,7 @@ fn dashboard_bootstrap_only_ops(
       // match is exhaustive -- a new op cannot slip into the bootstrap by accident.
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
-      DashboardMoveAttemptStateEntries { row: _ } => false
+      DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
     })
 }
 
