@@ -14382,12 +14382,20 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let init_acc_type_str = rust_fold_declarable_acc_type(acc_type_node: acc_type_node, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if init_acc_type_str != "_" { init_acc_type_str } else {
-    match contextual_acc_type {
-      Present { value: result_node } => rust_fold_declarable_acc_type(acc_type_node: result_node, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
-      Absent => "_"
-    }
+  let result_acc_type_str = match contextual_acc_type {
+    Present { value: result_node } => rust_fold_declarable_acc_type(acc_type_node: result_node, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
+    Absent => "_"
   }
+  let step_acc_type_str = match fold_lambda_node.expr_data {
+    ExprLambda =>
+      let step_body = lambda_body(texpr: fold_lambda_node)
+      match step_body.inferred {
+        Present { value: Resolved { node: step_type } } => rust_fold_declarable_acc_type(acc_type_node: step_type, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
+        _ => "_"
+      }
+    _ => "_"
+  }
+  let lambda_acc_type_str = if init_acc_type_str != "_" { init_acc_type_str } else if result_acc_type_str != "_" { result_acc_type_str } else { step_acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
