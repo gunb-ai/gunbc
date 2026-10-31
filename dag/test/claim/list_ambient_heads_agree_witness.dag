@@ -39,8 +39,7 @@ test fn declared_flat_map_keeps_callback_order_per_element() -> Bool {
 }
 
 // `first` is NOT proven in agreement: under == the two refuse as different representations (list_head Present vs ambient Int(3)), while a match on the ambient first binds Present { value: 3 }. The first test is the
-// RED that shows the difference (list_head's payload equals the ambient result, so the ambient result is the element, not an
-// Optional); the second probes what the ambient first does on the empty list, where a partial contract must show itself.
+// The first test records that a match on the ambient first binds the element; the second probes the empty list.
 test fn the_ambient_first_matches_as_an_optional_under_match() -> Bool {
   match first(ordered) {
     Present { value: v } => v == 3
