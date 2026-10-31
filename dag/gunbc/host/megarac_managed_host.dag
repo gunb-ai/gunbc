@@ -148,7 +148,7 @@ fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host:
 fn megarac_host_admission_in(hosts: List<ManagedHost>, host: NonEmptyStr, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match filter(hosts, h => (h.host as String) == (host as String)).first() {
     Absent => MegaRacHostRefused { cause: MegaRacHostNotManaged { host: host } }
-    Present { value: h } => admit_megarac_host(host: h, operation: operation)
+    Present { value: h } => admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: operation)
   }
 }
 
@@ -157,9 +157,9 @@ fn megarac_host_admission_for(host: NonEmptyStr, operation: MegaRacOperation) ->
     Absent => MegaRacHostRefused { cause: MegaRacHostNotManaged { host: host } }
     Present { value: m } =>
       match m {
-        OrdinaryMember { host: h } => admit_megarac_host(host: h, operation: operation)
+        OrdinaryMember { host: h } => admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: operation)
         MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          admit_megarac_host(host: h, operation: operation)
+          admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: operation)
       }
   }
 }

@@ -20,7 +20,7 @@ import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_bmc_secure_standing, mtcollins1_intake_subject, mtcollins1_unit_key_standing,
 }
@@ -404,7 +404,7 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
       match mtcollins1_intake_subject() {
         Absent => none
         Present { value: subject } =>
-          match access_controller_host(access: mtcollins1_access_standing) {
+          match access_controller_host(access: mtcollins1_current_access_standing) {
             Absent => none
             Present { value: access_host } =>
               // The record's effect subject is SEALED by the three-axis admission, not assembled by
@@ -416,16 +416,16 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                 unit_standing: mtcollins1_unit_key_standing,
                 current_subject: Present { value: subject },
                 fleet: Absent,
-                control: Present { value: bmc_control_binding(observed: mtcollins1_access_standing, secured: secure) },
+                control: Present { value: bmc_control_binding(observed: mtcollins1_current_access_standing, secured: secure) },
               ) {
                 PhysicalMachineAdmitted { binding } =>
                   Present {
                     value: managed_host_admission(
                       host: operator_host_mtcollins1,
                       binding: binding,
-                      access: mtcollins1_access_standing,
+                      access: mtcollins1_current_access_standing,
                       secure: secure,
-                      smpro: smpro_platform_standing(access: mtcollins1_access_standing, site: mtcollins1_smpro_site()),
+                      smpro: smpro_platform_standing(access: mtcollins1_current_access_standing, site: mtcollins1_smpro_site()),
                       receipt: managed_host_admission_receipt(
                         host: operator_host_mtcollins1,
                         access_host: access_host,
