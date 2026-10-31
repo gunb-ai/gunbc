@@ -87,6 +87,7 @@ import gunbc.compiler_frontend_program_status {
   DeclaringIdentitySpellingCensus,
   ResolverBoundDeclaringIdentity,
   ExactOccurrenceResidualCensus,
+  LiveTreeCompilePhaseMeasurement,
   RehearsalProducerStanding,
   RehearsalProducerUnavailable,
   RehearsalProducerAvailable,
@@ -1179,3 +1180,41 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
   }
 }
 
+// RETIRED CENSUS DECIDES NOTHING (V2-GOV-001 Part A; gunbc.design_ruling
+// bad_process_is_worse_than_no_process). S2 used to read Clear or Outstanding off the persisted
+// compile-phase frontier series, which is still on main. Reverting the arm makes it read Clear
+// again, so this reds. The two retired instruments are refused by the ruling, not unbuilt.
+test fn a_retired_census_milestone_never_reads_clear_off_its_historical_series() -> Bool {
+  match milestone_status(m: SelfHostWholeCorpusPopulationDerived) {
+    Clear { evidence: _ } => false
+    Outstanding { evidence: _ } => false
+    NotDerivable { why: _, cause: _ } => true
+  }
+}
+
+fn obstacle_cites_the_census_retirement(o: InstrumentObstacle) -> Bool {
+  match o {
+    RefusedByAuthority { authority, why: _ } =>
+      authority.module_path as String == "gunbc.design_ruling"
+        && authority.decl_name as String == "bad_process_is_worse_than_no_process"
+    NotBuilt => false
+    NotBuiltRefusalFalsified { authority: _, falsified_by: _ } => false
+  }
+}
+
+test fn the_retired_census_instruments_are_refused_by_the_ruling_not_unbuilt() -> Bool {
+  obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: LiveTreeCompilePhaseMeasurement))
+    && obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: ExactOccurrenceResidualCensus))
+}
+
+// THE CONTROL: the retirement does not widen to an instrument it did not retire.
+test fn an_unretired_instrument_keeps_its_own_obstacle() -> Bool {
+  !obstacle_cites_the_census_retirement(o: missing_instrument_obstacle(i: PhaseCargoExecutionFact))
+}
+
+test fn the_two_census_edges_are_gone_and_their_siblings_stay() -> Bool {
+  !milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostWholeCorpusPopulationDerived)
+    && !milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: NamespaceBaselineObservationComplete)
+    && milestone_in(ms: milestone_prerequisites(m: SelfHostRatchetGateEnrolled), want: SelfHostCargoPhaseEnrolled)
+    && milestone_in(ms: milestone_prerequisites(m: NamespaceFirstSemanticWave), want: SelfHostRatchetGateEnrolled)
+}
