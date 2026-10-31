@@ -100,7 +100,7 @@ fn admit_state_method(method: StateEstablishmentMethod, evidence: Reconstruction
     RestoreCompatibleSavedState =>
       MethodNotAdmitted { reason: "no cross-engine KV transfer is established; restore is a declared method with no admitted case" as NonEmptyStr }
     ReconstructFromCompleteRequest =>
-      if reconstruction_is_complete(evidence: evidence) {
+      if reconstruction_is_complete(e: evidence) {
         MethodAdmitted { method: ReconstructFromCompleteRequest }
       } else {
         MethodNotAdmitted { reason: "the request does not carry everything needed to continue, or the destination is not established against the model and quality contract" as NonEmptyStr }
@@ -150,7 +150,7 @@ fn rloc_assessment(closed: Bool) -> DecisionAssessment {
   if closed {
     DecisionAssessment {
       subject: rloc_subject_value,
-      sensitivities: [VariesAlong { term: id_term, variable: id_var, region: id_region, relation: MonotoneDecreasing, coupling: CitedToAuthority { authority: rloc_authority } }],
+      sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rloc_decision_region, relation: MonotoneDecreasing, coupling: CitedToAuthority { authority: rloc_authority } }],
       constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "affected source-and-destination schedule over the known ready backlog" as NonEmptyStr }],
       parameters: [ParameterBound { parameter: id_evidence, evidence: "fixed resource grant" as NonEmptyStr }],
       selected_candidate: Absent, term_drops: [],
@@ -309,7 +309,7 @@ fn claim_move(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, from_seat: S
 // Prepare at the turn boundary: the incumbent is read on its SERVING STANDING, not its binding. An
 // unprobed owner (ResidencyUnread) PINS the session; it is not relocated. A destination already owned
 // by another replica cannot be taken.
-type PrepareOutcome = Prepared { residency: ServingSessionResidency } | PinnedNotRelocated { reason: NonEmptyStr } | DestinationHeld { owner: NonEmptyStr }
+type PrepareOutcome = HandoffPrepared { residency: ServingSessionResidency } | PinnedNotRelocated { reason: NonEmptyStr } | DestinationHeld { owner: NonEmptyStr }
 
 fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, host: ServingHostTierStanding, gpu: ServingGpuPrefixStanding, destination_launch: NonEmptyStr) -> PrepareOutcome {
   let residency = serving_session_standing(record: record, current_launch: current_launch, host: host, gpu: gpu)
@@ -317,7 +317,7 @@ fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, ho
     ResidencyUnread { obligation: o } => PinnedNotRelocated { reason: o }
     _ =>
       match serving_session_placement(residency: residency, record: record, candidate_launch: destination_launch) {
-        PlacementFree => Prepared { residency: residency }
+        PlacementFree => HandoffPrepared { residency: residency }
         OwnedByAnotherReplica { owner: owner } => DestinationHeld { owner: owner }
       }
   }
@@ -325,13 +325,13 @@ fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, ho
 
 // Execute: send the next real request ONCE. A second dispatch of a recorded attempt RECOVERS it rather
 // than blindly sending the turn elsewhere. There is no speculative warm-up.
-type DispatchOutcome = Dispatched { dispatch_count: Int } | RecoveredRecordedAttempt
+type DispatchOutcome = SentOnce { dispatch_count: Int } | RecoveredRecordedAttempt
 
 fn attempt_dispatch(record: HandoffRecord) -> DispatchOutcome {
   if record.dispatch_count > 0 {
     RecoveredRecordedAttempt
   } else {
-    Dispatched { dispatch_count: 1 }
+    SentOnce { dispatch_count: 1 }
   }
 }
 
