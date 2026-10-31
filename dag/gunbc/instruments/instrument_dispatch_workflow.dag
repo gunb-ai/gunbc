@@ -39,7 +39,7 @@ import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_g
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
   dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
-  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
+  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, native_serve_label, serving_benchmark_run_label,
   roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
@@ -220,6 +220,8 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
     // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
     router_proxy_falsifier_label(),
+    // Execute the emitted native door and its TCP probes at the dispatched revision.
+    native_serve_label(),
     // One serving-benchmark run needs the cell's GPUs and a GPU-capable docker daemon, which no per-change
     // lane declares; it is dispatched on the fleet when the cell's operator books the window.
     serving_benchmark_run_label(),

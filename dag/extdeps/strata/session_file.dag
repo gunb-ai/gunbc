@@ -6,7 +6,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import std.measure { TokenCount, ByteSize, token_count, byte_size }
 import std.decl_ref { decl_ref }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, File }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonNumber, JsonString, JsonBool, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
@@ -19,7 +19,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { declaration: decl_ref(module_path: "extdeps.strata.session_file", decl_name: "SlotAction") },
   first_citation: extdeps_external_authority_anchor,
   further_citations: [ExternalAuthority { uri: Uri { scheme: Https,
-    locator: "github.com/Niko1221/Strata/blob/32057b8c5a402291f8afc1c0b7ca08ec1d6c2592/include/strata/core/conversation_file.hpp" } }],
+    locator: "github.com/Niko1221/Strata/blob/32057b8c5a402291f8afc1c0b7ca08ec1d6c2592/include/strata/core/conversation_file.hpp" } },
+    ExternalAuthority { uri: Uri { scheme: File,
+      locator: "dag/extdeps/strata/patches/request-bound-save-8183c6b6.patch" } }],
 }
 
 // slot_action's consumed surface, not a second implementation of the native codec.
@@ -35,7 +37,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // their files are retained. A successful restore is this engine's reading, not a
 // cross-engine equivalence proof. Blob SHA-256 verifies encoded bytes separately.
 // Consumer: gunbc.serving.strata_checkpoint_transfer.
-type SlotAction = SlotSave | SlotRestore
+// expected_request_id is the local patch's optional save condition. It names
+// one completed response in one process, never a logical turn or retry identity.
+type SlotAction = SlotSave { expected_request_id: NonEmptyStr? } | SlotRestore
 
 type SlotRequest {
   action: SlotAction
@@ -43,6 +47,8 @@ type SlotRequest {
 }
 
 type SessionError = SessionInvalid | SessionStorage | SessionMemory | SessionIo
+
+type SlotSaveCondition = RequestNotCurrent | RequestInFlight | EngineChanged
 
 type SlotTransfer {
   request: SlotRequest
@@ -53,6 +59,7 @@ type SlotTransfer {
 type SlotRefusal
   = SlotRequestRefused { status: HttpStatus, message: String }
   | SlotNativeRefused { error: SessionError, published: Bool, message: String }
+  | SlotSaveConflict { condition: SlotSaveCondition, published: Bool, message: String }
 
 type SlotReply
   = SlotTransferred { transfer: SlotTransfer }
@@ -60,7 +67,7 @@ type SlotReply
   | SlotReplyUnreadable { detail: String }
 
 fn slot_action_word(action: SlotAction) -> String {
-  match action { SlotSave => "save" SlotRestore => "restore" }
+  match action { SlotSave { expected_request_id: _ } => "save" SlotRestore => "restore" }
 }
 
 fn slot_request_path(request: SlotRequest) -> NonEmptyStr {
@@ -68,7 +75,11 @@ fn slot_request_path(request: SlotRequest) -> NonEmptyStr {
 }
 
 fn slot_request_body(request: SlotRequest) -> String {
-  serialize_json(v: json_object(members: [json_kv(key: "filename", value: json_string(s: request.filename as String))]))
+  let condition = match request.action {
+    SlotSave { expected_request_id: Present { value: id } } => [json_kv(key: "expected_request_id", value: json_string(s: id as String))]
+    _ => []
+  }
+  serialize_json(v: json_object(members: concat([json_kv(key: "filename", value: json_string(s: request.filename as String))], condition)))
 }
 
 fn slot_json_field(value: JsonValue, name: String) -> JsonValue {
@@ -94,13 +105,20 @@ fn session_error_status(error: SessionError) -> HttpStatus {
 }
 
 fn slot_success(request: SlotRequest, value: JsonValue) -> SlotReply {
-  let fields = match request.action { SlotSave => ["n_saved", "n_written"] SlotRestore => ["n_restored", "n_read"] }
+  let fields = match request.action { SlotSave { expected_request_id: _ } => ["n_saved", "n_written"] SlotRestore => ["n_restored", "n_read"] }
   let counts = fields |> flat_map(k => match slot_json_count(value: slot_json_field(value: value, name: k)) {
     Present { value: n } => [n] Absent => []
   })
   let slot_ok = match slot_json_count(value: slot_json_field(value: value, name: "id_slot")) { Present { value: n } => n == 0 Absent => false }
   let name_ok = match slot_json_field(value: value, name: "filename") { JsonString { value: s } => s == (request.filename as String) _ => false }
-  if !slot_ok || !name_ok || count(counts) != 2 { SlotReplyUnreadable { detail: "slot reply lacks matching slot, filename or counts" } }
+  let request_ok = match request.action {
+    SlotSave { expected_request_id: Present { value: id } } => match slot_json_field(value: value, name: "request_id") {
+      JsonString { value: echoed } => echoed == (id as String)
+      _ => false
+    }
+    _ => true
+  }
+  if !slot_ok || !name_ok || !request_ok || count(counts) != 2 { SlotReplyUnreadable { detail: "slot reply lacks matching slot, filename, request id or counts" } }
   else { match first(counts) {
     Absent => SlotReplyUnreadable { detail: "slot token count absent" }
     Present { value: tokens } => match last(counts) {
@@ -110,32 +128,55 @@ fn slot_success(request: SlotRequest, value: JsonValue) -> SlotReply {
   } }
 }
 
+fn slot_save_condition_wire(condition: SlotSaveCondition) -> String {
+  match condition { RequestNotCurrent => "request_not_current" RequestInFlight => "request_in_flight" EngineChanged => "engine_changed" }
+}
+
+fn slot_publication_reading(error: JsonValue) -> Bool? {
+  match json_object_unique_member(v: error, key: "published") {
+    JsonMemberAbsent => Present { value: false }
+    JsonMemberFound { value: JsonBool { value: b } } => Present { value: b }
+    _ => none
+  }
+}
+
+fn slot_failure_cause(status: HttpStatus, error: JsonValue, message: String) -> SlotReply {
+  let kind = json_object_unique_member(v: error, key: "kind")
+  let condition = json_object_unique_member(v: error, key: "condition")
+  match slot_publication_reading(error: error) {
+    Absent => SlotReplyUnreadable { detail: "invalid slot publication reading" }
+    Present { value: published } => match condition {
+      JsonMemberAbsent => match kind {
+        JsonMemberAbsent => if published { SlotReplyUnreadable { detail: "publication without a native error or save condition" } }
+          else { SlotRefused { refusal: SlotRequestRefused { status: status, message: message } } }
+        JsonMemberFound { value: JsonString { value: word } } => match first([SessionInvalid, SessionStorage, SessionMemory, SessionIo] |> filter(e => session_error_wire(error: e) == word)) {
+          Present { value: k } => if status == session_error_status(error: k) {
+            SlotRefused { refusal: SlotNativeRefused { error: k, published: published, message: message } }
+          } else { SlotReplyUnreadable { detail: "native session error has the wrong HTTP status" } }
+          Absent => SlotReplyUnreadable { detail: "unknown native session error" }
+        }
+        _ => SlotReplyUnreadable { detail: "native session error kind is unreadable" }
+      }
+      JsonMemberFound { value: JsonString { value: word } } => match kind {
+        JsonMemberAbsent => match first([RequestNotCurrent, RequestInFlight, EngineChanged] |> filter(c => slot_save_condition_wire(condition: c) == word)) {
+          Present { value: c } => if status == 409 {
+            SlotRefused { refusal: SlotSaveConflict { condition: c, published: published, message: message } }
+          } else { SlotReplyUnreadable { detail: "save conflict has the wrong HTTP status" } }
+          Absent => SlotReplyUnreadable { detail: "unknown save condition" }
+        }
+        _ => SlotReplyUnreadable { detail: "slot error carries both native kind and save condition" }
+      }
+      _ => SlotReplyUnreadable { detail: "save condition is unreadable" }
+    }
+  }
+}
+
 fn slot_failure(status: HttpStatus, value: JsonValue) -> SlotReply {
   let error = slot_json_field(value: value, name: "error")
   match slot_json_field(value: error, name: "message") {
     JsonString { value: message } => match slot_json_count(value: slot_json_field(value: error, name: "code")) {
       Present { value: code } => if (code as Int) != (status as Int) { SlotReplyUnreadable { detail: "slot error status differs from HTTP status" } }
-        else { match json_object_unique_member(v: error, key: "kind") {
-          JsonMemberAbsent => SlotRefused { refusal: SlotRequestRefused { status: status, message: message } }
-          JsonMemberFound { value: JsonString { value: word } } => {
-            let kind = first([SessionInvalid, SessionStorage, SessionMemory, SessionIo] |> filter(e => session_error_wire(error: e) == word))
-            let published: Bool? = match json_object_unique_member(v: error, key: "published") {
-              JsonMemberAbsent => Present { value: false }
-              JsonMemberFound { value: JsonBool { value: b } } => Present { value: b }
-              _ => none
-            }
-            match kind {
-              Absent => SlotReplyUnreadable { detail: "unknown native session error" }
-              Present { value: k } => match published {
-                Absent => SlotReplyUnreadable { detail: "invalid native publication reading" }
-                Present { value: p } => if status == session_error_status(error: k) {
-                  SlotRefused { refusal: SlotNativeRefused { error: k, published: p, message: message } }
-                } else { SlotReplyUnreadable { detail: "native session error has the wrong HTTP status" } }
-              }
-            }
-          }
-          _ => SlotReplyUnreadable { detail: "native session error kind is unreadable" }
-        } }
+        else { slot_failure_cause(status: status, error: error, message: message) }
       Absent => SlotReplyUnreadable { detail: "slot error code is unreadable" }
     }
     _ => SlotReplyUnreadable { detail: "slot error message is unreadable" }
