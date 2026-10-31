@@ -9,6 +9,7 @@ import std.resources { Filesystem }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
+import extdeps.systemd.invocation_id { SystemdInvocationId, systemd_invocation_id_of }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
@@ -18,9 +19,11 @@ import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
 import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.systemd_unit_invocation_liveness {
-  UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable,
-  unit_invocation_holder_liveness,
+  UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, UnitRunIdentity, SystemManager,
+  unit_invocation_observation, unit_invocation_holder_liveness, unit_run_wire, unit_run_of_wire,
 }
+import extdeps.linux.kernel_random { kernel_boot_id_path }
+import extdeps.linux.proc_stat { proc_stat_path }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
 
@@ -42,7 +45,8 @@ fn workspace_acquisition_store(binding: FabricStorageBinding) -> WorkspaceAcquis
 
 // The environment identifier is accepted only when the manager identifies this interpreter as
 // the selected controller's MainPID. An inherited or caller-supplied identifier is insufficient.
-fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> String?
+// The run it names is completed with the boot id and boot start read from the host, never supplied.
+fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> UnitRunIdentity?
   uses fs: Filesystem
 {
   let reservation = workspace_reservation_plan_reservation(plan: plan)
@@ -50,15 +54,21 @@ fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> S
   let before = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
   let main = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: MainPID))
   let own = Filesystem.Read(path: "/proc/self/stat")
+  let boot = Filesystem.Read(path: kernel_boot_id_path)
+  let stat = Filesystem.Read(path: proc_stat_path)
   let after = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
-  if !before.success || !main.success || !own.success || !after.success { none }
+  if !before.success || !main.success || !own.success || !boot.success || !stat.success || !after.success { none }
   else { match shell.Env.Get(name: "INVOCATION_ID" as NonEmptyStr).value {
     Absent => none
     Present { value: actual } => match split(s: own.content, delimiter: " ").first() {
       Absent => none
       Present { value: pid } => if trim(s: actual) != "" && trim(s: before.value) == trim(s: actual)
         && trim(s: after.value) == trim(s: actual) && trim(s: main.value) == pid && pid != "0" {
-        Present { value: trim(s: actual) }
+        match unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: actual) {
+          UnitInvocationPresent { run: r } => Present { value: r }
+          UnitInvocationAbsent => none
+          UnitInvocationUnreadable { cause: _ } => none
+        }
       } else { none }
     }
   } }
@@ -71,7 +81,8 @@ fn workspace_acquisition_actor_admits(store: WorkspaceAcquisitionStore, plan: Wo
 {
   match workspace_current_acquisition_invocation(plan: plan) {
     Absent => false
-    Present { value: invocation } => {
+    Present { value: run } => {
+      let invocation = unit_run_wire(run: run)
       let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
       let key = workspace_acquisition_actor_key(store: store, plan: plan)
       let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: invocation))])) as NonEmptyStr
@@ -142,8 +153,9 @@ fn workspace_acquisition_actor_key(store: WorkspaceAcquisitionStore, plan: Works
 // The recorded actor slot, read as a value: the exact generation is what any replacement fences on.
 type WorkspaceRecordedActor
   = RecordedActorAbsent
-  | RecordedActorInvocation { generation: CasGeneration, invocation: NonEmptyStr }
+  | RecordedActorInvocation { generation: CasGeneration, run: UnitRunIdentity }
   | RecordedActorCancelled { generation: CasGeneration }
+  | RecordedActorLegacyBareId { generation: CasGeneration, invocation_id: SystemdInvocationId }
   | RecordedActorUnreadable { reason: NonEmptyStr }
 
 fn workspace_recorded_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> WorkspaceRecordedActor {
@@ -158,8 +170,13 @@ fn workspace_recorded_actor_decode(generation: CasGeneration, wire: String) -> W
   match parse_json_document(s: wire) {
     JsonDocumentUnreadable { gap: _ } => RecordedActorUnreadable { reason: "acquisition actor record is not JSON" }
     JsonDocumentParsed { value: record } => match json_field_value(r: json_field_string(obj: record, key: "invocation")) {
-      Present { value: invocation } => if invocation == "" { RecordedActorUnreadable { reason: "acquisition actor names an empty invocation" } }
-        else { RecordedActorInvocation { generation: generation, invocation: invocation as NonEmptyStr } }
+      Present { value: invocation } => match unit_run_of_wire(wire: invocation) {
+        Absent => match systemd_invocation_id_of(text: invocation) {
+          Present { value: bare } => RecordedActorLegacyBareId { generation: generation, invocation_id: bare }
+          Absent => RecordedActorUnreadable { reason: "acquisition actor names no unit run and no InvocationID" }
+        }
+        Present { value: run } => RecordedActorInvocation { generation: generation, run: run }
+      }
       Absent => match json_field_value(r: json_field_string(obj: record, key: "cancelled_before_actor")) {
         Present { value: _ } => RecordedActorCancelled { generation: generation }
         Absent => match json_field_value(r: json_field_string(obj: record, key: "cancelled_after_actor")) {
@@ -177,35 +194,25 @@ type WorkspacePriorActorStanding
   | PriorActorTerminal
   | PriorActorUnobservable { reason: NonEmptyStr }
 
-// The slot unit's current InvocationID, read once by the effectful caller and supplied to the
-// takeover so the decision is a function of what was observed.
-type WorkspaceSlotInvocationReading
-  = SlotInvocationObserved { current: String }
-  | SlotInvocationUnreadable
-
-fn workspace_slot_invocation_reading(plan: WorkspaceReservationPlan) -> WorkspaceSlotInvocationReading {
+// The slot unit's current run, read once by the effectful caller and supplied to the takeover so
+// the decision is a function of what was observed. If the unit now carries another run (or none),
+// the recorded actor's process has ended and can issue no further hold effect.
+fn workspace_slot_invocation_reading(plan: WorkspaceReservationPlan) -> UnitInvocationObservation
+  uses fs: Filesystem
+{
   let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: workspace_reservation_plan_reservation(plan: plan).slot))
   let observed = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
-  if !observed.success { SlotInvocationUnreadable } else { SlotInvocationObserved { current: trim(s: observed.value) } }
-}
-
-// An invocation ID names one start of the unit. If the unit now carries another (or none), the
-// recorded actor's process has ended and can issue no further hold effect.
-fn workspace_slot_as_unit_invocation(slot: WorkspaceSlotInvocationReading) -> UnitInvocationObservation {
-  match slot {
-    SlotInvocationUnreadable =>
-      UnitInvocationUnreadable { cause: "the slot unit's invocation is unreadable; the elected actor may still be running" as NonEmptyStr }
-    SlotInvocationObserved { current } =>
-      if current == "" {
-        UnitInvocationAbsent
-      } else {
-        UnitInvocationPresent { invocation_id: current as NonEmptyStr }
-      }
+  let boot = Filesystem.Read(path: kernel_boot_id_path)
+  let stat = Filesystem.Read(path: proc_stat_path)
+  if !observed.success || !boot.success || !stat.success {
+    UnitInvocationUnreadable { cause: "the slot unit's run is unreadable; the elected actor may still be running" as NonEmptyStr }
+  } else {
+    unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: observed.value)
   }
 }
 
-fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvocationReading) -> WorkspacePriorActorStanding {
-  match unit_invocation_holder_liveness(recorded_invocation: recorded, observed: workspace_slot_as_unit_invocation(slot: slot)) {
+fn workspace_prior_actor_standing(recorded: UnitRunIdentity, slot: UnitInvocationObservation) -> WorkspacePriorActorStanding {
+  match unit_invocation_holder_liveness(recorded: recorded, observed: slot) {
     HolderObservedLive { evidence: _ } => PriorActorRunning
     HolderObservedDead { evidence: _ } => PriorActorTerminal
     HolderLivenessUnobservable { cause: c } => PriorActorUnobservable { reason: c }
@@ -214,24 +221,24 @@ fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvo
 
 // Replace a terminal actor with this invocation, fenced on the exact recorded generation: of two
 // concurrent replacements only one commits, so only one can go on to issue the hold CAS.
-fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: NonEmptyStr) -> Bool
+fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: UnitRunIdentity) -> Bool
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor"),
     decl_ref(module_path: "test.claim.workspace_acquisition_storage_wet_witness", decl_name: "actor_rearm_race"),
   ]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
-  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: invocation as String))])) as NonEmptyStr
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: unit_run_wire(run: invocation)))])) as NonEmptyStr
   workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
 }
 
 // Cancel a terminal actor of a retired acquisition, fenced the same way; the tombstone names the
 // invocation it ended so a late reader can attribute the cancellation.
-fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior: NonEmptyStr) -> Bool
+fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior_wire: NonEmptyStr) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
-  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: prior as String))])) as NonEmptyStr
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: prior_wire))])) as NonEmptyStr
   workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
 }
 
