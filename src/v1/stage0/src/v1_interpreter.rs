@@ -30726,11 +30726,13 @@ mod canonical_render_order_tests {
 
 #[cfg(test)]
 mod t9_host_recursion_probes {
-    //! T9 (A1) probes: drop of a closure/Env chain deeper than the host stack. `Env` has no Drop and
-    //! `detach_owned_children` has no Closure arm, so these abort (rc=134) until A1 lands. Each is
-    //! #[ignore]d so the default suite does not run a 1M-deep build; run with `-- --ignored --exact`.
-    //! One discipline with `impl Drop for Value` and `impl Drop for PortableValue`: the outermost
-    //! drop drains a worklist (Value: local Vec; Env: thread-local queue) so host stack stays flat.
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
@@ -30796,6 +30798,25 @@ mod t9_host_recursion_probes {
         depth_or(1_000_000)
     }
 
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
     fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
         Value::Closure {
             params: vec![],
@@ -30806,18 +30827,18 @@ mod t9_host_recursion_probes {
 
     /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
     #[test]
-    #[ignore = "T9 probe"]
     fn probe_env_parent_chain_drops() {
-        let mut env = Env::empty();
-        for _ in 0..parent_depth() {
-            env = Env::extend(&env, HashMap::new());
-        }
-        drop(env);
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
     }
 
     /// Each closure captures an env binding the previous closure.
     #[test]
-    #[ignore = "T9 probe"]
     fn probe_closure_capture_chain_drops() {
         let ctx = fresh_ctx();
         let (f, body) = (ctx.sym("f"), body_node());
@@ -30830,21 +30851,18 @@ mod t9_host_recursion_probes {
 
     /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
     #[test]
-    #[ignore = "T9 probe"]
     fn probe_closure_via_env_parent_chain_drops() {
-        let ctx = fresh_ctx();
-        let (f, body) = (ctx.sym("f"), body_node());
-        let mut env = Env::empty();
-        for _ in 0..parent_depth() {
-            let c = closure(&body, env.clone());
-            env = Env::with_binding(&env, f, c);
-        }
-        drop(env);
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
     }
 
     /// Closure env binds a List holding the previous closure.
     #[test]
-    #[ignore = "T9 probe"]
     fn probe_closure_env_list_of_closures_drops() {
         let ctx = fresh_ctx();
         let (f, body) = (ctx.sym("f"), body_node());
@@ -30858,7 +30876,6 @@ mod t9_host_recursion_probes {
 
     /// Closure env binds a Map whose value is the previous closure.
     #[test]
-    #[ignore = "T9 probe"]
     fn probe_closure_env_map_value_drops() {
         let ctx = fresh_ctx();
         let (f, body) = (ctx.sym("f"), body_node());
