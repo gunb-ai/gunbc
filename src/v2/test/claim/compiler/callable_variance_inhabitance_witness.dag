@@ -1,0 +1,135 @@
+module v2.test.claim.compiler.callable_variance_inhabitance_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some }
+import v2.std.node { Symbol }
+import std.optional { Absent, Present }
+import v2.test.claim.compiler.callback_argument_formal { caf_correction_type }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.test.claim.compiler.infer_free_monoid_element_inhabitance_witness { fmj_algebra_source, fmj_types_source }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_refusal,
+  rcf_verdict,
+  rcf_read_in
+}
+
+// MEASUREMENT WITNESS (raven, 2026-10-31): the v2 declared-type inhabitance relation against a function-typed
+// formal. Each cell is a call vp_take(f: <named fn>) whose formal is a function type. The widening available
+// to v2 is the one-step refinement-to-carrier subsumption, so the narrow type is NonEmptyStr and the wide type
+// is String (the std.types fixture of infer_free_monoid_element_inhabitance_witness). The tests state the
+// verdict v2 is READ to give today (arrow arm: exact equality, so invariant); a red test is a measurement
+// that contradicts the read, not a defect in the witness. Docs: docs/notes/q5a-callable-variance-modeling-plan.md.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data vp_sanity_source: String = "module gunbc.vp_sanity\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n"
+data vp_a_source: String = "module gunbc.vp_a\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(NonEmptyStr) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_w)\n}\n"
+data vp_b_source: String = "module gunbc.vp_b\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_n_in)\n}\n"
+data vp_c_source: String = "module gunbc.vp_c\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_n_out)\n}\n"
+data vp_d_source: String = "module gunbc.vp_d\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> NonEmptyStr) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_w)\n}\n"
+data vp_c1_source: String = "module gunbc.vp_c1\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_w)\n}\n"
+data vp_ctl_param_source: String = "module gunbc.vp_ctl_param\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_bool_in)\n}\n"
+data vp_ctl_return_source: String = "module gunbc.vp_ctl_return\n\nimport std.types { Bool, NonEmptyStr }\n\nfn vp_w(s: String) -> String {\n  s\n}\n\nfn vp_n_in(s: NonEmptyStr) -> String {\n  s\n}\n\nfn vp_n_out(s: String) -> NonEmptyStr {\n  vp_n_out(s: s)\n}\n\nfn vp_bool_in(b: Bool) -> String {\n  \"x\"\n}\n\nfn vp_bool_out(s: String) -> Bool {\n  true\n}\n\nfn vp_take(f: fn(String) -> String) -> String {\n  \"x\"\n}\n\nfn vp_call() -> String {\n  vp_take(f: vp_bool_out)\n}\n"
+
+data vp_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: fmj_algebra_source, id: ^vp_algebra_read, unit: ^vp_algebra_cu, path: "dag/std/algebra.dag"),
+  rcf_read_in(tree: DagTree, source: fmj_types_source, id: ^vp_types_read, unit: ^vp_types_cu, path: "dag/std/types.dag"),
+  rcf_read_in(tree: DagTree, source: vp_sanity_source, id: ^vp_sanity_read, unit: ^vp_sanity_cu, path: "dag/gunbc/vp_sanity.dag"),
+  rcf_read_in(tree: DagTree, source: vp_a_source, id: ^vp_a_read, unit: ^vp_a_cu, path: "dag/gunbc/vp_a.dag"),
+  rcf_read_in(tree: DagTree, source: vp_b_source, id: ^vp_b_read, unit: ^vp_b_cu, path: "dag/gunbc/vp_b.dag"),
+  rcf_read_in(tree: DagTree, source: vp_c_source, id: ^vp_c_read, unit: ^vp_c_cu, path: "dag/gunbc/vp_c.dag"),
+  rcf_read_in(tree: DagTree, source: vp_d_source, id: ^vp_d_read, unit: ^vp_d_cu, path: "dag/gunbc/vp_d.dag"),
+  rcf_read_in(tree: DagTree, source: vp_c1_source, id: ^vp_c1_read, unit: ^vp_c1_cu, path: "dag/gunbc/vp_c1.dag"),
+  rcf_read_in(tree: DagTree, source: vp_ctl_param_source, id: ^vp_ctl_param_read, unit: ^vp_ctl_param_cu, path: "dag/gunbc/vp_ctl_param.dag"),
+  rcf_read_in(tree: DagTree, source: vp_ctl_return_source, id: ^vp_ctl_return_read, unit: ^vp_ctl_return_cu, path: "dag/gunbc/vp_ctl_return.dag")
+]
+
+fn vp_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: vp_ingest, lm: dag_language_model())
+}
+
+fn vp_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match vp_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+// Refused AT THE ARGUMENT: an application_argument_does_not_inhabit refusal whose correction names `f`.
+fn vp_refused_at_the_argument(subject: String) -> Bool {
+  match rcf_refusal(resolved: vp_resolve_subject(subject: subject), reason: ^application_argument_does_not_inhabit) {
+    Absent => false
+    Present { value: d } =>
+      match caf_correction_type(d: d, name: ^f) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn vp_accepted(subject: String) -> Bool {
+  match rcf_verdict(resolved: vp_resolve_subject(subject: subject)) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// FIXTURE SANITY: the offered functions themselves are accepted, so a refusal below is about the call.
+test fn vp_fixture_functions_are_accepted_holds() -> Bool {
+  vp_accepted(subject: "gunbc.vp_sanity")
+}
+
+// Identical function types: the control.
+test fn vp_identical_function_types_are_accepted_holds() -> Bool {
+  vp_accepted(subject: "gunbc.vp_c1")
+}
+
+// The String controls: a function over an unrelated type must refuse at the argument.
+test fn vp_unrelated_param_refuses_at_the_argument_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_ctl_param")
+}
+
+test fn vp_unrelated_return_refuses_at_the_argument_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_ctl_return")
+}
+
+// B and D: the UNSOUND directions. v2 is read to refuse them.
+test fn vp_b_narrow_param_offered_where_wide_declared_refuses_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_b")
+}
+
+test fn vp_d_wide_return_offered_where_narrow_declared_refuses_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_d")
+}
+
+// A and C: the SOUND directions. v2 is read to refuse them too (invariance); these state that reading,
+// and turn red on purpose when the declared variance rule lands.
+test fn vp_a_wide_param_offered_where_narrow_declared_refuses_today_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_a")
+}
+
+test fn vp_c_narrow_return_offered_where_wide_declared_refuses_today_holds() -> Bool {
+  vp_refused_at_the_argument(subject: "gunbc.vp_c")
+}
