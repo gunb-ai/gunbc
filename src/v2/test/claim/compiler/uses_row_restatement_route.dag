@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.uses_row_restatement_route
 
-import std.algebra { Empty, fold_list, length }
+import std.algebra { fold_list, length }
 import std.types { Bool, List }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -16,14 +16,14 @@ import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 fn urr_standings(entries: List<UsesRowRestatementEntry>, function: String) -> List<UsesRowStanding> {
-  fold_list(xs: entries, empty: Empty, cons: fn(acc, e) {
+  fold_list(xs: entries, empty: [], cons: fn(acc, e) {
     if qualified_name_to_dotted_string(qn: e.function) == function { e.standings } else { acc }
   })
 }
 
 fn urr_entries() -> List<UsesRowRestatementEntry> {
   match ddc_report() {
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => []
     Accepted { value: r, diagnostics: _ } => uses_row_restatement_of_report(r: r)
   }
 }
