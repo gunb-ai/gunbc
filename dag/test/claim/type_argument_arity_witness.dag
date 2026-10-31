@@ -17,6 +17,13 @@ import gunbc.instruments.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// THE CLASS IS ArityMismatch (2026-10-25, smart-tern-402). The arity of every type use is one rule,
+// v1.compiler.resolve type_use_arity_diagnostics; infer's TypeArgumentArityMismatch rule at
+// expand_alias_chain_for_field_access re-reported the same fact at the same span (measured on main
+// for this file's surplus shape: both diagnostics) and is deleted with its variant. The three arms
+// below are unchanged in what they assert: a surplus and a deficit refuse, typed and located, and a
+// matched application compiles clean.
+
 // THE SUBJECT. v1.compiler.infer alias_chain_type_arg_subst folded a generic declaration's
 // PARAMETERS against a use site's supplied TYPE ARGUMENTS positionally and absorbed a
 // disagreement in BOTH directions: a surplus argument was never read, and a missing argument
@@ -72,7 +79,7 @@ fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // The class name is asserted, not merely "something refused" -- a typo in the fixture source
 // would satisfy the weaker reading.
 test fn surplus_type_argument_refuses() -> Bool {
-  refused_with_class(arity_run(surplus_source), "TypeArgumentArityMismatch")
+  refused_with_class(arity_run(surplus_source), "ArityMismatch")
 }
 
 // DISCRIMINATING RED, DIRECTION TWO: fewer type arguments than parameters. Authored separately
@@ -80,7 +87,7 @@ test fn surplus_type_argument_refuses() -> Bool {
 // argument was never read, the missing one left a parameter unsubstituted -- so one arm is not
 // evidence about the other.
 test fn deficit_type_argument_refuses() -> Bool {
-  refused_with_class(arity_run(deficit_source), "TypeArgumentArityMismatch")
+  refused_with_class(arity_run(deficit_source), "ArityMismatch")
 }
 
 // THE POSITIVE CONTROL. The same declarations applied at their declared arity compile clean --
@@ -88,5 +95,5 @@ test fn deficit_type_argument_refuses() -> Bool {
 // refuses every generic application.
 test fn matched_type_argument_arity_compiles_clean() -> Bool {
   completed_with_no_diagnostics(arity_run(green_source))
-    && !refused_with_class(arity_run(green_source), "TypeArgumentArityMismatch")
+    && !refused_with_class(arity_run(green_source), "ArityMismatch")
 }

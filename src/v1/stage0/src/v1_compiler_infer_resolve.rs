@@ -13,7 +13,9 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
-pub use crate::std_types::{container_param_name, SourceSpan};
+pub use crate::std_types::{
+    container_expected_arity, container_param_name, container_template_algebra, SourceSpan,
+};
 pub use crate::std_types::{is_container_type, is_kernel_type};
 use crate::v1_compiler_infer_env::TypeRefMeasureBinding::{
     TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
@@ -87,8 +89,7 @@ pub fn type_param_kind_diagnostics(
     Rc::new({
         let mut __result = Vec::new();
         for pair in Rc::new(
-            decl.params
-                .clone()
+            declaration_type_parameters(decl)
                 .iter()
                 .cloned()
                 .enumerate()
@@ -338,8 +339,7 @@ pub fn applied_arg_is_width_resolution_position(
                         Some(declaring_module) => {
                             let mut __found = false;
                             for pair in Rc::new(
-                                decl.params
-                                    .clone()
+                                declaration_type_parameters(decl.clone())
                                     .iter()
                                     .cloned()
                                     .enumerate()
@@ -731,7 +731,7 @@ pub fn resolve_paramless_generic_use_decl_with_children(
         let mut __result = Vec::new();
         for parent in env.parents.clone().iter().cloned() {
             if match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
-                Some(b) => ((b.resolved.params.clone().len() as i64) > 0),
+                Some(b) => ((declaration_type_parameters(b.resolved.clone()).len() as i64) > 0),
                 std::option::Option::None => false,
             } {
                 __result.push(parent);
@@ -778,7 +778,7 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
         let brand = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
         match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
             Some(decl) => {
-                if ((decl.params.clone().len() as i64) > 0) {
+                if ((declaration_type_parameters(decl.clone()).len() as i64) > 0) {
                     decl.clone()
                 } else {
                     resolve_paramless_generic_use_decl(env.clone(), n.clone(), decl.clone(), brand)
@@ -795,35 +795,158 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+pub fn declaration_is_container_family(decl: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        if has_structure.clone() {
-            false
+        let name = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), decl.clone()),
+        );
+        if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(decl.clone(), name.clone())
+        {
+            crate::std_types::is_container_type(name.clone())
         } else {
-            {
-                let decl = resolve_generic_use_decl(env.clone(), n.clone());
-                if ((decl.params.clone().len() as i64) > 0) {
-                    if (crate::std_types::is_container_type(n.name.clone())
-                        || crate::v1_compiler_infer_types::node_is_keyed_algebra_spelling(
-                            n.clone(),
-                            env.source_indices.clone(),
-                        ))
-                    {
-                        false
-                    } else {
-                        if (decl.inferred.clone() != std::option::Option::None) {
-                            true
-                        } else {
-                            true
+            match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                decl.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(declared) => container_family_declaration(declared.clone()),
+                std::option::Option::None => false,
+            }
+        }
+    }
+}
+
+pub fn container_family_declaration(declared: Rc<DeclarationRef>) -> bool {
+    {
+        let module_path = declared.module_path.clone();
+        let decl_name = declared.decl_name.clone();
+        match crate::std_types::container_expected_arity(decl_name.clone()) {
+            Some(_) => (module_path.clone() == "std.types".to_string()),
+            std::option::Option::None => {
+                ((module_path.clone() == "std.algebra".to_string())
+                    && match crate::std_types::container_template_algebra(decl_name.clone()) {
+                        Some(algebra) => {
+                            (algebra.clone() == "FinitelySupportedFunction".to_string())
                         }
+                        std::option::Option::None => false,
+                    })
+            }
+        }
+    }
+}
+
+pub fn node_names_its_own_declaration(n: Rc<Node>, decl: Rc<Node>) -> bool {
+    match n.ident_span.clone() {
+        std::option::Option::None => false,
+        Some(at) => match decl.ident_span.clone() {
+            std::option::Option::None => false,
+            Some(declared) => {
+                ((at.file.clone() == declared.file.clone())
+                    && (at.start.clone() == declared.start.clone()))
+            }
+        },
+    }
+}
+
+pub fn node_is_type_use_shape(n: Rc<Node>) -> bool {
+    (((((((n.connective.clone() == Connective::NoConnective)
+        && ((n.params.clone().len() as i64) == 0))
+        && (n.body.clone() == std::option::Option::None))
+        && ((n.uses.clone().len() as i64) == 0))
+        && ((n.properties.clone().len() as i64) == 0))
+        && match (*n.expr_data.clone()).clone() {
+            ExprData::NoExprData => true,
+            _ => false,
+        })
+        && match n.module_item_kind.clone() {
+            ParsedModuleItemKind::NotAModuleItem => true,
+            _ => false,
+        })
+}
+
+pub fn type_use_arity_diagnostics(
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if (!node_is_type_use_shape(n.clone())
+        || node_names_its_own_declaration(n.clone(), decl.clone()))
+    {
+        Rc::new(vec![])
+    } else {
+        {
+            let type_name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+            if (type_name.clone() == "".to_string()) {
+                Rc::new(vec![])
+            } else {
+                {
+                    let declared = declared_type_parameter_count(decl.clone(), env.clone());
+                    let supplied = (n.children.clone().len() as i64);
+                    if ((declared.clone() > 0) && (supplied.clone() != declared.clone())) {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::ArityMismatch {
+                                name: type_name.clone(),
+                                expected: declared.clone(),
+                                got: supplied.clone(),
+                                span: n.span.clone(),
+                            }),
+                            module_name,
+                        )])
+                    } else {
+                        Rc::new(vec![])
                     }
-                } else {
-                    false
                 }
             }
         }
     }
+}
+
+pub fn declaration_type_parameters(decl: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    match decl.connective.clone() {
+        Connective::Arrow => Rc::new(vec![]),
+        _ => decl.params.clone(),
+    }
+}
+
+pub fn declared_type_parameter_count(decl: Rc<Node>, env: Rc<TypeEnv>) -> i64 {
+    {
+        let name = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), decl.clone()),
+        );
+        let type_params = declaration_type_parameters(decl.clone());
+        if ((type_params.clone().len() as i64) > 0) {
+            (type_params.clone().len() as i64)
+        } else {
+            if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                decl.clone(),
+                name.clone(),
+            ) {
+                match crate::std_types::container_expected_arity(name.clone()) {
+                    Some(arity) => arity.clone(),
+                    std::option::Option::None => 0,
+                }
+            } else {
+                0
+            }
+        }
+    }
+}
+
+pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if (n.connective.clone() != Connective::NoConnective) {
+        false
+    } else {
+        is_user_generic_declaration(
+            resolve_generic_use_decl(env.clone(), n.clone()),
+            env.clone(),
+        )
+    }
+}
+
+pub fn is_user_generic_declaration(decl: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    (((declaration_type_parameters(decl.clone()).len() as i64) > 0)
+        && !declaration_is_container_family(decl.clone(), env))
 }
 
 #[derive(
@@ -881,7 +1004,7 @@ pub fn resolve_alias_target(
 }
 
 pub fn is_parametric_type_alias_decl(item: Rc<Node>) -> bool {
-    ((((((item.params.clone().len() as i64) > 0)
+    ((((((declaration_type_parameters(item.clone()).len() as i64) > 0)
         && (item.connective.clone() == Connective::NoConnective))
         && (item.body.clone() == std::option::Option::None))
         && (item.transport.clone() == std::option::Option::None))
@@ -967,6 +1090,14 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn resolve_type_position(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<NodeResolveResult> {
+    resolve_node_at(n, env, module_name, 0, true, true)
+}
+
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -974,7 +1105,59 @@ pub fn resolve_node_bounded(
     depth: i64,
     masked: bool,
 ) -> Rc<NodeResolveResult> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    resolve_node_at(n, env, module_name, depth, masked, false)
+}
+
+pub fn resolve_node_at(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    depth: i64,
+    masked: bool,
+    position: bool,
+) -> Rc<NodeResolveResult> {
+    {
+        let use_decl = if (n.connective.clone() == Connective::NoConnective) {
+            resolve_generic_use_decl(env.clone(), n.clone())
+        } else {
+            n.clone()
+        };
+        let arity_diags = if ((((n.children.clone().len() as i64) > 0) || (depth.clone() > 0))
+            || position.clone())
+        {
+            type_use_arity_diagnostics(
+                n.clone(),
+                use_decl.clone(),
+                env.clone(),
+                module_name.clone(),
+            )
+        } else {
+            Rc::new(vec![])
+        };
+        let inner = resolve_node_bounded_structure(
+            n.clone(),
+            env.clone(),
+            module_name.clone(),
+            depth.clone(),
+            masked,
+            use_decl.clone(),
+        );
+        Rc::new(NodeResolveResult {
+            resolved: inner.resolved.clone(),
+            diagnostics: v1_rt::concat(arity_diags.clone(), inner.diagnostics.clone()),
+        })
+    }
+}
+
+pub fn resolve_node_bounded_structure(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    depth: i64,
+    masked: bool,
+    use_decl: Rc<Node>,
+) -> Rc<NodeResolveResult> {
+    {
         if (depth.clone() > 100) {
             return Rc::new(NodeResolveResult {
                 resolved: n.clone(),
@@ -1169,13 +1352,13 @@ pub fn resolve_node_bounded(
                                     let mut __result = Vec::new();
                                     for child in n.children.clone().iter().cloned() {
                                         __result.push(if (child.inferred.clone() == std::option::Option::None) {
-                                        Rc::new(NodeResolveResult {
+                                    Rc::new(NodeResolveResult {
     resolved: child.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                    } else {
-                                        {
-                                            let child_rt = crate::v1_compiler_infer_types::resolved_type(child.clone());
+                                } else {
+                                    {
+                                        let child_rt = crate::v1_compiler_infer_types::resolved_type(child.clone());
 let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone());
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
@@ -1209,7 +1392,7 @@ Rc::new(NodeResolveResult {
     diagnostics: rt_diags.clone(),
 })
 }
-                                    });
+                                });
                                     }
                                     __result
                                 });
@@ -1286,23 +1469,23 @@ Rc::new(NodeResolveResult {
                                         let mut __result = Vec::new();
                                         for variant_child in n.children.clone().iter().cloned() {
                                             __result.push({
-                                            let field_results = Rc::new({ let mut __result = Vec::new(); for field_child in variant_child.children.clone().iter().cloned() { __result.push(if (field_child.inferred.clone() == std::option::Option::None) {
-                                                Rc::new(NodeResolveResult {
+                                        let field_results = Rc::new({ let mut __result = Vec::new(); for field_child in variant_child.children.clone().iter().cloned() { __result.push(if (field_child.inferred.clone() == std::option::Option::None) {
+                                            Rc::new(NodeResolveResult {
     resolved: field_child.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                            } else {
-                                                {
-                                                    let field_rt = crate::v1_compiler_infer_types::resolved_type(field_child.clone());
+                                        } else {
+                                            {
+                                                let field_rt = crate::v1_compiler_infer_types::resolved_type(field_child.clone());
 let is_self_ref = ((crate::v1_compiler_infer_env::authored_name(env.clone(), field_rt.clone()) == crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone())) && ((field_rt.children.clone().len() as i64) > 0));
 let rt_result = if is_self_ref.clone() {
-                                                        Rc::new(NodeResolveResult {
+                                                    Rc::new(NodeResolveResult {
     resolved: field_rt.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                                    } else {
-                                                        resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone())
-                                                    };
+                                                } else {
+                                                    resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone())
+                                                };
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
 Rc::new(NodeResolveResult {
@@ -1335,7 +1518,7 @@ Rc::new(NodeResolveResult {
     diagnostics: rt_diags.clone(),
 })
 }
-                                            }); } __result });
+                                        }); } __result });
 let resolved_fields = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.push(fr.resolved.clone()); } __result });
 let field_diags = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.extend((*fr.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(NodeResolveResult {
@@ -1418,27 +1601,12 @@ Rc::new(NodeResolveResult {
                 }
             } else {
                 if (((n.children.clone().len() as i64) > 0)
-                    && is_user_generic_use_site(n.clone(), env.clone()))
+                    && is_user_generic_declaration(use_decl.clone(), env.clone()))
                 {
                     {
                         let type_name =
                             crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
-                        let decl = resolve_generic_use_decl(env.clone(), n.clone());
-                        let expected_arity = (decl.params.clone().len() as i64);
-                        let actual_arity = (n.children.clone().len() as i64);
-                        let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
-                            Rc::new(vec![crate::v1_std_core::make_error_node(
-                                Rc::new(CompilerDiagnostic::ArityMismatch {
-                                    name: type_name.clone(),
-                                    expected: expected_arity.clone(),
-                                    got: actual_arity.clone(),
-                                    span: n.span.clone(),
-                                }),
-                                module_name.clone(),
-                            )])
-                        } else {
-                            Rc::new(vec![])
-                        };
+                        let decl = use_decl.clone();
                         let kind_diags = type_param_kind_diagnostics(
                             n.clone(),
                             decl.clone(),
@@ -1497,8 +1665,7 @@ Rc::new(NodeResolveResult {
                             __result
                         });
                         let slot_bindings = Rc::new(
-                            decl.params
-                                .clone()
+                            declaration_type_parameters(decl.clone())
                                 .iter()
                                 .cloned()
                                 .enumerate()
@@ -1640,10 +1807,7 @@ Rc::new(NodeResolveResult {
                                 Rc::new(NodeResolveResult {
                                     resolved: resolved_node.clone(),
                                     diagnostics: v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(arity_diags.clone(), kind_diags.clone()),
-                                            arg_diags.clone(),
-                                        ),
+                                        v1_rt::concat(kind_diags.clone(), arg_diags.clone()),
                                         target_result.diagnostics.clone(),
                                     ),
                                 })
@@ -1660,7 +1824,7 @@ Rc::new(NodeResolveResult {
                                         env.clone(),
                                     ),
                                     diagnostics: v1_rt::concat(
-                                        v1_rt::concat(arity_diags.clone(), kind_diags.clone()),
+                                        kind_diags.clone(),
                                         arg_diags.clone(),
                                     ),
                                 });
@@ -2072,7 +2236,7 @@ Rc::new(NodeResolveResult {
                                                         structurally_resolved.clone()
                                                     };
                                                     let measure_refusal = if (((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
-                                                        match crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) {
+                                                    match crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) {
     TypeRefMeasureBinding::TypeRefMeasureBound => Rc::new(vec![]),
     TypeRefMeasureBinding::TypeRefMeasureUnbound => Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), type_name.clone(), n.span.clone()), module_name.clone())]),
     TypeRefMeasureBinding::TypeRefMeasureDisagreesWithProduction => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeRefMeasureBindingDisagreement {
@@ -2081,9 +2245,9 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
 }), module_name.clone())]),
 }
-                                                    } else {
-                                                        Rc::new(vec![])
-                                                    };
+                                                } else {
+                                                    Rc::new(vec![])
+                                                };
                                                     if ((measure_refusal.clone().len() as i64) > 0)
                                                     {
                                                         Rc::new(NodeResolveResult {
@@ -2093,13 +2257,13 @@ Rc::new(NodeResolveResult {
                                                     } else {
                                                         {
                                                             let unlisted_diags = if (((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) && (crate::v1_std_core::resolved_node_is_kernel_identity_for_name(n.clone(), type_name.clone()) == false)) {
-                                                                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
+                                                            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
     name: type_name.clone(),
     span: n.span.clone(),
 }), module_name.clone())])
-                                                            } else {
-                                                                Rc::new(vec![])
-                                                            };
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        };
                                                             Rc::new(NodeResolveResult {
                                                                 resolved: final_resolved.clone(),
                                                                 diagnostics: unlisted_diags.clone(),
@@ -2127,12 +2291,12 @@ Rc::new(NodeResolveResult {
                                                         false
                                                     };
                                                     if (((is_width_nat_type_literal(n.clone()) || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))) || n_is_type_var.clone()) || n_is_error.clone()) {
-                                                        Rc::new(NodeResolveResult {
+                                                    Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![]),
 })
-                                                    } else {
-                                                        match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
+                                                } else {
+                                                    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
     UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: phantom, .. } => Rc::new(NodeResolveResult {
     resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
@@ -2149,7 +2313,7 @@ Rc::new(NodeResolveResult {
 }), module_name.clone())]),
 }),
 }
-                                                    }
+                                                }
                                                 }
                                             }
                                         }
@@ -2166,35 +2330,6 @@ Rc::new(NodeResolveResult {
                 }
             }
         }
-    })
-}
-
-pub fn missing_generic_args_diagnostics(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    if ((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
-        && is_user_generic_use_site(n.clone(), env.clone()))
-    {
-        {
-            let type_name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
-            let decl = match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-                Some(d) => d.clone(),
-                std::option::Option::None => n.clone(),
-            };
-            Rc::new(vec![crate::v1_std_core::make_error_node(
-                Rc::new(CompilerDiagnostic::ArityMismatch {
-                    name: type_name.clone(),
-                    expected: (decl.params.clone().len() as i64),
-                    got: 0,
-                    span: n.span.clone(),
-                }),
-                module_name,
-            )])
-        }
-    } else {
-        Rc::new(vec![])
     }
 }
 
@@ -2274,16 +2409,9 @@ pub fn resolve_field(
 ) -> Rc<FieldResolveResult> {
     {
         let authored_type = crate::v1_std_core::field_node_type_expr(field.clone());
-        let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+        let type_result = resolve_type_position(authored_type, env.clone(), module_name.clone());
         let type_resolved = type_result.resolved.clone();
-        let type_diags = v1_rt::concat(
-            type_result.diagnostics.clone(),
-            missing_generic_args_diagnostics(
-                authored_type.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-        );
+        let type_diags = type_result.diagnostics.clone();
         let default_resolved = match crate::v1_std_core::field_node_default_value(field.clone()) {
             Some(default_value) => Some(resolve_expr_types(
                 default_value.clone(),
@@ -2417,17 +2545,11 @@ pub fn resolve_param(
 ) -> Rc<ParamResolveResult> {
     {
         let authored_type = crate::v1_std_core::param_node_type_expr(param.clone());
-        let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+        let type_result =
+            resolve_type_position(authored_type.clone(), env.clone(), module_name.clone());
         let type_resolved = type_result.resolved.clone();
         let rendered_type = rendered_use_site_type(authored_type.clone(), type_resolved.clone());
-        let type_diags = v1_rt::concat(
-            type_result.diagnostics.clone(),
-            missing_generic_args_diagnostics(
-                authored_type.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-        );
+        let type_diags = type_result.diagnostics.clone();
         let default_resolved = match crate::v1_std_core::param_node_default_value(param.clone()) {
             Some(default_value) => Some(resolve_expr_types(
                 default_value.clone(),
@@ -4331,16 +4453,12 @@ pub fn resolve_item_types(
                 for child in item.children.clone().iter().cloned() {
                     __result.push({
                         let authored_type = crate::v1_std_core::field_node_type_expr(child.clone());
-                        let tr =
-                            resolve_node(authored_type.clone(), env.clone(), module_name.clone());
-                        let type_diags = v1_rt::concat(
-                            tr.diagnostics.clone(),
-                            missing_generic_args_diagnostics(
-                                authored_type.clone(),
-                                env.clone(),
-                                module_name.clone(),
-                            ),
+                        let tr = resolve_type_position(
+                            authored_type.clone(),
+                            env.clone(),
+                            module_name.clone(),
                         );
+                        let type_diags = tr.diagnostics.clone();
                         Rc::new(ItemResolveResult {
                             item: Rc::new(Node {
                                 occurrence_identity: child.occurrence_identity.clone(),
@@ -4396,19 +4514,12 @@ pub fn resolve_item_types(
                                     __result.push({
                                         let authored_type =
                                             crate::v1_std_core::field_node_type_expr(field.clone());
-                                        let tr = resolve_node(
+                                        let tr = resolve_type_position(
                                             authored_type.clone(),
                                             env.clone(),
                                             module_name.clone(),
                                         );
-                                        let type_diags = v1_rt::concat(
-                                            tr.diagnostics.clone(),
-                                            missing_generic_args_diagnostics(
-                                                authored_type.clone(),
-                                                env.clone(),
-                                                module_name.clone(),
-                                            ),
-                                        );
+                                        let type_diags = tr.diagnostics.clone();
                                         Rc::new(ItemResolveResult {
                                             item: Rc::new(Node {
                                                 occurrence_identity: field

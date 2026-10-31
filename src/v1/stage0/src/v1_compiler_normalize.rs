@@ -4,7 +4,7 @@
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::{ArityMismatch, ContainerSpellingUnrecognized};
+use crate::v1_std_core::CompilerDiagnostic::ContainerSpellingUnrecognized;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
@@ -33,11 +33,6 @@ pub fn check_bare_containers(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let has_structure = ((match n.body.clone() {
-            Some(_) => true,
-            std::option::Option::None => false,
-        } || ((n.uses.clone().len() as i64) > 0))
-            || ((n.properties.clone().len() as i64) > 0));
         let is_expr = match (*n.expr_data.clone()).clone() {
             ExprData::NoExprData => false,
             _ => true,
@@ -52,26 +47,8 @@ pub fn check_bare_containers(
             ))
             .clone()
             {
-                ContainerSpellingVerdict::ContainerSpellingDeclared {
-                    arity: expected, ..
-                } => {
-                    if (((((n.children.clone().len() as i64) == 0)
-                        && ((n.params.clone().len() as i64) == 0))
-                        && (n.connective.clone() == Connective::NoConnective))
-                        && !has_structure.clone())
-                    {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::ArityMismatch {
-                                name: nname.clone(),
-                                expected: expected.clone(),
-                                got: 0,
-                                span: n.span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        Rc::new(vec![])
-                    }
+                ContainerSpellingVerdict::ContainerSpellingDeclared { arity: _, .. } => {
+                    Rc::new(vec![])
                 }
                 ContainerSpellingVerdict::ContainerSpellingUnknown {
                     container_leaf: leaf,
