@@ -3,9 +3,8 @@ module v2.std.decl_ref_resolution_host
 // FROZEN, NO NEW ROWS. The host-census resolver (facts + modules from the v1 interpreter's declaration
 // index) that v2.std.decl_ref_resolution used to be. Every current importer (witnesses, lenses and
 // censuses that read decl_facts_at / module_declaration_facts_at_live) is a host-fact consumer: none
-// holds a native ResolutionContext, which exists only inside one native ingest. The native resolver's
-// consumer is the decl-ref-census verb (a follow-up PR on the same item), the only caller that runs
-// inside an ingest; migrating these importers waits on the host-builtin retirement below, when they
+// holds a native ResolutionContext, which exists only inside one native ingest. The native resolver
+// is v2.std.decl_ref_resolution; migrating these importers waits on the host-builtin retirement below, when they
 // read native facts and this module is deleted. Its type names repeat the native module's: the arms
 // differ (Ambiguous, kind), so the two are different contracts sharing a spelling until deletion.
 // dissolve-on: the host-builtin retirement follow-up (decl_facts_at / module_declaration_facts_at_live
