@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_residue_teardown_removes_every_dropin_of_the_unit_it_names
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_residue_teardown_removes_every_dropin_of_the_unit_it_names: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_residue_teardown_removes_every_dropin_of_the_unit_it_names" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: which files a host unit carries is a fact of the live host, and the removal is an argv over it, so the guarantee is that the only removal routes the corpus builds name individual set-property files (pinned by test.claim.host.host_axis_caps_witness and test.claim.runner.runner_host_file_converge_witness) and that no `systemctl revert` builder exists; a hand-run revert on the host is outside the model." as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: a teardown meant to clear one kind of residue on a unit -- the 50-<Property>.conf drop-ins `systemctl set-property` writes under /etc/systemd/system.control and /run/systemd/system.control -- is realized by an operation whose scope is the whole unit, `systemctl revert UNIT`, which removes EVERY drop-in of that unit (systemctl(1), systemd 255), including drop-ins another converge owns and nothing in the teardown's model knew about.",
+
+    "RECEIPT 2026-10-30, srv1: a live_deploy instance apply ran at 16:43:53Z (operator-local, main 7f695509). Its memory-cap family installed the template cap drop-ins and then ran `systemctl revert actions-runner@srv1-0{1..4}.service` (gunbc.live_deploy.apply_legs deploy_apply_memory_cap_plan over extdeps.systemd.systemctl systemctl_revert_memory_caps_argv), and its slice-control family reverted sessions.slice and gunbc-approval-broker.slice. The revert of srv1-02 deleted /etc/systemd/system/actions-runner@srv1-02.service.d/slot-role.conf, the deploy slot's role drop-in that gunbc.runner.runner_host_file_converge had written and read back at 12:27Z (run 41055515944), so the slot fell back to the template's job user ghrunner and crash-looped from 16:43:54Z (NRestarts 1714, read by crisp-ibex-490). Fleet-converge L2 run 41112232952 then refused correctly: its deploy-slot reading said job_user=ghrunner privacy=REACHABLE host-walls=BROKEN.",
+
+    "HARM: a host's converged state is silently undone by an unrelated apply -- here the deploy slot's job-user isolation, which the administrator route depends on. RUNG FOUND AT: below the ladder (both writers reported success; the loss surfaced only as a crash loop). EARLIEST UNJUSTIFIED BOUNDARY: an instance-scoped apply carried host-scoped families (the runner-unit caps and the slice control) with no host owner, so two routes wrote one host fact; the revert's width was the near link. NOW: the cap and slice-control families are out of the instance apply; the runner-unit drop-ins have one writer, gunbc.runner.runner_host_file_converge, which removes only the set-property files of the cap properties it sets (runner_host_control_shadow_paths) after its cap phase has settled; the dark install's slice control removes only its own properties' set-property files; and the revert builder is deleted, so no route in the corpus can name it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.host.host_axis_caps", decl_name: "control_shadow_removal_argvs", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_control_shadow_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.host_axis_caps", decl_name: "slice_control_converge_argvs_for_unit", field: WholeDeclaration },
+  ],
+}
