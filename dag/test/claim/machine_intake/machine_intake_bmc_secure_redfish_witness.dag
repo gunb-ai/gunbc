@@ -49,6 +49,7 @@ import gunbc.machine_intake.bmc_secure {
   BmcAccountStateObservation, BmcRedfishAccountCensusReading, BmcRedfishAccountCensusEntry,
   BmcRedfishCensusServed, BmcRedfishCensusUnmodeled, BmcRedfishCensusRefused,
   BmcSecured, BmcSecureRefused, BmcSecureOutcome, RedfishForeignEnabledAccount, RedfishCensusUnestablished,
+  ManagedCredentialRejected, inspect_bmc_secure_state, BmcSecureStateInspected, BmcSecureStateUnobserved,
   conjunction_over_observation, dry_read_bmc_redfish_account_census, dry_apply_bmc_redfish_password_write,
   bmc_build_forced_change_requirement,
   bmc_redfish_password_write_completed, BmcRedfishPasswordWriteDryStep,
@@ -298,6 +299,20 @@ fn admitted_rotation() -> AdmittedForcedFirstRotation? {
   }
 }
 
+// Two worlds answer the SAME Redfish census (same enabled/managed/locked accounts) when the readings agree.
+fn census_same(a: BmcWorld, b: BmcWorld) -> Bool {
+  let ra = census_of(w: a, password: managed_generation)
+  let rb = census_of(w: b, password: managed_generation)
+  match ra {
+    BmcRedfishCensusServed { accounts: xs } =>
+      match rb {
+        BmcRedfishCensusServed { accounts: ys } => xs == ys
+        _ => false
+      }
+    _ => false
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE CENSUS IS READ BY PARSING BYTES the controller serves (rung: the read). Positive controls below.
 
@@ -432,13 +447,29 @@ test fn a_completed_patch_writes_the_credential_and_clears_the_forced_flag() -> 
        }
 }
 
+// A PATCH THE WORLD REFUSES changes NOTHING and mints no receipt. RED rung: PATCHing an account the census does
+// not hold cannot fully apply -- the step is refused AND the world it returns is byte-for-byte the one it started
+// from. Positive control: PATCHing the account the census DOES hold completes. And an application that reports
+// failure is kept DISTINCT from a secured phase receipt: on this already-secured controller the phase still reads
+// Secured on its own merits, independent of the failed write -- so "completed:false" is an application outcome,
+// never the BmcSecured receipt.
 test fn a_failed_patch_changes_nothing_and_mints_no_receipt() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [])
-  // RED rung: PATCHing an account the census does not hold cannot fully apply -- the world is UNCHANGED and the
-  // step is refused, so the fold records nothing. The positive control differs only in the account.
   let bad = dry_apply_bmc_redfish_password_write(world: w, account: "ghost", new_password: managed_generation)
   let good = dry_apply_bmc_redfish_password_write(world: w, account: "root", new_password: managed_generation)
-  !bmc_redfish_password_write_completed(step: bad) && bmc_redfish_password_write_completed(step: good)
+  let bad_world = bmc_redfish_change_step_world(step: bad.step)
+  // The failed PATCH left the controller exactly as it was: the same census, the same root under the same password.
+  let world_unchanged = bmc_redfish_password_write_completed(step: bad) == false
+    && census_same(a: w, b: bad_world)
+  // The application reports failure; the positive control (differing only in the account) completes.
+  let application_failed = bmc_redfish_password_write_completed(step: bad) == false
+    && bmc_redfish_password_write_completed(step: good)
+  // A failed application is NOT a secured receipt. The conjunction here reads Secured because the controller was
+  // already secured by the world it started in -- not by the failed write. So the two facts are kept separate:
+  // the write reports completed:false while the phase outcome is decided independently of it.
+  let application_is_not_the_receipt = bmc_redfish_password_write_completed(step: bad) == false
+    && secures(outcome: conjunction_over_observation(goal: goal(), observed: read_with(w: bad_world, managed: root_ref(version: "1", epoch: 1), password: managed_generation, firmware: build_3_22(), at: 1793145620000)))
+  application_failed && world_unchanged && application_is_not_the_receipt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -471,9 +502,14 @@ fn refused_build_differs(confirmation: ForcedFirstRotationBuildConfirmation) -> 
   }
 }
 
-// THE END-TO-END FORCED-CHANGE DRY CYCLE. factory 403 -> ONE QualifyByRotation approval, ONE root write ->
-// managed credential authenticates over Redfish, published credential retired by derivation -> the build join
-// confirms -> a SECOND run reads as a Noop (the conjunction holds on the census, no write is due).
+// THE END-TO-END FORCED-CHANGE DRY CYCLE (kept as a unit claim beside the integrated plan-path claim, since the
+// forced first rotation's APPLY realization is a still-open frontier -- decision D -- so the one root write is
+// realized directly here). factory 403 -> ONE QualifyByRotation approval, ONE root write -> the managed credential
+// authenticates over Redfish (census served) and the published credential is retired by derivation -> the build
+// join confirms -> the conjunction is BmcSecured -> a SECOND run's decision is a Noop (no write is due).
+// The success predicate is the POSITIVE arms: the conjunction is the BmcSecured arm AND the inspection is Noop.
+// A non-census refusal (ManagedCredentialRejected) and a census refusal both fail it -- shown by the controls below,
+// so it cannot be satisfied by "not a census problem" alone.
 test fn the_forced_change_applies_once_and_the_second_run_is_a_noop() -> Bool {
   match admitted_rotation() {
     Absent => false
@@ -482,7 +518,9 @@ test fn the_forced_change_applies_once_and_the_second_run_is_a_noop() -> Bool {
       let factory = served_world(password: published_password, forced: true, extra: [])
       let step = dry_apply_bmc_redfish_password_write(world: factory, account: "root", new_password: managed_generation)
       let applied = bmc_redfish_change_step_world(step: step.step)
-      // The write is ONE: the shared root credential now holds the managed generation and the forced flag is clear.
+      // The write is ONE: the shared root credential now holds the managed generation and the forced flag is clear
+      // (the PATCH -- not an IPMI write -- clears the Redfish record's forced flag, which is what lets the next
+      // authenticated census succeed at all).
       let wrote_once = bmc_redfish_password_write_completed(step: step)
         && match bmc_redfish_account(world: applied, name: "root") {
              Present { value: x } => x.forced_password_change == false
@@ -494,12 +532,38 @@ test fn the_forced_change_applies_once_and_the_second_run_is_a_noop() -> Bool {
       // The readback names the forced state's own build -- the inferred build is paid for, not assumed.
       let post_read = read_with(w: applied, managed: root_ref(version: "1", epoch: 1), password: managed_generation, firmware: build_3_22(), at: 1793145650000)
       let build_ok = is_confirmed(confirmation: confirm_forced_first_rotation_build(admitted: a, post_read: post_read))
-      // RUN 2: re-reading the now-secured controller under the managed credential is a Noop -- the conjunction
-      // holds on the census (no foreign account, established census). No second write is due.
-      let run2 = conjunction_over_observation(goal: goal(), observed: read_with(w: applied, managed: root_ref(version: "1", epoch: 1), password: managed_generation, firmware: build_3_22(), at: 1793145660000))
-      let noop_on_census = !refused_unestablished(outcome: run2) && !foreign_refused(outcome: run2)
-      wrote_once && authenticates && build_ok && noop_on_census
+      // The conjunction on that read is the BmcSecured ARM (not merely "not refused for a census reason").
+      let secured = conjunction_over_observation(goal: goal(), observed: post_read)
+      // RUN 2: re-inspecting the now-secured controller under the managed credential is a Noop -- no write is due.
+      let second_run_noop = inspect_is_noop(subject: lab_subject(), reading: read_with(w: applied, managed: root_ref(version: "1", epoch: 1), password: managed_generation, firmware: build_3_22(), at: 1793145660000))
+      // CONTROL (P2a): a NON-census refusal must fail the success predicate. An IPMI-only world read with a wrong
+      // credential -- the Redfish census gate is skipped (surface not served), so the refusal is ManagedCredentialRejected.
+      let non_census_refusal = conjunction_over_observation(goal: goal(), observed: read_with(w: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 1, password: managed_generation }]), managed: root_ref(version: "1", epoch: 1), password: published_password, firmware: build_3_22(), at: 1793145670000))
+      wrote_once && authenticates && build_ok && secures(outcome: secured) && second_run_noop && refused_managed(outcome: non_census_refusal) && !secures(outcome: non_census_refusal)
     }
+  }
+}
+
+// The success predicate: only the BmcSecured arm counts. Any refusal -- census, foreign, managed-rejected -- fails.
+fn secures(outcome: BmcSecureOutcome) -> Bool {
+  match outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => true
+    BmcSecureRefused { cause: _ } => false
+  }
+}
+
+// The second run's decision is a Noop (the conjunction already holds, so nothing is due) via the inspection path.
+fn inspect_is_noop(subject: MachineIntakeSubject, reading: BmcAccountStateObservation) -> Bool {
+  match inspect_bmc_secure_state(subject: subject, goal: goal(), reading: reading) {
+    BmcSecureStateInspected { observed: _, assessment: _, decision: d } => match d { Noop => true  _ => false }
+    BmcSecureStateUnobserved { cause: _ } => false
+  }
+}
+
+fn refused_managed(outcome: BmcSecureOutcome) -> Bool {
+  match outcome {
+    BmcSecureRefused { cause: ManagedCredentialRejected } => true
+    _ => false
   }
 }
 
