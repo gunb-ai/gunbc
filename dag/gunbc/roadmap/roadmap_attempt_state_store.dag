@@ -620,7 +620,7 @@ fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
   match append_log_member_census {
     Empty {} => Absent
     Cons { head: r, tail: rest } => match r.disposition {
-      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) then Present { value: r } else attempt_append_log_census_row(name: name)
+      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) { Present { value: r } } else { attempt_append_log_census_row(name: name) }
       _ => attempt_append_log_census_row(name: name)
     }
   }
@@ -629,31 +629,35 @@ fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
 // THE ONE SEAL MINT. Business key only; the path is derived from the sealed attempt-state record and read once.
 fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> AttemptAppendLogReading {
   let name = attempt_append_log_member_name(member: member)
-  if name == "" then
+  if name == "" {
     AttemptAppendLogUnready { detail: "not an append-log member" }
-  else
+  } else {
     match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
-      AttemptStateReady { store } =>
+      AttemptStateReady { store } => {
         let member_dir = attempt_state_directory_path(store: store, directory: attempt_state_member_directory(member: member))
         let listed = Filesystem.List(path: member_dir)
-        if listed.success then
+        if listed.success {
           match attempt_append_log_census_row(name: name) {
             Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
             Present { value: row } => match append_log_census_slot(row: row) {
               Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
-              Present { value: slot } =>
+              Present { value: slot } => {
                 let names = filesystem_listing_entry_names(listing: FilesystemDirectoryListing { entries: listed.entries })
                 match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
                   AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
                   AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
                   AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
                 }
+              }
             }
           }
-        else
+        } else {
           AttemptAppendLogUnready { detail: join(["the member directory ", member_dir, " could not be listed; a member is never treated as absent from a failed read"], "") }
+        }
+      }
     }
+  }
 }
 
 // THE HOST-SIDE CREATE, through the SEALED store, for the HostCreatesThenSandboxWrites window. The host's only
@@ -699,24 +703,27 @@ fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String,
     AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
     AttemptAppendLogReady { store: sealed } => match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
-      AttemptStateReady { store: as_store } =>
+      AttemptStateReady { store: as_store } => {
         let member_path = attempt_state_member_path(store: as_store, member: member)
         let exists_read = Filesystem.Read(path: member_path)
         let member_exists = exists_read.success
         match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: member_exists) {
           AppendWriteAdmitted => match instance.worker {
-            WorkerDedicatedAccount =>
+            WorkerDedicatedAccount => {
               let created = Filesystem.WriteCreateNewWithMode(path: member_path, content: "", mode: file_mode_bits(mode: attempt_append_log_events_group_writable_mode))
               if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Present { value: attempt_append_log_events_group_writable_mode } } } else { AttemptAppendLogCreateRefused { detail: created.error } }
-            WorkerIsServiceUser =>
+            }
+            WorkerIsServiceUser => {
               let created = Filesystem.WriteCreateNew(path: member_path, content: "")
               if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Absent } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+            }
           }
           AppendWriteRefused { refusal: r } => match r {
             CreateOverExistingMember => AttemptAppendLogAlreadyExists { path: member_path }
             _ => AttemptAppendLogCreateRefused { detail: attempt_append_log_refusal_detail(refusal: r) }
           }
         }
+      }
     }
   }
 }
