@@ -432,6 +432,28 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       head: RenameHead { to: "string_contains", positional: ["s", "pattern"] },
       scope: RequiresOccurrences
     },
+    // The ambient list reverse and flat_map, moved to their modeled realizations std.algebra list_reverse / list_flat_map. The
+    // ambient spelling has no std home (primitives.dag reverse_contract / flat_map_contract), and a second receiver type would
+    // be a meaning fork like contains, so both are scoped to censused list sites and agree with the declared form on the
+    // order-discriminating fixture of test.claim.list_ambient_heads_agree_witness.
+    RosterHeadRow {
+      call: "reverse",
+      key: "reverse",
+      import_name: "list_reverse",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "list_reverse", positional: ["xs"] },
+      scope: RequiresOccurrences
+    },
+    RosterHeadRow {
+      call: "flat_map",
+      key: "flat_map",
+      import_name: "list_flat_map",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "list_flat_map", positional: ["xs", "f"] },
+      scope: RequiresOccurrences
+    },
     // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
