@@ -1,11 +1,13 @@
 module product.printed_chassis.gpu_duct
 
 import product.printed_chassis.duct_fit_policy { DuctFitPolicy, plug_and_flange_print_policy }
+import std.optional { Optional, Present, Absent }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_count, millilitre_per_second_count, pascal_count }
 import std.euclidean_geometry { Axis3Z }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import extdeps.gpu.passive_card_row { CardRow, row_field_value }
+import extdeps.standards.pcie_cem { cem_slot_envelope }
 import extdeps.fans.types {
   FanMountingPattern, RadialBlowerEnvelope, fan_sound_pressure_at,
   FanSoundPressurePublished, FanSoundPressureNotPublishedAtSpeed, FanSoundPressureUnderdetermined,
@@ -15,7 +17,7 @@ import extdeps.fans.noctua {
   noctua_nf_a9_pwm_figures_standing,
 }
 import extdeps.fans.delta {
-  delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
+  delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
   delta_bfb1012m_rating_standing, delta_bfb1012m_listing_current, delta_bfb1012m_current_reconciliation,
   delta_bfb_series_datasheet_sha256,
 }
@@ -368,9 +370,8 @@ fn card_reference_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDes
 // outlet is attributable now (#15369 rendered it off the DIMENSIONS DRAWING of the pinned BFB sheet:
 // extdeps.fans.delta delta_bfb1012m_outlet, standing CitedToAuthority -- 29.3 mm across the thickness by 53.9
 // long inside a 57.9 +/- 0.5 frame, on the DEPTH edge, the 94.4 mm one, flush to the corner shared with the
-// 97.2 mm edge). The straight-back socket below still bounds both orientations rather than take the cited one;
-// the tracked marker on a16_blower_duct_design's outlet_edge says what consuming it moves and whose printable
-// part it is. Either way the socket floor is open over the housing's whole end from the bottom end up to the
+// 97.2 mm edge). The straight-back socket below takes that cited edge from the design (an absent edge bounds both
+// orientations). Either way the socket floor is open over the housing's whole end from the bottom end up to the
 // keep-out boundary, and the chamber rises over that whole span, so an outlet anywhere in that span -- the cited
 // one at either end of it included -- feeds the window.
 //
@@ -381,15 +382,12 @@ fn card_reference_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDes
 // other's intake across pitch minus thickness, which starves every blower but the last; that is a
 // stated limitation of this model, not a solved one, so a count above one refuses with the gap.
 // WHICH HOUSING EDGE CARRIES THE OUTLET is cited on Delta's drawing (#15369: extdeps.fans.delta
-// delta_bfb1012m_outlet, the DEPTH edge -- see the marker on a16_blower_duct_design for why this socket still
-// bounds both orientations instead of taking it). While the socket bounds both, its cavity is sized to the
-// longer edge, the envelope bounds both orientations, and each orientation's real clearance along the face is
-// derived rather than claimed as one fit.
-type BlowerOutletEdge = OutletOnLengthEdge | OutletOnDepthEdge | OutletEdgeUnread
-
+// delta_bfb1012m_outlet, the DEPTH edge), and the design carries it as Optional<RadialBlowerHousingEdge>. A
+// present edge sizes the cavity and envelope to that edge; an absent edge bounds both orientations (cavity at
+// the longer edge), and each orientation's real clearance along the face is derived rather than claimed as one fit.
 type BlowerDuctDesign {
   blower: RadialBlowerEnvelope
-  outlet_edge: BlowerOutletEdge
+  outlet_edge: Optional<RadialBlowerHousingEdge>
   socket_clearance: Micrometer
   socket_depth: Micrometer
   screw_tool_clearance_radius: Micrometer
@@ -397,32 +395,41 @@ type BlowerDuctDesign {
   slot_pitch: Micrometer
 }
 
-// The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
-// reaching it through the open socket, with room to spare.
-data a16_blower_duct_design: BlowerDuctDesign = BlowerDuctDesign {
-  blower: delta_bfb1012m_envelope,
-  // feature:blower-outlet-edge-consumed -- dissolve-on: the straight-back socket below is sized to the CITED
-  // outlet edge. #15369 rendered that edge off the DIMENSIONS DRAWING of the pinned BFB sheet
-  // (extdeps.fans.delta delta_bfb1012m_outlet, standing CitedToAuthority): an opening 29.3 across the thickness
-  // and 53.9 long inside a 57.9 +/- 0.5 frame, on the DEPTH edge -- the 94.4 mm one -- flush to the corner
-  // shared with the 97.2 mm edge. This record still bounds BOTH orientations, and that is a different claim
-  // from the one this file used to make: it is not that the drawing is silent (it is not), it is that this
-  // socket -- the a16-blower-duct root, a part this PR does not print -- has never been re-cut against the
-  // cited figure, and re-cutting it is a change to someone else's printable part, with its own fit print and
-  // its own witnesses. Taking the cited arm moves blower_cavity_edge from 97.2 to 94.4 (a tighter cavity, so
-  // the friction fit changes), leaves blower_reach_behind at 97.2, and moves exactly two claims:
-  // w_the_face_fit_is_derived_per_outlet_edge and
-  // w_a_narrow_open_passage_with_no_reachable_insert_refuses. The flat-on-end part this PR does print is
-  // insensitive to the choice: its pocket is open over the whole peripheral band, which is witnessed against
-  // the cited figures themselves in test.claim.gpu_duct_witness
-  // (w_the_open_band_covers_the_cited_outlet_whichever_end_the_builder_turns).
-  outlet_edge: OutletEdgeUnread,
-  socket_clearance: micrometer(count: 500),
-  socket_depth: micrometer(count: 10000),
-  screw_tool_clearance_radius: micrometer(count: 3500),
-  card_count: 1,
-  slot_pitch: micrometer(count: 40640),
+// THE BLOWER DESIGN IS THE FAN ROW, THE SOCKET ALLOWANCES, AND THE CARD'S SLOT PITCH. Only the pitch is a
+// card fact: it is the CEM slot width times the row's slot count (extdeps.standards.pcie_cem
+// cem_slot_envelope), so a card whose row has not stated its slot count has no blower design and the refusal
+// names that reading (duct_card_catalog duct_card_unread_reason).
+fn blower_duct_design(slot_pitch: Micrometer) -> BlowerDuctDesign {
+  BlowerDuctDesign {
+    blower: delta_bfb1012m_envelope,
+    // The outlet edge is the one Delta's DIMENSIONS DRAWING cites (extdeps.fans.delta delta_bfb1012m_outlet,
+    // standing CitedToAuthority), read off the row, not chosen here.
+    outlet_edge: Present { value: delta_bfb1012m_outlet.edge },
+    socket_clearance: micrometer(count: 500),
+    socket_depth: micrometer(count: 10000),
+    // The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
+    // reaching it through the open socket, with room to spare.
+    screw_tool_clearance_radius: micrometer(count: 3500),
+    card_count: 1,
+    slot_pitch: slot_pitch,
+  }
 }
+
+fn card_slot_pitch(row: CardRow) -> Micrometer? {
+  match row_field_value(field: row.slot_count) {
+    Present { value: n } => Present { value: cem_slot_envelope(slot_count: n).value }
+    Absent => Absent
+  }
+}
+
+fn blower_duct_design_of(row: CardRow) -> BlowerDuctDesign? {
+  match card_slot_pitch(row: row) { Present { value: p } => Present { value: blower_duct_design(slot_pitch: p) } Absent => Absent }
+}
+
+// The A16 instance, kept for the A16-only route reports (product.printed_chassis.card_cooling_route).
+// test.claim.duct_card_catalog_witness pins that it equals blower_duct_design_of over the A16 row, so the
+// 40.64 mm here and the one the selection derives cannot drift apart.
+data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: micrometer(count: 40640))
 
 fn larger_um(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }
@@ -430,27 +437,27 @@ fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }
 // The socket cavity takes the longest edge the outlet could be on.
 fn blower_cavity_edge(b: BlowerDuctDesign) -> Int {
   match b.outlet_edge {
-    OutletOnLengthEdge => um(m: b.blower.housing_length)
-    OutletOnDepthEdge => um(m: b.blower.housing_depth)
-    OutletEdgeUnread => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+    Present { value: BlowerLengthEdge } => um(m: b.blower.housing_length)
+    Present { value: BlowerDepthEdge } => um(m: b.blower.housing_depth)
+    Absent => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
   }
 }
 
 // The shortest edge that may enter the cavity, which sets the loosest fit along the face.
 fn blower_shortest_entering_edge(b: BlowerDuctDesign) -> Int {
   match b.outlet_edge {
-    OutletOnLengthEdge => um(m: b.blower.housing_length)
-    OutletOnDepthEdge => um(m: b.blower.housing_depth)
-    OutletEdgeUnread => smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+    Present { value: BlowerLengthEdge } => um(m: b.blower.housing_length)
+    Present { value: BlowerDepthEdge } => um(m: b.blower.housing_depth)
+    Absent => smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
   }
 }
 
 // How far the housing reaches back from the socket floor, bounded over the orientations admitted.
 fn blower_reach_behind(b: BlowerDuctDesign) -> Int {
   match b.outlet_edge {
-    OutletOnLengthEdge => um(m: b.blower.housing_depth)
-    OutletOnDepthEdge => um(m: b.blower.housing_length)
-    OutletEdgeUnread => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+    Present { value: BlowerLengthEdge } => um(m: b.blower.housing_depth)
+    Present { value: BlowerDepthEdge } => um(m: b.blower.housing_length)
+    Absent => larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
   }
 }
 

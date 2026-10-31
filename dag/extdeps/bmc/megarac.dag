@@ -208,9 +208,33 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // capability row, the run that exercised it, and how the version string came to be known (an operator
 // read of the web UI, not a machine read) — is a receipt in the observing layer, at
 // gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
+// THE VENDOR'S PAGE LABEL, AND NOTHING MORE. "0.45.3" is what the vendor's release page SAYS this build
+// is called; it is not what the controller reports. The controller reports APP `0.45 03000000`, and the
+// release identity that flows through the platform is DERIVED from those bytes (below, and in
+// gunbc.host.bmc_release_capability_catalog for the capability row). NO production site keys anything on
+// this datum any more: it survives as the page's wording, cited by comments and by witnesses that demand
+// the label is NOT a key of any table here.
 data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.45.3",
+)
+
+// THE RELEASE THE CONTROLLER REPORTS, DECLARED THE WAY THIS MODULE DECLARES EVERY UPSTREAM RELEASE. The
+// controller's APP hpm cell answers `0.45 03000000`: a raw release of "0.45" with NO semantic version, and
+// the auxiliary bytes are deliberately not folded into a patch number. So the release whose redirection
+// codes are catalogued below is raw "0.45" -- NOT the vendor page's label "0.45.3", which is what the
+// vendor's page CALLS this build and which no caller ever carries.
+//
+// WHETHER A PARTICULAR UNIT'S BUILD IS THIS RELEASE is an observation this repository makes, and it stays
+// in the observing layer: gunbc.host.bmc_release_capability_catalog megarac_committed_hpm_check_identity
+// walks the retained stdout through the parser and answers with its causes. The JOIN between that read and
+// the identity declared here is a CLAIM, not a parse inside the vendor model --
+// test.claim.machine_intake.megarac_media_0_45_3_witness
+// w_the_committed_read_lands_on_the_release_the_media_table_catalogues -- so the vendor table does not
+// vanish because one committed capture fails to parse, and this module reads no machine's receipt.
+data megarac_firmware_0_45_reported: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.45",
 )
 
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
@@ -258,7 +282,16 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
-  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3) {
+  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
+    // THE BUILD THE CONTROLLER REPORTS, NOT THE PAGE'S NAME FOR IT. Keyed on the release the controller
+    // reports, because that is the identity a boot carries for this controller once it has read
+    // its own build -- keying this arm on the operator's page label instead would leave a boot that reads
+    // "0.45" unable to tell a STARTED session from a stopped one, attach refusing on every row.
+    // Grounded by boot run 40258937016, which read redirection_status 1 on the session it then
+    // established (session_index 0, cd_error_code 0 before any write and at ready) in the same run that
+    // machine-read this build, and by run 38789347052, whose session read 1 on the build the capability
+    // row's machine read establishes. 0 and 100 are NOT carried over from 0.32: no 0.45 reading returned
+    // them, and 16/19 stay codes this release's catalogue does not name.
     let status = if wire == 1 {
       RedirectionStartedConnectionAccepted
     } else {

@@ -59,14 +59,14 @@ import gunbc.runner.runner_slot_cap_converge {
   slot_cap_holder_deferral_bound,
 }
 import gunbc.runner.runner_host_file_converge {
-  CapDropinOverrideReading,
-  CapDropinsNoLaterSetter,
-  CapDropinsLaterSetter,
-  CapDropinsUnread,
-  cap_dropin_setting_keys,
-  cap_dropins_that_could_override,
+  DropinOverrideReading,
+  DropinsNoLaterSetter,
+  DropinsLaterSetter,
+  DropinsUnread,
+  dropin_setting_keys,
+  dropins_that_could_override,
   parse_loaded_dropin_paths,
-  classify_cap_dropin_override,
+  classify_dropin_override,
   cap_in_place_readback_outcome,
   runner_host_cap_files,
   runner_host_cap_retirement_gate,
@@ -105,7 +105,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostCapPhase,
 }
 import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv, systemctl_stop_argv, systemctl_mask_step, systemctl_unmask_step, systemctl_enable_step, systemctl_start_step, systemctl_stop_step }
-import gunbc.host.host_axis_caps { derived_runner_slot_cap_members, derived_runner_memory_cap_members }
+import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
 
 // THE CONTROLS FOR THE SLOT MEMORY-CAP CONVERGE. The decisions are pure over supplied readings (the
 // boundary these claims discriminate at): the live reading of a slot, whether its worker is running, and
@@ -210,16 +210,13 @@ test fn the_cgroup_row_is_keyed_by_the_slots_own_path() -> Bool {
   }
 }
 
-// The cap files this route writes ARE the one member list (live_deploy's memory members are its prefix),
-// so srv1's rendered bytes do not move.
-test fn the_cap_files_are_the_one_member_list_and_srv1_memory_members_are_its_prefix() -> Bool {
+// The cap files this route writes ARE the one member list; it is the only writer of them since the
+// instance apply's memory-member copy left on 2026-10-30.
+test fn the_cap_files_are_the_one_member_list() -> Bool {
   let files = runner_host_cap_files()
   let members = derived_runner_slot_cap_members()
-  let memory = derived_runner_memory_cap_members()
   length(files) == length(members)
     && all(files, f => any(members, m => (m.dropin_path as String) == (f.path as String) && m.content == f.content))
-    && length(members) == length(memory) + 1
-    && all(memory, m => any(members, n => (n.dropin_path as String) == (m.dropin_path as String) && n.content == m.content))
 }
 
 fn retired_unit() -> NonEmptyStr { "actions-runner@srv3-06.service" as NonEmptyStr }
@@ -477,6 +474,18 @@ test fn a_masked_inactive_cgroupless_owed_unit_does_not_withhold_the_caps() -> B
   let show = masked_show(load: "masked", active: "inactive", cgroup: "")
   pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]))
     && plan_leaves(p: masked_plan_for(show: show))
+}
+
+// Positive: a masked unit whose last run FAILED, with no cgroup, is stopped too -- srv1-02 after it was
+// masked out of a crash loop (L2 run 41154097819). Read as reaching a live cgroup it withheld the cap
+// phase and barred the reload its own role drop-in needed. RED beside it: failed WITH a cgroup, and
+// activating with none (a crash-looping slot between restarts), are not inert.
+test fn a_masked_failed_cgroupless_owed_unit_does_not_withhold_the_caps() -> Bool {
+  let show = masked_show(load: "masked", active: "failed", cgroup: "")
+  pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]))
+    && plan_leaves(p: masked_plan_for(show: show))
+    && plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "failed", cgroup: "/system.slice/x")), needle: "actions-runner@srv3-06.service reload=owed")
+    && plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "activating", cgroup: "")), needle: "actions-runner@srv3-06.service reload=owed")
 }
 
 // RED: masked but still ACTIVE (a cgroup exists) is not inert.
@@ -864,31 +873,31 @@ fn srv1_loaded() -> List<String> {
 // The candidates are the distinct loaded files sorting at or after 50-fleet-tasks.conf, and an equal name
 // in an instance directory (which replaces the template's file) is one; earlier names are not.
 test fn the_later_sorting_dropins_are_the_override_candidates() -> Bool {
-  let got = map(cap_dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: srv1_loaded()), c => c as String)
-  let shadow = map(cap_dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf", "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf"]), c => c as String)
+  let got = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: srv1_loaded(), exempt: []), c => c as String)
+  let shadow = map(dropins_that_could_override(written: [tasks_dropin() as NonEmptyStr], loaded: ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf", "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf"], exempt: []), c => c as String)
   got == ["/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf", "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf", "/etc/systemd/system/actions-runner@.service.d/depriv.conf"]
     && shadow == ["/etc/systemd/system/actions-runner@srv1-01.service.d/50-fleet-tasks.conf"]
 }
 
 // The keys searched are the write's own `Key=` lines, from the content this converge renders.
 test fn the_override_keys_are_the_written_files_own_settings() -> Bool {
-  map(cap_dropin_setting_keys(content: "[Service]\nTasksMax=16384\n"), k => k as String) == ["TasksMax="]
-    && map(cap_dropin_setting_keys(content: "# MemoryMax=1\n[Service]\nMemoryHigh=2\n"), k => k as String) == ["MemoryHigh="]
+  map(dropin_setting_keys(content: "[Service]\nTasksMax=16384\n"), k => k as String) == ["TasksMax="]
+    && map(dropin_setting_keys(content: "# MemoryMax=1\n[Service]\nMemoryHigh=2\n"), k => k as String) == ["MemoryHigh="]
     && grep_files_with_fixed_strings_argv(patterns: ["TasksMax=" as NonEmptyStr], paths: ["/x/60.conf" as NonEmptyStr]) == ["grep", "-l", "-F", "-e", "TasksMax=", "--", "/x/60.conf"]
 }
 
-fn override_is_none(r: CapDropinOverrideReading) -> Bool { match r { CapDropinsNoLaterSetter => true CapDropinsLaterSetter { files: _ } => false CapDropinsUnread { cause: _ } => false } }
-fn override_names(r: CapDropinOverrideReading, path: String) -> Bool { match r { CapDropinsLaterSetter { files: fs } => any(non_empty_to_list(xs: fs), f => (f as String) == path) CapDropinsNoLaterSetter => false CapDropinsUnread { cause: _ } => false } }
-fn override_unread(r: CapDropinOverrideReading) -> Bool { match r { CapDropinsUnread { cause: _ } => true CapDropinsNoLaterSetter => false CapDropinsLaterSetter { files: _ } => false } }
+fn override_is_none(r: DropinOverrideReading) -> Bool { match r { DropinsNoLaterSetter => true DropinsLaterSetter { files: _ } => false DropinsUnread { cause: _ } => false } }
+fn override_names(r: DropinOverrideReading, path: String) -> Bool { match r { DropinsLaterSetter { files: fs } => any(non_empty_to_list(xs: fs), f => (f as String) == path) DropinsNoLaterSetter => false DropinsUnread { cause: _ } => false } }
+fn override_unread(r: DropinOverrideReading) -> Bool { match r { DropinsUnread { cause: _ } => true DropinsNoLaterSetter => false DropinsLaterSetter { files: _ } => false } }
 
 // grep -l: exit 1 is no setter; exit 0 names the setter (RED); any other exit, or exit 0 naming nothing, is unread (RED).
 test fn the_override_grep_reads_three_ways() -> Bool {
   let c = ["/x/60.conf" as NonEmptyStr]
-  override_is_none(r: classify_cap_dropin_override(candidates: c, exit_code: 1, stdout: ""))
-    && override_names(r: classify_cap_dropin_override(candidates: c, exit_code: 0, stdout: "/x/60.conf\n"), path: "/x/60.conf")
-    && override_unread(r: classify_cap_dropin_override(candidates: c, exit_code: 2, stdout: ""))
-    && override_unread(r: classify_cap_dropin_override(candidates: c, exit_code: 0, stdout: ""))
-    && override_is_none(r: classify_cap_dropin_override(candidates: [], exit_code: 2, stdout: ""))
+  override_is_none(r: classify_dropin_override(candidates: c, exit_code: 1, stdout: ""))
+    && override_names(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: "/x/60.conf\n"), path: "/x/60.conf")
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 2, stdout: ""))
+    && override_unread(r: classify_dropin_override(candidates: c, exit_code: 0, stdout: ""))
+    && override_is_none(r: classify_dropin_override(candidates: [], exit_code: 2, stdout: ""))
 }
 
 // One DropInPaths line per unit, unioned; fewer lines than units is an incomplete read, not "no drop-ins".

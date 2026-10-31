@@ -31,7 +31,7 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   fleet_lifecycle_operation_tool_name,
 }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
-import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.dhcp.v4 { StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 
@@ -53,11 +53,15 @@ type HardwareProcurementIntent {
 // would be asking for a port that is deliberately dark. THIS IS A PROSE SCAFFOLD STANDING WHERE A
 // MODELED FACT BELONGS, and it is marked rather than quietly kept: a host having two interfaces
 // with two MACs on two media is exactly the per-host interface roster that does not exist yet
-// (host_network_diagnosis.InterfaceObservation is a shape with no live producer, and MacAddress is
-// still the anemic NonEmptyStr brand in extdeps.dhcp.v4 whose dissolution to
-// extdeps/network/mac.dag is unwritten). DISSOLVES WHEN the interface roster lands and these two
-// MACs become ordinary retired-attachment rows keyed by (host, interface) rather than a sentence --
-// Phase 0/1 of docs/plans/host-network-attachment-converge-design.md.
+// (host_network_diagnosis.InterfaceObservation is still a shape with no live producer). TWO OF THE
+// THREE THINGS THIS SENTENCE WAITED FOR HAVE SINCE LANDED, and the prose says so rather than
+// continuing to assert a wait that is over: extdeps.dhcp.v4's anemic MacAddress brand is deleted
+// (plan gunbc.plans.site_segment_anchor_bmc_reach phase S1, 2026-10-26 -- Cr1000aDhcpLeaseRow.mac_address
+// is now extdeps.network.mac Eui48Address), and the per-host interface inventory exists at
+// gunbc.machine_intake.host_interface_inventory, keyed by (host, function) with the reading's
+// provenance beside it. DISSOLVES WHEN this sentence becomes two retired-attachment rows in that
+// inventory, which is the remaining third -- the rows need a reading of these two ports, and both
+// ports have been deliberately dark since 2026-08-27, so there is nothing to read yet.
 
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = []
 

@@ -194,7 +194,10 @@ data publish_is_not_consent_note: NonEmptyStr = "NtfyPublished establishes serve
 // deployment, which is where a second deployment would add its own binding without touching this
 // file at all.
 //
-// The publish binding for the approval loop lives in gunbc.auth.approval_ntfy_deployment.
+// There is no longer any publish binding for the approval loop to have: the Approve app is the only
+// approval route (gunbc.auth.approval_broker), and the server this module describes is being taken
+// off srv1 by gunbc.fleet.approval_ntfy_retirement. What this module still owns is the shape of the
+// dependency, which outlives the one deployment that used it.
 
 type NtfyPublishReceipt {
   id: String

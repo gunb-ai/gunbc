@@ -17,7 +17,7 @@ module extdeps.linux.user_namespaces
 // the range?" without first answering "which namespace is this row's outside column relative to?" -- the
 // question this module exists to answer.
 
-import std.types { Int, String }
+import std.types { Int, List, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -82,3 +82,13 @@ fn user_namespace_link_path(pid: Int) -> String {
 }
 
 data init_user_namespace_link_path: String = "/proc/1/ns/user"
+
+// THE CAPABILITY ROOTLESSKIT NEEDS FIRST, EXERCISED AS THE ACCOUNT. unshare(1) `--user --map-root-user`
+// creates a user namespace and maps the caller's uid to 0 inside it; setpriv(1) drops root to the given
+// uid and gid first (`--clear-groups` rather than --init-groups, which would need a name). Exit 0: the
+// kernel and any LSM admit an unprivileged user namespace for that uid. Nonzero with an EPERM message is
+// the AppArmor restriction; it does not exercise newuidmap or the subordinate ranges, which a range-wide
+// map needs and this single-uid map does not.
+fn unshare_map_root_user_as_uid_argv(uid: Int) -> List<String> {
+  ["setpriv", concat("--reuid=", to_string(uid)), concat("--regid=", to_string(uid)), "--clear-groups", "unshare", "--user", "--map-root-user", "true"]
+}

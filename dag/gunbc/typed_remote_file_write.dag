@@ -324,6 +324,9 @@ type RemoteFileValidation
   // window shut.
   | DestinationUnchangedUntilRename { expected: String }
 
+// The step's one spelling: the step list and the exit-code reasons both read it.
+data typed_remote_file_re_read_compare_step: String = "re-read-compare"
+
 fn typed_remote_file_re_read_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
   // The same argv as the post-rename read-back: cmp -s - <path>, fed the expected bytes on stdin. The
   // two purposes differ (one protects a rename, one confirms it), the shape is the same, and reusing it
@@ -349,7 +352,7 @@ fn typed_remote_file_validation_steps(write: TypedRemoteFileWrite, validation: R
           // a check of the DESTINATION against the bytes the render was made against, and it is the last
           // thing that runs before the rename. cmp exits 1 on a difference and 2 when the destination
           // cannot be read at all (deleted under us): both are non-zero, both refuse the write.
-          step: "re-read-compare",
+          step: typed_remote_file_re_read_compare_step,
           argv: typed_remote_file_re_read_compare_argv(write: write),
           stdin_payload: e,
         },
@@ -647,6 +650,22 @@ fn typed_remote_file_step(
 
 // A step that carries no stdin still goes through the stdin-bearing operation with an empty payload,
 // so there is ONE leg shape rather than two that could drift apart.
+// A REFUSAL ALWAYS SAYS WHY. The reason used to be "remote step failed: " plus stderr, and the re-read
+// compare writes nothing to stderr (cmp -s is silent by design, its verdict is the exit code), so a
+// destination that differed refused with an EMPTY reason. For that step the exit code is the evidence and
+// is named in the reason; any other step with an empty stderr still carries its exit code.
+fn typed_remote_file_step_failure_reason(step: String, exit_code: Int, stderr: String) -> String {
+  if step == typed_remote_file_re_read_compare_step && exit_code == 1 {
+    "destination differs from the bytes read (cmp exit 1)"
+  } else if step == typed_remote_file_re_read_compare_step && exit_code == 2 {
+    "destination unreadable (cmp exit 2)"
+  } else if trim(s: stderr) == "" {
+    join(["remote step failed: exit=", to_string(exit_code), " with no stderr"], "")
+  } else {
+    concat("remote step failed: ", trim(s: stderr))
+  }
+}
+
 fn typed_remote_file_step_outcome(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -669,7 +688,7 @@ fn typed_remote_file_step_outcome(
         Present {
           value: TypedRemoteFileConvergenceRefused {
             step: step,
-            reason: concat("remote step failed: ", trim(s: r.stderr)),
+            reason: typed_remote_file_step_failure_reason(step: step, exit_code: r.exit_code, stderr: r.stderr),
           },
         }
       }

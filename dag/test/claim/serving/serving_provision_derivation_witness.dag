@@ -24,6 +24,7 @@ import product.fabric.serving_recipe {
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.serving.srv1_serving_launch { srv1_serving_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pins_cohere }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -134,7 +135,7 @@ test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> 
         && (i.image.base.digest_sha256 as String) == (i.build.image.digest_sha256 as String)
         && (i.weights.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
         && i.listen_port == serving_recipe_flash_next_lab_vllm.published_tcp_port
-        && (match i.launch.engine.max_model_len { Absent => true, _ => false })
+        && (match i.launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
         && (match i.launch.engine.kv_cache_dtype { Absent => true, _ => false })
         && (match i.launch.engine.served_model_name { Absent => true, _ => false })
         // The provision names the bytes it starts from shard by shard: the derived per-file roster is
