@@ -50,13 +50,9 @@ type SpoolKind
   | SpoolAttemptExit
   | SpoolPublication
 
-// The closed set of places an entry can stand. HostSpoolStage (gunbc.durable_handoff_host) is the exit spool's
-// private five-stage enum (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed, done = RoleDone,
-// refused = RoleRefused). STAGED, not yet cut: HostSpoolStage still exists at this revision, and the witness
-// claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
-// because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
-// roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
-// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (DESIGN section 3).
+// The closed set of places an entry can stand. It replaces the exit spool's private five-stage enum, deleted in
+// the change node://adhoc-ec4fbad6-dec (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
+// done = RoleDone, refused = RoleRefused).
 type SpoolRole
   = RolePending
   | RoleHandedOff
@@ -155,6 +151,22 @@ fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
         RoleClaimed => Absent
         RoleHandedOff => Absent
         RoleDone => Absent
+      }
+  }
+}
+
+// The name a role carries on the wire, for a reader that prints it: the role's directory, or the role's own name
+// where the spool gives it none.
+fn spool_role_label(kind: SpoolKind, role: SpoolRole) -> String {
+  match spool_role_dir(kind: kind, role: role) {
+    Present { value: d } => d
+    Absent =>
+      match role {
+        RolePending => "pending"
+        RoleHandedOff => "handed-off"
+        RoleClaimed => "claimed"
+        RoleDone => "done"
+        RoleRefused => "refused"
       }
   }
 }

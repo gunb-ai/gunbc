@@ -58,7 +58,7 @@ import gunbc.roadmap.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
   EventBacklogFact, EventBacklogClear, StaleBacklog, EventSpoolStalled, EventBacklogUnobserved, event_backlog_text,
 }
-import gunbc.durable_handoff_host { host_spool_stage_wire }
+import gunbc.spool_queue { SpoolAttemptExit, spool_role_label }
 
 // THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
 // revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding,
@@ -982,7 +982,7 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
     }),
     json_kv(key: "event_backlog", value: match f.event_backlog {
       EventBacklogClear { inbox: i, queued: q } => fact_arm(arm: "clear", members: [json_kv(key: "inbox", value: json_string(s: to_string(value: i))), json_kv(key: "queued", value: json_string(s: to_string(value: q)))])
-      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: host_spool_stage_wire(stage: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
+      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: spool_role_label(kind: SpoolAttemptExit, role: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
       EventSpoolStalled { waiting: w, head: h } => fact_arm(arm: "stalled", members: [json_kv(key: "waiting", value: json_string(s: to_string(value: w))), json_kv(key: "head", value: json_string(s: h))])
       EventBacklogUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
