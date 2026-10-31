@@ -39,6 +39,8 @@ module gunbc.runner.runner_gpu_container_toolchain
 // the browser label will restate the fourth capability nobody has written yet. The row's drop-in path is
 // the single spelling of that file, shared between its writer and every reader.
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, trim, zip_map }
@@ -683,8 +685,8 @@ type GpuDockerLabelsPlan
 // the transport. A caller that has not looked has no way to reach this function, because the only route in
 // gpu_docker_labels_converge_wet goes through the observation, and the fold refuses an unreadable row
 // rather than dropping its label.
-fn gpu_docker_labels_grant_plan(host: HostIdentity, target: NonEmptyStr, witnesses: List<HostCapabilityWitness>) -> GpuDockerLabelsPlan {
-  match runner_host_gpu_docker_labels_dropin_text(host: host, witnesses: witnesses) {
+fn gpu_docker_labels_grant_plan(host: HostIdentity, target: NonEmptyStr, witnesses: List<HostCapabilityWitness>, receipt: RunnerUserSessionReceiptInput) -> GpuDockerLabelsPlan {
+  match runner_host_gpu_docker_labels_dropin_text(host: host, witnesses: witnesses, receipt: receipt) {
     // A refused rendering is a failed converge, never a silent skip: a host that keeps a stale label
     // set because the new one could not be rendered is a host still advertising a capability it lost.
     // THE CONTENT IS THE SUBJECT OF THE WRITE, NOT A STRING SHIPPED BESIDE A PATH, and the route is
@@ -795,6 +797,7 @@ fn gpu_docker_labels_converge_wet(
   ready: Bool,
   admin: SshTarget,
   context: FleetSshExecutionContext,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> GpuDockerLabelsOutcome {
   let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
   let target = gpu_docker_labels_dropin_path
@@ -822,6 +825,7 @@ fn gpu_docker_labels_converge_wet(
           admin: admin,
           context: context,
         ),
+        receipt: receipt,
       )
     } else {
       gpu_docker_labels_revoke_plan(target: target)
@@ -1006,7 +1010,7 @@ fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
                   // no matter what the legs did, and the label stands — the behaviour that kept srv1's slot
                   // serving through the staged-write timeouts this module was built around. Red means "both
                   // ranges are not proven"; it does not mean "something failed".
-                  let labels = gpu_docker_labels_converge_wet(host: host, ready: ready, admin: admin, context: context)
+                  let labels = gpu_docker_labels_converge_wet(host: host, ready: ready, admin: admin, context: context, receipt: runner_user_session_receipt_observed(host: (host as String) as HostIdentity))
                   // THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the binding, so a
                   // failed converge still says why in the artifact a human reads.
                   let body = join(

@@ -1,5 +1,7 @@
 module gunbc.runner.runner_lost_boot_sweep_run
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.optional { Absent, Present }
 import std.types { Bool, Int, NonEmptyStr, String, List, Secret }
 import std.measure { Second, second, second_count, Minute, minute }
@@ -422,7 +424,7 @@ fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, c
     ControllerKeyStaged { key } => {
       let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
         ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "lost-boot sweep dry run: the gunbai-ci installation token was not minted")
-        ControllerTokenMinted { token } => plan_without_deleting(host: host, standing: standing, current: current, token: token)
+        ControllerTokenMinted { token } => plan_without_deleting(host: host, standing: standing, current: current, token: token, receipt: runner_user_session_receipt_observed(host: host))
       }
       match remove_staged_controller_key(key_path: key_path) {
         Present { value: cause } => exit_failure(reason: cause)
@@ -435,12 +437,12 @@ fn dry_run_under_staged_key(host: HostIdentity, standing: HostControlStanding, c
 // THE PLAN IS THE DELETING ARM'S OWN (sweep_plan over the same population and the same roster read), so what the dry
 // run records is what the deleting arm would select. A refused plan is recorded beside the admitted boot and fails the
 // run; a selected one is recorded and the run succeeds having requested no deletion.
-fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken) -> ProcessExit
+fn plan_without_deleting(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key")]
 {
   let organization = github_organization_ref()
-  match current_service_population(host: standing, boot: current) {
+  match current_service_population(host: standing, boot: current, receipt: receipt) {
     CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
     CurrentServicePopulationDerived { population } =>
       match sweep_plan(organization: organization, population: population, report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)) {
@@ -475,7 +477,7 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
             required: gunbai_ci_registration_goal.required_permissions,
             reason: "the lost-boot sweep observes the gunbai-ci App control plane before deregistering stale registrations" as NonEmptyStr,
           )
-          sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane)
+          sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane, receipt: runner_user_session_receipt_observed(host: host))
         }
       }
       match remove_staged_controller_key(key_path: key_path) {
@@ -486,12 +488,12 @@ fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, cur
   }
 }
 
-fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+fn sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState, receipt: RunnerUserSessionReceiptInput) -> ProcessExit
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key")]
 {
   let organization = github_organization_ref()
-  match current_service_population(host: standing, boot: current) {
+  match current_service_population(host: standing, boot: current, receipt: receipt) {
     CurrentServicePopulationRefused { refusal } => exit_failure(reason: population_refusal_text(refusal: refusal))
     CurrentServicePopulationDerived { population } =>
       match sweep_plan(organization: organization, population: population, report: organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)) {
