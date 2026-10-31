@@ -371,16 +371,19 @@ fn printer_hold_enter(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->Pr
 // budget: 90 ticks at a 10 s cadence.
 data printer_operator_approval_window:Second = second(count:900)
 
-// HOW LONG THE OPERATOR HAS TO DECIDE THE STALE-HOLD OBSERVATION. It is NOT the same figure as the
-// bed-clear card above, and the difference is the shape of the route, not a mood: the bed-clear card
-// is answered by the run that filed it, while this card is filed by one dispatch and REDEEMED by a
-// later one -- the window has to cover a CI queue, a build and the next dispatch reaching the hold
-// arm, not just a thumb on a phone. The figure is the one this codebase already declares twice for
-// exactly that shape (gunbc.auth.branch_run_grant.branch_run_grant_file_window and
-// gunbc.auth.gcp_iam_converge_run.gcp_iam_converge_file_window, both 1800 s), so it is a reused
-// constant, not a new one. A longer window is safe here because the consent is pinned to the hold's
-// (root, slot, holder, generation): if any controller takes the slot in the meantime the generation
-// moves, the derived escalation moves with it, and the old answer cannot reach the new hold.
+// HOW LONG THE OPERATOR'S ANSWER TO THE STALE-HOLD CARD STAYS GOOD FOR. This is its OWN policy, not
+// a copy of the two 1800 s figures elsewhere: gunbc.auth.branch_run_grant.branch_run_grant_file_window
+// and gunbc.auth.gcp_iam_converge_run.gcp_iam_converge_file_window are how long a run that FILES a card
+// and then POLLS for it stays alive (both spend the figure as a poll budget, window/cadence), whereas
+// nothing here polls -- the card is filed by one dispatch and REDEEMED by a later one, so the figure
+// has to cover an operator's phone, a CI queue, a build and the next dispatch reaching the hold arm.
+// Same magnitude as those two on purpose: it is the longest human-answer window the fleet already
+// runs, and inventing a new magnitude for a third route would be a number with no precedent. It is
+// deliberately NOT the 3600 s of branch_run_grant_window, because this consent attests to a physical
+// state -- nobody is driving the printer -- and the longer it lives, the more the world can move
+// behind it. The pin that makes even 1800 s safe is the subject: it names (root, slot, holder,
+// generation), so if any controller takes the slot in the meantime the generation moves, the derived
+// escalation moves with it, and the old answer cannot reach the new hold.
 data printer_hold_observation_file_window:Second = second(count:1800)
 
 // WHAT ASKING THE OPERATOR ENDED UP DOING, as a type rather than an exit code. The caller has to know
