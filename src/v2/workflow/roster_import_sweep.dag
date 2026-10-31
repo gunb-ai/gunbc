@@ -1965,13 +1965,6 @@ type RosterByteSpan {
   end: Int
 }
 
-fn roster_text_between(text: String, start: Int, end: Int) -> Optional<String> {
-  let octets = bytes_octets(b: utf8_encode_bytes(s: text))
-  let a = roster_scalar_boundary(octets: octets, byte: start)
-  let b = roster_scalar_boundary(octets: octets, byte: end)
-  if a < 0 || b < a { Absent } else { Present { value: substring(s: text, start: a, end: b) } }
-}
-
 // All match arms of a parse, as their captured sequences (any pattern shape).
 fn roster_all_arm_caps(parse_root: Node) -> List<Node> {
   fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
