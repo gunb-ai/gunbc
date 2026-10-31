@@ -1278,7 +1278,7 @@ fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
 }
 
 // THE CASOUTCOME SEAL'S DELIBERATE RED, held while std.durable_compare_and_set does not seal `CasOutcome`
-// (trigger: the sealing change, gunbc#14447 — only admitted realizations mint `CasCommitted`). The claim
+// (trigger: sole_constructor honored on a coproduct, so only admitted realizations mint `CasCommitted`; gunbc#14447 was a stale citation, it is the approve_ios PR). The claim
 // hands the compiler a fixture that authors `CasCommitted` outside its realizing module and asserts the
 // SoleConstructorViolation the seal will raise; it fails today because nothing refuses the forgery. When
 // the seal lands it passes, this roster reports it stale and the row is deleted, leaving the claim as a
