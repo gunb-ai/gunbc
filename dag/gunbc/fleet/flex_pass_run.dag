@@ -571,10 +571,11 @@ data flex_carry_home_host: NonEmptyStr = operator_host_srv1 as NonEmptyStr
 fn flex_carry_home_refusal(host: HostnameShortCapture) -> NonEmptyStr? {
   match host {
     HostnameShortCaptured { value: observed } =>
-      if observed == flex_carry_home_host as String {
+      let home = flex_carry_home_host as String
+      if observed == home {
         none
       } else {
-        Present { value: concat(concat(concat("this pass is on host ", observed), concat(", not on the carry home host ", flex_carry_home_host as String)), "; the carry is that host's file and is not visible from here") as NonEmptyStr }
+        Present { value: concat(concat(concat("this pass is on host ", observed), concat(", not on the carry home host ", home)), "; the carry is that host's file and is not visible from here") as NonEmptyStr }
       }
     HostnameShortCaptureRefused { reason: r } =>
       Present { value: concat("this pass cannot establish which host it is on (", concat(r, "); only the carry home host may read the carry")) as NonEmptyStr }
