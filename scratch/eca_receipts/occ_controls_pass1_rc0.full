@@ -1,0 +1,40 @@
+Running as unit: run-radcdb4c377a147949ce017f7fe307f22.scope; invocation ID: eb8a9979d38c433f9344f1d5062c81b3
+user_work_scope: skip wrap into gunbc-user-work.slice (BoundedByObservedCgroup)
+[workspace-root] discovered /home/briansrls/eca
+✓ typecheck v2.std.compilers.target_model done in 51 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 3 seconds
+✓ typecheck v2.compiler.resolve done in 3 seconds
+✓ typecheck v2.compiler.infer done in 5 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.workflow.roster_import_sweep done in 3 seconds
+[pre-entry] phase=workspace_discovery ms=6 scale=closure
+[pre-entry] phase=pool_source_tokenize ms=10816 scale=closure
+[pre-entry] phase=pool_source_newline_index ms=307 scale=closure
+[pre-entry] phase=demand_layout_acquire ms=16638 scale=closure
+[pre-entry] phase=pool_heads_parse ms=1104 scale=closure
+[pre-entry] phase=pool_census_parse ms=1486 scale=closure
+[pre-entry] phase=closure_name_census_build ms=490 scale=closure
+[pre-entry] phase=reference_pool_names_from_census ms=11 scale=closure
+[pre-entry] phase=selection_tier_closure_files ms=6397 scale=closure
+[pre-entry] phase=closure_load ms=6419 scale=closure
+[pre-entry] phase=closure_parse ms=4990 scale=closure
+[pre-entry] phase=closure_resolve ms=215 scale=closure
+[pre-entry] phase=closure_normalize ms=650 scale=closure
+[pre-entry] phase=closure_typecheck ms=93279 scale=closure
+[pre-entry] phase=closure_parent_envs ms=2 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=55 scale=closure
+[pre-entry] phase=closure_ownership ms=1166 scale=closure
+[pre-entry] phase=reconcile_root_bare_underlay ms=451 scale=closure
+[pre-entry] phase=reconcile_root_variant_base ms=78 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=136264 scale=closure
+[pre-entry] population pool_modules=refused closure_files=216 demand_acquired_modules=216
+[pre-entry] process_cpu user_ms=134924 sys_ms=1336 max_rss_kib=1775272
+◐ started Filesystem.Read dag/extdeps/uri.dag
+◐ started Filesystem.Read dag/extdeps/uri.dag
+◐ started Filesystem.Read dag/extdeps/uri.dag
+◐ started Filesystem.Read dag/extdeps/uri.dag
+◐ started Filesystem.Read dag/extdeps/uri.dag
+◐ started Filesystem.Read dag/std/optional.dag
+◐ started Filesystem.Read dag/extdeps/uri.dag
+==DONE rc=0
