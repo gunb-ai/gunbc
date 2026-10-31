@@ -108,7 +108,11 @@ data printer_operator_observation_verb:AuthorizationScope = AuthorizationScope {
 
 data printer_operator_observation_attempt:AttemptIdentity = ("printer-start-stale-hold-release" as NonEmptyStr) as AttemptIdentity
 
-data printer_operator_observation_purpose:NonEmptyStr = "no printer converge for this escalation is running and printer-01 is idle; free the stale printer-start hold"
+// THE SENTENCE THE OPERATOR READS ON THE PHONE. It states what they are attesting to -- no controller
+// driving this printer, the printer idle -- and what approving frees. It is NOT the intent: the intent
+// is the hashed (root, slot, holder, generation) below, and this line is allowed to be reworded
+// without invalidating a decision already made.
+data printer_operator_observation_purpose:NonEmptyStr = "no fleet controller is driving printer-01 and the printer is idle; approving frees the stale printer-start hold on the fleet print-controller slot"
 
 // THE INTENT IS THE PLANNED ACTION ITSELF: which slot, under which root, over which holder and
 // generation. Hashing a constant label here would let an observation approved for ANY hold release
@@ -362,11 +366,22 @@ fn printer_hold_enter(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->Pr
   }
 }
 
-// HOW LONG THE OPERATOR HAS TO DECIDE A PRINTER-START CONSENT, declared ONCE. The print-start
-// bed-clear card and the stale-hold observation card are two different questions about the same
-// physical act, and a second expiry figure would be a second policy: whichever card the operator
-// reaches for, the window is this one.
+// HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD, declared ONCE. The card is
+// filed and answered inside the run that filed it (it polls), so its window is that run's poll
+// budget: 90 ticks at a 10 s cadence.
 data printer_operator_approval_window:Second = second(count:900)
+
+// HOW LONG THE OPERATOR HAS TO DECIDE THE STALE-HOLD OBSERVATION. It is NOT the same figure as the
+// bed-clear card above, and the difference is the shape of the route, not a mood: the bed-clear card
+// is answered by the run that filed it, while this card is filed by one dispatch and REDEEMED by a
+// later one -- the window has to cover a CI queue, a build and the next dispatch reaching the hold
+// arm, not just a thumb on a phone. The figure is the one this codebase already declares twice for
+// exactly that shape (gunbc.auth.branch_run_grant.branch_run_grant_file_window and
+// gunbc.auth.gcp_iam_converge_run.gcp_iam_converge_file_window, both 1800 s), so it is a reused
+// constant, not a new one. A longer window is safe here because the consent is pinned to the hold's
+// (root, slot, holder, generation): if any controller takes the slot in the meantime the generation
+// moves, the derived escalation moves with it, and the old answer cannot reach the new hold.
+data printer_hold_observation_file_window:Second = second(count:1800)
 
 // WHAT ASKING THE OPERATOR ENDED UP DOING, as a type rather than an exit code. The caller has to know
 // WHICH of these happened -- a card was filed, a card was already on file, nothing is held, or the
@@ -439,15 +454,13 @@ fn printer_hold_release_request_filing(root:NonEmptyStr,slot_key:NonEmptyStr,app
         // release is the release arm's to conclude, at its own clock, against the hold it meets; this
         // route only reports what stands on file and files nothing.
         PrinterHoldOperatorGrantHeld {decision:_}=>HoldReleaseCardOnFile {escalation_id:escalation,detail:"already decided; the next converge that meets the hold acts on that decision" as NonEmptyStr}
-        PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantNotFiled {escalation_id:_}}=>
-          match stored_request_from_authorization(request:printer_operator_observation_request(hold_root:root,hold_slot:slot_key,holder:holder,generation:generation),issued_at:now,expires_at:approval_expires_at(issued:now,window:printer_operator_approval_window)) {
-            Absent=>HoldReleaseRefused {reason:join(["the operator-observation request for the stale printer-start hold on slot ",slot_key as String," cannot be built into a stored request; no card was filed and the hold stays held"],"") as NonEmptyStr}
-            Present{value:stored}=>
-              match approval_file_stored_request(stored:stored,body_file_name:"printer-hold-release-submit.json",submit_timeout:second(count:30)) {
-                ApprovalFiled {escalation_id:f,request_id:_,expires_at:_,notification:_}=>HoldReleaseCardFiled {escalation_id:f}
-                ApprovalFilingRefused {reason:r}=>HoldReleaseRefused {reason:join(["the Approve broker refused the operator-observation request for the stale printer-start hold on slot ",slot_key as String,": ",r as String,"; no card was filed and the hold stays held"],"") as NonEmptyStr}
-              }
+        PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantNotFiled {escalation_id:_}}=>{
+          let stored = stored_request_from_authorization(request:printer_operator_observation_request(hold_root:root,hold_slot:slot_key,holder:holder,generation:generation),issued_at:now,expires_at:approval_expires_at(issued:now,window:printer_hold_observation_file_window))
+          match approval_file_stored_request(stored:stored,body_file_name:"printer-hold-release-submit.json",submit_timeout:second(count:30)) {
+            ApprovalFiled=>HoldReleaseCardFiled {escalation_id:escalation}
+            ApprovalFilingRefused {reason:r}=>HoldReleaseRefused {reason:join(["the Approve broker refused the operator-observation request for the stale printer-start hold on slot ",slot_key as String,": ",r as String,"; no card was filed and the hold stays held"],"") as NonEmptyStr}
           }
+        }
         // Filed and undecided, decided for another intent, unreadable, or refused by authorize: the
         // same typed detail the release arm gives. Pending and already-decided mean the operator has
         // the card in front of them (or has answered it), so they are reported, not refused; the rest

@@ -443,7 +443,7 @@ test fn the_release_request_asks_through_the_broker_and_never_conscribes_a_decis
       HoldReleaseCardFiled { escalation_id: _ } => false
       HoldReleaseCardOnFile { escalation_id: _, detail: _ } => false
       HoldReleaseNothingHeld { detail: _ } => false
-      HoldReleaseRefused { reason: r } => string_contains(s: r, pattern: "no card was filed")
+      HoldReleaseRefused { reason: r } => string_contains(s: r as String, pattern: "no card was filed")
     }
     // Nothing was written into the store the release arm reads: the arm still answers that this hold's
     // observation is NOT FILED, which is only true if the route did not file it by hand.
