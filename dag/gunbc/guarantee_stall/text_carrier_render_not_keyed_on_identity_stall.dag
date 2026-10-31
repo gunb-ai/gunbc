@@ -16,7 +16,6 @@ data text_carrier_render_not_keyed_on_identity_stall: GuaranteeStall = Guarantee
     "v1.compiler.emit_rust.render_rust_applied_type",
     "v1.compiler.emit_rust.render_rust_decl_type",
     "v1.compiler.emit_rust.render_rust_fn_sig_type",
-    "v1.compiler.emit_rust.render_rust_type_with_applied_binding_in_scope",
     "v1.compiler.emit_rust.render_rust_type_without_applied_binding",
     "v1.compiler.emit_rust.rust_operand_realization_of_type",
     "v1.compiler.emit_rust.data_def_annotation_is_named_refinement"

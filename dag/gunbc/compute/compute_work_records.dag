@@ -1,0 +1,79 @@
+module gunbc.compute.compute_work_records
+
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.compute.host_capacity { compute_root }
+
+// THE PER-IDENTITY WORK DIRECTORY AND THE TWO FILES THE PRODUCER LEAVES IN IT. work/<identity>/ holds the checkout,
+// the output directory and the cargo target (all scratch of one run, owned by gunbc.compute.work_provider_local)
+// and two files:
+//
+//   consumption -- THE HOST RECORD, a plain text file the producer writes once when it settles. It is the only
+//     durable carrier of the capacity standing, the peak sample and the attempt settlement for this host, so it is a
+//     store, sealed in place here with NO change to its bytes (ruling stern-ram-763 2026-10-24, plain-file record
+//     stores). Moving it onto SlotStore is a FormatConsolidation follow-up, not done here.
+//   log -- the unit's captured stdout and stderr, written and read within one run: the producer writes it, then the
+//     materialization commit reads it back into the store record (compute_store_commit), which is the durable copy.
+//     Nothing reads it after the run, so it is scratch within one run (ruling M1, NotAStore); its path is carried
+//     in the outcome as a located reading and is derived here rather than spelled.
+//
+// The record is minted from the declaration, the instance's compute root and the identity; no mint takes a path.
+
+type ComputeWorkDeclaration { member: NonEmptyStr, consumption: NonEmptyStr, log: NonEmptyStr }
+
+data compute_work_slots: ComputeWorkDeclaration = ComputeWorkDeclaration {
+  member: "work" as NonEmptyStr,
+  consumption: "consumption" as NonEmptyStr,
+  log: "log" as NonEmptyStr,
+}
+
+type ComputeWorkRecords sole_constructor { dir: NonEmptyStr }
+
+fn compute_work_root(instance: HostDashboardInstance) -> String {
+  join([compute_root(instance: instance) as String, "/", compute_work_slots.member as String], "")
+}
+
+fn compute_work_records(instance: HostDashboardInstance, identity: String) -> ComputeWorkRecords {
+  ComputeWorkRecords { dir: join([compute_work_root(instance: instance), "/", identity], "") as NonEmptyStr }
+}
+
+fn compute_work_dir(records: ComputeWorkRecords) -> String {
+  records.dir as String
+}
+
+fn compute_work_consumption_path(records: ComputeWorkRecords) -> String {
+  join([records.dir as String, "/", compute_work_slots.consumption as String], "")
+}
+
+fn compute_work_log_path(records: ComputeWorkRecords) -> String {
+  join([records.dir as String, "/", compute_work_slots.log as String], "")
+}
+
+type ComputeWorkRecordWrite
+  = ComputeWorkRecordWritten
+  | ComputeWorkRecordUnwritten { error: String }
+
+fn compute_work_consumption_write(records: ComputeWorkRecords, content: String) -> ComputeWorkRecordWrite {
+  let written = Filesystem.Write(path: compute_work_consumption_path(records: records), content: content)
+  if written.success { ComputeWorkRecordWritten } else { ComputeWorkRecordUnwritten { error: written.error } }
+}
+
+type ComputeWorkRecordRead
+  = ComputeWorkRecordPresent { content: String }
+  | ComputeWorkRecordUnread { error: String }
+
+fn compute_work_consumption_read(records: ComputeWorkRecords) -> ComputeWorkRecordRead {
+  let read = Filesystem.Read(path: compute_work_consumption_path(records: records))
+  if read.success { ComputeWorkRecordPresent { content: read.content } } else { ComputeWorkRecordUnread { error: read.error } }
+}
+
+fn compute_work_log_write(records: ComputeWorkRecords, content: String) -> ComputeWorkRecordWrite {
+  let written = Filesystem.Write(path: compute_work_log_path(records: records), content: content)
+  if written.success { ComputeWorkRecordWritten } else { ComputeWorkRecordUnwritten { error: written.error } }
+}
+
+fn compute_work_log_read(records: ComputeWorkRecords) -> ComputeWorkRecordRead {
+  let read = Filesystem.Read(path: compute_work_log_path(records: records))
+  if read.success { ComputeWorkRecordPresent { content: read.content } } else { ComputeWorkRecordUnread { error: read.error } }
+}

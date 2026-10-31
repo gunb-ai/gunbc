@@ -35,6 +35,20 @@ data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
 }
 
+data one_serving_context_cap: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_serving_context_cap"),
+  decided: "2026-10-30",
+  section: "3",
+  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
+}
+
+data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
+  decided: "2026-10-30",
+  section: "4d",
+  provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -124,6 +138,13 @@ data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
   decided: "2026-09-16",
   section: "Building & checks",
   provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
+}
+
+data bad_process_is_worse_than_no_process: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bad_process_is_worse_than_no_process"),
+  decided: "2026-10-30",
+  section: "6",
+  provenance: "Operator ruling, 2026-10-30: a bad process is worse than no process. A six-hour census that does not answer the decision is a broken method, not a standard to enforce. Until real lenses have bounded, discriminating consumers, prefer grep, qualitative source inspection and small real-route witnesses for investigation. These establish facts only over their inspected scope; they never silently discharge a completeness obligation. Census process is retired by default: existing census instruments and census-conditioned prerequisites are removed without successor instruments; the semantic requirements they served remain. The cost/coverage rule is permanent, and lens support landing does not revive the retired censuses.",
 }
 
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
@@ -560,6 +581,7 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
@@ -624,6 +646,8 @@ fn design_rulings() -> List<DesignRuling> {
     pattern_atom_naming_a_visible_value_is_never_a_binder,
     unread_catch_all_binder_refuses,
     bmc_secure_goes_live_per_controller_family,
+    one_serving_context_cap,
+    passive_card_adjacency_is_judged_per_slot_and_by_measurement,
   ]
 }
 
