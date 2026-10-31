@@ -5,7 +5,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
+import gunbc.fabric.fabric_storage_file_store { FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_storage_slots }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
@@ -50,13 +51,20 @@ fn probe_event(partition: PartitionId, parent: HeadExpectation, at: EpochSecs, p
   }
 }
 
-fn fabric_event_log_probe(root: NonEmptyStr) -> ProcessExit {
-  let files = fabric_storage_file_root(root: root)
-  let step = match fabric_storage_file_root_ensure(root: files) {
-    FabricStorageRootRefused { area: _, detail: _ } => 1
-    FabricStorageRootReady => fabric_event_log_probe_step(store: FabricStorageLocalFiles { root: files }, partition: "probe-seats" as PartitionId)
+// THE STORE IS OBTAINED, NOT NAMED. This entry used to take the store's directory from whoever ran it --
+// a caller-chosen root, the route this lane deletes -- so it runs against the declared store of the
+// instance the placement declares for the host it runs on, through the ONE mint (the declared member chain
+// and that instance, never a path). An unstanding store exits with the mint's area and cause; the probe
+// never invents a directory to probe instead.
+fn fabric_event_log_probe() -> ProcessExit {
+  match fabric_store_open(members: fabric_storage_slots, instance: srv1_live_dashboard_instance(), entry_mode: none) {
+    FabricStoreUnready { area: a, detail: d } => exit_failure(reason: join(["the fabric store is not standing at ", a, ": ", d], ""))
+    FabricStoreReady { store: ops } => {
+      let step = fabric_event_log_probe_step(store: FabricStorageLocalFiles { operations: ops }, partition: "probe-seats" as PartitionId)
+      if step == 0 { ExitSuccess }
+      else { exit_failure(reason: join(["event-log probe failed at step ", show_int(step)], "")) }
+    }
   }
-  if step == 0 { ExitSuccess } else { exit_failure(reason: join(["fabric event log probe failed at step ", to_string(step)], "")) }
 }
 
 fn fabric_event_log_probe_served(endpoint: NonEmptyStr, partition: NonEmptyStr) -> ProcessExit {
