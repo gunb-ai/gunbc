@@ -1,7 +1,7 @@
 module test.claim.compute.work_request_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import std.materialization_store_grant { DurableHostVolume }
 import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_label }
 import gunbc.compute.work_provider_local {
@@ -61,10 +61,14 @@ import gunbc.compute.work_request {
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
 
+// A fixture hex is admitted by the same decoder git's own plumbing output goes through. The fallback is
+// NOT the text wearing a nominal label -- that was a String -> GitObjectId cast with no declared route,
+// which the native emitter refuses -- it is git's NULL id, so a fixture no validator admits is visibly
+// wrong (its id is the null id) instead of silently admitted.
 fn tree(hex: String) -> WorkSubject {
   match git_object_id_from_untagged_hex(hex: hex) {
     Present { value: oid } => ExactTree { tree: oid }
-    Absent => ExactTree { tree: hex as GitObjectId }
+    Absent => ExactTree { tree: git_null_sha1_object_id }
   }
 }
 
@@ -76,7 +80,7 @@ fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider
 fn provider_tree_oid(hex: String) -> GitObjectId {
   match git_object_id_from_untagged_hex(hex: hex) {
     Present { value: oid } => oid
-    Absent => hex as GitObjectId
+    Absent => git_null_sha1_object_id
   }
 }
 

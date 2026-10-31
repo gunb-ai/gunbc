@@ -2,10 +2,13 @@ module test.claim.fleet.fleet_converge_cli_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// The fallback is git's NULL id, not the text wearing a nominal label: a String -> GitObjectId cast has
+// no declared conversion route and the native emitter refuses it. A fixture no validator admits is then
+// visibly the null id rather than an admitted id.
 fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
   match git_object_id_from_untagged_hex(hex: hex) {
     Present { value: oid } => oid
-    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+    Absent => git_null_sha1_object_id
   }
 }
 
