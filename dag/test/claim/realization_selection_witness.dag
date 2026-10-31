@@ -1157,7 +1157,7 @@ test fn term_valuation_order_agrees_with_equality() -> Bool {
   let named = tv(decl_field_ref(module_path: m, decl_name: "id_a", field_name: "x"))
   let ref1 = tv(decl_ref(module_path: m, decl_name: "n::x"))
   let ref2 = tv(decl_field_ref(module_path: m, decl_name: "n", field_name: "x"))
-  let law = fn(x: TermValuation, y: TermValuation) -> Bool {
+  let law = fn(x, y) {
     is_eq_ordering(o: term_valuation_compare(a: x, b: y)) == term_valuation_eq(a: x, b: y)
   }
   law(a_hi, a_hi_again) && law(a_hi, a_scale) && law(a_hi, a_goal)
