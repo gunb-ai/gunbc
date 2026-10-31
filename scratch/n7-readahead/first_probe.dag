@@ -1,0 +1,20 @@
+module probe.first_probe
+
+import std.types { Bool, Int, String, List }
+import std.optional { Optional, Present, Absent }
+
+data three_one: List<Int> = [3, 1]
+data none_int: List<Int> = []
+
+fn shape(o: Optional<Int>) -> String {
+  match o {
+    Present { value: v } => "Present(" + to_string(v) + ")"
+    Absent => "Absent"
+  }
+}
+
+// What the ambient first returns for [3,1] and [], printed raw and through a match on its declared Optional type.
+fn first_nonempty_raw() -> String { to_string(first(three_one)) }
+fn first_empty_raw() -> String { to_string(first(none_int)) }
+fn first_nonempty_matched() -> String { shape(o: first(three_one)) }
+fn first_empty_matched() -> String { shape(o: first(none_int)) }
