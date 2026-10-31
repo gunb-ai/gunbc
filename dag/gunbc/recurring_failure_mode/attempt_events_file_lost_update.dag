@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.attempt_events_file_lost_update
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data attempt_events_file_lost_update: RecurringFailureMode = RecurringFailureMode {
+  identity: "attempt_events_file_lost_update" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an append-only attempt event log (the LogStore of the append-log design, reading through the existing JSONL readers) that every writer of an attempt's events appends to, sufficient for a writer outside the harness process (the belt) to add an event without reading or replacing the bytes of another writer" } },
+
+  receipts: [
+    "INVALID STATE: the attempt's events file (provider-events.jsonl, read line by line by gunbc.roadmap.roadmap_provider_events) loses a line another writer already wrote, because each writer REPLACES the file from its own view. Inventory rows S10d58aea (gunbc.harness.harness_turn harness_write_events, whole-file rewrite of the turn's in-memory accumulator) and S3ee9afc1 (gunbc.harness.harness_cli harness_seat_wait_announce_and_sleep, Filesystem.Write of one line).",
+    "RECEIPT: the cli's placement wait N overwrote wait N-1, and harness_run_turn's turn.started overwrote every wait line, so the stream lost the placement history the dashboard reads to say 'waiting for a seat'. Reproduced by test.claim.harness_events_lost_update_wet_witness against the pre-fix writers: two waits left one line.",
+    "DISTINGUISHING FACTS: no error anywhere (Filesystem.Write succeeds); the file is valid JSONL with fewer lines than were announced; the loss appears only with two writers, so a single-writer test passes.",
+    "HARM: a silent loss of progress evidence: a worker waiting for placement reads as never having waited.",
+    "RUNG FOUND AT: mitigatable. CURRENT RUNG: mechanically preventable for the in-process writers: gunbc.harness.harness_turn harness_events_append reads what is there and appends (an unreadable file is a refusal, never an empty seed), and the cli wait loop completes before harness_run_turn is called, so the two never write at the same time; the wet witness pins every earlier line surviving in order. The write is still a read-modify-write, not an atomic append.",
+    "NAMED RESIDUAL: a writer outside this process (the belt, which initializes the file empty, and any other) is NOT excluded; a concurrent belt write between this process's read and write is still lost. No CAS or append primitive fits this file: gunbc.durable_cas_file_store lays out generation files <root>/<key>.<n>, and Filesystem has no Append operation. Also found: file_compare_and_set_retained's admit_callers does not admit the harness; left unchanged.",
+    "CEILING: structurally guaranteed once appends are atomic. NEXT-RUNG TRIGGER: the append-log LogStore named in the standing.",
+  ],
+  evidence: [],
+}
