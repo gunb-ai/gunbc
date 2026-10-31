@@ -1,12 +1,13 @@
 module test.claim.ci.ci_deploy_target_host_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import gunbc.ci.ci_spec { gunbc_ci_deploy_srv1_stage }
 import gunbc.ci.ci_deploy_target_host { host_pinned_runner_spec }
 import gunbc.ci.ci_fleet { srv3_offer, srv4_offer }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
 import gunbc.runner.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_evidence_gated_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
 }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
@@ -135,7 +136,7 @@ fn selector_labels(spec: RunnerSpec) -> List<String> {
 
 // A host whose labels do not resolve holds NO label, so it satisfies no selector.
 fn registered(host: HostIdentity) -> List<String> {
-  match runner_registration_labels(host: host) {
+  match runner_evidence_gated_registration_labels(host: host, receipt: ReceiptAbsent) {
     RegistrationLabelsResolved { labels: labels } => labels
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }
@@ -164,7 +165,7 @@ test fn srv3_registration_carries_platform_class_and_host_labels() -> Bool {
 // PLATFORM LABELS ARE THE HOST'S OWN, NOT A FLEET DEFAULT. A host with no compute offer has no
 // observed OS or architecture, so it refuses instead of being registered as linux/arm64.
 test fn host_without_a_compute_offer_refuses_registration_labels() -> Bool {
-  match runner_registration_labels(host: "not-an-enrolled-host" as HostIdentity) {
+  match runner_evidence_gated_registration_labels(host: "not-an-enrolled-host" as HostIdentity, receipt: ReceiptAbsent) {
     RegistrationLabelsRefused { host: _, cause: _ } => true
     RegistrationLabelsResolved { labels: _ } => false
   }
