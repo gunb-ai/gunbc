@@ -323,7 +323,7 @@ type InjectionFields {
 
 fn injection_of(plan: ConversionPlan) -> InjectionFields? {
   match plan.phase {
-    InjectionPhase { source: sc, target: t, constructor: _, safety: sf } => Present { value: InjectionFields { source: sc, target: t, safety: sf } }
+    InjectionPhase { source: sc, target: t, safety: sf } => Present { value: InjectionFields { source: sc, target: t, safety: sf } }
     UnfoldPhase { row: _ } => none
     InverseUnfoldPhase { row: _ } => none
   }
@@ -418,7 +418,7 @@ type InjectionSafety {
 type ConversionPhase
   = UnfoldPhase { row: LiteralHomomorphism }
   | InverseUnfoldPhase { row: LiteralHomomorphism }
-  | InjectionPhase { source: DeclarationRef, target: DeclarationRef, constructor: DeclarationRef, safety: InjectionSafety }
+  | InjectionPhase { source: DeclarationRef, target: DeclarationRef, safety: InjectionSafety }
 
 // A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
 // String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
@@ -466,7 +466,7 @@ fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
     InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
-    InjectionPhase { source: sc, target: _, constructor: _, safety: _ } => DeclaredCarrier { declaration: sc, element: none }
+    InjectionPhase { source: sc, target: _, safety: _ } => DeclaredCarrier { declaration: sc, element: none }
   }
 }
 
@@ -474,7 +474,7 @@ fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
     InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
-    InjectionPhase { source: _, target: t, constructor: _, safety: _ } => DeclaredCarrier { declaration: t, element: none }
+    InjectionPhase { source: _, target: t, safety: _ } => DeclaredCarrier { declaration: t, element: none }
   }
 }
 

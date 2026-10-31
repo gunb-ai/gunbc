@@ -92,7 +92,6 @@ data conversion_plan_rows: List<ConversionPlan> = [
     phase: InjectionPhase {
       source: decl_ref(module_path: "std.nat", decl_name: "Nat"),
       target: decl_ref(module_path: "std.integer", decl_name: "Int"),
-      constructor: decl_ref(module_path: "std.integer", decl_name: "NonNegative"),
       safety: InjectionSafety { total: true, exact: true, preserves: ["add", "mul", "compare"], pure: true, consent_free: true }
     }
   }
