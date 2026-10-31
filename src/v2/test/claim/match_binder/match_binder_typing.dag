@@ -14,7 +14,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
+import v2.std.diagnostic { Accepted, Correction, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Suggested, Some, Unavailable, node_locus }
 import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
@@ -84,6 +84,12 @@ fn mbp_assemble(src: String) -> Outcome<ResolvedTree> {
 
 fn mbp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
   Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+// THE SAME CHAIN, UNPROJECTED: a row that needs a Diagnostic's payload (its Correction node) reads
+// this instead of `reasons`. Head then tail, the order the refusal carries.
+fn mbp_diagnostic_chain(r: NonEmptyDiagnostics) -> List<Diagnostic> {
+  Cons { head: r.head, tail: r.tail }
 }
 
 fn mbp_last(xs: List<Symbol>) -> Symbol {
@@ -200,6 +206,9 @@ type MbtReading {
   binder_base_fact: Symbol
   match_fact: Symbol
   arm_body_underived_at_binder_projection: Bool
+  // The refusals themselves, head then tail, so a row can read a Diagnostic's payload (its
+  // Correction) rather than only its reason. `reasons` stays the reason-only view.
+  diagnostic_chain: List<Diagnostic>
 }
 
 fn mbp_reading(src: String) -> MbtReading {
@@ -208,7 +217,8 @@ fn mbp_reading(src: String) -> MbtReading {
       reasons: mbp_reasons(r: r),
       binder_base_fact: r.head.reason,
       match_fact: r.head.reason,
-      arm_body_underived_at_binder_projection: false
+      arm_body_underived_at_binder_projection: false,
+      diagnostic_chain: mbp_diagnostic_chain(r: r)
     }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
@@ -216,7 +226,8 @@ fn mbp_reading(src: String) -> MbtReading {
           reasons: mbp_reasons(r: r),
           binder_base_fact: mbp_last(xs: mbp_reasons(r: r)),
           match_fact: mbp_last(xs: mbp_reasons(r: r)),
-          arm_body_underived_at_binder_projection: false
+          arm_body_underived_at_binder_projection: false,
+          diagnostic_chain: mbp_diagnostic_chain(r: r)
         }
         Accepted { value: inferred, diagnostics: d } => MbtReading {
           reasons: match d {
@@ -229,7 +240,11 @@ fn mbp_reading(src: String) -> MbtReading {
             d: d,
             reason: ^infer_match_arm_body_type_underived,
             at: mbp_binder_projection(n: resolved.root)
-          )
+          ),
+          diagnostic_chain: match d {
+            None => Empty
+            Some { diagnostics: r } => mbp_diagnostic_chain(r: r)
+          }
         }
       }
   }
@@ -465,7 +480,7 @@ test fn mbt_a_host_text_scrutinee_refuses_holds() -> Bool {
 // it replaces, which could not say WHERE in its module a reason was reported.
 data mbt_program_src: String = mbt_decls
   + "fn g(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n\n"
-  + "fn g_constructor(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n\n"
+  + "fn g_constructor(h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> Outcome<ParseTree> {\n  match h {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n\n"
   + "fn parse_module_prepared(tokens: Int) -> Outcome<ParseArtifact> {\n  Rejected { diagnostics: NonEmptyDiagnostics { head: tokens } }\n}\n\nfn g_tokenize_parse(text: Int) -> Outcome<ParseTree> {\n  match parse_module_prepared(tokens: text) {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } =>\n      Accepted { value: artifact.tree, diagnostics: d }\n  }\n}\n"
 
 type MbtDeclReading {
@@ -958,6 +973,47 @@ test fn mbt_an_arm_after_a_catch_all_refuses_as_unreachable_holds() -> Bool {
 // infer_coproduct_catch_all_binder_widening_over_a_nullary); a singleton remainder is exempt, because the
 // binder then binds exactly the value the intended arm would have matched. The three rows are the ruling's
 // required evidence.
+
+// THE REFUSAL CARRIES ITS OWN REPAIR FACTS. The widening gate refuses with the alternatives it
+// left nullary attached to the Diagnostic as `correction: Suggested { node }` (v2.compiler.infer
+// infer_match_catch_all_binder_widens_over_a_nullary_diagnostic), because the codemod line
+// (gunbc#15125 successor) inserts one arm per nullary alternative and must read that set from the
+// judgement, not re-derive it at the file surface (Manager 1 ruling 2026-10-28: no text search).
+// This reads the tags back off the refusal, the same way a consumer would: find the widening
+// Diagnostic in the chain, take its Correction, read the carrier's variant edges by authored name.
+fn mbt_r_widening_correction(reading: MbtReading) -> Optional<Node> {
+  match mbt_r_widening_diagnostic(reading: reading) {
+    Present { value: d } =>
+      match d.correction {
+        Suggested { node: n } => Present { value: n }
+        Unavailable { reason: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn mbt_r_widening_diagnostic(reading: MbtReading) -> Optional<Diagnostic> {
+  fold(reading.diagnostic_chain, init: Absent, f: fn(acc, d) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if d.reason == ^infer_match_catch_all_binder_widens_over_a_nullary_variant { Present { value: d } } else { acc }
+    }
+  })
+}
+
+// THE CARRIER'S CONTENT: one authored-name tag per variant edge it carries, in the carrier's own
+// order. A carrier is a rebuilt sum-set node, so its edges' authored names ARE the variants the
+// repair must name; reading them this way is what a rewriter does before it splices.
+fn mbt_r_carrier_tags(carrier: Node) -> List<Symbol> {
+  list_map(xs: carrier.children, f: fn(e) {
+    match e.label {
+      Authored { name: tag } => tag
+      StructuralLabel { label: _ } => ^mbt_r_not_a_variant
+      Positional => ^mbt_r_not_a_variant
+    }
+  })
+}
+
 fn mbt_r_src(decl: String, arms: String) -> String {
   "module p\n\n" + decl + "\n\nfn g(t: T) -> T {\n  match t {\n" + arms + "  }\n}\n"
 }
@@ -991,4 +1047,49 @@ test fn mbt_r_the_same_source_refuses_once_a_second_alternative_is_added_holds()
 test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers_holds() -> Bool {
   mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)))
     && mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_intended_arms)))
+}
+
+// THE REFUSAL CARRIES THE ARM SET ITS REPAIR NEEDS. The codemod line inserts one arm per nullary
+// alternative the widening catch-all leaves, and it must take that set from the judgement (a parsed
+// fact with identities), never from a text search of the file. So the refusal carries it: the gate's
+// Diagnostic holds `correction: Suggested { node }` whose children are exactly the remainder's nullary
+// variant constructors. These two rows are the RED and the control for that payload.
+// (RED) The misspelled binder over the two-alternative remainder refuses, AND the refusal names B and
+// C — the alternatives a repair must insert, and nothing else (A is covered by the earlier arm; a
+// payload-carrying alternative is never in the carrier).
+test fn mbt_r_the_widening_refusal_names_the_nullary_alternatives_it_leaves_holds() -> Bool {
+  let r = mbp_reading(src: mbt_r_src(decl: mbt_r_two_left, arms: mbt_r_misspelled_arms))
+  match mbt_r_widening_correction(reading: r) {
+    Present { value: carrier } => mbt_r_carrier_tags(carrier: carrier) == [^B, ^C]
+    Absent => false
+  }
+}
+
+// (RED for the nullary filter) A remainder that MIXES a payload alternative with nullary ones: the
+// carrier holds the nullary B and D only. C carries a payload, so the binder arm catches it correctly
+// and the repair never inserts an arm for it. Without this row nothing discriminates the filter,
+// because the fixture above has only nullary alternatives left.
+data mbt_r_mixed_left: String = "type T = A { x: Int } | B | C { y: Int } | D"
+
+test fn mbt_r_the_carrier_leaves_a_payload_alternative_to_the_binder_holds() -> Bool {
+  let r = mbp_reading(src: mbt_r_src(decl: mbt_r_mixed_left, arms: mbt_r_misspelled_arms))
+  match mbt_r_widening_correction(reading: r) {
+    Present { value: carrier } => mbt_r_carrier_tags(carrier: carrier) == [^B, ^D]
+    Absent => false
+  }
+}
+
+// (RED for the earlier-arm exclusion) B is already matched by an earlier arm, so the carrier holds
+// the nullary C and D only. Without the exclusion the repair would insert an arm for B that the
+// match already has, and nothing else discriminates it: every other fixture names no nullary tag early.
+data mbt_r_early_left: String = "type T = A { x: Int } | B | C | D"
+
+data mbt_r_early_arms: String = "    A { x: x } => t\n    B => B\n    Bx => Bx\n"
+
+test fn mbt_r_the_carrier_leaves_out_an_alternative_an_earlier_arm_names_holds() -> Bool {
+  let r = mbp_reading(src: mbt_r_src(decl: mbt_r_early_left, arms: mbt_r_early_arms))
+  match mbt_r_widening_correction(reading: r) {
+    Present { value: carrier } => mbt_r_carrier_tags(carrier: carrier) == [^C, ^D]
+    Absent => false
+  }
 }
