@@ -88,8 +88,13 @@ type NodeVoltageObservation {
   evidence: List<EvidenceRef>
 }
 
+// AutoRanging is a meter choosing its own range per reading (the Fluke's default mode): the display
+// carries the unit it chose, so a figure read on it is a value, but no shorted-probe baseline joins
+// across it, because the baseline's range and the reading's need not be the same one, and it adds no
+// range to the judgment of whether a pair's reading moves with the range.
 type MeterRange
   = RangeFullScale { ohms: Nat }
+  | AutoRanging
   | RangeUnrecorded
 
 // full_scale_ohms is the range the baseline was read on; shown is what the display gave with the probes
@@ -155,6 +160,7 @@ fn is_at_baseline(o: ResistanceObservation) -> Bool {
   match o.display {
     DisplayAtProbeBaseline { shown: _, baseline } => match o.range {
       RangeFullScale { ohms } => ohms == baseline.full_scale_ohms
+      AutoRanging => false
       RangeUnrecorded => false
     }
     DisplayZeroWithoutBaseline { reported: _ } => false
@@ -309,6 +315,7 @@ fn resistance_display_text(d: ResistanceDisplay) -> String {
 fn range_text(r: MeterRange) -> String {
   match r {
     RangeFullScale { ohms } => join([" on the ", to_string(ohms), " ohm range"], "")
+    AutoRanging => ", meter auto-ranging"
     RangeUnrecorded => ", range unrecorded"
   }
 }
@@ -350,6 +357,7 @@ fn valued_ohms(o: ResistanceObservation) -> Nat? {
   match o.display {
     DisplayValue { ohms, approximate: _ } => match o.range {
       RangeFullScale { ohms: _ } => Present { value: ohms }
+      AutoRanging => Present { value: ohms }
       RangeUnrecorded => Absent
     }
     DisplayAtProbeBaseline { shown: _, baseline: _ } => Absent
@@ -359,17 +367,21 @@ fn valued_ohms(o: ResistanceObservation) -> Nat? {
   }
 }
 
-fn recorded_full_scale(o: ResistanceObservation) -> Nat {
+// An auto-ranging reading sits on a range the meter chose and did not record, so it carries a value but
+// contributes no range to the range-dependence judgment.
+fn recorded_full_scale(o: ResistanceObservation) -> Nat? {
   match o.range {
-    RangeFullScale { ohms } => ohms
-    RangeUnrecorded => 0
+    RangeFullScale { ohms } => Present { value: ohms }
+    AutoRanging => Absent
+    RangeUnrecorded => Absent
   }
 }
 
 fn distinct_full_scales(os: List<ResistanceObservation>) -> List<Nat> {
-  match os.first() {
+  let scales = flat_map(os, o => match recorded_full_scale(o: o) { Present { value: n } => [n], Absent => [] })
+  match scales.first() {
     Absent => []
-    Present { value: f } => fold(os, init: [recorded_full_scale(o: f)], f: (acc, o) => if any(acc, n => n == recorded_full_scale(o: o)) { acc } else { concat(acc, [recorded_full_scale(o: o)]) })
+    Present { value: f } => fold(scales, init: [f], f: (acc, n) => if any(acc, m => m == n) { acc } else { concat(acc, [n]) })
   }
 }
 
