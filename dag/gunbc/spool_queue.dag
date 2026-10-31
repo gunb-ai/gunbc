@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_is_absent }
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
@@ -236,17 +236,6 @@ type SpoolEntryState
   | EntryAmbiguous { roles: List<SpoolRole> }
   | EntryObservationUnavailable { detail: String }
 
-fn spool_role_is_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
-  spool_role_dir_declared(kind: kind, role: role)
-}
-
-fn spool_role_dir_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
-  match spool_role_dir(kind: kind, role: role) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
   spool_declaration(kind: kind).terminals |> any(s => s.role == role)
 }
@@ -311,7 +300,7 @@ fn spool_claim_over(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAss
       if spool_role_is_terminal(kind: kind, role: r) {
         ClaimTerminal { state: observed }
       } else {
-        if spool_role_is_declared(kind: kind, role: r) {
+        if !optional_is_absent(opt: spool_role_dir(kind: kind, role: r)) {
           match spool_chain_successor(kind: kind, role: r) {
             Present { value: next } => ClaimEligible { from: r, into: next }
             Absent => ClaimAlreadyClaimed
