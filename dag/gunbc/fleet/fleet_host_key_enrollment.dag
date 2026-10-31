@@ -44,7 +44,11 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation
 //
 // HostKeyEnrollmentProvenance names WHAT GROUNDS an enrolled host key, because a
 // fingerprint row is only as trustworthy as the fact behind it (host-key audit,
-// witty-raven-412 / bold-eagle-107 cross-check, 2026-08-10). Two arms, a genuine
+// witty-raven-412 / bold-eagle-107 cross-check, 2026-08-10). A third arm, ConsolePerBoot, is a DIFFERENT
+// contract from both below: the key was printed by the booted image on an out-of-band channel (the BMC serial
+// console) authenticated by the channel's own credential, not scanned from the address under test (so not
+// trust-on-first-use) and not joined to an external fact (so not IndependentlyAnchored); it vouches for the
+// named boot only. Two arms, a genuine
 // fleet-wide distinction rather than one lane's state:
 //   - ScannedFirstContact: the key was captured by ssh-keyscan from the very address the
 //     probe is about to trust — trust-on-first-use, grounded in NOTHING but first
@@ -74,6 +78,7 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation
 type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
+  | ConsolePerBoot { boot_id: NonEmptyStr, channel: NonEmptyStr }
 
 type KnownHostKeyRow {
   host: HostIdentity
@@ -186,6 +191,7 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
   match p {
     ScannedFirstContact { scanned_from: _ } => "scanned-first-contact"
     IndependentlyAnchored { authority: _ } => "independently-anchored"
+    ConsolePerBoot { boot_id: _, channel: _ } => "console-per-boot"
   }
 }
 
