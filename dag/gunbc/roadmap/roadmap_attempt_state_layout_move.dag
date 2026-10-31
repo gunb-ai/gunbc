@@ -126,16 +126,12 @@ fn move_readback_refusal(row: MoveRow, before_parent: String, after_parent: Stri
 // stopped or only disabled can be started again by a person, a dependency or a .path/.timer trigger (a masked
 // unit refuses every start). A move over a non-excluded writer is refused before any entry is touched.
 //
-// Three fence kinds, one per kind of instance the move can meet:
+// Two fence kinds:
 //   LegacyWriterUnits           the units whose ExecStart entry reaches the identity mint (the set is data,
 //                               traced by symbol; see legacy_writer_units in roadmap_dashboard_instance);
-//   LegacyWriterRetiredInstance an instance no unit launches (an ad-hoc or retired run): the exclusion is the
-//                               observation that no unit file under the searched directories references the
-//                               instance root, so a unit added later makes the move refuse;
 //   LegacyWriterUndeclared      nothing is declared: refuses, never reads as excluded.
 type LegacyWriterFence
   = LegacyWriterUnits { systemctl: NonEmptyStr, units: List<NonEmptyStr> }
-  | LegacyWriterRetiredInstance { root: NonEmptyStr, unit_dirs: List<NonEmptyStr> }
   | LegacyWriterUndeclared
 
 type LegacyWriterExclusion
@@ -163,21 +159,6 @@ fn legacy_writer_exclusion_all(exclusions: List<LegacyWriterExclusion>) -> Legac
     LegacyWriterNotExcluded { reason: _ } => acc
     LegacyWriterExcluded => e
   })
-}
-
-// A retired instance is excluded when the directory scan proved readable (every unit directory listed) and
-// the search for the root found no referencing file. `scan_found` is the search's stdout (matching unit
-// files), `scan_ok` whether it matched anything, `scan_stderr` any error it reported.
-fn legacy_writer_retired_exclusion(root: String, dirs_listable: Bool, scan_found: String, scan_ok: Bool, scan_stderr: String) -> LegacyWriterExclusion {
-  if !dirs_listable {
-    LegacyWriterNotExcluded { reason: join(["the unit directories searched for references to ", root, " could not all be listed, so no unit can be ruled out"], "") }
-  } else if scan_ok {
-    LegacyWriterNotExcluded { reason: join(["a unit references the retired instance root ", root, ": ", scan_found], "") }
-  } else if scan_stderr != "" {
-    LegacyWriterNotExcluded { reason: join(["the search for units referencing ", root, " failed: ", scan_stderr], "") }
-  } else {
-    LegacyWriterExcluded
-  }
 }
 
 // One instance's declared fence. Data, never control flow: a new instance is a row.

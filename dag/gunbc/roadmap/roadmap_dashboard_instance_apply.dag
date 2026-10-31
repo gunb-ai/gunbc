@@ -78,7 +78,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, LegacyWriterUnits, LegacyWriterRetiredInstance, LegacyWriterUndeclared, legacy_writer_exclusion_all, legacy_writer_retired_exclusion, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, LegacyWriterUnits, LegacyWriterUndeclared, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -936,11 +936,6 @@ fn dashboard_apply_provision_op(
                   let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
                   legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
                 }))
-              LegacyWriterRetiredInstance { root: root, unit_dirs: dirs } => {
-                let listed = all(dirs, d => dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1", d as String]).success)
-                let scan = dashboard_target_exec(instance: instance, program: "/bin/grep" as FilePath, args: concat(["-rlF", "--", root as String], map(dirs, d => d as String)))
-                legacy_writer_retired_exclusion(root: root as String, dirs_listable: listed, scan_found: trim(s: scan.stdout), scan_ok: scan.success, scan_stderr: trim(s: scan.stderr))
-              }
             }
             let moved = match excluded {
               LegacyWriterNotExcluded { reason: why } => dashboard_exec_refused(detail: join([why, "; nothing was moved"], ""))
