@@ -159,7 +159,7 @@ fn listing_paths(text: String) -> List<String> {
 }
 
 // THE CHANNEL THE COMPOSED INSTRUMENT CONSUMES (warm-wolf-570's one-instrument ruling): this census is one
-// source of `gunbc test //gunbc/instruments:claim-coverage-census`, and a source reaches the exit only through
+// source of `gunbc test claim-coverage-census (label removed; no longer a runnable target)`, and a source reaches the exit only through
 // a declared sum -- the same shape the wet census contributes `ClaimCoverageStanding` in and S1 contributes
 // `S1Standing` in. A Bool beside a String list would let an unread census and a clean census arrive as the
 // same carrier; here the refusal carries its cause and the finding carries its reasons, so the composition

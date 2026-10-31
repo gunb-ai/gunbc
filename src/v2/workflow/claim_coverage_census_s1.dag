@@ -113,7 +113,7 @@ type ClassifierStanding
   // nothing. Typed refusal, and a finding: every ungroundable drop-population value lives here, refused
   // through the join (no discovered file and no discovered identity bears it) rather than through any test
   // of how the string looks. Their number is this instrument's output --
-  // `gunbc test //gunbc/instruments:claim-coverage-census` -- and is never restated here (DESIGN §6: name
+  // `gunbc test claim-coverage-census (label removed; no longer a runnable target)` -- and is never restated here (DESIGN §6: name
   // the instrument, never transcribe its output, because a transcribed number rots unreachably).
   | UngroundedDropMember { row: ClassifierRow }
   // Joined to at least one S1 identity; `covers` is that expansion.

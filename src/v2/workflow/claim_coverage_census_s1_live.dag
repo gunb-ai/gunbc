@@ -2,7 +2,7 @@ module v2.workflow.claim_coverage_census_s1_live
 
 // THE LIVE COMPOSITION OF THE DISCOVERED UNIVERSE (Charter 4 exit census, sunny-ibex-149).
 //
-// ONE instrument, ONE label. `//gunbc/instruments:claim-coverage-census` is that instrument
+// ONE instrument, ONE label. `claim-coverage-census (label removed; no longer a runnable target)` is that instrument
 // (warm-wolf-570's one-instrument ruling), so this module adds NO label, NO registry arm and NO second
 // entry: the existing live entry `gunbc.claim_coverage_census_live claim_coverage_census_exit` composes
 // the fold below and prints its standings beside the wet schedule's receipt.

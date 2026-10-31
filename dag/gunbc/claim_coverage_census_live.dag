@@ -61,7 +61,7 @@ fn claim_executors() -> List<ClaimExecutorRow> {
   ]
 }
 
-// `gunbc test //gunbc/instruments:claim-coverage-census`: 0 every enrolled claim is executed by a required
+// `gunbc test claim-coverage-census (label removed; no longer a runnable target)`: 0 every enrolled claim is executed by a required
 // job AND the discovered universe holds; 1 EITHER census printed a finding (each listed above, located), even
 // if some input was unread; 2 nothing was found AND the discovered census could not read an input, so no
 // population was decided.

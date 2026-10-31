@@ -403,7 +403,7 @@ test fn a_claim_the_universe_holds_is_never_stale_enrolled_when_rows_are_filtere
 }
 
 // A DROP MEMBER THAT GROUNDS IN NEITHER POPULATION IS REFUSED, EACH ONE A FINDING. The size of that live
-// population is the instrument's output (`gunbc test //gunbc/instruments:claim-coverage-census`) and is
+// population is the instrument's output (`gunbc test claim-coverage-census (label removed; no longer a runnable target)`) and is
 // deliberately not restated here -- a transcribed count rots unreachably (DESIGN §6). What these claims
 // assert is the SHAPE's handling, over fixture instances of it. These
 // values are fixture instances of the shape warm-wolf-570 ruled must not be repaired by editing the

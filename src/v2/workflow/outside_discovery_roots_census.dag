@@ -7,14 +7,14 @@ module v2.workflow.outside_discovery_roots_census
 //
 // CONSUMER, stated plainly because §3c makes "a module nothing imports" the red. This census has NO label
 // of its own, deliberately: it answers the same question as the existing
-// `gunbc test //gunbc/instruments:claim-coverage-census` -- which claims sit outside what is watched -- so
+// `gunbc test claim-coverage-census (label removed; no longer a runnable target)` -- which claims sit outside what is watched -- so
 // under the one-instrument ruling it enters that instrument as a SOURCE rather than becoming a second
 // label. THE CONSUMER IS `gunbc.claim_coverage_census_live` `claim_coverage_census_exit`: it calls
 // `outside_roots_census` (live module) over the two tracked-claim captures, folds the census's
 // `OutsideRootsChannel` beside the wet schedule's standing and the S1 discovered universe's standing in
 // `claim_coverage_composed_standing`, and prints this module's receipt and header lines beside the other
 // two sources' lines. The executing route is the label itself -- `gunbc test
-// //gunbc/instruments:claim-coverage-census` -- and the fold is pinned per-channel by the composition
+// claim-coverage-census (label removed; no longer a runnable target)` -- and the fold is pinned per-channel by the composition
 // claims in `v2.test.claim.claim_coverage_census_s1_witness`; the per-source behaviour is pinned by the
 // claim files under src/v2/test/claim and scheduled by the three enrollment rows.
 //
