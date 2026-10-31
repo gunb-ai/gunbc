@@ -15609,6 +15609,11 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 // position builds. A generic-declaring parameter or a formal carrying an unbound type variable has no
 // closed declared type at this seam and is left to the older path, as the direct-call argument chain does.
 //
+// DECLARED NODE: the param's type_expr child IS the resolved, use-site-rendered type (resolve_param stores it there), read
+// as-is exactly as the direct-call formal chain does (ResolvedFormal.declared_type in bind_local_func_conformance). Applying
+// resolved_type to that child read its own (absent) inference, got error_type with an empty name, and the relation answered
+// UndecidableFormalUnresolved, an advisory, so no default was ever refused.
+//
 // VISIBILITY: a default sees module scope only, never a sibling parameter. The interpreter evaluates it in the
 // caller-supplied env, not the bindings it is building (stage0 call_function_inner), and the Rust emitter splices the
 // default expression at the call site as a filled argument (v1.compiler.emit_rust fill_default_args,
@@ -15625,7 +15630,7 @@ fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions 
         if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) || direct_call_formal_has_unbound_type_variable(n: param_node_type_expr(n: p)) {
           infer_emissions_empty()
         } else {
-          let declared = resolved_type(n: param_node_type_expr(n: p))
+          let declared = param_node_type_expr(n: p)
           let r = infer_expr(texpr: default_expr, scope: scope, expected: Present { value: declared })
           infer_emissions_concat(
             left: r.emissions,
