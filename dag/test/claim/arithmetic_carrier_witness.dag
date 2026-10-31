@@ -139,4 +139,4 @@ test fn w_partial_injection_is_not_implicit_safe() -> Bool {
 }
 
 // DECLARED FRONTIER: the ten std.integer width rows resolve to the base carrier until widths are modeled
-// (gunbc.rung_drop arithmetic_over_machine_widths_resolves_to_the_base_carrier_until_widths_are_modeled).
+// (gunbc.guarantee_stall arithmetic_over_machine_widths_stall).
