@@ -4039,6 +4039,14 @@ fn roster_occ_expect_text(name: String, before: String, keys: List<String>, afte
   }
 }
 
+// A KEYED SITE IS REWRITTEN OR THE RUN REFUSES: an import landing with the keyed call head unchanged is the silent skip.
+fn roster_occ_expect_rewrite_or_refuse(name: String, before: String, keys: List<String>, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_applied(before: before, outcome: roster_occ_outcome(text: before, keys: keys, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: _ } => ""
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+  }
+}
+
 fn roster_occ_expect_unmatched(name: String, text: String, keys: List<String>, key: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_occ_outcome(text: text, keys: keys, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } =>
@@ -4056,6 +4064,10 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
   let wide_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  g(x: \"é😀\", y: map_lookup(m: m, key: k))\n}\n"
   let src = head + body
   let bound = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(k: String) -> String {\n  let map_get = k\n  map_get\n}\n"
+  let pipe_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k)\n}\n"
+  let pipe_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n"
+  let not_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(m |> map_get(k))\n}\n"
+  let not_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(map_lookup(m: m, key: k))\n}\n"
   [
     roster_control_verdict(name: "occurrences-selected-site-rewrites-unselected-untouched", fail: roster_occ_expect_text(name: "occurrences-selected-site-rewrites-unselected-untouched", before: src, keys: ["control/rename.dag:7:3"], after: second_only, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-every-site-selected", fail: roster_occ_expect_text(name: "occurrences-every-site-selected", before: src, keys: ["control/rename.dag:6:11", "control/rename.dag:7:3"], after: both, prepared: prepared, lex: lex)),
@@ -4067,7 +4079,9 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-unknown-row-key-refuses", fail: roster_occ_unknown_row_control()),
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control())
+    roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control()),
+    roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites-or-refuses", fail: roster_occ_expect_rewrite_or_refuse(name: "occurrences-keyed-negated-pipe-site-rewrites-or-refuses", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex))
   ]
 }
 
