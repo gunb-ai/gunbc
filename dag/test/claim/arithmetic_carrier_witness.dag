@@ -14,6 +14,7 @@ import std.coercion {
   ArithmeticCarrierAmbiguous,
   select_arithmetic_carrier,
   ConversionPlan,
+  ConversionPhase,
   ArithmeticCarrierSelection,
   injection_is_implicit_safe,
   InjectionPhase,
@@ -106,8 +107,8 @@ test fn w_unary_negate_selects_int_for_nat() -> Bool {
 }
 
 data two_minimal_rows: List<ConversionPlan> = [
-  InjectionPhase { source: nat_ref, target: int_ref, constructor: int_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } },
-  InjectionPhase { source: nat_ref, target: other_ref, constructor: other_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } }
+  ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "to_int"), phase: InjectionPhase { source: nat_ref, target: int_ref, constructor: int_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } } },
+  ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "to_other"), phase: InjectionPhase { source: nat_ref, target: other_ref, constructor: other_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } } }
 ]
 
 test fn w_incomparable_carriers_refuse_as_ambiguous() -> Bool {
@@ -127,7 +128,7 @@ test fn w_injection_not_preserving_the_operator_is_not_a_route() -> Bool {
 }
 
 // The declared injection claims implicit safety; a row that claims it is not total is not implicit-safe.
-data lossy_row: ConversionPlan = InjectionPhase { source: nat_ref, target: int_ref, constructor: int_ref, safety: InjectionSafety { total: false, exact: true, preserves: ["add"], pure: true, consent_free: true } }
+data lossy_row: ConversionPlan = ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "lossy"), phase: InjectionPhase { source: nat_ref, target: int_ref, constructor: int_ref, safety: InjectionSafety { total: false, exact: true, preserves: ["add"], pure: true, consent_free: true } } }
 
 test fn w_declared_injection_is_implicit_safe() -> Bool {
   conversion_plan_rows |> any(r => injection_is_implicit_safe(plan: r))
