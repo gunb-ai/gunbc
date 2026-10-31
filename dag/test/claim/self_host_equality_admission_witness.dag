@@ -188,15 +188,17 @@ test fn collection_key_census_row_is_present_and_the_program_stays_accepted() ->
     && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
-// MEASURED (gunbc#15175, srv1, regenerated mirrors): a keyed container bound to a generic call with no
-// annotation reports NO row, because the checker has no per-call type-argument substitution and the binder
-// keeps the declaration's formals. The old claim here asserted a row (>= 1) and was red on the real path;
-// this pins the actual behavior so it turns red the day the instantiation channel exists and the row is
-// owed. Capability enrolled at gunbc.recurring_failure_mode
-// field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter.
-test fn call_inferred_collection_key_reports_no_row_until_instantiation_exists() -> Bool {
+// THE POPULATION IS A BOUND, NOT A SUBSET (manager ruling msg_7f0d6824, blocker 1). The declared walk
+// alone reports 0 for a module whose only routed key type is inferred, so the drop row's subject --
+// EVERY emitted use -- would have outrun its population. It must not be able to.
+// RED TODAY, MEASURED (gunbc#15175, srv1): an un-annotated generic-call binding reports no row because no
+// per-call type-argument substitution exists. Held as a declared red in
+// v2.workflow.floor_expected_red floor_expected_red_chunk_inferred_collection_key_census; trigger: per-call
+// fresh instantiation (gunbc.recurring_failure_mode
+// field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter).
+test fn inferred_collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
   eq_admitted(source: collection_key_inferred_census_row_source)
-    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
 // CONTROL: an ordinary value key is not the residual. Same shape, Int key, so the inferred walk must
