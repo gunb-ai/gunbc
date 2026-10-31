@@ -1,5 +1,6 @@
 module test.claim.runner.runner_host_file_converge_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.list { distinct_by_key }
@@ -228,6 +229,7 @@ import gunbc.runner.runner_host_file_converge {
   superseded_dropin_observed,
   superseded_dropin_removed,
   runner_host_superseded_dropin_paths,
+  runner_host_control_shadow_paths,
 }
 import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
 import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path, gpu_docker_labels_dropin_path }
@@ -355,7 +357,7 @@ fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
   runner_host_file_desired_population_from_uid_reading(
     host: "srv1" as HostIdentity,
     reading: fixture_cited_job_user_uid(),
-  )
+   receipt: ReceiptAbsent)
 }
 
 // ── The bytes, against independently authored oracles ─────────────────────────────────────────────
@@ -415,7 +417,7 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
 }
 
 test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> Bool {
-  match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
+  match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid(), receipt: ReceiptAbsent) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(not_role_files(fs)) == 4
@@ -543,7 +545,7 @@ test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
 }
 
 test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
-  match runner_host_file_desired_population_from_uid_reading(host: "srv9" as HostIdentity, reading: fixture_cited_job_user_uid()) {
+  match runner_host_file_desired_population_from_uid_reading(host: "srv9" as HostIdentity, reading: fixture_cited_job_user_uid(), receipt: ReceiptAbsent) {
     RunnerHostFilesDesiredRefused { cause: _ } => true
     RunnerHostFilesDesired { files: _, withheld: _ } => false
   }
@@ -1664,7 +1666,7 @@ fn host_legs_cross(host: String) -> Bool {
   match runner_host_file_subject(host: host as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: subj } =>
-      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid(), receipt: ReceiptAbsent) {
         RunnerHostFilesDesiredRefused { cause: _ } => false
         RunnerHostFilesDesired { files: fs, withheld: _ } => {
           let legs = host_run_legs(subj: subj, fs: fs)
@@ -2028,6 +2030,22 @@ test fn the_superseded_role_dropin_retires_and_only_absence_settles() -> Bool {
     && !superseded_dropin_settled(r: SupersededDropinPresentObserved { path: "p" }) && superseded_dropin_observed(r: SupersededDropinPresentObserved { path: "p" })
     && !superseded_dropin_settled(r: SupersededDropinRefused { path: "p", reason: "x" }) && !superseded_dropin_observed(r: SupersededDropinRefused { path: "p", reason: "x" })
     && superseded_dropin_removed(r: SupersededDropinRemoved { path: "p" }) && !superseded_dropin_removed(r: SupersededDropinAbsent { path: "p" })
+}
+
+// THE SET-PROPERTY SHADOWS RETIRE BY NAME: for srv1's desired units, one 50-<Property>.conf per cap
+// property under each system.control directory and nothing else -- never the unit's own drop-in
+// directory under /etc/systemd/system, where the role drop-in lives.
+test fn the_control_shadows_retired_are_only_set_property_files_of_the_cap_properties() -> Bool {
+  match runner_host_file_subject(host: operator_host_srv1) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: subj } => {
+      let paths = runner_host_control_shadow_paths(subject: subj)
+      count(paths) == count(subj.desired_units) * 8
+        && any(paths, p => p == "/etc/systemd/system.control/actions-runner@srv1-02.service.d/50-MemoryMax.conf")
+        && any(paths, p => p == "/run/systemd/system.control/actions-runner@srv1-01.service.d/50-TasksMax.conf")
+        && !any(paths, p => starts_with(s: p, prefix: "/etc/systemd/system/"))
+    }
+  }
 }
 
 // ── The deploy slot's host reading ───────────────────────────────────────────────────────────────

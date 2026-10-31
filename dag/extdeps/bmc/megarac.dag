@@ -9,6 +9,13 @@ import extdeps.bmc.capability {
   bmc_firmware_release_identity_eq,
   bmc_firmware_release_identity_of_wire,
 }
+import std.optional { Present, Absent }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
+  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice,
+  HpmVersionAbsent, HpmVersionHeld, hpm_check_table_of, hpm_component_named,
+}
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -208,10 +215,51 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // capability row, the run that exercised it, and how the version string came to be known (an operator
 // read of the web UI, not a machine read) — is a receipt in the observing layer, at
 // gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
+// THE VENDOR'S PAGE LABEL, AND NOTHING MORE. "0.45.3" is what the vendor's release page SAYS this build
+// is called; it is not what the controller reports. The controller reports APP `0.45 03000000`, and the
+// release identity that flows through the platform is DERIVED from those bytes (below, and in
+// gunbc.host.bmc_release_capability_catalog for the capability row). NO production site keys anything on
+// this datum any more: it survives as the page's wording, cited by comments and by witnesses that demand
+// the label is NOT a key of any table here.
 data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.45.3",
 )
+
+// THE RELEASE THIS UNIT'S BUILD IS READ AS, DERIVED HERE FROM THE COMMITTED CAPTURE. The bytes have their
+// one home in extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_45 (boot run 40082618814's
+// retained stdout); this parses them with the SAME parser a live read uses (hpm_check_table_of) and the
+// SAME name-keyed lookup that refuses an absent or duplicated component rather than taking the first row
+// (hpm_component_named), then takes the cell's leading revision -- exactly the path
+// gunbc.host.bmc_release_capability_catalog megarac_version_establishment walks for the capability row,
+// and witness w_the_media_table_key_and_the_capability_row_derive_the_same_release pins that the two
+// land on one release, so this shortcut cannot drift out from under the row that licenses a boot.
+// It answers Absent for every case the parser refuses, and it keeps no cause -- the cause-carrying
+// reading is the capability row's, and an Absent here simply leaves the table with no 0.45 arm.
+data megarac_committed_hpm_read_release: BmcFirmwareReleaseIdentity? = match hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_45) {
+  HpmCheckRead { rows: rows } => match hpm_component_named(rows: rows, name: "APP") {
+    HpmComponentSelected { row: row } => match row.active {
+      HpmVersionHeld { rendering: rendering } => match split(s: rendering as String, delimiter: " ").first() {
+        Present { value: revision } => Present { value: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: revision as NonEmptyStr) }
+        Absent => Absent
+      }
+      HpmVersionAbsent => Absent
+    }
+    HpmComponentNotListed { name: _, listed: _ } => Absent
+    HpmComponentListedTwice { name: _, ids: _ } => Absent
+  }
+  HpmCheckUpgradeVariant { header: _ } => Absent
+  HpmCheckUnreadable { detail: _ } => Absent
+}
+
+// IS THE IDENTITY A CALLER CARRIES THE ONE THE COMMITTED READ DERIVES? Absent read -- no capture parsed --
+// answers false, which leaves every wire of every release uncatalogued rather than assuming a build.
+fn megarac_release_is_the_committed_hpm_read(firmware: BmcFirmwareReleaseIdentity) -> Bool {
+  match megarac_committed_hpm_read_release {
+    Present { value: read } => bmc_firmware_release_identity_eq(a: firmware, b: read)
+    Absent => false
+  }
+}
 
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
@@ -258,7 +306,16 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
-  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3) {
+  } else if megarac_release_is_the_committed_hpm_read(firmware: firmware) {
+    // THE BUILD THE CONTROLLER REPORTS, NOT THE PAGE'S NAME FOR IT. Keyed on the identity the committed
+    // hpm read derives, because that is the identity a boot carries for this controller once it has read
+    // its own build -- keying this arm on the operator's page label instead would leave a boot that reads
+    // "0.45" unable to tell a STARTED session from a stopped one, attach refusing on every row.
+    // Grounded by boot run 40258937016, which read redirection_status 1 on the session it then
+    // established (session_index 0, cd_error_code 0 before any write and at ready) in the same run that
+    // machine-read this build, and by run 38789347052, whose session read 1 on the build the capability
+    // row's machine read establishes. 0 and 100 are NOT carried over from 0.32: no 0.45 reading returned
+    // them, and 16/19 stay codes this release's catalogue does not name.
     let status = if wire == 1 {
       RedirectionStartedConnectionAccepted
     } else {

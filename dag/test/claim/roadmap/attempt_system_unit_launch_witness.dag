@@ -50,7 +50,6 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
@@ -239,7 +238,6 @@ fn full_install_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
   match deploy_apply_plan_legs(
     spec: spec,
     plan: deploy_witness_full_install_plan(spec: spec),
-    authorization: CapConvergeWithheld { cause: "the drain claims are not about the cap step" },
     source_root: "/src",
     oidc_now: tracker_web_test_console_readback_observed_at_epoch,
   ) {
