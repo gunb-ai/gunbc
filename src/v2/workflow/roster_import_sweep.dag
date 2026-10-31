@@ -4450,48 +4450,104 @@ fn roster_variant_tags(decl: Node) -> List<String> {
   }
 }
 
-fn roster_companion_of(row: RosterHeadRow, to: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+// READ ONCE PER RUN: a module's normalized tree and a module's closure are each acquired once however many RenameHead rows
+// name them (std.algebra is the home of most rows). The memo is carried through the fold over the rows; a lookup hit costs
+// nothing, a miss reads once and records.
+type RosterModuleCached { name: String, read: RosterModuleRead }
+
+type RosterClosureCached { module: String, closure: RosterHomeClosure }
+
+type RosterCompanionMemo { modules: List<RosterModuleCached>, closures: List<RosterClosureCached> }
+
+type RosterCompanionStep { companion: RosterCompanion, memo: RosterCompanionMemo }
+
+type RosterCompanionFold { companions: List<RosterCompanion>, memo: RosterCompanionMemo }
+
+type RosterModuleStep { read: RosterModuleRead, memo: RosterCompanionMemo }
+
+type RosterClosureStep { closure: RosterHomeClosure, memo: RosterCompanionMemo }
+
+fn roster_memo_empty() -> RosterCompanionMemo {
+  RosterCompanionMemo { modules: [], closures: [] }
+}
+
+fn roster_memo_module_read(memo: RosterCompanionMemo, name: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterModuleStep {
+  match fold_list(xs: memo.modules, empty: Absent, cons: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if m.name == name { Present { value: m.read } } else { Absent }
+    }
+  }) {
+    Present { value: r } => RosterModuleStep { read: r, memo: memo }
+    Absent =>
+      let r = roster_module_read(name: name, prepared: prepared, lex: lex)
+      RosterModuleStep { read: r, memo: RosterCompanionMemo { modules: list_snoc_item(xs: memo.modules, item: RosterModuleCached { name: name, read: r }), closures: memo.closures } }
+  }
+}
+
+fn roster_memo_closure_read(memo: RosterCompanionMemo, module: String) -> RosterClosureStep {
+  match fold_list(xs: memo.closures, empty: Absent, cons: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if c.module == module { Present { value: c.closure } } else { Absent }
+    }
+  }) {
+    Present { value: cl } => RosterClosureStep { closure: cl, memo: memo }
+    Absent =>
+      let cl = roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: ""))
+      RosterClosureStep { closure: cl, memo: RosterCompanionMemo { modules: memo.modules, closures: list_snoc_item(xs: memo.closures, item: RosterClosureCached { module: module, closure: cl }) } }
+  }
+}
+
+fn roster_companion_of(row: RosterHeadRow, to: String, memo: RosterCompanionMemo, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanionStep {
   let home = roster_qn_text(qn: row.home)
-  match roster_module_read(name: home, prepared: prepared, lex: lex) {
-    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+  let step = roster_memo_module_read(memo: memo, name: home, prepared: prepared, lex: lex)
+  match step.read {
+    ModuleReadFailed { detail: d } => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: d }, memo: step.memo }
     ModuleReadOk { root: hroot, imports: himports } =>
       match roster_declaration_node(root: hroot, name: to) {
-        Absent => CompanionUnderivable { call: row.call, to: to, detail: "home " + home + " declares no " + to }
+        Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: "home " + home + " declares no " + to }, memo: step.memo }
         Present { value: callee } =>
           match roster_return_head(arrow: callee) {
-            Absent => CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" }
+            Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" }, memo: step.memo }
             Present { value: ret } =>
               match roster_type_owner(home: home, imports: himports, root: hroot, spelling: ret) {
-                Absent => CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }
-                Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, prepared: prepared, lex: lex)
+                Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }, memo: step.memo }
+                Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, memo: step.memo, prepared: prepared, lex: lex)
               }
           }
       }
   }
 }
 
-fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, memo: RosterCompanionMemo, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanionStep {
   let module = roster_dotted_init(q: owner)
-  match roster_module_read(name: module, prepared: prepared, lex: lex) {
-    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+  let step = roster_memo_module_read(memo: memo, name: module, prepared: prepared, lex: lex)
+  match step.read {
+    ModuleReadFailed { detail: d } => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: d }, memo: step.memo }
     ModuleReadOk { root: mroot, imports: _ } =>
       match roster_declaration_node(root: mroot, name: roster_dotted_last(q: owner)) {
-        Absent => CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }
+        Absent => RosterCompanionStep { companion: CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }, memo: step.memo }
         // A return type that is not a coproduct has no tags an ambient pattern could stand in for: nothing to import.
         Present { value: decl } =>
-          CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: "")) }
+          let closed = roster_memo_closure_read(memo: step.memo, module: module)
+          RosterCompanionStep { companion: CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: closed.closure }, memo: closed.memo }
       }
   }
 }
 
-// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing.
+// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every module and closure is read
+// once per run (the memo), however many rows name it.
 fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
-  fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+  let folded = fold_list(xs: rows, empty: RosterCompanionFold { companions: [], memo: roster_memo_empty() }, cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
-      RenameHead { to: t, positional: _, appended: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
+      RenameHead { to: t, positional: _, appended: _ } =>
+        let step = roster_companion_of(row: r, to: t, memo: acc.memo, prepared: prepared, lex: lex)
+        RosterCompanionFold { companions: list_snoc_item(xs: acc.companions, item: step.companion), memo: step.memo }
     }
   })
+  folded.companions
 }
 
 // THE COMPANION PASS, run on a file whose rows and labels have converged (Clean). For each companion whose renamed callee
