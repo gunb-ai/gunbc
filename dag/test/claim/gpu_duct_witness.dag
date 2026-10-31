@@ -10,7 +10,7 @@ import product.printed_chassis.gpu_duct {
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design, duct_design, CardEnvelope, card_envelope_of,
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
-  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
+  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, um,
 }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy, DuctFitPolicy, RingExercisedDims, UnqualifiedAllowances }
@@ -486,4 +486,66 @@ test fn w_the_card_envelope_is_the_row_envelope() -> Bool {
     Present { value: c } => c.name == a16_card().name && micrometer_count(m: c.length) == micrometer_count(m: a16_card().length)
     Absent => false
   }
+}
+
+// THE FLAT-ON-END DUCT'S TWO REPAIRS, pinned on the part it builds (the CAD check run on the realized part is the
+// instrument that settles solids and clearance; these hold the construction that check judges).
+fn flat_on_end_parts() -> List<AssemblyPart> {
+  plane_on_end_duct_parts(f: a16_end_face, card: a16_card(), d: a16_duct_design, b: a16_blower_duct_design)
+}
+
+fn duct_part_cuts(parts: List<AssemblyPart>) -> List<Primitive> {
+  flat_map(filter(parts, p => p.id == "DUCT"), p => p.cuts)
+}
+
+fn envelope_cleared_by_cuts(keepouts: List<Primitive>, cuts: List<Primitive>) -> Bool {
+  length(list: keepouts) == 1 && all(keepouts, k => {
+    let kb = primitive_bounds(p: k)
+    let across = filter(cuts, c => {
+      let cb = primitive_bounds(p: c)
+      cb.lo_x <= kb.lo_x && kb.hi_x <= cb.hi_x && cb.lo_y <= kb.lo_y && kb.hi_y <= cb.hi_y
+    })
+    any(across, a => primitive_bounds(p: a).lo_z <= kb.lo_z && any(across, b => primitive_bounds(p: b).hi_z >= kb.hi_z && primitive_bounds(p: a).hi_z >= primitive_bounds(p: b).lo_z))
+  })
+}
+
+fn power_keepouts(parts: List<AssemblyPart>) -> List<Primitive> {
+  flat_map(filter(parts, p => p.id == "POWER-KEEPOUT"), p => p.adds)
+}
+
+// The POWER-KEEPOUT envelope is not shrunk: it is still the policy's depth, and the duct's cuts together clear all of
+// it. Two cuts share it: the claim is that cuts spanning the envelope across reach its near end and its far end and
+// overlap in depth, so no band of duct material is left between them.
+test fn w_the_flat_on_end_duct_cuts_clear_the_whole_power_keepout_envelope() -> Bool {
+  let parts = flat_on_end_parts()
+  envelope_cleared_by_cuts(keepouts: power_keepouts(parts: parts), cuts: duct_part_cuts(parts: parts))
+}
+
+// RED for the above: without the cuts that reach the envelope's far end (the keep-out relief), the envelope is not
+// cleared -- the side wall left standing in it is the 455.139 mm3 the print route refused.
+test fn w_without_the_cuts_reaching_the_far_end_the_envelope_is_not_cleared() -> Bool {
+  let parts = flat_on_end_parts()
+  let keepouts = power_keepouts(parts: parts)
+  all(keepouts, k => {
+    let kb = primitive_bounds(p: k)
+    !envelope_cleared_by_cuts(keepouts: keepouts, cuts: filter(duct_part_cuts(parts: parts), c => primitive_bounds(p: c).lo_z > kb.lo_z))
+  })
+}
+
+// The passage to the fins is the plug's BORE: no cut spans the plug lip's whole outer footprint, because a cut that
+// does deletes the lip that seats the duct in the card's fin window (the 1 mm rim floating above the body).
+test fn w_no_flat_on_end_cut_spans_the_plug_lips_outer_footprint() -> Bool {
+  let parts = flat_on_end_parts()
+  let plug_w = um(m: a16_end_face.window_length) - 2 * um(m: a16_duct_design.plug_clearance)
+  let lips = filter(flat_map(filter(parts, p => p.id == "DUCT"), p => p.adds), q => {
+    let qb = primitive_bounds(p: q)
+    qb.hi_x - qb.lo_x == 2 * plug_w
+  })
+  length(list: lips) >= 1 && all(lips, lip => {
+    let lb = primitive_bounds(p: lip)
+    !any(duct_part_cuts(parts: parts), c => {
+      let cb = primitive_bounds(p: c)
+      touches(a: cb, b: lb) && cb.lo_x <= lb.lo_x && lb.hi_x <= cb.hi_x && cb.lo_y <= lb.lo_y && lb.hi_y <= cb.hi_y
+    })
+  })
 }
