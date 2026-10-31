@@ -1,0 +1,40 @@
+module test.claim.seed_build_preamble_no_marker_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
+
+// WHY THIS WITNESS EXISTS. #15235 (486127ca2c87, 2026-10-28) rewrote the seed-build preamble's
+// parameter defaults from a word form the bash grammar cannot spell into the grammar's own if/else,
+// and passed each arm as a BARE STATEMENT where the grammar's body is a statement-list node. The
+// fold had refused that shape eight days earlier (#14586), so every regeneration since emits the
+// refusal marker in place of the default assignments rather than the assignments: seven committed
+// workflow artifacts (fleet-converge, heal, heal-publish, witnesses, drift-watch, instrument-dispatch,
+// branch-run-grant-broker) went stale at once, and the PRs that needed one of them took only their
+// own hunks of the regenerated file -- which is the drift this branch closes. The class is
+// gunbc.recurring_failure_mode.a_serializer_drops_admitted_children_from_a_malformed_body.
+//
+// NOTHING READ THE PREAMBLE. That is how a producer whose output cannot be emitted sat on main for
+// three days: the preamble is a string built at emit time, and no claim had ever looked at it.
+
+// THE MARKER THE EMITTER SUBSTITUTES WHEN IT REFUSES A STATEMENT. A generated step that carries it
+// is not valid shell, which is the point -- but a generated WORKFLOW that carries it has already
+// lost a statement, and nothing in the step's own text says so.
+data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
+
+// THE PREAMBLE EMITS: no statement in it is refused.
+test fn the_seed_build_preamble_emits_without_a_refusal_marker() -> Bool {
+  !string_contains(s: repo_self_build_env_preamble(), pattern: refused_marker)
+}
+
+// BOTH ARMS OF EACH DEFAULT SURVIVE THE FOLD. A refusal is not the only way to lose a statement --
+// the class's failure mode is a plausible program with the body gone -- so the claim names the arms
+// themselves: the assignment that keeps an inherited value, and the assignment that supplies the
+// checkout-relative default, for both prefixes the preamble defaults.
+test fn the_seed_build_preamble_keeps_both_default_arms() -> Bool {
+  let text = repo_self_build_env_preamble()
+  string_contains(s: text, pattern: "GUNBC_SEED_TARGET=\"$CARGO_TARGET_DIR\"")
+    && string_contains(s: text, pattern: "GUNBC_SEED_TARGET=\"$GUNBC_SEED_CHECKOUT\"'/target'")
+    && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$CARGO_HOME\"")
+    && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$HOME\"'/.cargo'")
+}
