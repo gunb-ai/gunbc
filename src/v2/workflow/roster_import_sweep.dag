@@ -465,6 +465,18 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] },
       scope: RequiresOccurrences
     },
+    // to_string over a kernel Int (or a Nat, whose widening to Int is total and exact) -> std.integer int_to_decimal_string(value). The ambient
+    // to_string spelling covers Int, Nat, Bool and records (a meaning fork), so the row is valid only at sites whose argument has a CITED Int/Nat
+    // declaration and a run applies it only through an OnlyOccurrences gate naming those keys.
+    RosterHeadRow {
+      call: "to_string",
+      key: "to_string/int",
+      import_name: "int_to_decimal_string",
+      home: qualified_name_from_dotted_string(dotted: "std.integer"),
+      labels: [],
+      head: RenameHead { to: "int_to_decimal_string", positional: ["value"], appended: [] },
+      scope: RequiresOccurrences
+    },
     // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
