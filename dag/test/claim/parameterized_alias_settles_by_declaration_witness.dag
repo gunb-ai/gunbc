@@ -89,9 +89,43 @@ fn pas_join_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+// RED (review 87307): agreeing declaration, DISAGREEING ARGUMENTS. The cross-spelling arm of
+// node_type_compatible settles Map<String, Bool> against FinitelySupportedFunction<String, Int> by the
+// declarations both settle to -- so the arguments are the ONLY thing left deciding, and they must
+// decide. An earlier draft of that arm ended `|| type_name_compatible(...) ||
+// alias_identity_in_judgment(...)`, which let a pair whose arguments refused admit by the spelling
+// comparison the arguments were supposed to gate: this join completed. DESIGN 5 -- validation that can
+// be satisfied by the declaration while the realization lies. The positive control above and this RED
+// are one pair: identical shape, and the argument types are the only difference between them.
+data pas_argument_mismatch_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn pas_join(m: Map<String, Bool>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED (review 87521): THE EXACT PAIR THE REVIEW NAMED -- `Map<String, Int>` beside
+// `FinitelySupportedFunction<String, Bool>`, element types Int and Bool disagreeing. Same arm as the
+// RED above with the two element types in the other order, so neither element position can be the one
+// that happens to be skipped. This is also the acceptance test that the stage0 REGEN took: the seed
+// .dag arm at src/v1/04_types.dag ends in the argument-by-argument `all(...)` with nothing after it,
+// while the checked-in mirror src/v1/stage0/src/v1_compiler_infer_types.rs still ends that arm in
+// `|| type_name_compatible(...) || alias_identity_in_judgment(...)` (a stale projection, never
+// hand-edited on this branch -- byte-identical to main's copy at the merge cfaa1b5667e7). While the
+// mirror lies, this join completes and this RED is red; when heal regenerates the mirror from the
+// .dag, it refuses and this goes green. A mirror that merely builds after regeneration is not the
+// fix; this test is.
+data pas_reviewer_pair_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn pas_join(m: Map<String, Int>, n: FinitelySupportedFunction<String, Bool>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
+// RED (review 87521): Map<String, Int> and FinitelySupportedFunction<String, Bool> are one declaration
+// with two different argument lists; the arguments must refuse the join.
+test fn the_reviewer_named_element_type_pair_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_reviewer_pair_join_source))
+}
+
 // THE POSITIVE CONTROL: Map settles to std.algebra FinitelySupportedFunction, so both arms are one declaration.
 test fn a_parameterized_alias_joins_the_declaration_it_settles_to() -> Bool {
   pas_completed_clean(pas_run(pas_join_source))
+}
+
+// RED (review 87307): one declaration, two different argument lists -- the arguments must refuse the join.
+test fn the_same_declaration_with_mismatched_argument_types_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_argument_mismatch_join_source))
 }
 
 // RED: an alias whose right-hand side is a different declaration still refuses at the join.
