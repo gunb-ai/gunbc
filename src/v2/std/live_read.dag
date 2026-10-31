@@ -74,3 +74,23 @@ data live_read_carrier_callee_symbols_v0: List<String> = [
   "module_declaration_facts_live",
   "decl_facts"
 ]
+
+// THE filesystem_read SEAM. filesystem_read is a declared v1 builtin (src/v1/04_method.dag
+// builtin_function_registry, name string at filesystem_read_result_type there) whose calls today
+// resolve to the builtin directly, so nothing in the .dag corpus NAMES it as a declaration: no
+// DeclarationRef resolves to it, and a fact keyed by declaration path could not reach it. This fn
+// is that declaration -- a SELF-CALL body, the HostRealizedSeam shape exactly (correct by
+// construction: reaching the body recurses to the evaluation-budget refusal), the decl_facts
+// pattern at v2.std.decl_index applied to the read boundary. std.primitive_projection carries the
+// paired HostRealizedSeam row: never a seam without a row (the symbol_lexeme note records what
+// that omission emitted -- a compiling, diverging `pub fn filesystem_read`). The interpreter's
+// builtin arm (v1_interpreter_dispatch_generated "filesystem_read") answers the call ahead of the
+// body, so behavior does not move. The signature matches the builtin registry row exactly:
+// (path: String) -> FilesystemReadResult, whose content field is emitted by v1.runtime_rust
+// rt_filesystem. It lives HERE, beside the module that already rosters filesystem_read as the read
+// authority, so the read authority is where the read declaration is read from.
+fn filesystem_read(
+  path: String
+) -> FilesystemReadResult {
+  filesystem_read(path: path)
+}
