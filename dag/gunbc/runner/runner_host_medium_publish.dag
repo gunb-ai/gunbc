@@ -22,7 +22,7 @@ import gunbc.provisioning.seeded_install_media_publish {
 }
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
-  runner_host_medium_image,
+  runner_host_medium_image, RunnerHostBakedRelease,
 }
 
 // THE IMAGE LEG'S PRODUCTION CALLER (gunbc.runner.runner_throughput_qualification_route mtcollins1_image_leg).
@@ -142,6 +142,20 @@ fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
 
 data mtcollins1_runner_image_receipt_path: String = "target/mtcollins1-runner-image.txt"
 
+// THE BAKED RELEASE IS BUILT BY THIS RUN (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27, decision
+// A and its conditions): on this run's own aarch64 fleet runner, at the run's admitted checkout, the release-locus tree
+// is staged through the one tree install (gunbc.host.host_effect_realize approval_broker_tree_install_at), packed,
+// measured, and copied to the export host, where it is the image's copied seed artifact. That build is not written
+// yet, so the publish refuses here with that cause rather than deriving an image without its release. It lands in
+// the same PR before review (the PR is a draft until it does).
+type BakedReleaseBuild
+  = BakedReleaseBuilt { baked: RunnerHostBakedRelease }
+  | BakedReleaseNotBuilt { reason: String }
+
+fn mtcollins1_baked_release_build() -> BakedReleaseBuild {
+  BakedReleaseNotBuilt { reason: "the publish run's release build (stage the release-locus tree at the admitted checkout, pack, measure, copy to the export host) is not written yet" }
+}
+
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
 // CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
@@ -151,10 +165,14 @@ fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
   let attempt = match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_runner_image_attempt_raw) {
     FleetSshContextRefused { cause: c } => RunnerImageNotDerived { reason: concat("no fleet SSH context: ", c) }
     FleetSshContextReady { context: context, receipt: _ } =>
-      runner_image_publication_on(
-        host: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context },
-        image: runner_host_medium_image(host: mtcollins1_runner_host),
-      )
+      match mtcollins1_baked_release_build() {
+        BakedReleaseNotBuilt { reason: r } => RunnerImageNotDerived { reason: concat("the baked release was not built: ", r) }
+        BakedReleaseBuilt { baked: baked } =>
+          runner_image_publication_on(
+            host: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context },
+            image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked),
+          )
+      }
   }
   let rendered = render_runner_image_attempt(a: attempt)
   let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)

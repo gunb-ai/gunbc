@@ -1,6 +1,6 @@
 module gunbc.live_deploy.release_locus
 
-import std.types { String, List, NonEmptyStr, CommitSha }
+import std.types { String, List, NonEmptyStr, CommitSha, Bool }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
@@ -110,5 +110,63 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
+  }
+}
+
+// ── THE TREE RECEIPT, READ BACK ───────────────────────────────────────────────────────────────
+// Homed here, beside the receipt's path, because every release locus carries one: the approval broker, the microVM
+// controller, workspace commissioning and the service-slot controller each read the receipt of their own locus.
+// WHAT THIS READS AND WHAT IT ESTABLISHES, stated at its real strength rather than the strength the
+// old annotation claimed. The receipt is a FILE ON THE HOST, written by the copy step in the release
+// locus, carrying the candidate revision that copy was for and the digest of the bytes it installed.
+// Reading it establishes that THE COPY FOR THIS CANDIDATE RAN AND RECORDED A DIGEST -- which a
+// stale tree from an earlier deploy fails, and which the /livez echo cannot tell you at all.
+//
+// THE PATH IS PER-CANDIDATE NOW, AND THAT CHANGES WHAT "STALE" CAN EVEN MEAN (operator ruling
+// 2026-09-20). The receipt lives inside releases/<candidate sha>/, and the readback derives the path
+// it reads from the candidate it just deployed -- so an earlier deploy's receipt is not an older
+// line at the same path that this fold must out-argue, it is a file somewhere else entirely. The
+// failure mode collapses from "read the wrong revision's receipt and believe it" to "the file is
+// absent", which is the arm below that refuses. A mutable shared root is what made the first
+// reading necessary; the immutable locus makes it structural.
+//
+// WHAT IT DOES NOT YET ESTABLISH, named rather than implied: that the installed digest EQUALS a
+// digest computed independently over the deploying checkout. That comparison needs the source-side
+// digest computed at readback time, and this fold does not compute it. So the receipt is a subject
+// side fact about which candidate was copied, not yet a proof that the bytes match. The trigger
+// that closes it: the readback computing the source tree digest in the deploying checkout with the
+// same fold the copy step uses, and refusing on inequality.
+type ReleaseTreeReceiptRead
+  = TreeReceiptUnreadable { detail: NonEmptyStr }
+  | TreeReceiptMalformed { detail: NonEmptyStr }
+  | TreeReceiptObserved { revision: NonEmptyStr, installed_digest: NonEmptyStr }
+
+// THE FIRST MATCHING LINE WINS and later ones are ignored, which is the safe direction here: the
+// copy step writes each key once, so a second occurrence means the receipt was appended to rather
+// than replaced -- and reading the FIRST is reading the older value, which fails the revision
+// comparison below rather than silently accepting a newer line over a stale file.
+fn tree_receipt_field(text: String, key: String) -> String {
+  let marker = join([key, "="], "")
+  fold(split(s: text, delimiter: "\n"), init: "", f: (acc, line) =>
+    if acc != "" { acc }
+    else if starts_with(s: line, prefix: marker) {
+      substring(s: line, start: string_length(s: marker), end: string_length(s: line))
+    } else { acc }
+  )
+}
+
+fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr) -> ReleaseTreeReceiptRead {
+  if !success {
+    TreeReceiptUnreadable { detail: error }
+  } else {
+    let rev = tree_receipt_field(text: body, key: "candidate_revision")
+    let dig = tree_receipt_field(text: body, key: "installed_digest")
+    if rev == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
+    } else if dig == "" {
+      TreeReceiptMalformed { detail: "the tree receipt carries no installed_digest line, so the copy recorded nothing about the bytes it installed" as NonEmptyStr }
+    } else {
+      TreeReceiptObserved { revision: rev as NonEmptyStr, installed_digest: dig as NonEmptyStr }
+    }
   }
 }

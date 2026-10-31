@@ -21,7 +21,10 @@ import gunbc.runner.runner_host_unit_slot {
 }
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotRebuild, ServiceSlotRebuilt, ServiceSlotNotBound, ServiceSlotAdmission, ServiceSlotAdmitted, ServiceSlotAdmissionRefused, service_slot_admit,
+  service_slot_release_admission, ServiceSlotReleaseAccepted, ServiceSlotReleaseRefused,
 }
+import gunbc.live_deploy.release_locus { observe_release_tree_receipt }
+import std.algebra { string_contains }
 import extdeps.github.actions_runner { actions_runner_jitconfig_env_name, actions_runner_base_dir }
 import gunbc.fleet.host_credential_custody_converge {
   HostCredentialCustodyRow, HostCredentialCustodyRow, host_credential_custody_row, ServiceSlotAppKey, FabricStateWriterKey,
@@ -402,4 +405,25 @@ test fn an_identity_that_did_not_resolve_is_refused_not_assumed_different() -> B
     ServiceSlotIdentityUngrounded { name: _, cause: _ } => true
     _ => false
   }
+}
+
+// THE PASS ADMITS ONLY THE ACCEPTED BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs F1; operator decision A,
+// condition 2). The receipt is built by the real reader over a receipt body; the baked revision equal to the accepted
+// one is admitted, and an image baked at another revision, no accepted revision, and an unreadable or malformed receipt
+// each refuse before anything is minted.
+data baked_receipt_body: String = "candidate_revision=1111111111111111111111111111111111111111\ninstalled_digest=abc123\n"
+
+fn release_standing(body: String, readable: Bool, accepted: String?) -> String {
+  match service_slot_release_admission(receipt: observe_release_tree_receipt(success: readable, body: body, error: "unreadable for the claim" as NonEmptyStr), accepted: accepted) {
+    ServiceSlotReleaseAccepted { revision: r } => concat("accepted ", r as String)
+    ServiceSlotReleaseRefused { cause: c } => concat("refused: ", c)
+  }
+}
+
+test fn the_pass_admits_only_the_accepted_baked_release() -> Bool {
+  release_standing(body: baked_receipt_body, readable: true, accepted: Present { value: "1111111111111111111111111111111111111111" }) == "accepted 1111111111111111111111111111111111111111"
+    && string_contains(s: release_standing(body: baked_receipt_body, readable: true, accepted: Present { value: "2222222222222222222222222222222222222222" }), pattern: "baked release is revision 1111111111111111111111111111111111111111 but the accepted revision is 2222222222222222222222222222222222222222")
+    && string_contains(s: release_standing(body: baked_receipt_body, readable: true, accepted: none), pattern: "is not set")
+    && string_contains(s: release_standing(body: "", readable: false, accepted: Present { value: "1111111111111111111111111111111111111111" }), pattern: "unreadable")
+    && string_contains(s: release_standing(body: "installed_digest=abc123\n", readable: true, accepted: Present { value: "1111111111111111111111111111111111111111" }), pattern: "malformed")
 }

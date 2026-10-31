@@ -12,8 +12,8 @@ import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.transports.rest { RestResult, RestAnswered }
 import product.host_identity { HostIdentity }
-import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt_label_of_run }
-import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
@@ -312,13 +312,9 @@ fn lost_boot_live_observation(host: String) -> CurrentBootObservation {
   if host == "" {
     CurrentBootUnobserved { cause: concat(lost_boot_sweep_host_env_name, " is unset, so no host is reached") }
   } else {
-    match actions_run_attempt_label_of_run(prefix: lost_boot_sweep_attempt_prefix) {
-      Absent => CurrentBootUnobserved { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the SSH context has no attempt-owned path" }
-      Present { value: label } =>
-        match anchored_host_transport_live(host: host as HostIdentity, attempt_raw: label as String) {
-          AnchoredBindingBound { bound: b } => lost_boot_observe_current_boot(transport: Present { value: b })
-          other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
-        }
+    match anchored_host_transport_for_run(host: host as HostIdentity, prefix: lost_boot_sweep_attempt_prefix) {
+      AnchoredBindingBound { bound: b } => lost_boot_observe_current_boot(transport: Present { value: b })
+      other => CurrentBootUnobserved { cause: concat("no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)) }
     }
   }
 }

@@ -11,7 +11,7 @@ module test.probe.seed_artifact_fetch_forged_probe
 
 import std.types { List, NonEmptyStr, String }
 import gunbc.host_command_binding { CommandHost }
-import extdeps.provisioning.ubuntu_seeded_install_media { AdmittedSeedArtifact, SeedArtifactBasename }
+import extdeps.provisioning.ubuntu_seeded_install_media { AdmittedSeedArtifact, SeedArtifactBasename, SeedArtifactFetchedFrom }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_fetch_artifact, install_media_remaster_fetch_artifacts }
 
 // (a) ONE ADMITTED ARTIFACT, REBOUND TO ANOTHER SEED DIRECTORY. Refuses at install_media_remaster_fetch_artifact.
@@ -28,7 +28,7 @@ fn rebound_all(host: CommandHost, artifacts: List<AdmittedSeedArtifact>) -> Stri
 fn forged() -> AdmittedSeedArtifact {
   AdmittedSeedArtifact {
     basename: SeedArtifactBasename { value: "runner-host-up.sh" },
-    source_url: "https://example.invalid/x",
+    source: SeedArtifactFetchedFrom { url: "https://example.invalid/x" },
     sha256: "0000000000000000000000000000000000000000000000000000000000000000",
   }
 }

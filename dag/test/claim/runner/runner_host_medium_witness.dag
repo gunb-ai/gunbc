@@ -32,13 +32,23 @@ import gunbc.machine_intake.mtcollins1_boot_run {
 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.runner.runner_host_medium {
+  RunnerHostBakedRelease,
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
   RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostMachineUnrecognized, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
-  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
+  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id, runner_host_medium_runner_account,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BAKED RELEASE AS THE PUBLISH RUN WOULD STAGE IT: supplied at the interface, its digest a fixture pin.
+fn fixture_baked_release() -> RunnerHostBakedRelease {
+  RunnerHostBakedRelease {
+    revision: "1111111111111111111111111111111111111111",
+    digest: sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr),
+    staged_path: "/var/tmp/gunbc-image-staging/gunbc-release-1111111111111111111111111111111111111111.tar" as NonEmptyStr,
+  }
+}
 
 data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
   machine: mtcollins1_census_machine,
@@ -73,6 +83,10 @@ fn sections(install_exit: String, machine: String) -> String {
 }
 
 fn sections_with_digest(install_exit: String, machine: String, tarball_digest: String) -> String {
+  sections_full(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: "0")
+}
+
+fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
@@ -80,6 +94,9 @@ fn sections_with_digest(install_exit: String, machine: String, tarball_digest: S
     section(name: "runner-dir", argv: "mkdir -p /opt/actions-runner", body: "", exit_code: "0"),
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
+    section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
+    section(name: "release-dir", argv: "mkdir -p (the release locus)", body: "", exit_code: "0"),
+    section(name: "release-extract", argv: "(the rendered release extract)", body: "", exit_code: "0"),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
     section(name: "nproc", argv: "nproc", body: "80\n", exit_code: "0"),
@@ -100,10 +117,10 @@ fn readback(capture: String) -> RunnerHostUpReadback? {
 
 // THE DERIVATION INHABITS THE SEEDED-MEDIA BUILD INPUT WITH THE RUNNER PAYLOAD: the arm64 artifact of
 // the host-unit slot's release as a seed ARTIFACT under its cited arm64 digest (the boot fetches
-// nothing), a seed program that verifies it off the medium and RETURNS
+// nothing), the baked gunbc release as the second, under its supplied digest and extracted to its release locus, a seed program that verifies it off the medium and RETURNS
 // (no power-off, nothing written to a disk), and the medium's own volume id.
 test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: runner } => {
       let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
       (runner.binary_release.version as String) == (actions_runner_release_2_337_0.version as String)
@@ -111,8 +128,11 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
         && string_contains(s: program, pattern: "sha256sum")
         && !string_contains(s: program, pattern: "set -e")
         && !string_contains(s: program, pattern: "curl")
-        && count(input.seed_artifacts) == 1
-        && all(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && count(input.seed_artifacts) == 2
+        && any(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && any(input.seed_artifacts, a => (a.name as String) == "gunbc-release-1111111111111111111111111111111111111111.tar"
+          && (a.digest.hex as String) == "2222222222222222222222222222222222222222222222222222222222222222")
+        && string_contains(s: program, pattern: "/releases/1111111111111111111111111111111111111111")
         && string_contains(s: program, pattern: "Runner.Listener")
         && !string_contains(s: program, pattern: "poweroff")
         && string_contains(s: input.grub_kernel_cmdline as String, pattern: mtcollins1_census_console_arg as String)
@@ -235,10 +255,10 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 // pre-artifact key: the census build key claim in test.claim.host.boot_medium_served_readback_witness
 // pins c001ac127d718e72.)
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
-      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: "https://mirror.invalid/runner.tar.gz", digest: a.digest })
-      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: actions_runner_release_2_337_0.digest_x86_64 })
+      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: SeedArtifactFetchedFrom { url: "https://mirror.invalid/runner.tar.gz" }, digest: a.digest })
+      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: actions_runner_release_2_337_0.digest_x86_64 })
       let key = seeded_install_media_build_key(input: input) as String
       key == (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: moved)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: other)) as String)
@@ -266,11 +286,11 @@ fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCl
 }
 
 fn artifact_named(n: String) -> NoCloudSeedArtifact {
-  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", digest: sha256_digest(hex: supplied_digest) }
+  NoCloudSeedArtifact { name: n as NonEmptyStr, source: SeedArtifactFetchedFrom { url: "https://example.invalid/x" }, digest: sha256_digest(hex: supplied_digest) }
 }
 
 test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let own = map(input.seed_artifacts, a => a.name as String)
       (match seeded_install_media_seed_artifact_admission(input: input) {
@@ -347,10 +367,10 @@ test fn an_unrecognized_machine_spelling_refuses_as_unrecognized() -> Bool {
 // THE PIN CARRIES ITS ALGORITHM: the same hex under Sha512 is another artifact (another build key) and
 // can never satisfy the sha256sum readback, while a Sha256 pin holds only on its own hex.
 test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let hex = actions_runner_release_2_337_0.digest_aarch64.hex
-      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: sha512_digest(hex: hex) })
+      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: sha512_digest(hex: hex) })
       (seeded_install_media_build_key(input: input) as String) != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: as_512)) as String)
         && seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha256_digest(hex: hex))
         && !seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha512_digest(hex: hex))
@@ -359,4 +379,25 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false
   }
+}
+
+// THE IMAGE CREATES THE ACCOUNT ITS LISTENERS RUN AS, AND THE READBACK GATES ON IT (operator decision B,
+// 2026-10-27). The seed program runs useradd for exactly the declared account; a boot whose runner-account section
+// failed (useradd exits 9 on a name already in use, 1 when it cannot update the password file) is refused naming
+// that section, never reported up with an account the slots would then fail to find.
+test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() -> Bool {
+  let created = match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } =>
+      string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: "useradd")
+        && string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: runner_host_medium_runner_account as String)
+    _ => false
+  }
+  let failed = concat(begin_line, concat(sections_full(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "9"), end_line))
+  created && (match readback(capture: failed) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } => rs |> any(r => match r {
+      RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-account" && c == "9"
+      _ => false
+    })
+    _ => false
+  })
 }
