@@ -128,22 +128,29 @@ fn same_leaf_declaration_cases() -> List<NativeEmissionCase> {
 // from neither, so a registry lookup of the leaf is ambiguous; the emitter used to print a refusal
 // expression in place of the local, and rustc refused the crate (E0614). The probes are read so both
 // declarers are in the closure.
-fn control_shadow_match_arm(found: Int?) -> Int {
+fn control_shadow_match_arm(found: Bool?) -> Int {
   match found {
-    Present { value: control_shadowed_leaf } => control_shadowed_leaf + 1
+    Present { value: control_shadowed_leaf } =>
+      match control_shadowed_leaf {
+        true => 5
+        false => 3
+      }
     Absent => 0
   }
 }
 
-fn control_shadow_lambda(xs: List<Int>) -> Int {
-  xs |> fold(init: 0, f: (acc, control_shadowed_leaf) => acc + control_shadowed_leaf)
+fn control_shadow_lambda(flags: List<Bool>) -> Int {
+  flags |> fold(init: 0, f: (acc, control_shadowed_leaf) => match control_shadowed_leaf {
+    true => acc + 2
+    false => acc
+  })
 }
 
 fn local_binder_shadow_cases() -> List<NativeEmissionCase> {
   [
-    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: 4 }) == 5 },
-    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_lambda_parameter", held: control_shadow_lambda(xs: [1, 2, 3]) == 6 },
-    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: 4 }) != control_leaf_a_probe() + control_leaf_b_probe() }
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: true }) == 5 },
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_lambda_parameter", held: control_shadow_lambda(flags: [true, false, true]) == 4 },
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: false }) == 3 && control_leaf_a_probe() + control_leaf_b_probe() == 303 }
   ]
 }
 
