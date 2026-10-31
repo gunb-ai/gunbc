@@ -1,0 +1,289 @@
+module gunbc.durable_append_log_store
+
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.optional { Present, Absent }
+import gunbc.durable_cas_file_store { cas_key_generation_of_name }
+import std.durable_append_log {
+  AppendFraming, RecordPerGeneration, NewlineDelimitedStream,
+  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, SandboxOnly,
+}
+
+// THE SEALED SHAPE OF AN APPEND-LOG / MULTI-WRITER STORE, and the per-member disposition of every row the
+// sealed-store migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
+// Contract semantics (atomicity, order, torn tail, readback, writer windows) are std.durable_append_log's;
+// the exclusion is std.durable_exclusive_hold's, released on evidence (ReleasedOnEvidence); host-authored
+// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the
+// sealed handle, its one mint, and the census.
+//
+// SEALED LIKE EVERY STORE THE MIGRATION HAS SEALED (gunbc.roadmap.roadmap_attempt_state_store AttemptState):
+// AppendLogStore is `sole_constructor`, minted from a parent handle and a declared slot row, never from a
+// path; AppendLogParent is itself `sole_constructor`, and the only producers of one are the owning cohort's
+// own sealed store (the attempt-state store for the attempt members). The declaration is data: the slot
+// rows below are the only place a log member's name is written.
+
+// ONE SLOT ROW PER LOG MEMBER. The entry NAME is not written here: it is the owning sealed store's row
+// (gunbc.roadmap.roadmap_attempt_state_store attempt_state_member_name for the attempt members), read by
+// `member`, so a log member's name has one spelling (DESIGN 3).
+type AppendLogSlot {
+  member: NonEmptyStr
+  framing: AppendFraming
+  writers: MemberWriterPolicy
+}
+
+type AppendLogParent sole_constructor {
+  directory: NonEmptyStr
+}
+
+type AppendLogStore sole_constructor {
+  parent: NonEmptyStr
+  slot: AppendLogSlot
+}
+
+// THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
+// different framing (a generation file where a stream is declared, or the reverse) or a second file claiming
+// the slot is `AppendLogLegacyRefused`, never adopted and never read through. Bytes written under the
+// unchanged literal name by the pre-seal path are NOT legacy for a stream slot: sealing is in place, and the
+// old-bytes readback is a required control. An unlisted parent is Unready, not an empty log.
+type AppendLogLegacyCause
+  = LegacyFramingMismatch { entry: String }
+  | LegacyDuplicateClaim { entries: List<String> }
+
+type AppendLogMinting
+  = AppendLogReady { store: AppendLogStore }
+  | AppendLogUnready { detail: String }
+  | AppendLogLegacyRefused { cause: AppendLogLegacyCause }
+
+// THE ONE MINT. Pure over the listing the owning store took; the legacy decision is a fold, and the claimants
+// and the mismatched entries are DERIVED here from that listing and the slot's own member name, never
+// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream slot
+// is mismatched by any entry that is a generation file of its key (gunbc.durable_cas_file_store
+// cas_key_generation_of_name, the one recognizer of that framing); an entry equal to the member name is a claimant.
+fn append_log_entry_claims(slot: AppendLogSlot, entry: String) -> Bool {
+  entry == (slot.member as String)
+}
+
+fn append_log_entry_is_other_framing(slot: AppendLogSlot, entry: String) -> Bool {
+  match slot.framing {
+    NewlineDelimitedStream => match cas_key_generation_of_name(key: slot.member, name: entry) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    RecordPerGeneration => entry == (slot.member as String)
+  }
+}
+
+type AppendLogListingVerdict
+  = ListingClean
+  | ListingUnlisted
+  | ListingFramingMismatch { entry: String }
+  | ListingDuplicateClaim { entries: List<String> }
+
+fn append_log_listing_verdict(slot: AppendLogSlot, listing: List<String>?) -> AppendLogListingVerdict {
+  match listing {
+    Absent => ListingUnlisted
+    Present { value: entries } => append_log_listed_verdict(slot: slot, entries: entries)
+  }
+}
+
+fn append_log_listed_verdict(slot: AppendLogSlot, entries: List<String>) -> AppendLogListingVerdict {
+  let mismatched = filter(entries, e => append_log_entry_is_other_framing(slot: slot, entry: e))
+  let claimants = filter(entries, e => append_log_entry_claims(slot: slot, entry: e))
+  match mismatched {
+    Cons { head: entry, tail: _ } => ListingFramingMismatch { entry: entry }
+    Empty {} => match claimants {
+      Cons { head: _, tail: Cons { head: _, tail: _ } } => ListingDuplicateClaim { entries: claimants }
+      _ => ListingClean
+    }
+  }
+}
+
+fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: List<String>?) -> AppendLogMinting {
+  match append_log_listing_verdict(slot: slot, listing: listing) {
+    ListingUnlisted => AppendLogUnready { detail: "parent directory did not list" }
+    ListingFramingMismatch { entry: e } => AppendLogLegacyRefused { cause: LegacyFramingMismatch { entry: e } }
+    ListingDuplicateClaim { entries: es } => AppendLogLegacyRefused { cause: LegacyDuplicateClaim { entries: es } }
+    ListingClean => AppendLogReady { store: AppendLogStore { parent: parent.directory, slot: slot } }
+  }
+}
+
+// ── THE DISPOSITION CENSUS, at identity grain ─────────────────────────────────────────────────────
+// Identity is (inventory row_id, member name). Sixteen rows from Seeadecb2 (the per-attempt dispatch
+// state), one from S88241eea (gcp_iam_bootstrap), one from the approval decision store. The census read the
+// merged disposition tables of #15417, #15412, #15068, #15104, #15081, #15396 and #15414; the other
+// `Blocked` rows there (capacity store, cleanup authority root-per-call, tailnet door cutover journal,
+// transition lease) are blocked on other capabilities and are NOT this contract's: see `out_of_scope_rows`.
+//
+// THE GROUNDING THAT CHANGED THE SHAPE. `dispatch_attempt_events_initialize_for_instance` creates the events
+// file (create-new, group-writable under a dedicated worker account) and the sandboxed worker then appends
+// it; `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
+// `<events>.wire/<round>.{request,response}.json` into. So every `multi-writer` member is a host create
+// followed by ONE sandbox window, and the contract is a sequence of exclusive windows, not concurrent writers.
+type MemberDisposition
+  = MigrateToLogStore { slot: AppendLogSlot, readers: List<String> }
+  | MigrateToCreateOnceMember { reason: String }
+  | BlockedOnCapability { capability: String }
+  | StaysSharedByAgreement { authority: String }
+
+type MemberCensusRow {
+  row_id: NonEmptyStr
+  member: NonEmptyStr
+  was: String
+  disposition: MemberDisposition
+}
+
+fn sandbox_provider(owner: NonEmptyStr) -> DurableHoldOwnerRef {
+  owner as DurableHoldOwnerRef
+}
+
+fn stream_slot(member: NonEmptyStr, writer: DurableHoldOwnerRef) -> AppendLogSlot {
+  AppendLogSlot {
+    member: member,
+    framing: NewlineDelimitedStream {},
+    writers: HostCreatesThenSandboxWrites { principal: writer },
+  }
+}
+
+fn wire_slot(writer: DurableHoldOwnerRef) -> AppendLogSlot {
+  AppendLogSlot {
+    member: "AttemptDirectoryWire" as NonEmptyStr,
+    framing: RecordPerGeneration {},
+    writers: HostCreatesThenSandboxWrites { principal: writer },
+  }
+}
+
+// THE PRINCIPAL IS THE ATTEMPT'S WORKER UNIT, whose identity the attempt-state store already derives; the
+// literal here names the role the implementation lane binds, not a user name.
+data attempt_worker_principal_role: NonEmptyStr = "attempt-worker-unit" as NonEmptyStr
+
+data append_log_member_census: List<MemberCensusRow> = [
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerEvents" as NonEmptyStr,
+    was: "Blocked: append-only log",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptWorkerEvents" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_attempt_metering", "events projection subprocess (codex_provider_event_projection_args)", "roadmap_provider_events"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewEvents" as NonEmptyStr,
+    was: "Blocked: append-only log",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptReviewEvents" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_attempt_metering", "roadmap_provider_events"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditEvents" as NonEmptyStr,
+    was: "Blocked: append-only log",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptAuditEvents" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_attempt_metering", "roadmap_provider_events"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorEvents" as NonEmptyStr,
+    was: "Blocked: append-only log",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptSupervisorEvents" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_attempt_metering", "roadmap_provider_events"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptDirectoryWire" as NonEmptyStr,
+    was: "Blocked: append-only",
+    disposition: MigrateToLogStore {
+      slot: wire_slot(writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["harness_conversation_fork (round digests)"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerLog" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptWorkerLog" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["attempt_system_unit_launch (stdout redirect target)"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewLog" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptReviewLog" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_dispatch_actuator plan-time argv"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditLog" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptAuditLog" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_dispatch_actuator plan-time argv"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorLog" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToLogStore {
+      slot: stream_slot(member: "AttemptSupervisorLog" as NonEmptyStr, writer: sandbox_provider(owner: attempt_worker_principal_role)),
+      readers: ["roadmap_dispatch_actuator plan-time argv"],
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerRequestScratch" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "a single-writer scratch the sandbox replaces whole, not a log: the sandbox window gates it through MemberWriterPolicy, readback is a plain sealed read, and no append law applies" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewRequestScratch" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "same shape as AttemptWorkerRequestScratch" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditRequestScratch" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "same shape as AttemptWorkerRequestScratch" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorRequestScratch" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "same shape as AttemptWorkerRequestScratch" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewVerdict" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "a verdict the sandboxed reviewer writes once; the host reads it only after the window is released, so an unreleased window reads as no verdict rather than a partial one" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditVerdict" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "same shape as AttemptReviewVerdict" },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorVerdict" as NonEmptyStr,
+    was: "Blocked: written by the worker sandbox (multi-writer)",
+    disposition: MigrateToCreateOnceMember { reason: "same shape as AttemptReviewVerdict" },
+  },
+  MemberCensusRow {
+    row_id: "S88241eea" as NonEmptyStr, member: "gcp_iam_bootstrap temporary-authority records (intent, elected, closed, retired)" as NonEmptyStr,
+    was: "Blocked: append-only (four create-once records per operation, never freed)",
+    disposition: BlockedOnCapability { capability: "the ceremony runs in CI so the records leave the operator checkout (ruling warm-crane-219); the host-authored shape is RecordPerGeneration over std.durable_compare_and_set unwindowed, so the contract is ready and the move is the cutover to gunbc.auth.gcp_iam_bootstrap_journal" },
+  },
+  MemberCensusRow {
+    row_id: "approval_decision_store" as NonEmptyStr, member: "approval_decision_store, approval_store_receipt" as NonEmptyStr,
+    was: "Blocked: shared (single writer by agreement)",
+    disposition: StaysSharedByAgreement { authority: "gunbc.rung_drop approval_store_single_writer_by_agreement: that drop declares a writer by agreement, which MemberWriterPolicy::HostOnly plus the window would make a typed fact; restoring it is a separate lane, not this contract's" },
+  },
+]
+
+// ROWS THAT READ `Blocked` IN THE SAME TABLES BUT ARE NOT THIS CONTRACT'S, named so a reader does not
+// mistake absence for omission: the capacity store (C-compute), the fabric cleanup authority (root per call),
+// the tailnet door cutover journal (witness-seam), the deploy transition lease (hold-release-model; the
+// ReleasedOnEvidence arm now exists in std.durable_exclusive_hold, so that row's own trigger should be
+// re-read, not by this lane).
+data out_of_scope_rows: List<String> = [
+  "S9892f19f capacity store",
+  "S703c0e8e fabric_control_plane_live_probe cleanup authority",
+  "S78f330a6 tailnet_door_cutover_host journal",
+  "S33f05980 deploy_transition transition lease",
+]
