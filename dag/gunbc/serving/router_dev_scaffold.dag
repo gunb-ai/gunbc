@@ -126,7 +126,11 @@ data router_dev_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
     reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
+    // Bound to the PRODUCTION-FED fold, not to the derivation itself: bound_dissolution is
+    // std.dissolution DeclarationAppears, so a ref to rented_cohort_enrollments_from_allocations would be
+    // satisfied by the PR that writes that fold, dissolving this debt while the roster it feeds is still
+    // empty. The name below appears only when the fleet's held allocations are actually folded.
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment_from_allocations", decl_name: "rented_cohort_enrollments_from_production_allocations"))
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),

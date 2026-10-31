@@ -1,0 +1,90 @@
+module test.claim.serving.rented_enrollment_from_allocations_witness
+
+import std.types { Bool, NonEmptyStr, Port, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, RemoteForward }
+import gunbc.serving.serving_enrollment { ServingRoute, ServingRouteUnresolved }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAccessRoute, RentedSshLocalForward, rented_route_lands_off_engine_port_obligation, rented_route_forward_not_local_obligation }
+import gunbc.serving.rented_enrollment { rented_enrolled_routes }
+import gunbc.serving.rented_enrollment_from_allocations {
+  RentedCohortFold, rented_cohort_enrollments_from_allocations, rented_cohort_index_from_allocations, rented_cohort_refusal_reports,
+}
+import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel, a_loopback }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The fixture allocation's engine listens on 8000 (test.claim.serving.rented_allocation_witness
+// a_allocation), so a route that lands anywhere else is refused by the derivation this fold calls --
+// a fact the fold does not own and must not re-decide.
+data fixture_engine_port: Port = 8000
+
+fn r_unresolved(r: ServingRoute) -> Bool {
+  match r { ServingRouteUnresolved { replica: _, obligation: _ } => true _ => false }
+}
+
+fn r_refused_with(folded: RentedCohortFold, wanted: NonEmptyStr) -> Bool {
+  count(folded.refusals) == 1 && any(folded.refusals, r => (r.obligation as String) == (wanted as String))
+}
+
+// THE FOLD ENROLS THE ALLOCATION'S OWN ROW. One held allocation, one row, no refusal, and the index the
+// harness would read resolves the route the row implies.
+test fn one_held_allocation_folds_to_one_enrolled_route() -> Bool {
+  let held = [a_allocation(route: a_tunnel(target_port: fixture_engine_port))]
+  let folded = rented_cohort_enrollments_from_allocations(held: held)
+  let routes = rented_enrolled_routes(index: rented_cohort_index_from_allocations(held: held))
+  count(folded.enrollments) == 1 && count(folded.refusals) == 0 && count(routes) == 1 && all(routes, r => !r_unresolved(r: r))
+}
+
+// THE FOLD DOES NOT DEDUPLICATE, AND THE INDEX REFUSES WHAT A HAND-WRITTEN ROSTER COULD SNEAK THROUGH.
+// Two allocations that imply the same endpoint reach the index as two rows; the index reports the duplicate
+// and resolves NEITHER. A hand-kept list gets to look tidy; a fold reports the collision it was handed.
+test fn two_allocations_on_one_endpoint_fold_to_two_rows_the_index_resolves_neither() -> Bool {
+  let held = [a_allocation(route: a_tunnel(target_port: fixture_engine_port)), a_allocation(route: a_tunnel(target_port: fixture_engine_port))]
+  let folded = rented_cohort_enrollments_from_allocations(held: held)
+  let routes = rented_enrolled_routes(index: rented_cohort_index_from_allocations(held: held))
+  count(folded.enrollments) == 2 && count(folded.refusals) == 0 && count(routes) == 2 && all(routes, r => r_unresolved(r: r))
+}
+
+// A REFUSAL STAYS IN THE FOLD AS AN OBLIGATION, AND THE ROSTER STAYS HONEST ABOUT THE CARD IT LEFT OUT.
+// A route landing on a port the desired engine does not listen on is not silently dropped: the roster is
+// empty for it and the fold carries the reason, so the card is visibly serving nothing rather than absent.
+test fn a_route_that_lands_off_the_engine_port_folds_to_a_refusal_not_a_row() -> Bool {
+  let held = [a_allocation(route: a_tunnel(target_port: 9999))]
+  let folded = rented_cohort_enrollments_from_allocations(held: held)
+  let routes = rented_enrolled_routes(index: rented_cohort_index_from_allocations(held: held))
+  count(folded.enrollments) == 0 && r_refused_with(folded: folded, wanted: rented_route_lands_off_engine_port_obligation) && count(routes) == 0
+}
+
+// A FORWARD IS LOCAL OR THE HARNESS HOST HAS NO LISTENER. The route type admits a remote forward; the
+// derivation refuses it, and the fold must carry that refusal rather than enroll a route that reaches
+// a listener on someone else's machine.
+test fn a_forward_that_is_not_local_folds_to_a_refusal() -> Bool {
+  let remote = RentedSshLocalForward {
+    forward_host: "harness-host" as HostIdentity,
+    forward: PortForwardSpec { direction: RemoteForward, listener: a_loopback(port: 18090), target: a_loopback(port: fixture_engine_port) },
+  }
+  let held = [a_allocation(route: remote)]
+  let folded = rented_cohort_enrollments_from_allocations(held: held)
+  count(folded.enrollments) == 0 && r_refused_with(folded: folded, wanted: rented_route_forward_not_local_obligation)
+}
+
+// THE PRODUCTION READING, PINNED. Today nothing feeds this fold, and the roster is empty; the fold must
+// answer an empty population with two empty lists rather than inventing a row, so the empty production
+// roster stays honest about what it is -- a population nobody has supplied yet.
+test fn an_empty_population_folds_to_no_rows_and_no_refusals() -> Bool {
+  let folded = rented_cohort_enrollments_from_allocations(held: [] as List<RentedServingAllocation>)
+  let routes = rented_enrolled_routes(index: rented_cohort_index_from_allocations(held: [] as List<RentedServingAllocation>))
+  count(folded.enrollments) == 0 && count(folded.refusals) == 0 && count(routes) == 0
+}
+
+// A REFUSAL IS REPORTED WITH THE PROVIDER'S OWN CONTRACT ID, not with a bare number: the allocation
+// identity is a provider declaration plus that provider's contract id, so two providers' numeric ids cannot
+// collapse into one line in a report.
+test fn a_refusal_report_names_the_provider_contract_and_the_obligation() -> Bool {
+  let folded = rented_cohort_enrollments_from_allocations(held: [a_allocation(route: a_tunnel(target_port: 9999))])
+  let reports = rented_cohort_refusal_reports(folded: folded)
+  count(reports) == 1 && any(reports, s => string_contains(s, "1001") && string_contains(s, "engine"))
+}
