@@ -314,43 +314,36 @@ type ArithmeticCarrierSelection
   | ArithmeticNoCarrier
   | ArithmeticCarrierAmbiguous { candidates: List<DeclarationRef> }
 
-fn injection_is_implicit_safe(plan: ConversionPlan) -> Bool {
+// The one projection of a plan onto its injection fields; every other phase has none.
+type InjectionFields {
+  source: DeclarationRef
+  target: DeclarationRef
+  safety: InjectionSafety
+}
+
+fn injection_of(plan: ConversionPlan) -> InjectionFields? {
   match plan.phase {
-    InjectionPhase { source: _, target: _, constructor: _, safety: sf } => sf.total && sf.exact && sf.pure && sf.consent_free
-    UnfoldPhase { row: _ } => false
-    InverseUnfoldPhase { row: _ } => false
+    InjectionPhase { source: sc, target: t, constructor: _, safety: sf } => Present { value: InjectionFields { source: sc, target: t, safety: sf } }
+    UnfoldPhase { row: _ } => none
+    InverseUnfoldPhase { row: _ } => none
+  }
+}
+
+fn injection_is_implicit_safe(plan: ConversionPlan) -> Bool {
+  match injection_of(plan: plan) {
+    Present { value: i } => i.safety.total && i.safety.exact && i.safety.pure && i.safety.consent_free
+    Absent => false
   }
 }
 
 // The carriers an implicit-safe injection from `from` reaches that preserve every field in `preserved`
 // (the operator's positive fields: Add and Sub preserve add, Mul preserves mul, Neg none).
 fn injection_targets(rows: List<ConversionPlan>, from: DeclarationRef, preserved: List<String>) -> List<DeclarationRef> {
-  rows |> filter(r => injection_is_implicit_safe(plan: r) && injection_plan_runs_from(plan: r, from: from) && injection_plan_preserves(plan: r, preserved: preserved))
-       |> flat_map(r => injection_plan_target(plan: r))
-}
-
-fn injection_plan_runs_from(plan: ConversionPlan, from: DeclarationRef) -> Bool {
-  match plan.phase {
-    InjectionPhase { source: sc, target: _, constructor: _, safety: _ } => declaration_ref_eq(a: sc, b: from)
-    UnfoldPhase { row: _ } => false
-    InverseUnfoldPhase { row: _ } => false
-  }
-}
-
-fn injection_plan_preserves(plan: ConversionPlan, preserved: List<String>) -> Bool {
-  match plan.phase {
-    InjectionPhase { source: _, target: _, constructor: _, safety: sf } => preserved |> all(f => sf.preserves |> any(g => g == f))
-    UnfoldPhase { row: _ } => false
-    InverseUnfoldPhase { row: _ } => false
-  }
-}
-
-fn injection_plan_target(plan: ConversionPlan) -> List<DeclarationRef> {
-  match plan.phase {
-    InjectionPhase { source: _, target: t, constructor: _, safety: _ } => [t]
-    UnfoldPhase { row: _ } => []
-    InverseUnfoldPhase { row: _ } => []
-  }
+  rows |> flat_map(r => match injection_of(plan: r) {
+    Present { value: i } =>
+      if injection_is_implicit_safe(plan: r) && declaration_ref_eq(a: i.source, b: from) && (preserved |> all(f => i.safety.preserves |> any(g => g == f))) { [i.target] } else { [] }
+    Absent => []
+  })
 }
 
 fn carrier_listed(xs: List<DeclarationRef>, d: DeclarationRef) -> Bool {
