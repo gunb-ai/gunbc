@@ -10,7 +10,7 @@ import std.durable_compare_and_set {
   cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted, cas_generation,
 }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldSectionCompletion, SectionObservedComplete, SectionCompletionUnobservable,
+  DurableHoldOwnerRef, durable_hold_owner_equal, DurableHoldSectionCompletion, SectionObservedComplete, SectionCompletionUnobservable,
 }
 
 // THE APPEND-ONLY LOG CONTRACT AND THE WRITER WINDOW, AS PURE SEMANTICS (no store, no codec, no path).
@@ -163,10 +163,6 @@ type AppendWriteAdmission
   = AppendWriteAdmitted
   | AppendWriteRefused { refusal: AppendWriteRefusal }
 
-fn append_principal_equal(left: DurableHoldOwnerRef, right: DurableHoldOwnerRef) -> Bool {
-  (left as String) == (right as String)
-}
-
 // WHO MAY DO WHAT, in one fold over (policy, writer, intent, window standing, member existence).
 // The host's only write under HostCreatesThenSandboxWrites is the create, and only while the member does
 // not exist; every sandbox append needs the window held BY THAT PRINCIPAL; a held window refuses every
@@ -215,11 +211,11 @@ fn append_host_admission(intent: AppendWriteIntent, standing: AppendWriterStandi
 }
 
 fn append_sandbox_admission(allowed: DurableHoldOwnerRef, principal: DurableHoldOwnerRef, intent: AppendWriteIntent, standing: AppendWriterStanding, member_exists: Bool) -> AppendWriteAdmission {
-  if !append_principal_equal(left: allowed, right: principal) {
+  if !durable_hold_owner_equal(left: allowed, right: principal) {
     AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
   } else {
     match standing {
-      WriterHoldsWindow { owner: o } => if append_principal_equal(left: o, right: principal) {
+      WriterHoldsWindow { owner: o } => if durable_hold_owner_equal(left: o, right: principal) {
         match intent {
           IntentAppendRecord => AppendWriteAdmitted
           IntentCreateEmpty => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
