@@ -9,13 +9,13 @@ import gunbc.repository_census_observation { census_declaration_ref_identity }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import gunbc.host.host_memory_observation { HostUsableRamMeasured }
 import gunbc.serving.serving_host_memory {
-  ServingMemoryReading, ServingMemoryRead, ServingMemoryFits, conversation_snapshot_bytes,
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryFits, conversation_snapshot_bytes, ConversationSnapshotCost,
 }
 import gunbc.serving.serving_layout {
   ServingResourceGrant, ServingDevice, ServingDeviceGroup, ServingBackendProfile, ServingRequirement, ServingReplicaConfig,
   ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutRefusal,
   ServingLayoutRamShort, ServingLayoutDeviceTooSmall, ServingLayoutBackendCannotRetain, ServingLayoutUnknownDevice,
-  ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend, ServingLayoutDuplicateGroupName,
+  ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend, ServingLayoutDuplicateGroupName, ServingLayoutSnapshotCostNotPositive,
   ServingBackendSupportsTopology, ServingLiveQualified, ServingLiveUnqualified,
   ServingLiveStandingUnqualified, ServingLiveStandingQualified, ServingLiveRequalificationRequired,
   ServingAdmitted, ServingAdmissionRefused, ServingAdmission,
@@ -325,4 +325,25 @@ test fn witness_boards_with_one_display_key_are_different_qualifications() -> Bo
     && (match sl_live_after_board(board: outer, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
     && (match sl_live_after_board(board: field, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveRequalificationRequired { qualified: _, derived: _ } => true  _ => false }  _ => false })
     && (match sl_live_after_board(board: inner, receipt_board: inner) { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => match e.live { ServingLiveStandingQualified { receipt: _ } => true  _ => false }  _ => false })
+}
+
+fn sl_profile_with_snapshot(b: ServingBackendProfile, fixed: ByteSize, per_token: ByteSize) -> ServingBackendProfile {
+  ServingBackendProfile {
+    backend: b.backend, device_fixed_vram: b.device_fixed_vram, device_min_elastic_vram: b.device_min_elastic_vram,
+    replica_base_ram: b.replica_base_ram, active_slots: b.active_slots, active_slot_ram: b.active_slot_ram,
+    retention: ConversationSnapshotCost { fixed: fixed, per_token: per_token, provenance: "witness fixture" as NonEmptyStr, observed_up_to: b.retention.observed_up_to },
+    park_free_floor: b.park_free_floor, max_devices_with_retention: b.max_devices_with_retention, max_context: b.max_context,
+  }
+}
+
+// A SNAPSHOT THAT COSTS NOTHING HAS NO CONVERSATION COUNT: the allocation divides the RAM it has left by one
+// conversation's snapshot, so h11's grant under a profile whose retention cost is zero at the ceiling refuses
+// with the cause, before any division. The same profile at one byte per token is an ordinary layout.
+test fn witness_a_zero_snapshot_cost_refuses_before_allocation() -> Bool {
+  let zero = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups,
+    b: sl_profile_with_snapshot(b: strata_iq3_s_a16_profile, fixed: byte_size(count: 0), per_token: byte_size(count: 0)), r: serving_context_ceiling_requirement)
+  let one = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups,
+    b: sl_profile_with_snapshot(b: strata_iq3_s_a16_profile, fixed: byte_size(count: 0), per_token: byte_size(count: 1)), r: serving_context_ceiling_requirement)
+  (match sl_refusal(r: zero) { Present { value: ServingLayoutSnapshotCostNotPositive { context: _ } } => true  _ => false })
+    && sl_replicas(r: one).length() == 6
 }

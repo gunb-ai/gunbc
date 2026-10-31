@@ -157,6 +157,7 @@ type ServingLayoutRefusal
   | ServingLayoutEmptyGroup { group: NonEmptyStr }
   | ServingLayoutDuplicateGroupName { group: NonEmptyStr }
   | ServingLayoutContextAboveBackend { required: TokenCount, backend: TokenCount }
+  | ServingLayoutSnapshotCostNotPositive { context: TokenCount }
   | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
   | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
   | ServingLayoutRamShort { needed: ByteSize, available: ByteSize }
@@ -366,8 +367,11 @@ fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile,
   }
 }
 
-// THE ARM ORDER IS THE CHECK ORDER: unread inputs, the topology's structure, the context ceiling, the
-// backend's retention limit, per-device fit, then RAM.
+// THE ARM ORDER IS THE CHECK ORDER: unread inputs, the topology's structure, the context ceiling, a positive
+// snapshot cost, the backend's retention limit, per-device fit, then RAM. The allocation divides the RAM it has
+// left by one conversation's snapshot, so a backend whose snapshot at the required context costs nothing has no
+// finite conversation count here: it refuses rather than divide by zero. A backend that genuinely retains no
+// host state needs its own capacity constraint, not this byte budget.
 fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
   if serving_layout_missing(g: g, b: b).length() > 0 {
     ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: serving_layout_missing(g: g, b: b) } }
@@ -377,6 +381,8 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
       Absent =>
         if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
           ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
+        } else if byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context)) == 0 {
+          ServingLayoutRefused { refusal: ServingLayoutSnapshotCostNotPositive { context: r.max_context } }
         } else {
           match serving_retention_fault(groups: groups, b: b) {
             Present { value: f } => ServingLayoutRefused { refusal: f }
