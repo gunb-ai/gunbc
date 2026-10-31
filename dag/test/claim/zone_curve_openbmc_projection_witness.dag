@@ -1,0 +1,76 @@
+module test.claim.zone_curve_openbmc_projection_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decimal { ExactDecimal, exact_decimal_equal }
+import std.measure { celsius, percent, second }
+import extdeps.bmc.pid_control_program { DemandCurvePoint, SensorTimeoutDeclared, SensorTimeoutUnstated }
+import product.zone_thermal_curve { ZoneCurve }
+import gunbc.fleet.zone_curve_openbmc_projection { OpenBmcCurveZone, OpenBmcCurveZoneRow, openbmc_curve_points, openbmc_curve_zone }
+
+// SUPPLIED: the butch curve and row. The curve is ZoneCurve{floor 60, flat_until 60, full_at 80}; the
+// expected points are the GPU_MAX_CURVE of config-butch-gpumax-test2.json read from the butch BMC on
+// 2026-10-31 (sha256 fd5b69275308850861f90d7e864d8ca3c6f6d05ded175a49a92b7beacfdb2fc7), readings 60..80
+// and outputs 60..100, which that BMC was seen to follow live. EXECUTED: the real projection.
+fn butch_curve() -> ZoneCurve {
+  ZoneCurve { floor: percent(60), flat_until: celsius(60), full_at: celsius(80) }
+}
+
+fn butch_row() -> OpenBmcCurveZoneRow {
+  OpenBmcCurveZoneRow {
+    zone_id: 1,
+    input_sensor: "GPU_MAX" as NonEmptyStr,
+    input_read_path: "/xyz/openbmc_project/extsensors/temperature/GPU_MAX" as NonEmptyStr,
+    input_timeout: second(15),
+    controller_name: "GPU_MAX_CURVE" as NonEmptyStr,
+    actuator_name: "CHASSIS" as NonEmptyStr,
+    actuator_inputs: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr, "FAN4" as NonEmptyStr],
+  }
+}
+
+fn whole(n: Int) -> ExactDecimal {
+  ExactDecimal { units: n, fraction_digits: 0 }
+}
+
+fn readings_of(points: List<DemandCurvePoint>) -> List<Int> {
+  map(points, p => p.reading.count.units)
+}
+
+fn outputs_of(points: List<DemandCurvePoint>) -> List<Int> {
+  map(points, p => p.output.magnitude.units)
+}
+
+fn indexes_of(points: List<DemandCurvePoint>) -> List<Int> {
+  map(points, p => p.index)
+}
+
+test fn witness_butch_curve_projects_to_the_program_read_from_the_bmc() -> Bool {
+  let pts = openbmc_curve_points(curve: butch_curve())
+  indexes_of(points: pts) == [0, 1, 2, 3, 4] && readings_of(points: pts) == [60, 65, 70, 75, 80]
+    && outputs_of(points: pts) == [60, 70, 80, 90, 100]
+}
+
+// A CURVE NOT A MULTIPLE OF THE STEP STILL ENDS ON ITS 100: the last point is full_at, never past it.
+test fn witness_last_point_is_full_at_when_range_is_not_a_step_multiple() -> Bool {
+  let pts = openbmc_curve_points(curve: ZoneCurve { floor: percent(20), flat_until: celsius(75), full_at: celsius(88) })
+  readings_of(points: pts) == [75, 80, 85, 88] && outputs_of(points: pts) == [20, 50, 81, 100]
+}
+
+// THE FAIL-SAFE OBLIGATION AT THIS REALIZATION: the input sensor declares a timeout (so a host that
+// stops pushing is detected) and both the zone and the controller fail to 100. Dropping any one of
+// the three reds this.
+test fn witness_stale_input_drives_full_duty_by_construction() -> Bool {
+  let z = openbmc_curve_zone(row: butch_row(), curve: butch_curve())
+  let timed = match z.sensor.timeout {
+    SensorTimeoutDeclared { seconds: s } => s.count.units == 15
+    SensorTimeoutUnstated => false
+  }
+  timed && exact_decimal_equal(a: z.zone.failsafe_output.magnitude, b: whole(n: 100))
+    && all(z.zone.thermal_demand_controllers, c => exact_decimal_equal(a: c.failsafe_output.magnitude, b: whole(n: 100)))
+}
+
+// ITS POSITIVE CONTROL: the failsafe is not the curve's floor, and FAN5 is not an actuator input.
+test fn witness_failsafe_is_distinct_from_floor_and_fan5_is_excluded() -> Bool {
+  let z = openbmc_curve_zone(row: butch_row(), curve: butch_curve())
+  exact_decimal_equal(a: z.zone.minimum_thermal_output.magnitude, b: whole(n: 60))
+    && map(z.zone.actuator_controllers, a => length(a.inputs)) == [3]
+}
