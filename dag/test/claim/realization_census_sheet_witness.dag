@@ -449,12 +449,20 @@ fn census_roots() -> List<String> {
   concat([realization_census_population.first_source_root as String], map(realization_census_population.additional_source_roots, r => r as String))
 }
 
+// The two src/v1 modules #15428 deleted together with their readings (the V2NativeCensus family and
+// the namespace-wave kit): the receipt names them, the rows module no longer does. The src/v1 count is
+// the receipt's 161 less exactly these, an identity join, so a third dropped row still fails.
+fn retired_after_the_receipt() -> List<String> {
+  ["src/v1/stage0/src/cli_run/native_lane_runner.rs", "src/v1/stage0/src/target_invocation_host.rs"]
+}
+
 test fn the_population_roots_are_dag_src_v1_and_src_v2_and_cover_every_path_row() -> Bool {
   join(census_roots(), ",") == "dag,src/v1,src/v2"
     && count(filter(realization_census_module_rows, m =>
          string_contains(s: m.module as String, pattern: "/")
            && count(filter(census_roots(), r => starts_with(s: m.module as String, prefix: concat(r, "/")))) == 0)) == 0
-    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) == 161
+    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) + count(filter(retired_after_the_receipt(), p => count(filter(realization_census_module_rows, m => m.module as String == p)) == 0)) == 161
+  && count(filter(retired_after_the_receipt(), p => count(filter(realization_census_module_rows, m => m.module as String == p)) > 0)) == 0
 }
 
 // ── remediation is term-specific ──────────────────────────────────────────────────────────────
