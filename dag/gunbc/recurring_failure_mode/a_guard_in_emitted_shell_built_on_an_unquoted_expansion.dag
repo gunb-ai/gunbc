@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.a_guard_in_emitted_shell_built_on_an_unquoted_expansion
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// A GUARD THAT READS RIGHT AND TESTS WRONG. The bash grammar's word kinds each carry their own
+// emitted spelling: a literal comes out single-quoted, a word variable comes out double-quoted
+// ("$NAME"), and a command substitution comes out bare, $(...). That last one is the correct
+// spelling of the kind -- it is not a defect in the serializer -- but a producer that reaches for
+// the substitution kind where a guard needs an argument gets shell that splits and glob-expands the
+// value before the predicate ever sees it. `[ -z $(git status --porcelain) ]` is the instance: with
+// a clean worktree it is `[ -z ]`, which is true because the bare `-z` is a non-empty string; with
+// one changed path it is `[ -z M ]`, false; with two or more it is `[ -z M a M b ]`, which is not a
+// result at all -- the builtin writes "[: too many arguments" and exits 2. The step still lands on
+// the branch its author wanted (the error makes the `&&` chain false, so the guarded work is
+// skipped), which is exactly why this class survives review: the behavior is right, the diagnostic
+// is a lie, and a path containing `*`, `?` or a space can glob or split before the test sees it.
+//
+// HOW IT HIDES. It hides in generated text, so nobody reads it: the artifact is the output of a
+// producer, and the review surface is the producer, where the node looks fine -- a test bracket with
+// two words, one of them a substitution. The claim that catches it has to read the EMITTED string,
+// and it has to assert the negative too, or an added variable next to the surviving bare
+// substitution would satisfy a positive-only check.
+//
+// HOW TO SPOT IT. Read the emitted word, not the node: in generated shell, look for a test bracket
+// whose argument is `$(`, or for any expansion sitting where a word could split. Then ask which word
+// kind the producer used and what that kind's emitted spelling is -- the grammar's quoting is
+// per-kind, so the question "did this producer get a quoted argument?" is answered by the kind, not
+// by the producer's intent.
+//
+// WHAT ENDS IT. A producer that captures the expansion into a variable and tests the quoted
+// variable, which is the shape the grammar already renders correctly; or a grammar that offers a
+// quoted-substitution word kind, which it does not have today. The first is local and was taken;
+// the second is a grammar decision, and DESIGN section 6b's warning applies to whoever takes it:
+// quoting the substitution kind changes every command substitution in every generated artifact,
+// including the ones in assignment position where quoting is a no-op and the ones, if any, that
+// depend on splitting.
+data a_guard_in_emitted_shell_built_on_an_unquoted_expansion: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_guard_in_emitted_shell_built_on_an_unquoted_expansion" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "generated shell whose predicate argument is an unquoted expansion: the value is word-split and glob-expanded before the test builtin receives it, so the builtin can error instead of answering, and the step reaches its branch through an exit status that misdescribes the decision",
+    "it hides because the review surface is the producer, where the node reads fine -- a bracket test with two words, one a substitution -- and the artifact that carries the wrong shell is generated, so nobody reads it",
+    "spot it on the emitted text, not the node: a test bracket whose argument begins with $( in generated shell, or any expansion in a position where a word could split; then ask which word kind the producer used, because the grammar quotes per kind",
+    "ends when a producer captures the expansion into a variable and tests the quoted variable -- the shape the grammar renders correctly today -- or when the grammar offers a quoted-substitution kind, which is a corpus-wide emission change and needs its own acceptance pass",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.repo.repo_self_build", decl_name: "tracked_tree_identity_stmt"),
+    decl_ref(module_path: "gunbc.repo.repo_self_build", decl_name: "tracked_tree_dirty_assign_stmt"),
+    decl_ref(module_path: "test.claim.seed_build_preamble_no_marker_witness", decl_name: "the_identity_guard_tests_a_quoted_variable_not_a_bare_substitution"),
+  ],
+}
