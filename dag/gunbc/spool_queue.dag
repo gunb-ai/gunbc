@@ -98,17 +98,18 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   }
 }
 
-// THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer into the
-// first role, the claimant into every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each
-// spool directory with the ownership these principals imply instead of spelling it beside host_layout's path
-// functions; that rewrite is the implementation PR (frontier row spool_writers_column_reader below).
-fn spool_role_writer(kind: SpoolKind, role: SpoolRole) -> SpoolPrincipal {
+// THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer and the claimant
+// into the first role (the claimant by spool_requeue_assess, the one move to an earlier role), the claimant into
+// every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each spool directory with the
+// ownership these principals imply instead of spelling it beside host_layout's path functions; that rewrite is
+// node://adhoc-ec4fbad6-dec. Requeue's writer is therefore IN this column, so the planned ownership cannot refuse it.
+fn spool_role_writers(kind: SpoolKind, role: SpoolRole) -> List<SpoolPrincipal> {
   match role {
-    RolePending => spool_declaration(kind: kind).enqueuer
-    RoleHandedOff => spool_declaration(kind: kind).claimant
-    RoleClaimed => spool_declaration(kind: kind).claimant
-    RoleDone => spool_declaration(kind: kind).claimant
-    RoleRefused => spool_declaration(kind: kind).claimant
+    RolePending => [spool_declaration(kind: kind).enqueuer, spool_declaration(kind: kind).claimant]
+    RoleHandedOff => [spool_declaration(kind: kind).claimant]
+    RoleClaimed => [spool_declaration(kind: kind).claimant]
+    RoleDone => [spool_declaration(kind: kind).claimant]
+    RoleRefused => [spool_declaration(kind: kind).claimant]
   }
 }
 
@@ -353,9 +354,9 @@ fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: Sp
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
 //  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
-//    spool_role_writer when the implementation PR migrates the three spools and deletes the literal spellings.
+//    spool_role_writers when the implementation PR migrates the three spools and deletes the literal spellings.
 //  - out-of-corpus writers (the ExecStopPost hook is derived from the codec; any other principal is not): no rung is
 //    established by this model-only change, so none is dropped here. The implementation PR files the gunbc.rung_drop
 //    row (previous rung, temporary rung, reason, population, trigger). Restoration capability: each spool directory
-//    creatable only by the principals spool_role_writer names, kernel-refusing others; a permission-bits readback
+//    creatable only by the principals spool_role_writers names, kernel-refusing others; a permission-bits readback
 //    does not retire it.
