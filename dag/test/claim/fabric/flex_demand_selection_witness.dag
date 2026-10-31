@@ -23,12 +23,13 @@ import product.fabric.demand {
 }
 import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
 import product.fabric.flex_vast_shadow { flex_trial_policy }
-import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements }
-import test.claim.rtx_pro_6000_catalog_witness { vast_offer_bound, candidate_of }
+import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements, owned_offer }
+import test.claim.fabric.selected_offer_fixture { bound }
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
 import gunbc.fleet.flex_pass_run {
   FlexDemandStanding, FlexDemandRead, FlexDemandUnread, FlexPassSelection, FlexSelectionUnreadDemand,
   FlexSelectionRequirementsUnread, FlexSelectionNotSeeking, FlexSelectionDemandRefused,
-  flex_pass_select, flex_select_offers, flex_demand_standing, flex_demand_word, flex_selection_wire,
+  flex_pass_select, flex_rank_candidates, flex_demand_standing, flex_demand_word, flex_selection_wire,
   FlexSelectionNoOffer,
 }
 
@@ -217,37 +218,37 @@ test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool 
 
 // 6. THE SELECTION ITSELF RUNS BY EXECUTION. Given requirements (supplied here from the fabric's own
 // fixture, not invented in this file) and no bindable candidates, the route reaches
-// THE SELECTION ROUTE HANDS A REAL POPULATION TO product.fabric.selection. The one candidate is bound
-// by the fabric's own binding route (test.claim.rtx_pro_6000_catalog_witness's Vast-offer binder, which
-// is product.fabric.selection bind_candidate under a thinner name), and the requirements are the fabric's
-// OWN fixture_requirements, which that offer does not satisfy. The answer must be the authority's
-// NoAdmissibleOffer with CONSIDERED=1: it examined the candidate and refused it. Nothing else in this
-// file can produce a nonzero considered count - flex_rank_candidates has no arm of its own, and the two
-// hand-written no-offer arms a reviewer found in the earlier draft both reported considered=0, which is
-// exactly why an empty population could not serve as the control. Replace the select_supply call with a
-// constant and this goes red; so does changing the requirements, the horizon, the buy order or the
-// tie-break, because the refusal is the authority's own verdict on those inputs.
+// THE SELECTION ROUTE CARRIES THE AUTHORITY'S OWN ANSWER, POSITIVELY. The one candidate is bound
+// IN THIS FILE by product.fabric.selection bind_candidate (through test.claim.fabric.selected_offer_fixture
+// bound and test.claim.fabric.provider_use_fixture's admitted-for-use permit) over the offer
+// test.claim.fabric.fabric_terminal_contract_witness already owns - a SupplierOffer of the fabric's own
+// types, whose shape, capabilities, trust domain and isolation are exactly fixture_requirements'. So the
+// authority must SELECT it: FlexSelectionOffer with the offer's key and considered=1. Nothing else in
+// this file can name that key or report that count - flex_rank_candidates has no arm of its own, and the
+// hand-written no-offer arms a reviewer found in an earlier draft all reported considered=0. Replace the
+// select_supply call with a constant, or change the horizon, the buy order, the tie-break or the
+// requirements, and this goes red.
 //
-// What is NOT claimed here: this is not a positive control. The binding route refuses every Vast SEARCH
-// offer, because the search response carries none of the six facts a candidacy needs, so no live pass can
-// reach the ranking call at all - product.fabric.flex_vast_loop flex_select_supply_consumer_frontier part
-// (b) says so, and part (a) of that row is what this claim establishes.
-test fn the_selection_route_hands_the_bound_population_to_the_authority() -> Bool {
-  match vast_offer_bound(rate_micro: 200000) {
-    // Absent means the catalog fixture stopped binding; the control would then prove nothing.
-    Absent => false
-    Present { value: o } => flex_rank_candidates(
-      policy: flex_trial_policy,
-      requirements: fixture_requirements,
-      cap: money_amount_micro(count: 200000),
-      candidates: candidate_of(offer: o),
-    ) == FlexSelectionNoOffer { considered: 1 }
-  }
+// The values are SUPPLIED, not imported from a heavyweight provider witness: the claim's cost must not
+// move when its assertions do not (DESIGN 3). What is owed, and stays carried by
+// product.fabric.flex_vast_loop flex_select_supply_consumer_frontier, is the PAIRING: no producer emits
+// this shape for a live Vast search offer, because the search response carries none of the six facts a
+// candidacy needs (start cost, transition, opportunity cost, readiness, cited region, use permit), so no
+// live pass reaches this call at all. That is the frontier, not something this claim pretends to close.
+test fn the_selection_route_carries_the_authoritys_selected_offer() -> Bool {
+  flex_rank_candidates(
+    policy: flex_trial_policy,
+    requirements: fixture_requirements,
+    cap: money_amount_micro(count: 200000),
+    candidates: bound(
+      offer: owned_offer,
+      admission: fixture_admitted_for_offer(route: owned_offer.route, offer: owned_offer.id),
+      demand: fixture_demand_for(offer: owned_offer.id),
+      work: fixture_work_for(offer: owned_offer.id),
+    ),
+  ) == FlexSelectionOffer { chosen_key: "offer-srv3-slot", considered: 1 }
 }
 
-// 5. THE PASS'S OWN DEMAND STANDING IS UNREAD, AND SAYS WHICH PRODUCER IT IS WAITING FOR. This is the
-// state of every live pass until the front door's callout exists; the receipt must carry the frontier row
-// name, so an operator reading a pass that rented nothing can find out who owes the missing input.
 test fn the_pass_reports_its_own_demand_as_unread_and_names_the_producer_it_waits_for() -> Bool {
   match flex_demand_standing() {
     FlexDemandUnread { reason: _ } =>

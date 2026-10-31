@@ -296,7 +296,8 @@ fn flex_demand_standing() -> FlexDemandStanding {
 data flex_pass_affinity: PlacementAffinityKey = "gunbc.flex.serving" as PlacementAffinityKey
 
 // THE SELECTION, ON THE DECIDING PATH. The demand is decided by the fabric's own fold; an admitted demand
-// that seeks a NEW ATTEMPT hands its ExecutionRequirements and its maximum_buy_order to
+// that seeks a NEW ATTEMPT first asks the shadow whether any screened offer can be bound at all,
+// and only then needs ExecutionRequirements and a maximum_buy_order to hand to
 // product.fabric.selection select_supply, under flex_objective's terms and flex_delay_unvalued (the flex
 // tier declares no value for serving latency, so the selection is pure cost -- stated on the policy row,
 // not discovered here). This entry NEVER ranks offers itself and NEVER builds a CandidateOffer: the
@@ -325,19 +326,31 @@ fn flex_pass_select(
           FlexSelectionWorkChanged { word: concat("work-released nothing-running ", w.key) }
         DemandAdmitted { population: _, directive: directive } =>
           match directive {
-            // The fold says a NEW ATTEMPT is required. What to buy is still not known here: the flex
-            // recipe declares SERVING terms (a card shape, a disk requirement, an hourly quote), not the
-            // fabric's ExecutionRequirements, and no adapter turns one into the other yet. That gap is
-            // reported as what it is -- a typed stop naming the missing input -- rather than filled in
-            // with a shape invented at the call site. The route below (flex_select_offers) is therefore
-            // NOT reached from this arm in production today: it is reached, and executed, only where a
-            // caller supplies requirements -- test.claim.fabric.flex_demand_selection_witness does exactly
-            // that, with the fabric's own fixture requirements, and takes select_supply's own no-offer
-            // arm. The frontier row flex_select_supply_consumer_frontier carries the same distinction, so
-            // no reader can take the executed route for a live ranking.
-            RequireNewAttempt { reuse: _ } => FlexSelectionRequirementsUnread {
-              reason: "no adapter from the flex serving recipe to product.fabric.work ExecutionRequirements (producer owed: product.fabric.flex_vast_loop flex_demand_producer_frontier)" as NonEmptyStr,
-            }
+            // The fold says a NEW ATTEMPT is required, so the pass asks the two questions a purchase
+            // needs, in the order the data arrives: can any screened offer become a candidacy at all
+            // (flex_pass_candidates, the shadow authority's verdict), and against WHAT requirements (the
+            // fabric's ExecutionRequirements, which no adapter produces from the flex serving recipe yet).
+            // Both stops are typed and name the missing input; neither is filled in with a shape invented
+            // at the call site.
+            //
+            // On live search data the FIRST question is the one that answers: the shadow refuses to turn a
+            // Vast search offer into a candidacy, because the search response carries none of the six facts
+            // a candidacy needs, and the pass names the offer and the missing fields. That refusal is the
+            // shadow authority's own - test.claim.fabric.flex_vast_shadow_witness executes it against
+            // live-shaped offers - and this arm is what CONSUMES it. An empty population is the other
+            // spelling, and it reaches the second stop, which is what
+            // test.claim.fabric.flex_demand_selection_witness executes end to end through this arm. The
+            // ranking call itself is executed in that same witness over a candidate bound from supplied
+            // values, because no live Vast candidacy exists to reach it from.
+            // flex_select_supply_consumer_frontier states that split in three parts.
+            RequireNewAttempt { reuse: _ } =>
+              match flex_pass_candidates(screened: screened) {
+                FlexCandidatesUnestablished { offer_key: k, missing: m } =>
+                  FlexSelectionCandidatesUnestablished { offer_key: k, missing: m }
+                FlexCandidatesBound { candidates: _ } => FlexSelectionRequirementsUnread {
+                  reason: "no adapter from the flex serving recipe to product.fabric.work ExecutionRequirements (producer owed: product.fabric.flex_vast_loop flex_demand_producer_frontier)" as NonEmptyStr,
+                }
+              }
             AttachToExistingExecution => FlexSelectionNotSeeking { directive: directive }
             AwaitAdmission => FlexSelectionNotSeeking { directive: directive }
             SatisfiedByTerminalReceipt => FlexSelectionNotSeeking { directive: directive }
@@ -418,26 +431,6 @@ fn flex_rank_candidates<P>(
     NoAdmissibleOffer { considered: considered } => FlexSelectionNoOffer { considered: length(considered) }
     EqualCostTieUnresolved { digest: _, cause: _, considered: considered } =>
       FlexSelectionTieUnresolved { considered: length(considered) }
-  }
-}
-
-// THE PASS'S SELECTION STEP: the shadow's binding verdict first, and only then the authority's
-// ranking. On live search data this stops at candidates-unestablished, naming the fields the
-// search answer does not carry. The witness drives flex_rank_candidates directly with a population
-// bound by the fabric's own binding route, which is what proves the ranking call is live rather
-// than a hand-written arm: the selected key and the considered count are answers nothing else here
-// can produce.
-fn flex_select_offers(
-  policy: FlexPolicy,
-  screened: List<FlexScreenedOffer>,
-  requirements: ExecutionRequirements,
-  cap: MoneyAmountMicro,
-) -> FlexPassSelection {
-  match flex_pass_candidates(screened: screened) {
-    FlexCandidatesUnestablished { offer_key: k, missing: m } =>
-      FlexSelectionCandidatesUnestablished { offer_key: k, missing: m }
-    FlexCandidatesBound { candidates: cs } =>
-      flex_rank_candidates(policy: policy, requirements: requirements, cap: cap, candidates: cs)
   }
 }
 
