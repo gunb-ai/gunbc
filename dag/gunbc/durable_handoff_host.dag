@@ -303,6 +303,11 @@ fn host_request_reconcile(observed: HostRequestObservation, payload: NonEmptyStr
   }
 }
 
+// ACCEPTANCE PERSISTENCE CONTRACT: process-restart persistence only. The
+// WriteCreateNew/LinkCreateNew realization syncs file contents but not the
+// published parent directory. Power-loss durability of pending/history entries
+// is outside this claim. Trigger: the Filesystem owner's publication effect
+// with parent-directory sync; no shell sync or local fsync substitute.
 // One pending FILE per stable principal is both responsibility and wakeup.
 // Pending-staging, history/results, done and stalls are unwatched siblings.
 // There is no append-only user-generation record or second quota authority.
