@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.seed_append_accepts_a_list_where_the_roster_declares_an_element
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data seed_append_accepts_a_list_where_the_roster_declares_an_element: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_append_accepts_a_list_where_the_roster_declares_an_element" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: `append(xs, [x])` is accepted and RUN by the seed interpreter as a concatenation, while std.algebra's collection roster row `append` is [ReceiverSelf, ReceiverElement] -> ReceiverSelf, an ELEMENT push, and the v2 native route types it that way. The same source therefore means two things: gunbc.guarantee_measurement distinct_string_count (`fold(values, init: [], f: fn(acc, v) { if any(acc, e => e == v) { acc } else { append(acc, [v]) } })`) collapsed duplicates under the seed (claim_batch PASS on test.claim.distinct_string_count_witness at 3b73ef0f6611, srv1) while the native emission typed the accumulator Rc<Vec<Rc<Vec<String>>>> and rustc refused E0308 at 239:172 and 242:52 (calm-crab-645, srv1 q-052e584/e0308-rebuild.txt). HARM: code the seed admits breaks on v2 at rustc; the refusal is loud, but the author cannot see it on the v1 route, and v1 is the route most claims run on.",
+    "DISTINGUISHING FACTS: `list_append(left, right)` (std.algebra) takes two lists and is the concat spelling; `append` is the element spelling. The `e == v` in the same site compared List<String> with String and was admitted on the native route as well (see comparison_operands_never_judged_in_v2_infer; the operand type of a callback parameter drawn from an unclosed fold carrier is not derived). A second site with the identical text was gunbc.roadmap.roadmap_identity distinct_count. Both rewritten to concat(acc, [v]), which both routes agree on.",
+    "CENSUS (not fixed here): 37 further `append(_, [x])` / `list_append(_, [x])` text matches on main under dag/ and src/v2 (grep, 2026-10-31); the `list_append` ones are correct. The `append` ones (e.g. dag/extdeps/tmux.dag, dag/product/inventory.dag, dag/gunbc/machine_intake/pre_os_bringup_verdict.dag, dag/gunbc/roadmap/roadmap_dispatch_actuator.dag) are the same shape and each is either a v2 type error the native route is not judging or evidence that native reads `append` differently than the roster; which is UNOBSERVED and is the next measurement.",
+    "RUNG FOUND AT: 1, mitigatable (caught only by building the emitted crate). CEILING: 3, structurally guaranteed: one meaning for `append`, the roster's, and the seed refusing a list argument where the roster declares ReceiverElement. NEXT TRIGGER (can climb now, unbuilt): the seed's append evaluation refuses a non-element argument, after the census above is dispositioned. v1 is semantics-frozen (DESIGN section 3), so the seed side needs a v1_maintenance_standing admission under the PURPOSE test (it serves the v2 self-host program); otherwise the v2 route refuses and the seed stays the oracle that admits it.",
+    "RECOGNITION RULE: an accumulator or list whose emitted Rust element type is a list of the intended element; E0308 at a push of `Rc<Vec<T>>` into `Vec<T>`; source `append(x, [e])`."
+  ],
+
+  evidence: [],
+}

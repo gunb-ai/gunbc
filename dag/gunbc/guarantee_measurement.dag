@@ -211,7 +211,7 @@ fn join_receipt_to_path(receipt: GuaranteeMeasurementReceipt, paths: List<Guaran
 
 fn distinct_string_count(values: List<String>) -> Int {
   count(fold(values, init: [], f: fn(acc, v) {
-    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+    if any(acc, e => e == v) { acc } else { concat(acc, [v]) }
   }))
 }
 
