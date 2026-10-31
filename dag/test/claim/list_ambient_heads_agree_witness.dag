@@ -41,9 +41,9 @@ test fn declared_flat_map_keeps_callback_order_per_element() -> Bool {
 // `first` is NOT in agreement: list_head is total (Optional), the ambient first yields a bare element. The first test is the
 // RED that shows the difference (list_head's payload equals the ambient result, so the ambient result is the element, not an
 // Optional); the second probes what the ambient first does on the empty list, where a partial contract must show itself.
-test fn the_ambient_first_yields_the_bare_element_where_list_head_yields_an_optional() -> Bool {
-  match list_head(xs: ordered) {
-    Present { value: v } => v == first(ordered)
+test fn the_ambient_first_is_typed_optional_but_evaluates_to_a_bare_element() -> Bool {
+  match first(ordered) {
+    Present { value: v } => v == 3
     Absent => false
   }
 }

@@ -3044,6 +3044,7 @@ fn roster_requires_scope_controls(prepared: PreparedGrammar, lex: PreparedLexRul
   let src = head + body
   let after = "module c.scope\n\nimport std.algebra { Cons, string_contains }\n\nfn f(s: String, xs: List<String>) -> Bool {\n  let a = string_contains(s: s, pattern: \":\")\n  contains(xs, \"a\", eq)\n}\n"
   let keyed = roster_scope_gate(keys: ["control/scope.dag:6:11"], text: src)
+  let planted_src = head + " }\n\nfn f(s: String) -> Bool {\n  contains(s, \":\")\n}\n"
   let concat_src = "module c.scope\n\nimport std.algebra { Cons }\n\nfn f(a: List<String>, b: List<String>) -> List<String> {\n  concat(a, b)\n}\n"
   let concat_after = "module c.scope\n\nimport std.algebra { Cons, collection_concat_shape }\n\nfn f(a: List<String>, b: List<String>) -> List<String> {\n  concat(a, b)\n}\n"
   let concat_rows = list_append(left: roster_row_by_key(key: "concat"), right: contains_rows)
@@ -3052,7 +3053,7 @@ fn roster_requires_scope_controls(prepared: PreparedGrammar, lex: PreparedLexRul
     roster_control_verdict(name: "requires-scope-scoped-run-rewrites-only-its-keyed-site", fail: roster_scope_expect_text(name: "requires-scope-scoped-run-rewrites-only-its-keyed-site", before: src, outcome: roster_scope_outcome(rows: contains_rows, gates: keyed, text: src, prepared: prepared, lex: lex), after: after)),
     roster_control_verdict(name: "requires-scope-list-receiver-site-untouched", fail: roster_scope_expect_any_refusal(name: "requires-scope-list-receiver-site-untouched", outcome: roster_scope_outcome(rows: contains_rows, gates: roster_scope_gate(keys: ["control/scope.dag:7:3"], text: src), text: src, prepared: prepared, lex: lex))),
     roster_control_verdict(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", fail: roster_scope_expect_text(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", before: concat_src, outcome: roster_scope_outcome(rows: concat_rows, gates: [], text: concat_src, prepared: prepared, lex: lex), after: concat_after)),
-    roster_control_verdict(name: "requires-scope-planted-any-site-row-no-longer-refuses", fail: roster_scope_planted_control(rows: any_site, text: src, prepared: prepared, lex: lex))
+    roster_control_verdict(name: "requires-scope-planted-any-site-row-no-longer-refuses", fail: roster_scope_planted_control(rows: any_site, text: planted_src, prepared: prepared, lex: lex))
   ]
 }
 
