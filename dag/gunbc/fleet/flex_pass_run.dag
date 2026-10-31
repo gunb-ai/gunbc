@@ -12,6 +12,11 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead, FilesystemFileSubjectRefused, filesystem_file_observation, filesystem_listing_observation,
   filesystem_read_outcome,
 }
+import extdeps.languages.json.emit { JsonValue, JsonArray, json_kv, json_null, json_int, json_string, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_field, json_field_int, json_field_string,
+  FieldRead, FieldAbsent, FieldMalformed, json_member_presence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
+}
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.vast_ai
 import extdeps.cloud.vast_ai {
@@ -328,26 +333,54 @@ data flex_pass_carry_path: String = "target/flex-pass-carry.txt"
 data flex_pass_carry_directory: String = "target"
 data flex_pass_carry_name: String = "flex-pass-carry.txt"
 
-data flex_carry_header: String = "flex-carry v1"
-data flex_carry_line_sightings_complete: String = "sightings complete"
-data flex_carry_line_sightings_incomplete: String = "sightings incomplete"
-data flex_carry_prefix_cooldown: String = "cooldown "
-data flex_carry_prefix_loading: String = "loading "
-data flex_carry_prefix_answered: String = "create answered "
-data flex_carry_prefix_lost: String = "create lost "
-data flex_carry_prefix_refused: String = "create refused "
-// The TRAILER: the last line, "end <n>" where n is the number of lines before it. A write cut off anywhere
-// loses it or mismatches it, so a truncated carry reads unread instead of as a shorter, well-formed one.
-// Filesystem.Write is not atomic, so the trailer is the only thing that says the file was written whole.
-data flex_carry_prefix_end: String = "end "
-// The remedy an operator owes whenever the standing of the last ask is not established: the pass cannot
-// repair it (an ask that has produced no instance yet is invisible to the roster), so the route is named.
-data flex_carry_remedy: String = "REMEDY: an operator reads the account asks and instances, then writes target/flex-pass-carry.txt as the four lines flex-carry v1, sightings incomplete, standing none, end 3 once the account is known clear"
+// THE WIRE IS ONE JSON DOCUMENT, written by flex_carry_render and read by flex_carry_reading_of through
+// extdeps.languages.json both ways, so the grammar is the JSON grammar and not a second hand-written one. A write
+// cut off anywhere is not a complete JSON value, so it fails parse_json_document and reads UNREAD with the
+// located gap; no trailer is needed because JSON is self-delimiting.
+data flex_carry_format_version: Int = 1
+data flex_carry_key_version: String = "v"
+data flex_carry_key_basis: String = "basis"
+data flex_carry_key_cooldown: String = "cooldown"
+data flex_carry_key_asked_at: String = "asked_at"
+data flex_carry_key_until: String = "until"
+data flex_carry_key_loading: String = "loading"
+data flex_carry_key_instance_id: String = "instance_id"
+data flex_carry_key_sampled_ms: String = "first_sampled_loading_ms"
+data flex_carry_key_standing: String = "standing"
+data flex_carry_key_kind: String = "kind"
+data flex_carry_key_machine_id: String = "machine_id"
+data flex_carry_key_ask_id: String = "ask_id"
+data flex_carry_key_reason: String = "reason"
+data flex_carry_word_complete: String = "complete"
+data flex_carry_word_incomplete: String = "incomplete"
+data flex_carry_kind_none: String = "none"
+data flex_carry_kind_unknown: String = "unknown"
+data flex_carry_kind_answered: String = "answered"
+data flex_carry_kind_lost: String = "lost"
+data flex_carry_kind_refused: String = "refused"
+
 data flex_carry_absent_reason: String = "no carry file exists, and a missing file does not say that no ask is in flight (cargo clean, a fresh worktree or another runner loses it); an operator must restate the standing before a create is planned"
-// The standing of the last ask is written as a WHOLE line, one of these two. A carry that states no standing
-// at all reads untrusted rather than defaulting to "no ask in flight".
-data flex_carry_line_standing_none: String = "standing none"
-data flex_carry_line_standing_unknown: String = "standing unknown"
+
+// The remedy an operator owes whenever the standing of the last ask is not established. The pass cannot
+// repair it (an ask that has produced no instance yet is invisible to the roster), so the route is a typed
+// value, and its text renders the carry the operator writes THROUGH THE REAL WRITER, never a hand-typed copy.
+type FlexCarryRemedy
+  = | FlexCarryRestateClear { path: String }
+
+fn flex_carry_clear() -> FlexCarry {
+  FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: FlexCarryNoAsk }
+}
+
+fn flex_carry_remedy_text(remedy: FlexCarryRemedy) -> String {
+  match remedy {
+    FlexCarryRestateClear { path: path } =>
+      concat(concat("REMEDY: an operator reads the account asks and instances, then, once the account is known clear, writes ", path), concat(" as ", flex_carry_render(carry: flex_carry_clear())))
+  }
+}
+
+fn flex_carry_remedy() -> String {
+  flex_carry_remedy_text(remedy: FlexCarryRestateClear { path: flex_pass_carry_path })
+}
 
 type FlexCarry {
   cooldown: FlexRentCooldown?
@@ -374,172 +407,6 @@ type FlexCarryStanding
   = FlexCarryNoAsk
   | FlexCarryAsk { ask: FlexCreateStanding }
   | FlexCarryStandingUnknown { reason: NonEmptyStr }
-
-type FlexCarryLine
-  = FlexCarrySightingsBasis { basis: FlexSightingsBasis }
-  | FlexCarryCooldown { asked_at: EpochMs, until: EpochMs }
-  | FlexCarryLoading { instance_id: Int, first_sampled_loading_ms: EpochMs }
-  | FlexCarryAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
-  | FlexCarryLost { machine_id: Int, ask_id: Int }
-  | FlexCarryRefused { machine_id: Int, ask_id: Int }
-  | FlexCarryHeader
-  | FlexCarryNoAskLine
-  | FlexCarryStandingUnknownLine
-  | FlexCarryTrailer { count: Int }
-  | FlexCarryLineUnread { text: String }
-
-// THE GRAMMAR IS EXACT. A line is its keyword, then exactly the integers it declares, separated by single
-// spaces: a token that is not an integer, a missing token, an extra token or a doubled space makes the line
-// unread, never a shorter or a longer record. (The first cut skipped non-integer tokens and ignored extras,
-// so a write cut off mid-number, "loading 42 1792", still parsed, with an instant in 1970.)
-fn flex_carry_push(acc: List<Int>?, token: String) -> List<Int>? {
-  match acc {
-    Absent => none
-    Present { value: xs } =>
-      match parse_int(s: token) {
-        Absent => none
-        Present { value: n } => Present { value: concat(xs, [n]) }
-      }
-  }
-}
-
-// The integers of the tokens after the keyword, when there are exactly `arity` of them and every one parses.
-fn flex_carry_ints(line: String, keyword_tokens: Int, arity: Int) -> List<Int>? {
-  let rest = split(s: line, delimiter: " ").skip(n: keyword_tokens)
-  if length(rest) != arity {
-    none
-  } else {
-    fold(rest, init: Present { value: [] }, f: (acc, token) => flex_carry_push(acc: acc, token: token))
-  }
-}
-
-fn flex_carry_unread_line(line: String) -> FlexCarryLine {
-  FlexCarryLineUnread { text: line }
-}
-
-fn flex_carry_cooldown_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: asked } =>
-          match ns.skip(n: 1).first() {
-            Absent => flex_carry_unread_line(line: line)
-            Present { value: until } =>
-              FlexCarryCooldown { asked_at: asked, until: until }
-          }
-      }
-  }
-}
-
-fn flex_carry_loading_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: id } =>
-          match ns.skip(n: 1).first() {
-            Absent => flex_carry_unread_line(line: line)
-            Present { value: at } =>
-              FlexCarryLoading { instance_id: id, first_sampled_loading_ms: at }
-          }
-      }
-  }
-}
-
-fn flex_carry_answered_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 3) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: id } =>
-          match ns.skip(n: 1).first() {
-            Absent => flex_carry_unread_line(line: line)
-            Present { value: machine } =>
-              match ns.skip(n: 2).first() {
-                Absent => flex_carry_unread_line(line: line)
-                Present { value: ask } =>
-                  FlexCarryAnswered { instance_id: id, machine_id: machine, ask_id: ask }
-              }
-          }
-      }
-  }
-}
-
-fn flex_carry_lost_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: machine } =>
-          match ns.skip(n: 1).first() {
-            Absent => flex_carry_unread_line(line: line)
-            Present { value: ask } =>
-              FlexCarryLost { machine_id: machine, ask_id: ask }
-          }
-      }
-  }
-}
-
-fn flex_carry_refused_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: machine } =>
-          match ns.skip(n: 1).first() {
-            Absent => flex_carry_unread_line(line: line)
-            Present { value: ask } =>
-              FlexCarryRefused { machine_id: machine, ask_id: ask }
-          }
-      }
-  }
-}
-
-fn flex_carry_trailer_line(line: String) -> FlexCarryLine {
-  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 1) {
-    Absent => flex_carry_unread_line(line: line)
-    Present { value: ns } =>
-      match ns.skip(n: 0).first() {
-        Absent => flex_carry_unread_line(line: line)
-        Present { value: n } =>
-          FlexCarryTrailer { count: n }
-      }
-  }
-}
-
-fn flex_carry_line(line: String) -> FlexCarryLine {
-  if line == flex_carry_header {
-    FlexCarryHeader
-  } else if line == flex_carry_line_sightings_complete {
-    FlexCarrySightingsBasis { basis: FlexSightingsBaselineComplete }
-  } else if line == flex_carry_line_sightings_incomplete {
-    FlexCarrySightingsBasis { basis: FlexSightingsBaselineIncomplete }
-  } else if line == flex_carry_line_standing_none {
-    FlexCarryNoAskLine
-  } else if line == flex_carry_line_standing_unknown {
-    FlexCarryStandingUnknownLine
-  } else if starts_with(s: line, prefix: flex_carry_prefix_cooldown) {
-    flex_carry_cooldown_line(line: line)
-  } else if starts_with(s: line, prefix: flex_carry_prefix_loading) {
-    flex_carry_loading_line(line: line)
-  } else if starts_with(s: line, prefix: flex_carry_prefix_answered) {
-    flex_carry_answered_line(line: line)
-  } else if starts_with(s: line, prefix: flex_carry_prefix_lost) {
-    flex_carry_lost_line(line: line)
-  } else if starts_with(s: line, prefix: flex_carry_prefix_refused) {
-    flex_carry_refused_line(line: line)
-  } else if starts_with(s: line, prefix: flex_carry_prefix_end) {
-    flex_carry_trailer_line(line: line)
-  } else {
-    flex_carry_unread_line(line: line)
-  }
-}
 
 // A MISSING OR UNREADABLE CARRY IS TYPED, NOT DEFAULTED. The carry is durable state in a build directory:
 // a cargo clean, a fresh worktree, or a different runner loses it, and two passes racing on it is the
@@ -639,7 +506,7 @@ fn flex_carry_standing_word(carry: FlexCarry) -> String {
   match carry.standing {
     FlexCarryAsk { ask: _ } => " standing=yes"
     FlexCarryNoAsk => " standing=no"
-    FlexCarryStandingUnknown { reason: _ } => concat(" standing=UNKNOWN (the create gate stays shut; ", concat(flex_carry_remedy, ")"))
+    FlexCarryStandingUnknown { reason: _ } => concat(" standing=UNKNOWN (the create gate stays shut; ", concat(flex_carry_remedy(), ")"))
   }
 }
 
@@ -654,9 +521,9 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
     // was an argument list left open, which the parser locates at the enclosing block's closing brace and
     // not at the call (see the note on flex_member_line and the recurring_failure_mode row filed for it).
     FlexCarryAbsent =>
-      concat("carry=absent (no carry file at that path, established by listing the directory; absence is not a record that no ask is in flight, so the create gate stays shut; ", concat(flex_carry_remedy, ")"))
+      concat("carry=absent (no carry file at that path, established by listing the directory; absence is not a record that no ask is in flight, so the create gate stays shut; ", concat(flex_carry_remedy(), ")"))
     FlexCarryUnread { reason: r } =>
-      concat("carry=UNREAD (", concat(r, concat(" ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed, the create gate stays shut; ", flex_carry_remedy)))
+      concat("carry=UNREAD (", concat(r, concat(" ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed, the create gate stays shut; ", flex_carry_remedy())))
   }
 }
 
@@ -691,174 +558,233 @@ fn flex_carry_reading_of(listing: FilesystemListingObservation, read: Filesystem
   }
 }
 
-// TRUE when a line failed to parse. A named function, because a match inside a call argument does not
-// parse in this grammar.
-fn flex_carry_line_unread(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarryLineUnread { text: _ } => true
-    _ => false
+// ---- THE READER: the same keys, read back through the same JSON module.
+type FlexCarryDecoded<T>
+  = FlexCarryDecodedOk { value: T }
+  | FlexCarryDecodedBad { cause: String }
+
+fn flex_carry_bad_missing(key: String) -> String {
+  concat(key, " is missing")
+}
+
+fn flex_carry_int(obj: JsonValue, key: String) -> FlexCarryDecoded<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: n } => FlexCarryDecodedOk { value: n }
+    FieldMalformed { cause: c } => FlexCarryDecodedBad { cause: c }
+    FieldAbsent => FlexCarryDecodedBad { cause: flex_carry_bad_missing(key: key) }
   }
 }
 
-fn flex_carry_is_trailer(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarryTrailer { count: _ } => true
-    _ => false
+fn flex_carry_string(obj: JsonValue, key: String) -> FlexCarryDecoded<String> {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: s } => FlexCarryDecodedOk { value: s }
+    FieldMalformed { cause: c } => FlexCarryDecodedBad { cause: c }
+    FieldAbsent => FlexCarryDecodedBad { cause: flex_carry_bad_missing(key: key) }
   }
 }
 
-fn flex_carry_is_header(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarryHeader => true
-    _ => false
+fn flex_carry_object(obj: JsonValue, key: String) -> FlexCarryDecoded<JsonValue> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => FlexCarryDecodedOk { value: v }
+    FieldMalformed { cause: c } => FlexCarryDecodedBad { cause: c }
+    FieldAbsent => FlexCarryDecodedBad { cause: flex_carry_bad_missing(key: key) }
   }
 }
 
-fn flex_carry_is_standing(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarryNoAskLine => true
-    FlexCarryStandingUnknownLine => true
-    FlexCarryAnswered { instance_id: _, machine_id: _, ask_id: _ } => true
-    FlexCarryLost { machine_id: _, ask_id: _ } => true
-    FlexCarryRefused { machine_id: _, ask_id: _ } => true
-    _ => false
-  }
-}
-
-fn flex_carry_is_basis(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarrySightingsBasis { basis: _ } => true
-    _ => false
-  }
-}
-
-fn flex_carry_is_cooldown(l: FlexCarryLine) -> Bool {
-  match l {
-    FlexCarryCooldown { asked_at: _, until: _ } => true
-    _ => false
-  }
-}
-
-// The trailer is the LAST line and its count is the number of lines before it.
-fn flex_carry_trailer_agrees(parsed: List<FlexCarryLine>, lines: Int) -> Bool {
-  match parsed.skip(n: length(parsed) - 1).first() {
-    Absent => false
-    Present { value: l } =>
-      match l {
-        FlexCarryTrailer { count: n } => n == lines - 1
-        _ => false
-      }
-  }
-}
-
-// THE GATE BEFORE THE FOLD. A carry is LOADED only when its first line is the declared header AND every
-// line parsed; anything else is the typed unread standing, COUNTED. Two reasons, both from review 89192:
-// the header was written but never checked, so a file in some other format read as valid v1; and a line
-// the parser could not read was dropped silently, so a truncated file or a changed line format made the
-// standing of the last create read as none - which is not "no ask in flight", it is "the pass cannot
-// tell", and reading it as the first authorizes the second rent the carry exists to prevent. DESIGN 5: a
-// failure arm refuses, never widens, and every degradation is typed, located and countable.
-fn flex_carry_gate(content: String) -> FlexCarryReading {
-  // A blank line is a separator, not a record: the writer's trailing newline must not read as an
-  // unreadable record and refuse a carry that is fine. Every NON-BLANK line still has to parse, or the
-  // whole carry reads unread -- that is the part that keeps a truncated write from reading as "no ask in
-  // flight", which is the widening that authorizes a second rent on top of a card being paid for.
-  let lines = filter(split(s: content, delimiter: "\n"), l => length(l) > 0)
-  let parsed = map(lines, flex_carry_line)
-  let unread = length(filter(parsed, flex_carry_line_unread))
-  let trailers = length(filter(parsed, flex_carry_is_trailer))
-  match first(lines) {
-    Absent => FlexCarryUnread { reason: "the carry file is empty" as NonEmptyStr }
-    Present { value: head } =>
-      if !starts_with(s: head, prefix: flex_carry_header) {
-        FlexCarryUnread { reason: concat("the carry header is not ", flex_carry_header) as NonEmptyStr }
-      } else if unread > 0 {
-        FlexCarryUnread {
-          reason: concat(
-            int_to_decimal_string(value: unread),
-            " carry line(s) the pass could not parse",
-          ) as NonEmptyStr,
-        }
-      } else if trailers != 1 || !flex_carry_trailer_agrees(parsed: parsed, lines: length(lines)) {
-        FlexCarryUnread { reason: "the carry does not end with one `end <count>` trailer naming the number of lines before it, so it may have been cut off mid-write" as NonEmptyStr }
-      } else if length(filter(parsed, flex_carry_is_header)) != 1 || length(filter(parsed, flex_carry_is_standing)) > 1 || length(filter(parsed, flex_carry_is_basis)) > 1 || length(filter(parsed, flex_carry_is_cooldown)) > 1 {
-        FlexCarryUnread { reason: "the carry states a header, standing, basis or cooldown line more than once" as NonEmptyStr }
+fn flex_carry_decode_basis(obj: JsonValue) -> FlexCarryDecoded<FlexSightingsBasis> {
+  match flex_carry_string(obj: obj, key: flex_carry_key_basis) {
+    FlexCarryDecodedBad { cause: c } => FlexCarryDecodedBad { cause: c }
+    FlexCarryDecodedOk { value: w } =>
+      if w == flex_carry_word_complete {
+        FlexCarryDecodedOk { value: FlexSightingsBaselineComplete }
+      } else if w == flex_carry_word_incomplete {
+        FlexCarryDecodedOk { value: FlexSightingsBaselineIncomplete }
       } else {
-        flex_carry_loaded(lines: lines)
+        FlexCarryDecodedBad { cause: concat("basis is neither complete nor incomplete: ", w) }
       }
   }
 }
 
-// The fold, reached only through the gate above. The unread arm stays because the TYPE admits it; the gate
-// has already refused that case, and the arm's answer is "contribute nothing" rather than a guess about
-// what an unread line meant.
-fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
-  FlexCarryLoaded {
-    carry: fold(
-      lines,
-        init: FlexCarry {
-          cooldown: none,
-          basis: FlexSightingsBaselineIncomplete,
-          sightings: [],
-          // A carry that never states its standing does NOT default to "no ask in flight": it reads UNKNOWN,
-          // which keeps the create gate shut. Every file this module writes states a standing line, so the
-          // only way to reach this init is a hand-edited or truncated file.
-          standing: FlexCarryStandingUnknown { reason: "the carry states no standing line, so the standing of the last ask is not recorded" },
-        },
-        f: (acc, line) =>
-          match flex_carry_line(line: line) {
-            FlexCarryHeader => acc
-            FlexCarrySightingsBasis { basis: basis } =>
-              FlexCarry { cooldown: acc.cooldown, basis: basis, sightings: acc.sightings, standing: acc.standing }
-            FlexCarryCooldown { asked_at: asked_at, until: until } =>
-              FlexCarry {
-                cooldown: Present { value: FlexRentCooldown { asked_at: asked_at, until: until } },
-                basis: acc.basis,
-                sightings: acc.sightings,
-                standing: acc.standing,
+fn flex_carry_cooldown_of(c: JsonValue) -> FlexCarryDecoded<FlexRentCooldown?> {
+  match flex_carry_int(obj: c, key: flex_carry_key_asked_at) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: asked } =>
+      match flex_carry_int(obj: c, key: flex_carry_key_until) {
+        FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+        FlexCarryDecodedOk { value: until } =>
+          FlexCarryDecodedOk { value: Present { value: FlexRentCooldown { asked_at: asked, until: until } } }
+      }
+  }
+}
+
+// A cooldown that is JSON null is no cooldown; a MISSING cooldown member is a document that lacks a field and
+// reads unread, which json_member_presence keeps apart.
+fn flex_carry_decode_cooldown(obj: JsonValue) -> FlexCarryDecoded<FlexRentCooldown?> {
+  match json_member_presence(obj: obj, key: flex_carry_key_cooldown) {
+    JsonMemberMissing => FlexCarryDecodedBad { cause: flex_carry_bad_missing(key: flex_carry_key_cooldown) }
+    JsonMemberNull => FlexCarryDecodedOk { value: none }
+    JsonMemberUnreadable { cause: c } => FlexCarryDecodedBad { cause: c }
+    JsonMemberValue { value: v } => flex_carry_cooldown_of(c: v)
+  }
+}
+
+fn flex_carry_sighting_of(v: JsonValue) -> FlexCarryDecoded<FlexLoadingSighting> {
+  match flex_carry_int(obj: v, key: flex_carry_key_instance_id) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: id } =>
+      match flex_carry_int(obj: v, key: flex_carry_key_sampled_ms) {
+        FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+        FlexCarryDecodedOk { value: at } =>
+          FlexCarryDecodedOk { value: FlexLoadingSighting { instance_id: id, first_sampled_loading_ms: at } }
+      }
+  }
+}
+
+fn flex_carry_push_sighting(acc: FlexCarryDecoded<List<FlexLoadingSighting>>, element: JsonValue) -> FlexCarryDecoded<List<FlexLoadingSighting>> {
+  match acc {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: so_far } =>
+      match flex_carry_sighting_of(v: element) {
+        FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+        FlexCarryDecodedOk { value: s } => FlexCarryDecodedOk { value: concat(so_far, [s]) }
+      }
+  }
+}
+
+fn flex_carry_sightings_of(v: JsonValue) -> FlexCarryDecoded<List<FlexLoadingSighting>> {
+  match v {
+    JsonArray { elements: es } => fold(es, init: FlexCarryDecodedOk { value: [] }, f: (acc, e) => flex_carry_push_sighting(acc: acc, element: e))
+    _ => FlexCarryDecodedBad { cause: "loading is not an array" }
+  }
+}
+
+fn flex_carry_decode_sightings(obj: JsonValue) -> FlexCarryDecoded<List<FlexLoadingSighting>> {
+  match flex_carry_object(obj: obj, key: flex_carry_key_loading) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: v } => flex_carry_sightings_of(v: v)
+  }
+}
+
+fn flex_carry_answered_of(s: JsonValue, machine: Int, ask: Int) -> FlexCarryDecoded<FlexCarryStanding> {
+  match flex_carry_int(obj: s, key: flex_carry_key_instance_id) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: id } =>
+      FlexCarryDecodedOk { value: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: id, machine_id: machine, ask_id: ask } } }
+  }
+}
+
+fn flex_carry_ask_of(s: JsonValue, kind: String) -> FlexCarryDecoded<FlexCarryStanding> {
+  match flex_carry_int(obj: s, key: flex_carry_key_machine_id) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: machine } =>
+      match flex_carry_int(obj: s, key: flex_carry_key_ask_id) {
+        FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+        FlexCarryDecodedOk { value: ask } =>
+          if kind == flex_carry_kind_answered {
+            flex_carry_answered_of(s: s, machine: machine, ask: ask)
+          } else if kind == flex_carry_kind_lost {
+            FlexCarryDecodedOk { value: FlexCarryAsk { ask: FlexCreateLost { ask_id: ask, machine_id: machine } } }
+          } else {
+            FlexCarryDecodedOk { value: FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask, machine_id: machine } } }
+          }
+      }
+  }
+}
+
+fn flex_carry_unknown_of(s: JsonValue) -> FlexCarryDecoded<FlexCarryStanding> {
+  match flex_carry_string(obj: s, key: flex_carry_key_reason) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: r } =>
+      if length(r) > 0 {
+        FlexCarryDecodedOk { value: FlexCarryStandingUnknown { reason: r as NonEmptyStr } }
+      } else {
+        FlexCarryDecodedBad { cause: "the unknown standing states an empty reason" }
+      }
+  }
+}
+
+fn flex_carry_standing_of(s: JsonValue) -> FlexCarryDecoded<FlexCarryStanding> {
+  match flex_carry_string(obj: s, key: flex_carry_key_kind) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: kind } =>
+      if kind == flex_carry_kind_none {
+        FlexCarryDecodedOk { value: FlexCarryNoAsk }
+      } else if kind == flex_carry_kind_unknown {
+        flex_carry_unknown_of(s: s)
+      } else if kind == flex_carry_kind_answered || kind == flex_carry_kind_lost || kind == flex_carry_kind_refused {
+        flex_carry_ask_of(s: s, kind: kind)
+      } else {
+        FlexCarryDecodedBad { cause: concat("the standing kind is not one this reader knows: ", kind) }
+      }
+  }
+}
+
+// A carry that never states its standing does NOT default to "no ask in flight": a missing standing member
+// is a bad document, which reads UNREAD and keeps the create gate shut.
+fn flex_carry_decode_standing(obj: JsonValue) -> FlexCarryDecoded<FlexCarryStanding> {
+  match flex_carry_object(obj: obj, key: flex_carry_key_standing) {
+    FlexCarryDecodedBad { cause: e } => FlexCarryDecodedBad { cause: e }
+    FlexCarryDecodedOk { value: s } => flex_carry_standing_of(s: s)
+  }
+}
+
+fn flex_carry_unread(cause: String) -> FlexCarryReading {
+  FlexCarryUnread { reason: concat("the carry is not a readable v1 document: ", cause) as NonEmptyStr }
+}
+
+fn flex_carry_assemble(
+  basis: FlexCarryDecoded<FlexSightingsBasis>,
+  cooldown: FlexCarryDecoded<FlexRentCooldown?>,
+  sightings: FlexCarryDecoded<List<FlexLoadingSighting>>,
+  standing: FlexCarryDecoded<FlexCarryStanding>,
+) -> FlexCarryReading {
+  match basis {
+    FlexCarryDecodedBad { cause: e } => flex_carry_unread(cause: e)
+    FlexCarryDecodedOk { value: b } =>
+      match cooldown {
+        FlexCarryDecodedBad { cause: e } => flex_carry_unread(cause: e)
+        FlexCarryDecodedOk { value: c } =>
+          match sightings {
+            FlexCarryDecodedBad { cause: e } => flex_carry_unread(cause: e)
+            FlexCarryDecodedOk { value: ss } =>
+              match standing {
+                FlexCarryDecodedBad { cause: e } => flex_carry_unread(cause: e)
+                FlexCarryDecodedOk { value: st } =>
+                  FlexCarryLoaded { carry: FlexCarry { cooldown: c, basis: b, sightings: ss, standing: st } }
               }
-            FlexCarryLoading { instance_id: instance_id, first_sampled_loading_ms: first_sampled_loading_ms } =>
-              FlexCarry {
-                cooldown: acc.cooldown,
-                basis: acc.basis,
-                sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_sampled_loading_ms: first_sampled_loading_ms }]),
-                standing: acc.standing,
-              }
-            FlexCarryNoAskLine =>
-              FlexCarry { cooldown: acc.cooldown, basis: acc.basis, sightings: acc.sightings, standing: FlexCarryNoAsk }
-            FlexCarryStandingUnknownLine =>
-              FlexCarry {
-                cooldown: acc.cooldown,
-                basis: acc.basis,
-                sightings: acc.sightings,
-                standing: FlexCarryStandingUnknown { reason: "the carry records the standing of the last ask as unknown; a human must reconcile the account before a create is planned" },
-              }
-            FlexCarryAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } =>
-              FlexCarry {
-                cooldown: acc.cooldown,
-                basis: acc.basis,
-                sightings: acc.sightings,
-                standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } },
-              }
-            FlexCarryLost { machine_id: machine_id, ask_id: ask_id } =>
-              FlexCarry {
-                cooldown: acc.cooldown,
-                basis: acc.basis,
-                sightings: acc.sightings,
-                standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: ask_id, machine_id: machine_id } },
-              }
-            FlexCarryRefused { machine_id: machine_id, ask_id: ask_id } =>
-              FlexCarry {
-                cooldown: acc.cooldown,
-                basis: acc.basis,
-                sightings: acc.sightings,
-                standing: FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
-              }
-            FlexCarryTrailer { count: _ } => acc
-            FlexCarryLineUnread { text: _ } => acc
-          },
-      ),
-    }
+          }
+      }
+  }
+}
+
+fn flex_carry_decode_versioned(doc: JsonValue) -> FlexCarryReading {
+  flex_carry_assemble(
+    basis: flex_carry_decode_basis(obj: doc),
+    cooldown: flex_carry_decode_cooldown(obj: doc),
+    sightings: flex_carry_decode_sightings(obj: doc),
+    standing: flex_carry_decode_standing(obj: doc),
+  )
+}
+
+fn flex_carry_decode(doc: JsonValue) -> FlexCarryReading {
+  match flex_carry_int(obj: doc, key: flex_carry_key_version) {
+    FlexCarryDecodedBad { cause: e } => flex_carry_unread(cause: e)
+    FlexCarryDecodedOk { value: v } =>
+      if v == flex_carry_format_version {
+        flex_carry_decode_versioned(doc: doc)
+      } else {
+        flex_carry_unread(cause: concat("version ", concat(int_to_decimal_string(value: v), " is not the version this reader knows")))
+      }
+  }
+}
+
+// THE GATE: the content is one complete JSON document or it is unread, with the located gap. A write cut off
+// mid-way is not a complete value, so it cannot read as a shorter well-formed carry.
+fn flex_carry_gate(content: String) -> FlexCarryReading {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: g } => flex_carry_unread(cause: json_document_gap_text(gap: g))
+    JsonDocumentParsed { value: doc } => flex_carry_decode(doc: doc)
+  }
 }
 
 fn flex_carry_prior_sightings(reading: FlexCarryReading) -> List<FlexLoadingSighting> {
@@ -869,34 +795,73 @@ fn flex_carry_prior_sightings(reading: FlexCarryReading) -> List<FlexLoadingSigh
   }
 }
 
-fn flex_carry_render(carry: FlexCarry) -> String {
-  let basis_line = match carry.basis {
-    FlexSightingsBaselineComplete => [flex_carry_line_sightings_complete]
-    FlexSightingsBaselineIncomplete => [flex_carry_line_sightings_incomplete]
+fn flex_carry_basis_json(basis: FlexSightingsBasis) -> JsonValue {
+  match basis {
+    FlexSightingsBaselineComplete => json_string(s: flex_carry_word_complete)
+    FlexSightingsBaselineIncomplete => json_string(s: flex_carry_word_incomplete)
   }
-  let cooldown_lines = match carry.cooldown {
-    Absent => []
+}
+
+fn flex_carry_cooldown_json(cooldown: FlexRentCooldown?) -> JsonValue {
+  match cooldown {
+    Absent => json_null()
     Present { value: c } =>
-      [concat(concat(flex_carry_prefix_cooldown, int_to_decimal_string(value: c.asked_at)), concat(" ", int_to_decimal_string(value: c.until)))]
+      json_object(members: [
+        json_kv(key: flex_carry_key_asked_at, value: json_int(n: c.asked_at)),
+        json_kv(key: flex_carry_key_until, value: json_int(n: c.until)),
+      ])
   }
-  let loading_lines = map(carry.sightings, s =>
-    concat(concat(flex_carry_prefix_loading, int_to_decimal_string(value: s.instance_id)), concat(" ", int_to_decimal_string(value: s.first_sampled_loading_ms))))
-  // Exactly one standing line is always written: the file states its standing or it does not load trusted.
-  // The UNKNOWN reason is not round-tripped as text -- the line records the STATE, and the reason the pass
-  // that found the corruption printed is in that pass's receipt; re-deriving a cause string from a file that
-  // lost the cause would be a fabricated explanation.
-  let standing_lines = match carry.standing {
-    FlexCarryNoAsk => [flex_carry_line_standing_none]
-    FlexCarryStandingUnknown { reason: _ } => [flex_carry_line_standing_unknown]
+}
+
+fn flex_carry_sighting_json(s: FlexLoadingSighting) -> JsonValue {
+  json_object(members: [
+    json_kv(key: flex_carry_key_instance_id, value: json_int(n: s.instance_id)),
+    json_kv(key: flex_carry_key_sampled_ms, value: json_int(n: s.first_sampled_loading_ms)),
+  ])
+}
+
+fn flex_carry_ask_json(kind: String, machine: Int, ask: Int, instance: Int?) -> JsonValue {
+  json_object(members: concat(
+    [
+      json_kv(key: flex_carry_key_kind, value: json_string(s: kind)),
+      json_kv(key: flex_carry_key_machine_id, value: json_int(n: machine)),
+      json_kv(key: flex_carry_key_ask_id, value: json_int(n: ask)),
+    ],
+    match instance {
+      Absent => []
+      Present { value: id } => [json_kv(key: flex_carry_key_instance_id, value: json_int(n: id))]
+    },
+  ))
+}
+
+// Exactly one standing is always written: the file states its standing or it does not load trusted. The
+// UNKNOWN standing round-trips WITH its reason, so the next pass reads the cause the writing pass found rather
+// than a re-derived one.
+fn flex_carry_standing_json(standing: FlexCarryStanding) -> JsonValue {
+  match standing {
+    FlexCarryNoAsk => json_object(members: [json_kv(key: flex_carry_key_kind, value: json_string(s: flex_carry_kind_none))])
+    FlexCarryStandingUnknown { reason: r } =>
+      json_object(members: [
+        json_kv(key: flex_carry_key_kind, value: json_string(s: flex_carry_kind_unknown)),
+        json_kv(key: flex_carry_key_reason, value: json_string(s: r)),
+      ])
     FlexCarryAsk { ask: FlexCreateAnswered { instance_id: id, machine_id: machine, ask_id: ask } } =>
-      [concat(concat(flex_carry_prefix_answered, int_to_decimal_string(value: id)), concat(concat(" ", int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask))))]
+      flex_carry_ask_json(kind: flex_carry_kind_answered, machine: machine, ask: ask, instance: Present { value: id })
     FlexCarryAsk { ask: FlexCreateLost { ask_id: ask, machine_id: machine } } =>
-      [concat(concat(flex_carry_prefix_lost, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
+      flex_carry_ask_json(kind: flex_carry_kind_lost, machine: machine, ask: ask, instance: none)
     FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask, machine_id: machine } } =>
-      [concat(concat(flex_carry_prefix_refused, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
+      flex_carry_ask_json(kind: flex_carry_kind_refused, machine: machine, ask: ask, instance: none)
   }
-  let body = concat([flex_carry_header], concat(basis_line, concat(cooldown_lines, concat(loading_lines, standing_lines))))
-  join(concat(body, [concat(flex_carry_prefix_end, int_to_decimal_string(value: length(body)))]), "\n")
+}
+
+fn flex_carry_render(carry: FlexCarry) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: flex_carry_key_version, value: json_int(n: flex_carry_format_version)),
+    json_kv(key: flex_carry_key_basis, value: flex_carry_basis_json(basis: carry.basis)),
+    json_kv(key: flex_carry_key_cooldown, value: flex_carry_cooldown_json(cooldown: carry.cooldown)),
+    json_kv(key: flex_carry_key_loading, value: json_array(elements: map(carry.sightings, flex_carry_sighting_json))),
+    json_kv(key: flex_carry_key_standing, value: flex_carry_standing_json(standing: carry.standing)),
+  ]))
 }
 
 // WHAT THE NEXT PASS READS. A create this pass PERFORMED supersedes the standing carried in: there is
