@@ -30,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // It identifies a run only within the manager that minted it: two managers (the system manager, or one user's
 // manager) draw independently, so the id alone does not say whose run it names. That is why the composite lives
-// in gunbc.systemd_unit_run_identity and this module owns only the id's wire shape.
+// in gunbc.systemd_unit_invocation_liveness UnitRunIdentity and this module owns only the id's wire shape.
 type SystemdInvocationId = NonEmptyStr where brand("SystemdInvocationId")
 
 data systemd_invocation_id_hex_length: Int = 32

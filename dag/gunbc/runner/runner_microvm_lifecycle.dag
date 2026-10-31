@@ -336,7 +336,7 @@ type ResourceReadback
 //
 // THIS IS GUNBC'S OWN ATTEMPT TOKEN, WRITTEN INTO THE UNIT'S Environment AT LAUNCH, AND IS NOT systemd's
 // InvocationID. The manager mints a fresh InvocationID per start whatever the caller set; which run of
-// a unit this is belongs to gunbc.systemd_unit_run_identity, which observes it from the host.
+// a unit this is belongs to gunbc.systemd_unit_invocation_liveness UnitRunIdentity, which observes it from the host.
 //
 // The controller reads this off the unit rather than copying it from the request, so it is an
 // OBSERVATION and it can fail to be taken: systemd unloads a unit the moment it is collected, and
