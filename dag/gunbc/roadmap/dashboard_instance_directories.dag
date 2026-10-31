@@ -13,6 +13,7 @@ import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_dir
 import gunbc.compute.host_capacity { compute_root_directory }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
+import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_projects_directory }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
 
@@ -50,6 +51,7 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
     attempt_identity_directory(instance: instance),
+    belt_projects_directory(instance: instance),
     session_attempt_slots_directory(instance: instance),
   ], fabric_storage_directory_demands(realization: realization, instance: instance)))
 }
