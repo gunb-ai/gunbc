@@ -138,7 +138,7 @@ import product.p4261_carrier_layout {
   k1_transitions, k1_inductor_volts_at_40ma, k1_l_2r2, k1_l_4r7_near, k1_l_4r7_far, inductor_pad_unrecorded, inductor_pad_near_u4, inductor_pad_far_u4,
   e1_inductor_volts, e1_l_2r2, e1_l_4r7_near,
   e1_inductor_short_incident, e1_after_short_resistances, k1_l_4r7_near_resistance, k1_resistances, e1_u21, e1_u69, e1_u53, e1_u100,
-  e1_converter_near, k1_converter_near, k1_u100, e1_converter_lead_resistances, k1_converter_lead_resistances, e1_u100_lead_resistances, k1_u100_lead_resistances,
+  e1_converter_near, k1_converter_near, k1_converter_far, k1_u100, e1_converter_lead_resistances, k1_converter_lead_resistances, e1_u100_lead_resistances, k1_u100_lead_resistances,
   k1_l_4r7_near_pad_resistances, p4261_near_4r7_converter_hypothesis, regulator_pins, pin_terminal_name, u100_lead_terminals,
   CarrierLayoutObservation,
   InstalledComponent,
@@ -2583,7 +2583,8 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && all(e1_part, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE Monolithic Power Systems, Inc. MP2333CGTL from the marking 'DFP 528'") })
     && all(k1_part, c => count(c.terminals) == count(regulator_pins(row: mp2333cgtl)))
   let complete = every_pin_read_once(rs: e1_converter_lead_resistances, c: e1_converter_near, ret: e1_ground_ref)
-    && every_pin_read_once(rs: k1_converter_lead_resistances, c: k1_converter_near, ret: k1_return)
+    && every_pin_read_once(rs: k1_converter_lead_resistances, c: k1_converter_far, ret: k1_return)
+    && !every_pin_read_once(rs: k1_converter_lead_resistances, c: k1_converter_near, ret: k1_return)
     && !every_pin_read_once(rs: filter(e1_converter_lead_resistances, o => !(o.first.terminal as String).contains("(SW)")), c: e1_converter_near, ret: e1_ground_ref)
     && !every_pin_read_once(rs: e1_converter_lead_resistances, c: k1_converter_near, ret: e1_ground_ref)
   let sw_e1 = match pin_reading(rs: e1_converter_lead_resistances, name: "(SW)") {
@@ -2601,7 +2602,10 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
   let bst = match pin_reading(rs: e1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => is_reported_zero(o: o) && !is_at_baseline(o: o) }
     && match pin_reading(rs: k1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 134000, Absent => false } }
   let in_records = count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) == count(e1_converter_lead_resistances)
-    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == count(k1_converter_lead_resistances)
+    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
+    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == 0
+    && count(component_of(layout: p4261_k1_layout, c: k1_converter_far)) == 1
+    && all(component_of(layout: p4261_k1_layout, c: k1_converter_far), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
   let u100 = count(component_of(layout: p4261_k1_layout, c: k1_u100)) == 1
     && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => count(c.terminals) == count(u100_lead_terminals) && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
     && count(u100_lead_terminals) == 8
@@ -2609,5 +2613,6 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && !all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: k1_u100, t: t, ret: e1_ground_ref))
   let reported = carrier_input_reading(layout: p4261_e1_layout).contains("MP2333CGTL (marked BDFP 528), is the leading candidate for the part that failed")
     && p4261_near_4r7_converter_hypothesis.claim.contains("U100 is not on the switch node")
+    && any(p4261_near_4r7_converter_hypothesis.sources, x => (x as String).contains("the farther 4R7's converter (U2_P2) by the photograph of the read"))
   identified && complete && sw_e1 && sw_k1 && bst && in_records && u100 && reported
 }
