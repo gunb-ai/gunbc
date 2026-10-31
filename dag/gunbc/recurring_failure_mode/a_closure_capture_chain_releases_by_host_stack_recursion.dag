@@ -1,0 +1,147 @@
+module gunbc.recurring_failure_mode.a_closure_capture_chain_releases_by_host_stack_recursion
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A CLOSURE-CAPTURE CHAIN HAS NO ITERATIVE RELEASE, SO DROPPING ONE ABORTS THE HOST. Found 2026-10-31
+// by a probe arm run at the manager's direction (tidy-ant-251), in the same test module that carries the
+// iterative-release pins landed with PR #15360. The seed's iterative `Value` release covers exactly the
+// carrier families `detach_owned_children` has arms for — `List`, `Map`, and the `Record`/`Variant`
+// `fields` — and `Value::drop`'s final match releases only `List` and `Map`. `Value` also carries
+// `Closure { params, body: Rc<Node>, env: Rc<Env> }`, and `Env` is itself a heap-shaped structure
+// (`bindings: im::HashMap<Symbol, Value>`, `parent: Option<Rc<Env>>`). Neither has an arm, so a chain of
+// closures captured through one another keeps drop glue and costs one host stack frame per level. This
+// row files the class and its RED; it funds no Rust, and it claims no consumer on the corpus.
+
+data a_closure_capture_chain_releases_by_host_stack_recursion: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_closure_capture_chain_releases_by_host_stack_recursion" as NonEmptyStr,
+
+  // FOUND BELOW THE LADDER. No rung check, no required run and no witness says anything about this
+  // state: the probe that refuses it is not on main, and the lane that would run it is off the merge
+  // path (`gunbc.rung_drop.rust_unit_tests_off_the_merge_path`). The ceiling is MechanicallyPreventable:
+  // one check that names every carrier family of `Value` and refuses a release that omits one would
+  // refuse this state at the earliest boundary that cannot be justified.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability to refuse a `Value` release that omits a carrier family the type declares: a check that enumerates the carrier families of `Value` (`List`, `Map`, `Set`, `Record`, `Variant`, `Closure`, `Fn`) and rejects a `detach_owned_children` or a `Value::drop` release match that covers a proper subset of them, together with the trigger already named by `gunbc.rung_drop.rust_unit_tests_off_the_merge_path`, which is what would put the probe arm named below on the merge path. SUFFICIENT FOR the state to stop being silent; INDIFFERENT to which fix is chosen, and it retires no drop — the v1 unit-test lane stays withdrawn in every other respect."
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A value graph whose depth is bounded only by the heap — a fold that wraps a
+    closure around the previous closure, each level's `Env` holding the previous closure in its
+    `bindings` — aborts the host process when it is released: the test thread reports that it has
+    overflowed its stack and the process dies by SIGABRT, with no compiler diagnostic, no located
+    cause, and no claim verdict. `CALL_DEPTH_LIMIT` bounds interpreted *call* depth; it says nothing
+    about the depth of a value, which is the standing reading in the seed's own depth module: a value is
+    as deep as its data, and that depth is bounded by the heap, not by the call stack.",
+
+    "**THE RED, NAMED AS AN INSTRUMENT.** Arm: `v1_interpreter::value_depth_walker_tests::probe_closure_capture_chain_drops`
+    — 262,144 levels, the module's own `DEPTH`, the depth its `#15360` pins already use, so the RED is
+    not an artifact of a depth I chose. Re-run it with the two commands the module's header names: the
+    compile gate `cargo test --no-run --release --locked -p v1-compiler`, then one process per arm
+    `cargo test --release --locked -p v1-compiler -- --exact <the name as cargo --list prints it>
+    --nocapture`. Measured rows, one process each, at head `cf06f08f749664b10a523bde47633e07f88c5a6f`,
+    test binary `target/release/deps/v1_compiler-502c4d2086e78370`, in an `app.slice` scope with
+    `MemoryMax=16G MemorySwapMax=0` and a 2400 s bound:
+      `probe_closure_capture_chain_drops` rc=101 wall=2s ran=0 exit-signal=SIGABRT — RED. Its output
+      carries exactly two failure lines, `thread '...probe_closure_capture_chain_drops' (216422) has
+      overflowed its stack` and `fatal runtime error: stack overflow, aborting`, followed by the cargo
+      trailer `process didn't exit successfully: ... --exact ... --nocapture (signal: 6, SIGABRT:
+      process abort signal)`; `ran=0` because no `test result:` line is produced once the process aborts;
+      `probe_env_parent_chain_drops` rc=0 wall=7s ran=1 overflow=0 — the same carrier WITHOUT the value
+      level: an `Rc<Env>` parent chain bound to `Int`s only releases at the same depth;
+      `a_weak_held_list_chain_drops` rc=0 wall=6s ran=1 overflow=0 — the `#15360` pin, so the iterative
+      machinery is alive for the families it covers.
+    Artifacts (shared runner, `~/valiant-15258/probes-closure/`): `compile.log` (gate rc=0 wall=637s),
+    `list.log` (the name source of truth), `run-probe_closure_capture_chain_drops.out` (761 B, the two
+    failure lines), `run-probe_env_parent_chain_drops.out`, `run-a_weak_held_list_chain_drops.out`; the
+    peak-resident line is in `~/valiant-15258/probes-closure.time` (written beside the directory). Patch
+    guard: 154 lines added, 0 removed against the head, 6 probe functions.",
+
+    "**NO DISK-ERROR CONFOUND.** The operator invalidated runs that hit a full disk. This pass predates
+    that condition and its own evidence is clean of it: across every file in
+    `~/valiant-15258/probes-closure/`, the count of lines matching `No space left` or `ENOSPC` is 0
+    (measured 2026-10-31, same host, same account), and the failure it reports is a stack overflow
+    aborting by SIGABRT — a host-stack fact, not an I/O error. The pass wrote no target/ growth of its
+    own beyond the incremental rebuild of one crate's test target.",
+
+    "**WHERE THE RECURSION IS, BY THE SIBLING ARM.** The `Rc<Env>` parent chain alone does NOT overflow,
+    while the chain that puts Values inside `Env.bindings` does. The reading of that difference — stated
+    as a reading, the measurements above being the facts — is that `parent` is `Env`'s last field, so
+    releasing it sits in tail position and drop glue turns it into a loop, whereas `bindings` is an
+    `im::HashMap` of Values dropped before that field, and each of those Values is a `Closure` whose own
+    `env` then drops. So the recursion is through the captured bindings, which is exactly the part no arm
+    of `detach_owned_children` reaches: the function detaches `List`, `Map` and the `Record`/`Variant`
+    `fields`, and `Value::drop`'s closing match releases `List` and `Map` inline while the depth is
+    raised. `Closure` and `Env` appear in neither place.",
+
+    "**WHAT THE CLASS ROW SAYS, AND WHERE IT IS WIDER THAN THE CODE.** The class row
+    `gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit` records that
+    its build-time census sees DIRECT self-recursive walkers over `Value` — the census is
+    `unguarded_recursive_value_walkers` in `src/v1/stage0/build.rs` — and its receipts state, as part of
+    what that census does not see, that `Drop` is iterative. At this head the code supports a narrower
+    sentence: `Drop` is iterative over the carrier families it detaches and the two it releases inline,
+    and a family with no arm keeps drop glue. This row does not claim the class row was wrong when it was
+    filed — the closure chain was measured now, not then — and it does not amend that row; amending a
+    landed row is its owner's call, and this row exists so the narrower sentence is on the record beside
+    the measurement.",
+
+    "**CEILING AND TRIGGER, WITHOUT FUNDED WORK.** The ceiling is a check that enumerates the carrier
+    families `Value` declares and refuses a release covering a proper subset of them; that is mechanical
+    and unbuilt, so the blocker is ClimbableButUnbuilt. No fix is proposed here and no Rust was written:
+    the manager's ruling was that the RED is authorable and that the repair decision comes after the
+    finding. Two options are visible and neither is recommended by this row — an arm for the `Closure`
+    carrier in the same shape as the existing four, or a single traversal authority over `Value` children
+    of which every walker and every release is an instance, which is the ceiling the class row already
+    names as rung 3.",
+  ],
+
+  // WHAT IS NOT CLAIMED, so the row cannot be read wider than its measurement.
+  //
+  // 1. NO OBSERVED CONSUMER. The corpus specimen that started this investigation — the 12 h `rung_drop`
+  //    core, `core.claim_batch.3426020`, 44,866,076,672 bytes, built at `9de26fc458bb` with binary
+  //    sha256 prefix `6bc4c64c5490` — faults in a chain of `Value::Variant` elements over two-element
+  //    sized chunks: 62,891 frames, 58,293 of them at ONE `Rc::drop_slow` pc, the recursing element's
+  //    discriminant word `0x9` = `Variant` at 58,292 of those levels, and ZERO `Closure` frames. Census
+  //    artifacts: `~/valiant-15258/rungcore-frame-census-v3.txt`, `rungcore-refcount-census-v2.txt`. So
+  //    this class is LATENT — reachable by a program shape, not observed in one — and the observed class
+  //    is retired: the same probe module releases the census shape at 262,144 levels both with a `Weak`
+  //    outstanding on every carrier and with genuine sharing (`probe_census_shape_weak_held_drops`,
+  //    `probe_census_shape_unique_owned_drops`, `probe_genuinely_shared_census_shape_drops`, all rc=0
+  //    ran=1 overflow=0, in `~/valiant-15258/probes-census-main/` and `probes-census-deep/`).
+  //
+  // 2. THE RED IS NOT ON MAIN, AND BY RULING IT MUST NOT BE. The arms live in a deliberately dirty tree,
+  //    `~/valiant-15258/probes-376cc44fa836`, 154 additive lines applied by `~/probe_census_patch.py` and
+  //    `~/probe_closure_patch.py`. The manager's ruling of 2026-10-31 is explicit: no failing test arm
+  //    lands in the seed, and the repair — an iterative release for the `Closure`/`Env` binding carriers
+  //    — is a v1-interpreter evaluation defect routed to the seed lane (clever-crane-830) carrying this
+  //    row's RED. So the RED is a recipe plus artifacts, not a red test on a required surface, which is
+  //    the same deficit this lane already records as
+  //    `a_rust_test_target_that_does_not_compile_reads_green`.
+  //
+  // 3. NO DEPTH THRESHOLD IS CLAIMED. The RED is measured at the module's `DEPTH` of 262,144 and the
+  //    release is measured there too; no search for the smallest aborting depth was run.
+  //
+  // 4. `Fn { node: Rc<Node> }` IS UNPROBED. A chain of `Rc<Node>` is a recursion over the syntax tree,
+  //    not over values, and the core's chain is `Value::drop` frames — so this row says nothing about
+  //    whether a deep `Node` chain releases.
+  //
+  // 5. NOTHING IS CLAIMED ABOUT A REPAIR'S COST OR CORRECTNESS. The abort is a host-stack fact about the
+  //    current release path; whether an arm for `Closure` is admissible, and what it would do to a shared
+  //    carrier's visibility, is a ruling to be made with the arithmetic that settled the sharing question
+  //    for `#15360` (a shared carrier's release is a decrement that frees nothing, so only unique
+  //    ownership can ever reach the recursion).
+
+  evidence: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit", decl_name: "recursion_over_value_depth_uncounted_by_the_call_limit"),
+    decl_ref(module_path: "gunbc.rung_drop.rust_unit_tests_off_the_merge_path", decl_name: "rust_unit_tests_off_the_merge_path"),
+  ],
+}
