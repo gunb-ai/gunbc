@@ -3104,10 +3104,10 @@ fn roster_occ_expect_refused(name: String, text: String, keys: List<String>, pre
   }
 }
 
-fn roster_occ_expect_ambiguous(name: String, text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+fn roster_occ_expect_reason(name: String, want: String, text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_occ_outcome(text: text, keys: keys, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } =>
-      if roster_refusal_text(reason: r) == "label-sites-ambiguous" { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
+      if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
     other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
   }
 }
@@ -3156,7 +3156,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-ambiguous", fail: roster_occ_expect_ambiguous(name: "occurrences-keyed-non-head-reference-refuses-ambiguous", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
+    roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
   ]
 }
 
