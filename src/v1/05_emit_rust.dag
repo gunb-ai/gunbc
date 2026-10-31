@@ -14169,7 +14169,8 @@ fn rust_fold_declarable_acc_type(acc_type_node: Node, shared_types: Set<String>,
   let render_spurious = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
   let bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: si, emit_info: emit_info)
-  if bare_container || is_type_var || child_is_type_var || has_unbound || has_closure_unbound || render_spurious || bare_parametric_head { "_" } else { acc_type_str }
+  let unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
+  if bare_container || unit_child || is_type_var || child_is_type_var || has_unbound || has_closure_unbound || render_spurious || bare_parametric_head { "_" } else { acc_type_str }
 }
 
 fn rust_fold_safe_acc_type(acc_type_str: String) -> String {
