@@ -401,6 +401,7 @@ data conformance_domains: List<ConformanceDomain> = [
     owns: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.",
     boundaries: [
       "Producing bytes is not delivery.",
+      "A repository population measured at a revision stays with gunbc.repository_census_observation.",
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
