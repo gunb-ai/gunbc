@@ -502,6 +502,18 @@ fn v1_freemonoid_filter_hand_written(traits: List<RustCapability>) -> List<RustC
   traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
 }
 
+// The carrier a type expression names, through the carrier roster's own spelling rows
+// (std.types container_template_algebra, derived from std.algebra carrier spellings): `List<K>` is
+// the FreeMonoid carrier, so a detector asking "is this the free monoid" must not compare the
+// authored spelling. A spelling the roster does not declare answers itself.
+fn v1_type_expr_carrier_name(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let spelling = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+  match container_template_algebra(name: spelling) {
+    Present { value: carrier } => carrier
+    Absent => spelling
+  }
+}
+
 fn v1_freemonoid_element_params(
   generic_param_names: List<String>,
   field_type_exprs: List<Node>,
@@ -509,7 +521,7 @@ fn v1_freemonoid_element_params(
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
+      v1_type_expr_carrier_name(type_expr: te, source_indices: source_indices) == "FreeMonoid"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
@@ -640,7 +652,7 @@ fn v1_set_element_params(
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "Set"
+      v1_type_expr_carrier_name(type_expr: te, source_indices: source_indices) == "Set"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
