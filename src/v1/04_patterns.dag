@@ -1,5 +1,6 @@
 module v1.compiler.infer_patterns
 
+import v1.compiler.infer_env { node_with_children }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }

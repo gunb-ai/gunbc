@@ -50,4 +50,6 @@ mod record_literal_declared_type_inhabitance_test;
 #[cfg(test)]
 mod record_literal_names_a_union_type_refusal_test;
 #[cfg(test)]
+mod unimported_bare_name_floor_test;
+#[cfg(test)]
 mod whole_tree_wiring_enum_test;

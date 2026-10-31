@@ -1107,9 +1107,24 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
 }
 
+// A pool entry declared once corpus-wide answers a bare occurrence only when its declarer sits on
+// the referencing module's containment chain, or the module IMPORTS that declarer and the name is
+// visible through the import (DESIGN 4b "names resolve"; the unique arm obeys the same chain test as
+// the homonym arm). The import arm is the author's own binding: a callee whose signature the import
+// closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
+// the import, never by corpus coincidence. env.parents is built from the resolved imports, one
+// interface env per import. Unconditional: the floor does not depend on the resolution policy, so
+// no legacy any-module arm survives beside it.
+fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
+  let declarer_segs = module_path_segments(path: declarer)
+  segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
+    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
+}
+
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: declarer, binding: binding } } =>
+      if global_bare_declarer_in_scope(env: env, name: name, declarer: declarer) { Present { value: binding } } else { Absent }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
