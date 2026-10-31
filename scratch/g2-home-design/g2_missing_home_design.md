@@ -30,6 +30,8 @@ The table filed these as `G1?`/`G3?`. Each already has a declaration with the sa
 
 ## B. Ruled homes: declare and realize (5 heads)
 
+**WITHDRAWN (tidy-ant-251 ruling, msg_2797b012, 2026-10-31).** The `split` and `replace` rows below are withdrawn. The `std.host_text` module header governs: split, join and replacement are structural operations and stay with structural text. A host-text site reaches them only through the `chars` crossing: `v2.std.text` `string_split` / `string_replace`, and `text_of_chars` back where host text is needed. `starts_with` and `ends_with` get one generic prefix/suffix pair in `std.algebra` over `FreeMonoid<T>`, with element equality as a declared parameter. See `scratch/text-port/route_rules_design.md`.
+
 **`std.host_text`** declarations are host text (kernel `String`). Each is a `HostRealizedSeam` with one `std.primitive_projection` row, the same pattern as `chars`.
 
 | head | sites | home | proposed signature | realization / notes |
@@ -74,7 +76,7 @@ Why A for `substring` and `char_at`: the two seed forms already disagree, so a t
 ## E. Sequencing (each wave is its own PR, after the gate PR)
 
 1. **Group A rows.** `first`, `get` (receiver-classified), `reverse`, `flat_map`. These are sweep rows only, plus the `flat_map` order RED.
-2. **Group B host text.** `starts_with`, `split` and `replace` as one `std.host_text` declaration PR, plus their sweep waves. Its precondition is the empty-separator and empty-needle census.
+2. **Group B host text (WITHDRAWN, see section B).** `starts_with`, `split` and `replace` as one `std.host_text` declaration PR, plus their sweep waves. Its precondition is the empty-separator and empty-needle census.
 3. **Ruled C/D heads.** One declaration PR per home, then the waves.
 4. **`parse_int`** finishes on #15472. **`to_string`** finishes in zesty-badger-599's wave.
 
