@@ -1,7 +1,7 @@
 module test.claim.operation_realization_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.optional { Absent }
+import std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.content_hash { sha256_digest_wire_form }
 import extdeps.crypto.sha2 { sha256_computed_digest }
@@ -38,7 +38,10 @@ import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
   bmc_world, bmc_with_pending, bmc_with_power,
   BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override,
+  BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces,
 }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import gunbc.machine_intake.bmc_fan_observation { observe_fan_round, FanObservationRound, SdrVerboseNotRequired, SdrVerboseCaptured }
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
   bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply, bmc_dry_bmc_firmware_release,
@@ -955,6 +958,62 @@ test fn a_dispatched_verbose_sdr_read_faults_with_the_grounding_reason() -> Bool
           Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
           Absent => false
         }
+    _ => false
+  }
+}
+
+// THE CONDITIONAL VERBOSE CAPTURE, END TO END IN THE MODEL. The fan round reads the world's own SDR
+// surface through the dry realization, so the CONDITION on the verbose read is measured, not asserted:
+// a round whose thermal rows all decode never dispatches SdrElistVerbose, and a round left with a row
+// without a reading - the boot-5 refusal shape - dispatches it in the very same round, right after the
+// reads that failed to answer it. The dry world then refuses to ANSWER that read: verbose record bytes
+// come only from a committed capture, never from the model (the row above proves the refusal itself).
+// The records below are unit shape - written to exercise the condition - not vendor captures.
+fn unit_sdr_record(sensor_type: String, name: String, number: String, status: String, entity: String, reading: String) -> BmcSdrRecord {
+  BmcSdrRecord {
+    sensor_type: sensor_type as NonEmptyStr,
+    line: SdrTypeLine { name: name as NonEmptyStr, sensor_number: number as NonEmptyStr, status: status as NonEmptyStr, entity_id: entity as NonEmptyStr, reading_text: reading as NonEmptyStr },
+  }
+}
+
+fn fan_round_surface(temps: List<BmcSdrRecord>, fans: List<BmcSdrRecord>) -> BmcWorld {
+  bmc_with_record_surfaces(world: bmc_world(power: BmcPowerOn), surfaces: BmcRecordSurfaces {
+    manager_date_time: none,
+    log_services: none,
+    account_events: none,
+    virtual_media: none,
+    sensors: none,
+    ipmi_sdr: Present { value: concat(temps, fans) },
+  })
+}
+
+fn fan_round_subject() -> FanObservationRound {
+  observe_fan_round(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, round_index: 0, cipher_suite: Absent)
+}
+
+test fn a_round_whose_thermal_rows_all_decode_never_asks_for_the_verbose_read() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "CPU0_Temp", "01h", "ok", "3.1", "45 degrees C")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")])), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fan_round_subject() }
+  ) {
+    WitnessReturned { value, route } =>
+      route_operations(route: route) == ["ChassisStatus", "SdrTypeList", "SdrTypeList"]
+        && match value.verbose {
+          SdrVerboseNotRequired => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_round_left_with_an_unread_thermal_row_asks_for_the_verbose_read_in_the_same_round() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "PSU2_Status", "EBh", "ok", "0.0", " ")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")])), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fan_round_subject() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "no committed verbose SDR capture", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["ChassisStatus", "SdrTypeList", "SdrTypeList", "SdrElistVerbose"]
     _ => false
   }
 }
