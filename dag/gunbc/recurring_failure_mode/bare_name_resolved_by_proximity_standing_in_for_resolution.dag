@@ -25,8 +25,6 @@ data bare_name_resolved_by_proximity_standing_in_for_resolution: RecurringFailur
 
     "RUNG HONESTY (gunbc#15247): the discriminating RED and its controls run only as v1 unit tests (`v1-compiler-tests` `unimported_bare_name_floor_test`; positive control `imported_bare_reference_compiles_clean`), not on the required `v2-bootstrap` path. Whole-corpus evidence is the non-required heal job. The seed-side class sits at mechanically preventable, not enrolled on the required path. Climb trigger: a row of `gunbc.emitted_subject_build_gate` judged by the self-host/native gate that refuses an unimported bare name. The v2-side pool consumers stay open as above. The legacy ImportScoped policy arm was deleted from the gate (`global_bare_declarer_in_scope`); the policy cell itself retires with namespace-resolution-design section 13 step 4.",
 
-    "HEAL OBSERVABILITY DEFECT (found on gunbc#15247): `claim_executor --regen-round-cost` round 2 (`round.built_seed_regen`) prints no phase line until it finishes, so a silent round is undiagnosable. One run at 7a1931b was silent for 53 minutes and was cancelled at the job timeout; the same corpus on a merged main head (72af527) passed, and bisect arms did not attribute a cause. Owner of the heal instrument: emit a per-phase heartbeat inside round 2 so slow-versus-non-converging is decidable from the log.",
-
     "REVIEW TELL: a reader or resolver that ranks candidate declarers by path similarity, shared prefix or 'closest' instead of refusing; an edge whose only justification is that one pool declarer exists.",
   ],
 
