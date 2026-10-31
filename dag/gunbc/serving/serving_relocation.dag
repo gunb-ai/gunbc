@@ -111,17 +111,19 @@ fn admit_state_method(method: StateEstablishmentMethod, evidence: Reconstruction
 // ── THE DECISION (std.decision select_realization; never a local comparison) ─────────────────────
 // Stay versus move is a select_realization over a candidate field that ALWAYS includes "stay". The
 // funded axes encode the objective (amendment 3): useful completed work within the fixed grant over
-// the affected source-AND-destination schedule, including harm to the destination's other work
-// (ax_destination_harm) and long-context starvation protection (ax_long_context_age). Repeated prefill
-// counts as cost (ax_transition_cost). Missing performance evidence is never zero: an unread axis is a
-// gap, so the economic move is NOT ESTABLISHED (SelectionNeedsEvidence), never free.
+// the affected source-AND-destination schedule. The economic comparison is ONE net-benefit axis
+// (ax_net): throughput gain minus reconstruction transition, minus harm to the destination's other
+// work, minus long-context starvation cost — repeated prefill counts as cost. A move is selected
+// exactly when its net benefit exceeds the incumbent's; a tie falls to the stay policy. The second
+// axis (ax_service_class) carries the hard feasibility bound so a service-class violation (cold
+// prefill beside active decoding) is EXCLUDED before Pareto, never ranked. Missing performance
+// evidence is never zero: an unread net axis is a gap, so the economic move is NOT ESTABLISHED
+// (SelectionNeedsEvidence), never free.
 data rloc_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "gunb.ai/plan/fabric-serving-router#relocation" },
 }
-data ax_gain: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_gain")
-data ax_transition: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_transition")
-data ax_harm: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_harm")
-data ax_age: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_age")
+data ax_net: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_net")
+data ax_service_class: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_service_class")
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_subject")
 data id_field: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_field")
 data id_constraints: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_constraints")
@@ -171,50 +173,54 @@ fn ax_reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis:
 
 fn rloc_axes() -> List<SelectionAxis> {
   [
-    SelectionAxis { identity: ax_gain, goal: HigherIsBetter },
-    SelectionAxis { identity: ax_transition, goal: LowerIsBetter },
-    SelectionAxis { identity: ax_harm, goal: LowerIsBetter },
-    SelectionAxis { identity: ax_age, goal: LowerIsBetter },
+    SelectionAxis { identity: ax_net, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_service_class, goal: LowerIsBetter },
   ]
 }
 
-fn stay_candidate(age: Int) -> ParetoEntry {
+// The incumbent's net benefit. A warm, unstarved stay has a high (least-negative) net; a long turn
+// behind runnable demand carries a starvation cost that lowers it.
+fn stay_candidate(net: Int) -> ParetoEntry {
   ParetoEntry {
     identity: id_stay, display_label: "stay" as NonEmptyStr,
-    readings: [ax_reading(axis: ax_gain, v: 0), ax_reading(axis: ax_transition, v: 0), ax_reading(axis: ax_harm, v: 0), ax_reading(axis: ax_age, v: age)],
+    readings: [ax_reading(axis: ax_net, v: net), ax_reading(axis: ax_service_class, v: 0)],
     missing_inputs: [],
   }
 }
 
-fn move_candidate(id: DeclarationRef, label: NonEmptyStr, gain: Int, transition: Int, harm: Int, age: Int) -> ParetoEntry {
+// A move's net benefit already nets out reconstruction transition, destination harm and long-context
+// cost (the caller folds them in, and only admits the competitor past the declared margin). The
+// service-class reading is the candidate's cold-prefill-vs-active-decoding cost, bounded by the hard
+// constraint below.
+fn move_candidate(id: DeclarationRef, label: NonEmptyStr, net: Int, service_class: Int) -> ParetoEntry {
   ParetoEntry {
     identity: id, display_label: label,
-    readings: [ax_reading(axis: ax_gain, v: gain), ax_reading(axis: ax_transition, v: transition), ax_reading(axis: ax_harm, v: harm), ax_reading(axis: ax_age, v: age)],
+    readings: [ax_reading(axis: ax_net, v: net), ax_reading(axis: ax_service_class, v: service_class)],
     missing_inputs: [],
   }
 }
 
-// A candidate whose expected improvement is NOT measured carries a gap on the gain axis — never a zero.
-fn move_candidate_unknown_gain(id: DeclarationRef, label: NonEmptyStr, transition: Int, harm: Int, age: Int) -> ParetoEntry {
+// A candidate whose expected improvement is NOT measured carries a gap on the net axis — never a zero.
+fn move_candidate_unknown_gain(id: DeclarationRef, label: NonEmptyStr, service_class: Int) -> ParetoEntry {
   ParetoEntry {
     identity: id, display_label: label,
-    readings: [ax_reading(axis: ax_transition, v: transition), ax_reading(axis: ax_harm, v: harm), ax_reading(axis: ax_age, v: age)],
-    missing_inputs: [AxisGap { axis: ax_gain, cause: "expected improvement for this move is not established" as NonEmptyStr }],
+    readings: [ax_reading(axis: ax_service_class, v: service_class)],
+    missing_inputs: [AxisGap { axis: ax_net, cause: "expected improvement for this move is not established" as NonEmptyStr }],
   }
 }
 
-// A candidate excluded BEFORE Pareto: a hard constraint it violates (its transition reading is capped
-// so it fails the bound) — a service-class or capacity violation never reaches the ranking.
-fn excluded_candidate(id: DeclarationRef, label: NonEmptyStr, harm: Int) -> ParetoEntry {
+// A candidate excluded BEFORE Pareto: its service-class reading exceeds the hard bound, so a
+// service-class or capacity violation never reaches the ranking.
+fn excluded_candidate(id: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
   ParetoEntry {
     identity: id, display_label: label,
-    readings: [ax_reading(axis: ax_gain, v: 100000), ax_reading(axis: ax_transition, v: 2000000), ax_reading(axis: ax_harm, v: harm), ax_reading(axis: ax_age, v: 0)],
+    readings: [ax_reading(axis: ax_net, v: 100000), ax_reading(axis: ax_service_class, v: 2000000)],
     missing_inputs: [],
   }
 }
 
 fn capacity_bound() -> HardConstraint {
-  HardConstraint { identity: id_constraints, axis: ax_transition, bound_micro: 1000000, denomination: NonMoneyConstraint }
+  HardConstraint { identity: id_constraints, axis: ax_service_class, bound_micro: 1000, denomination: NonMoneyConstraint }
 }
 
 type RelocationDecision
@@ -254,6 +260,14 @@ fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecisi
 // transition satisfies the drain. Mandatory evacuation follows feasibility, never an economic margin.
 fn decide_evacuation(destination_label: NonEmptyStr) -> RelocationDecision {
   Evacuate { destination_label: destination_label }
+}
+
+// A dormant conversation (awaiting a person or tool) has no runnable demand at this boundary, so the
+// move is DEFERRED regardless of how attractive its economics look — re-evaluate at the next
+// re-evaluation event. This is a boundary guard, not a Pareto outcome: the stay-preference policy
+// would otherwise resolve the field to a move. Removing this guard is the discriminating mutation.
+fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
+  if ready { decide_relocation(field: field, closed: closed) } else { DeferredToPolicy }
 }
 
 // A source over its retained-capacity promise is an obligation to reconcile, never "moving is free".
