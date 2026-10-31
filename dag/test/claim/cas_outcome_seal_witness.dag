@@ -12,7 +12,7 @@ import gunbc.compile_diagnostic_census {
 // THE CASOUTCOME SEAL'S DELIBERATE RED, RE-HOMED from the deleted
 // approve_ios_enrolment_machine_persist_order_witness (DESIGN 4b(4): a discriminating RED stays enrolled
 // when the production machinery it was written beside is deleted). std.durable_compare_and_set does not
-// seal `CasOutcome` (the sealing change is gunbc#14447): nothing stops a caller authoring a
+// seal `CasOutcome` (no sealing change exists: gunbc#14447 was a stale citation, it is the approve_ios PR): nothing stops a caller authoring a
 // `CasCommitted` and handing it to a consumer with no store involved. The forgery is fixture source
 // handed to the compiler; the claim asserts the SoleConstructorViolation the seal will raise, which is
 // FALSE today. It is enrolled in v2.workflow.floor_expected_red `floor_expected_red_chunk_cas_outcome_seal`
@@ -45,7 +45,7 @@ fn cas_committed_probe_source(forged_binding: String) -> String {
     + "  0\n}\n"
 }
 
-// RED (EXPECTED, TRIGGER gunbc#14447) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
+// RED (EXPECTED, TRIGGER: sole_constructor honored on a coproduct, which the seed parse drops today) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
 test fn a_forged_cas_committed_literal_is_refused_at_compile() -> Bool {
   keyed_count(
     source: cas_committed_probe_source(forged_binding: forged_cas_committed_binding),

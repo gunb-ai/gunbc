@@ -14,14 +14,15 @@ import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_served_token, approval_broker_marker_agreement,
   MarkerAgreement, MarkerAgrees, MarkerDiffers,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
-  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  DevicePendingHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
 }
+import gunbc.auth.approval_device_wire { approval_device_pending_path }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_loopback_base_url, approval_broker_liveness_url,
   approval_broker_listen_port,
-  approval_broker_confirm_path_template, approval_broker_submit_path,
+  approval_broker_submit_path,
   approval_broker_status_path_template,
-  approval_broker_confirm_front_door, approval_broker_status_front_door,
+  approval_broker_approve_front_door, approval_broker_status_front_door,
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
 import gunbc.auth.approval_broker_demand {
@@ -196,7 +197,8 @@ fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> Non
 //                           makes the broker a writer, and stage 6 is what stops the roadmap being
 //                           one; between them the roadmap is REACHABLE but no longer ROUTED, which
 //                           is why probing comes before retiring.
-//   5. ProbeRouteClasses -- all four route classes are exercised THROUGH the front door. This is
+//   5. ProbeRouteClasses -- every route class (the /approve device mount, submit, status) is
+//                           exercised THROUGH the front door. This is
 //                           also where the one thing this corpus does not know about the upstream
 //                           is settled: whether a --set-path mount presents the mount prefix to the
 //                           backend (gunbc.auth.approval_broker_endpoint
@@ -327,8 +329,7 @@ type ApprovalBrokerCutoverEvidence {
   release_readback: ReleaseReadback
   demand: BrokerDemandReading
   front_door: FrontDoorStanding
-  confirm_probe: RouteClassProbe
-  decide_probe: RouteClassProbe
+  device_probe: RouteClassProbe
   submit_probe: RouteClassProbe
   status_probe: RouteClassProbe
 }
@@ -406,8 +407,7 @@ fn first_refusal(causes: List<CutoverRefusal?>) -> CutoverRefusal? {
 
 fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   first_refusal(causes: [
-    route_class_admission(route: approval_broker_confirm_path_template, expected: ConfirmHandlerObserved, probe: e.confirm_probe),
-    route_class_admission(route: "POST \{capability\} decide" as NonEmptyStr, expected: DecisionHandlerObserved, probe: e.decide_probe),
+    route_class_admission(route: approval_device_pending_path, expected: DevicePendingHandlerObserved, probe: e.device_probe),
     route_class_admission(route: approval_broker_submit_path, expected: SubmissionHandlerObserved, probe: e.submit_probe),
     route_class_admission(route: approval_broker_status_path_template, expected: StatusHandlerObserved, probe: e.status_probe),
   ])
@@ -724,7 +724,7 @@ fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
 // deliberately avoided rather than deliberately caused.
 fn approval_broker_front_door_endpoints(https_port: Port, backend_port: Port) -> List<TailscaleServeEndpoint> {
   [
-    approval_broker_confirm_front_door(https_port: https_port, backend_port: backend_port),
+    approval_broker_approve_front_door(https_port: https_port, backend_port: backend_port),
     approval_broker_status_front_door(https_port: https_port, backend_port: backend_port),
   ]
 }
@@ -777,8 +777,7 @@ fn dark_install_evidence(
     release_readback: release_readback_from_read(read: read),
     demand: DemandUnmeasured { missing: "the six readings stage 3 takes against this dark process" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
-    confirm_probe: RouteClassUnprobed,
-    decide_probe: RouteClassUnprobed,
+    device_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
   }

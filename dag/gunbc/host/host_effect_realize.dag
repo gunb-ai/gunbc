@@ -242,24 +242,10 @@ import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec 
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_command }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
-import gunbc.runner.runner_host_deploy {
-  runner_host_deploy_for,
-  RunnerHostDeployFound,
-  RunnerHostDeployUnmodeled,
-  RunnerHostDeployRefused,
-}
 import gunbc.runner.runner_slot_population_census {
   SlotCensus,
   slot_census_from_command_outcome,
   slot_census_from_typed_argv_outcome,
-  surplus_observation,
-}
-import gunbc.runner.runner_slot_retirement {
-  transition_required_retiring,
-  RequiredRetirees, RetireesKnown, RetireesUnresolved,
-  observe_retirement_standings,
-  surplus_observation_from_census_and_retirement,
 }
 import gunbc.live_deploy.retract_legs {
   DeployRetractLeg, DeployRetractPlan, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs, deploy_retract_leg_step,
@@ -5007,40 +4993,6 @@ fn observe_slot_population_over_host_effect_transport(
   }
 }
 
-// THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
-//
-// Everything below this function takes the decision as a parameter -- `deploy_apply_plan_legs` and
-// `deploy_apply_memory_cap_plan` (gunbc.live_deploy.apply_legs) -- so this is the single visible point
-// at which a real one is provided. An earlier revision supplied a HARDCODED `CapConvergeWithheld`
-// here whose cause said no caller could obtain the evidence. That was safe and it was also wrong
-// about itself: this realize is the EFFECTFUL layer -- it holds the transport and already executes a
-// shell over it through `realize_shell_on_host` -- so the claim that "this apply chain is pure and
-// cannot obtain it" described the RENDERER below it, not this function. The renderer stays pure and
-// still takes the decision as a parameter; the observation is taken HERE, where the transport is, and
-// threaded down. That is the plan/execute boundary held rather than dissolved.
-//
-// WHY A DERIVED WITHHELD IS NOT THE SAME ARTIFACT AS A LITERAL ONE, even on a pass where every host
-// still renders withheld: a literal refusal cannot change when the world does, so it carries no
-// information and would keep reporting the same sentence after the slots retired. A derived one names
-// which units it is waiting on and flips to authorized on the pass where they are gone, without an
-// edit here.
-//
-// TWO OBSERVATIONS ARE TAKEN, NOT ONE, and the join is what makes the decision answerable at all. The
-// census reads the unit listing and is authoritative about PRESENCE; it cannot produce retirement
-// evidence, because `surplus_observation` returns `retired: []` by construction. The per-unit
-// retirement standings read `UnitFileState`, `LoadState` and `TasksCurrent` and are authoritative
-// about COMPLETION -- including the cgroup occupancy no listing can see.
-// `surplus_observation_from_census_and_retirement` unions the blocking side of both, so a slot must
-// be absent from the listing AND report no pending standing before it stops charging capacity.
-//
-// THIS REALIZE ONLY READS. Retirement is a destructive, operator-scoped action and is NOT performed
-// here: the apply path observes what the host already is and decides, so a deploy can never acquire
-// its own authorization by stopping the work it was waiting on.
-//
-// WHAT IS STILL OUTSTANDING, named rather than left to be inferred from a green run: nothing masks a
-// surplus slot yet, so `replacement_inhibited` reads false on every live unit and every standing is
-// `RetirementPendingDrain`. The observer is honest about that -- it is reporting a real host state,
-// not a missing wire -- but it means the authorized branch stays unreached until the inhibitor lands.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE SHARED DEPLOY PREAMBLE, as TYPED EFFECTS.
 //
@@ -5675,9 +5627,11 @@ fn realize_live_deploy_apply_on_host(
 }
 
 // WHAT THE APPLY OBSERVES BEFORE IT CAN PLAN, DEFERRED BEHIND THE LOCUS GATE: the orchestration forces
-// it only after a local locus is admitted, so a refused locus observes no slot census, retirement
-// standing or checkout. The checkout this process runs in is read once, and is both the source root
-// the object-source leg observes and the one every install reads from.
+// it only after a local locus is admitted, so a refused locus observes no checkout. The checkout this
+// process runs in is read once, and is both the source root the object-source leg observes and the one
+// every install reads from. An instance's apply observes no slot census or retirement standing: the
+// runner-unit caps and the slice control are host facts, not instance members, and their owners are
+// gunbc.runner.runner_host_file_converge and the approval broker's dark install.
 fn live_deploy_apply_prepared_on_host(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
@@ -5685,44 +5639,11 @@ fn live_deploy_apply_prepared_on_host(
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> DeployApplyPrepared {
-  let host = spec.target.host.identity
-  let census = surplus_observation(
-    census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
-  )
-  let required_standing = transition_required_retiring(host: host)
-  let admission = runner_host_deploy_for(host: host)
-  let cap_authorization = match admission {
-    RunnerHostDeployRefused { host: rh, cause: rc } =>
-      CapConvergeWithheld {
-        cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-      }
-    RunnerHostDeployUnmodeled { host: uh } =>
-      CapConvergeWithheld {
-        cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-      }
-    RunnerHostDeployFound { deploy: _ } =>
-      match required_standing {
-        RetireesUnresolved { host: uh, cause: rc } =>
-          CapConvergeWithheld {
-            cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-          }
-        RetireesKnown { units: required } =>
-          cap_converge_decision(
-            host: host,
-            required_retiring: required,
-            observation: surplus_observation_from_census_and_retirement(
-              census: census,
-              standings: observe_retirement_standings(transport: transport, units: required),
-            ),
-          )
-      }
-  }
   let source_root = git.Inspect.Toplevel().path as String
   DeployApplyPrepared {
     plan: deploy_apply_plan_legs(
       spec: spec,
       plan: plan,
-      authorization: cap_authorization,
       source_root: source_root,
       oidc_now: tracker_web_oidc_deploy_now_epoch(),
     ),

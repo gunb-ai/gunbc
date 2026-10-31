@@ -25,6 +25,7 @@ import gunbc.deployment_risk { TestRisk }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import std.scoped_authorization { AttemptIdentity }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
+import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
 import extdeps.board_authority { BoardAuthorityRef }
@@ -150,6 +151,7 @@ fn read_root(w: BmcWorld, managed: ManagedCredentialReference, password: String,
     published_reading: derive_over(served: served),
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: at,
+    lockout: lockout_both_served(read_at: at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
   )
 }
 
@@ -254,6 +256,12 @@ fn plan_root(reading: BmcAccountStateObservation, separate: Bool, store_at: Obse
           published: published,
           channel_close: none,
           planned_at: plan_at,
+          // The budget gate (BMC 1b) needs the two things only the caller knows: what
+          // the plan declares it may present again (nothing here) and whether this
+          // build's forced first login was admitted (it was not, on these readings).
+          // Generous lockout thresholds above, so the gate never fires here.
+          declared_retries: [],
+          forced_change: none,
         ),
       }
     }
@@ -358,6 +366,7 @@ fn read_root_on(board: BoardAuthorityRef?, firmware: BmcFirmwareReleaseIdentity,
     published_reading: derive_over(served: served),
     attempt: "attempt-1" as AttemptIdentity,
     read_at_millis: t_read,
+    lockout: lockout_both_served(read_at: t_read, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
   )
 }
 

@@ -1,5 +1,7 @@
 module gunbc.runner.runner_service_slot_controller
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Present }
@@ -114,11 +116,11 @@ type ServiceSlotRebuild
 // ADMITTED boot -- a typed ServiceBootId, never the parsed boot string -- and it is admitted only when
 // the rebuilt name equals the unit this process runs as exactly, so a unit created for another boot
 // rebuilds as a different name and is refused.
-fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot: ServiceBootId, unit: String) -> ServiceSlotRebuild {
+fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot: ServiceBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotRebuild {
   match service_slot_name_parse(host: identity, name: unit) {
     Absent => ServiceSlotUnitUnparsed { unit: unit }
     Present { value: parsed } =>
-      match host_unit_slot_for(host: host, purpose: ServiceSlot { boot: boot, index: parsed.index }, workflow: service_slot_selected_workflow()) {
+      match host_unit_slot_for(host: host, purpose: ServiceSlot { boot: boot, index: parsed.index }, workflow: service_slot_selected_workflow(), receipt: receipt) {
         HostUnitSlotRefused { refusal: r } => ServiceSlotNotBound { refusal: r }
         HostUnitSlotBound { slot: s } =>
           if (s.unit as String) == unit {
@@ -262,13 +264,13 @@ fn service_slot_admit(current_boot: ServiceBootId, population: CurrentServicePop
   }
 }
 
-fn service_slot_admit_current(host: HostControlStanding, identity: HostIdentity, current_boot: ServiceBootId, unit: String) -> ServiceSlotAdmission
+fn service_slot_admit_current(host: HostControlStanding, identity: HostIdentity, current_boot: ServiceBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotAdmission
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_unit_standing")]
 {
   service_slot_admit(
     current_boot: current_boot,
-    population: current_service_population(host: host, boot: current_boot),
-    rebuilt: service_slot_rebuild(host: host, identity: identity, boot: current_boot, unit: unit),
+    population: current_service_population(host: host, boot: current_boot, receipt: receipt),
+    rebuilt: service_slot_rebuild(host: host, identity: identity, boot: current_boot, unit: unit, receipt: receipt),
     unit: unit,
   )
 }
@@ -615,7 +617,7 @@ fn service_slot_unit_standing() -> ServiceSlotUnitStanding
               match service_slot_boot_read() {
                 ServiceSlotBootUnread { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c as String], "") }
                 ServiceSlotBootObserved { boot: boot } =>
-                  match service_slot_admit_current(host: control, identity: identity, current_boot: boot, unit: unit) {
+                  match service_slot_admit_current(host: control, identity: identity, current_boot: boot, unit: unit, receipt: runner_user_session_receipt_observed(host: identity)) {
                     ServiceSlotAdmissionRefused { cause: c } => ServiceSlotUnitRefused { reason: join(["service slot ", unit, ": ", c], "") }
                     ServiceSlotAdmitted { admission: admission } =>
                       match service_slot_key_custody() {

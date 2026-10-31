@@ -22,7 +22,7 @@ import gunbc.auth.approval_broker_endpoint {
 }
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, ObservedMarker, NoMarkerInBody, MarkerObserved,
-  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  DevicePendingHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
   BrokerNoRouteMatched, approval_broker_served_token,
 }
 import gunbc.auth.approval_broker_demand {
@@ -53,8 +53,7 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "all six readings" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
-    confirm_probe: RouteClassUnprobed,
-    decide_probe: RouteClassUnprobed,
+    device_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
   }
@@ -92,8 +91,7 @@ fn everything_observed() -> ApprovalBrokerCutoverEvidence {
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: cutover_fixture_liveness_body)),
     demand: fixture_demand_reading(),
     front_door: FrontDoorPointsAtBroker { port: approval_broker_listen_port },
-    confirm_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { process: BrokerProcess, marker: ConfirmHandlerObserved } },
-    decide_probe: RouteClassAnswered { status: 400, observed: MarkerObserved { process: BrokerProcess, marker: DecisionHandlerObserved } },
+    device_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { process: BrokerProcess, marker: DevicePendingHandlerObserved } },
     submit_probe: RouteClassAnswered { status: 403, observed: MarkerObserved { process: BrokerProcess, marker: SubmissionHandlerObserved } },
     status_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { process: BrokerProcess, marker: StatusHandlerObserved } },
   }
@@ -141,8 +139,7 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: full.confirm_probe,
-    decide_probe: full.decide_probe,
+    device_probe: full.device_probe,
     submit_probe: RouteClassUnprobed,
     status_probe: full.status_probe,
   }
@@ -167,8 +164,7 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: RouteClassRefused { status: 404, detail: "front door presented /esc-1.approve.0badc0de" as NonEmptyStr },
-    decide_probe: full.decide_probe,
+    device_probe: RouteClassRefused { status: 404, detail: "front door presented /device/pending" as NonEmptyStr },
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
   }
@@ -199,8 +195,7 @@ test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: RouteClassAnswered { status: 200, observed: NoMarkerInBody },
-    decide_probe: full.decide_probe,
+    device_probe: RouteClassAnswered { status: 200, observed: NoMarkerInBody },
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
   }
@@ -214,7 +209,7 @@ test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
 }
 
 // ── A BROKER 404 AND A PREFIX-STRIPPED MISS ARE DIFFERENT FACTS ──────────────────────────────
-// THIS IS THE DISCRIMINATION THE CUTOVER HOLD ASKED FOR. The confirm probe answers 404 and the body
+// THIS IS THE DISCRIMINATION THE CUTOVER HOLD ASKED FOR. The device probe answers 404 and the body
 // IS marked -- so the request reached the broker and its route table refused it. On a path the
 // broker demonstrably routes, that is the prefix-strip reading: a --set-path mount presenting
 // /<capability> to a table matching /approve/<capability>, which
@@ -232,8 +227,7 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { process: BrokerProcess, marker: BrokerNoRouteMatched } },
-    decide_probe: full.decide_probe,
+    device_probe: RouteClassAnswered { status: 404, observed: MarkerObserved { process: BrokerProcess, marker: BrokerNoRouteMatched } },
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
   }
@@ -366,19 +360,18 @@ test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() ->
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
-    confirm_probe: RouteClassAnswered {
+    device_probe: RouteClassAnswered {
       status: 200,
-      observed: MarkerObserved { process: RoadmapProcess, marker: ConfirmHandlerObserved },
+      observed: MarkerObserved { process: RoadmapProcess, marker: DevicePendingHandlerObserved },
     },
-    decide_probe: full.decide_probe,
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
   }
   match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
     StageRefused { stage: _, cause: c } => match c {
       RouteClassAnsweredByWrongFold { route: _, expected: ex, observed: ob } =>
-        ob == approval_broker_served_token(p: RoadmapProcess, m: ConfirmHandlerObserved)
-          && ex == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
+        ob == approval_broker_served_token(p: RoadmapProcess, m: DevicePendingHandlerObserved)
+          && ex == approval_broker_served_token(p: BrokerProcess, m: DevicePendingHandlerObserved)
       _ => false
     }
     StageAdmitted { stage: _ } => false
@@ -399,8 +392,7 @@ test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
     release_readback: full.release_readback,
     demand: full.demand,
     front_door: FrontDoorPointsAtRoadmap,
-    confirm_probe: RouteClassUnprobed,
-    decide_probe: RouteClassUnprobed,
+    device_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
   }
@@ -426,8 +418,7 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
     release_readback: full.release_readback,
     demand: DemandUnmeasured { missing: "redemption peak" as NonEmptyStr },
     front_door: full.front_door,
-    confirm_probe: full.confirm_probe,
-    decide_probe: full.decide_probe,
+    device_probe: full.device_probe,
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
   }
@@ -664,8 +655,7 @@ test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
     demand: DemandUnmeasured { missing: "not taken" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
-    confirm_probe: RouteClassUnprobed,
-    decide_probe: RouteClassUnprobed,
+    device_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
   }

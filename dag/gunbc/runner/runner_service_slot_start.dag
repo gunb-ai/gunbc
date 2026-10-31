@@ -1,5 +1,6 @@
 module gunbc.runner.runner_service_slot_start
 
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
@@ -185,7 +186,7 @@ fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStar
           match lost_boot_observe_current_boot(transport: Present { value: b }) {
             CurrentBootUnobserved { cause: c } => ServiceSlotStartRefused { cause: concat("the current boot is unobserved: ", c) }
             CurrentBootObserved { evidence: e } =>
-              match current_service_population(host: standing, boot: e.boot) {
+              match current_service_population(host: standing, boot: e.boot, receipt: runner_user_session_receipt_observed(host: identity)) {
                 CurrentServicePopulationRefused { refusal: r } => ServiceSlotStartRefused { cause: population_refusal_text(refusal: r) }
                 CurrentServicePopulationDerived { population: p } =>
                   ServiceSlotStartRan { host: host, boot: e.boot, revision: revision, units: p.units |> map(u => service_slot_start_unit(unit: u, revision: revision, transport: b.transport)) }

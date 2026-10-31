@@ -4,8 +4,8 @@ import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import product.printed_chassis.review_realization {program_for}
-import product.printed_chassis.printable_assembly {PrintedAssemblyRoot,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest,printed_assembly_root_from_wire}
-import product.printed_chassis.printable_assembly_selection {select_printable_assembly}
+import product.printed_chassis.printable_assembly {PrintedAssemblyRoot,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest}
+import product.printed_chassis.printable_assembly_selection {select_printable_assembly,printed_assembly_root_from_wire}
 import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.languages.json.emit {serialize_json,json_array,json_string}
