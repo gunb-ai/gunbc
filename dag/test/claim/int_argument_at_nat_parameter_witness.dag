@@ -1,0 +1,67 @@
+module test.claim.int_argument_at_nat_parameter_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// AN INT-TYPED VALUE DOES NOT INHABIT A NAT PARAMETER IMPLICITLY (DESIGN section 4, ruling
+// gunbc.design_ruling coercion_is_the_implicit_safe_subset: an implicit route must be total, and Int to Nat is
+// partial -- a negative has no image). The admitted answer is a named conversion that returns Optional (ruling
+// gunbc.design_ruling where_refinements_retire_for_checked_constructors) or carried evidence; an implicit
+// admission whose only failure is at runtime is the hole.
+//
+// Evidence of the hole: zesty-badger-599, seed gunbc 747ed06b (f20cdcc799ee), tree 761485283f2f:
+// `fn zz_mm_int(v: Int) -> String { nat_to_decimal_string(value: v) }` typechecks; v = -5 fails only at runtime
+// (call depth exceeded in nat_decimal_split), v = 5 prints 5 silently.
+//
+// ROUTE, by reading (not yet executed here): v1.compiler.infer declared_type_inhabitance reaches
+// declared_realizes_as_kernel_numeric, which asks only that the produced type admit a numeral (Int does) and that
+// Nat's declaring module be kernel-backed (provenance_realizes_natively), so it answers Inhabits for an Int VALUE as
+// for a literal: the relation sees types, not introductions. Sibling hole of the same class: std.integer's
+// documented UInt8 phantom-Compose (a bare Int reaches a UInt8 parameter unchecked). Class row: owned by
+// zesty-badger-599 (an_int_argument_inhabits_a_nat_parameter_at_typecheck); none is filed here.
+//
+// UNRUN: authored, not executed. The RED is expected to FAIL on the current seed (the call is accepted); the three
+// controls are expected to PASS before and after. An authoring defect shows as a control failing, not as a verdict.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn ian_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn ian_source(parameter_type: String, argument: String) -> String {
+  "module ian.probe\n\nimport std.types { Int, String }\n\nimport std.nat { Nat, nat_to_decimal_string }\n\nfn probe(v: " + parameter_type + ") -> String {\n  nat_to_decimal_string(value: " + argument + ")\n}\n"
+}
+
+// RED: the reproducer. An Int-typed parameter (NOT a literal) at the Nat parameter must refuse at compile time.
+test fn an_int_value_at_a_nat_parameter_must_refuse() -> Bool {
+  ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "v")) >= 1
+}
+
+// CONTROL: a Nat-typed value at the same parameter is accepted (the refusal is not a blanket one).
+test fn a_nat_value_at_a_nat_parameter_is_accepted() -> Bool {
+  ian_refusal_count(source: ian_source(parameter_type: "Nat", argument: "v")) == 0
+}
+
+// CONTROL: a non-negative integer LITERAL at Nat is accepted. Literal introduction is a different judgment from
+// inhabitance of a typed value: the literal's value is in Nat's kernel-grounding range (std.literal_elaboration
+// kernel_grounding_admits, min 0), so it denotes a Nat. The parameter `v` is unused here on purpose.
+test fn a_non_negative_literal_at_a_nat_parameter_is_accepted() -> Bool {
+  ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "5")) == 0
+}
+
+// RED (literal arm): a NEGATIVE literal is outside Nat's range and must refuse, so the literal control above is
+// range-keyed rather than a blanket admission of literals.
+test fn a_negative_literal_at_a_nat_parameter_must_refuse() -> Bool {
+  ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "-5")) >= 1
+}
