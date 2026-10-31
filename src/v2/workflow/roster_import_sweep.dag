@@ -119,6 +119,11 @@ type RosterRowScope
 type RosterHeadRewrite
   = KeepHead
   | RenameHead { to: String, positional: List<String>, appended: List<RosterAppendedArg> }
+  // A CATCH-ALL ARM REPLACED BY THE NULLARY ARMS IT STANDS FOR (tidy-ant-251, binder wave): `other => other` over a
+  // closed type becomes one explicit arm per variant the earlier arms did not name. `binder` is the catch-all's spelling,
+  // checked against the occurrence the census located; the row's `import_name` is the scrutinee's declared type and `home`
+  // its declaring module, so the run reads the remainder from the declaration, never from the arms.
+  | ExpandCatchAll { binder: String }
 
 // A CONSTANT NAMED ARGUMENT A RenameHead ROW APPENDS after the call's last argument (tidy-ant-251's sort_by ruling): the
 // renamed callee declares one more parameter than the ambient spelling took, and its value is the same at every site of the
@@ -254,6 +259,14 @@ type RosterRefusalReason
   // plan refuses before any splice and names the extents.
   | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
   | RefusalEditsCoincide { at: Int }
+  // AN ExpandCatchAll SITE THE PLAN CANNOT EXPAND SOUNDLY. NotLast: the catch-all arm is followed by another arm, so its
+  // remainder is not its own. RemainderStale: the arms before it name tags the declaration no longer matches (`expected` is
+  // the declared remainder, `found` what the arms leave). BinderOccurrenceUnparsed: the located occurrence is not a parsed arm
+  // pattern atom of that spelling. TagHomeAmbiguous: a remainder tag is declared by more than one module the file reaches.
+  | RefusalCatchAllNotLast { path: String, binder: String }
+  | RefusalCatchAllRemainderStale { path: String, type_name: String, expected: String, found: String }
+  | RefusalBinderOccurrenceUnparsed { path: String, binder: String }
+  | RefusalTagHomeAmbiguous { path: String, tag: String }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -300,6 +313,10 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
     RefusalOccurrenceKeyUnmatched { path: p, call: c, key: k } => "occurrence-key-unmatched path=" + p + " call=" + c + " key=" + k
     RefusalRowRequiresOccurrenceScope { path: p, call: c, key: k } => "row-requires-occurrence-scope path=" + p + " call=" + c + " key=" + k
+    RefusalCatchAllNotLast { path: p, binder: b } => "catch-all-not-last path=" + p + " binder=" + b
+    RefusalCatchAllRemainderStale { path: p, type_name: t, expected: e, found: f } => "catch-all-remainder-stale path=" + p + " type=" + t + " expected=" + e + " found=" + f
+    RefusalBinderOccurrenceUnparsed { path: p, binder: b } => "binder-occurrence-unparsed path=" + p + " binder=" + b
+    RefusalTagHomeAmbiguous { path: p, tag: t } => "tag-home-ambiguous path=" + p + " tag=" + t
   }
 }
 
@@ -701,6 +718,7 @@ fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<Ros
       Absent =>
         match r.head {
           KeepHead => Absent
+          ExpandCatchAll { binder: _ } => Absent
           RenameHead { to: _, positional: _, appended: args } =>
             fold_list(xs: args, empty: Absent, cons: fn(a2, arg) {
               match a2 {
@@ -1902,6 +1920,8 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
       LabelsSelected { edits: es } =>
         match row.head {
           KeepHead => roster_row_label_edits(sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es)
+          // The expansion edits are planned by the catch-all pass (next commit); until then the arm plans nothing.
+          ExpandCatchAll { binder: _ } => LabelsSelected { edits: es }
           RenameHead { to: to, positional: positional, appended: _ } =>
             match roster_row_label_edits(sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
@@ -2370,6 +2390,7 @@ fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHead
 fn roster_with_appended(plan: RosterLabelPlan, row: RosterHeadRow, end: Optional<Int>) -> RosterLabelPlan {
   let appended = match row.head {
     KeepHead => []
+    ExpandCatchAll { binder: _ } => []
     RenameHead { to: _, positional: _, appended: a } => a
   }
   match appended {
@@ -2940,6 +2961,7 @@ fn roster_rename_production_row() -> List<RosterHeadRow> {
   fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
+      ExpandCatchAll { binder: _ } => acc
       RenameHead { to: _, positional: _, appended: _ } => list_snoc_item(xs: acc, item: r)
     }
   })
@@ -4649,6 +4671,7 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
+      ExpandCatchAll { binder: _ } => acc
       RenameHead { to: t, positional: _, appended: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
     }
   })

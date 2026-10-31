@@ -14,6 +14,7 @@ import v2.workflow.roster_import_sweep {
   RosterHeadRow,
   KeepHead,
   RenameHead,
+  ExpandCatchAll,
   roster_head_rows,
   roster_qn_text,
   RosterApplied,
@@ -582,6 +583,7 @@ fn join_rename_target(renames: List<RosterHeadRow>, from: String, to: String) ->
       Absent =>
         match r.head {
           KeepHead => Absent
+          ExpandCatchAll { binder: _ } => Absent
           RenameHead { to: t, positional: _, appended: _ } => if (r.call == from) && (t == to) { Present { value: roster_qn_text(qn: r.home) + "." + t } } else { Absent }
         }
     }
