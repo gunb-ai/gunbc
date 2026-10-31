@@ -65,7 +65,7 @@ test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
 }
 
 // THREE CONSEQUENCES OF THE SAME ROWS, each observed through the one wall above so no new instrument
-// is minted. (1) std.coercion dag_subtraction_refinement: a difference of two Nats leaves the
+// is minted. (1) std.coercion select_arithmetic_carrier: a difference of two Nats leaves the
 // refinement, so `(a - b) as Nat` is an Int-as-Nat refinement cast and refuses; the sum stays Nat
 // and casts by identity (the positive control on the same operands). Before, the binop fold typed
 // every difference at its left operand, so the cast was a Nat identity and a negative Nat was
@@ -100,7 +100,7 @@ test fn w_nat_difference_leaves_the_refinement() -> Bool {
 
 // THE DIFFERENCE IS AN INT, AND ONLY ONE ROW MAY SAY SO. A Nat difference returned as Int compiles
 // clean. If refinement_cast_rules carried a second row for the same std.nat.Nat declaration with a
-// different source type, the checker must REFUSE (SubtractionRefinementAmbiguous) rather than take
+// different source type, the checker must REFUSE (ArithmeticCarrierAmbiguous) rather than take
 // whichever row comes first -- so under that mutation this claim goes red, while an order-picking
 // implementation would stay green.
 data nat_difference_as_int_source: String = "module probe_refinement_nat_difference_int\nimport std.types { Int }\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Int { a - b }\n"

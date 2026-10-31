@@ -41,6 +41,19 @@ type Int
   | Negative { pred: Nat }
 type UInt = Nat
 
+// THE DECLARED NATURAL-TO-INTEGER INJECTION: the image of the constructor NonNegative, and the ONLY implicit
+// route between the two carriers (ruling coercion_is_the_implicit_safe_subset). gunbc.structural_realization_bindings
+// conversion_plan_rows names this function as the route of an InjectionPhase row, which declares the row's
+// implicit safety: total (every Nat has an image), exact (injective: NonNegative { n } denotes n and no
+// Negative value is in the image), pure and consent-free (a constructor application), and commuting with add,
+// mul and compare. The converse is NOT declared: an Int does not implicitly inhabit a Nat (std.coercion
+// refinement_cast_rules; std.checked_arithmetic checked_int_to_nat is the sanctioned crossing). This is the
+// MATHEMATICAL embedding; the host's shared machine-integer realization of both carriers
+// (kernel_grounding_rows) is a different fact and is not read for it.
+fn nat_to_int(n: Nat) -> Int {
+  NonNegative { n: n }
+}
+
 // THE OCTET CONSTRUCTOR LIVES WITH THE OCTET'S TYPE, AND THE OCTET'S TYPE IS UInt8.
 //
 // extdeps.network.mac settled this concept already: UInt8 is the universal authority for an 8-bit
