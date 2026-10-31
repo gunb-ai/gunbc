@@ -22,7 +22,7 @@ import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
-  KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
+  KernelGrounding, KernelIntLiteral, kernel_grounding_for, kernel_grounding_admits, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
   kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
@@ -8878,6 +8878,7 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
         _ => false
       }
     LiteralBoundaryPlain => false
+    LiteralBoundaryGrounded { destination_type: _ } => false
     LiteralBoundaryRefused { message: _ } => false
   }
 }
@@ -9324,6 +9325,7 @@ fn service_spine_projection(texpr: Node, scope: InferScope) -> Node? {
 type LiteralBoundary
   = LiteralBoundaryPlain
   | LiteralBoundaryElaborated { elaboration: LiteralElaboration, destination_type: Node }
+  | LiteralBoundaryGrounded { destination_type: Node }
   | LiteralBoundaryRefused { message: String }
 
 // A CODE-POINT-SEQUENCE DESTINATION IS KEYED BY ITS STRUCTURE. v1.compiler.infer_env
@@ -9359,6 +9361,9 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
         match identified {
           Absent => LiteralBoundaryPlain
           Present { value: destination } =>
+          match grounded_literal_boundary(lit: lit, destination: destination, destination_type: exp) {
+          Present { value: grounded } => grounded
+          Absent =>
             let kind = literal_source_kind_of(value: lit)
             let element = if is_code_point_sequence {
               Present { value: decl_ref(module_path: "std.types", decl_name: "Char") }
@@ -9379,8 +9384,31 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
               LiteralElaborationRefused { cause: c } =>
                 LiteralBoundaryRefused { message: literal_elaboration_refusal_message(cause: c) }
             }
+          }
         }
       }
+  }
+}
+
+// A KERNEL INTEGER LITERAL AT A GROUNDED CARRIER IS TYPED AS THAT CARRIER (Q1b E1b). The carrier's
+// std.literal_elaboration KernelGrounding row declares which integers are its values
+// (kernel_grounding_admits over the extent), so a literal in the extent denotes a value of the carrier
+// and one outside it (`-5` at std.nat Nat) denotes none and refuses. A destination with no row is not
+// decided here: the homomorphism path and the inhabitance judgment keep it, exactly as before.
+fn grounded_literal_boundary(lit: LiteralValue, destination: DeclarationRef, destination_type: Node) -> LiteralBoundary? {
+  match lit {
+    LitInt { value: n } =>
+      match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: destination) {
+        KernelGroundingFound { row: row } =>
+          if kernel_grounding_admits(row: row, value: n) {
+            Present { value: LiteralBoundaryGrounded { destination_type: destination_type } }
+          } else {
+            Present { value: LiteralBoundaryRefused { message: concat("the integer literal ", to_string(value: n), " is not a value of ", declaration_ref_display_key(ref: destination)) } }
+          }
+        KernelGroundingAbsent => none
+        KernelGroundingAmbiguous { row_count: _ } => none
+      }
+    _ => none
   }
 }
 
@@ -9694,6 +9722,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             inferred: Present { value: Resolved { node: dt } },
             span: span
           ))
+        LiteralBoundaryGrounded { destination_type: dt } =>
+          ok_infer(texpr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: dt } }, span: span))
         LiteralBoundaryRefused { message: m } =>
           InferResult { typed: plain, emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: m, span: span, module_name: scope.module_name)]) }
       }
