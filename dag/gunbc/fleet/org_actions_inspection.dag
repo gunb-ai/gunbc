@@ -184,6 +184,17 @@ fn read_runner_groups(token: Secret, organization: NonEmptyStr) -> RunnerGroupLi
   })
 }
 
+// THE ONE IN-RUN READ OF THE ORG'S GROUPS, over the installation token a step prelude minted into
+// GUNBC_ORG_ADMIN_TOKEN (the org-admin mint, or the roster reader's read-only one). The group ensure
+// and the microVM controller install's tenancy read both call it, so they cannot disagree about the
+// groups.
+fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
+  match env_credential(env_var: org_admin_token_env_name).token {
+    Absent => RunnerGroupListDecodeRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent; no bearer token to read the runner groups with" }
+    Present { value: token } => read_runner_groups(token: token, organization: organization)
+  }
+}
+
 // THE WIRE BODY, PROJECTED INTO THE ROWS THE CONSUMERS READ. Refuses a read that returned fewer
 // groups than total_count, because a group on an unread page would otherwise read as absent, and
 // refuses an empty name or an empty selected_workflows entry rather than dropping it.

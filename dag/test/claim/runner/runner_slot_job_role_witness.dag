@@ -9,7 +9,7 @@ import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.ci.deploy_slot_tenancy {
-  deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_observed_tenancy,
+  deploy_slot_job_user, deploy_slot_runner_group_name,
   RunnerGroupEnsureReceipt, deploy_slot_runner_group_id, deploy_slot_runner_group_ensure_receipt,
   DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread,
   DeploySlotJobUserIdentity, DeploySlotJobUserRead, DeploySlotJobUserUnread,
@@ -17,12 +17,11 @@ import gunbc.ci.deploy_slot_tenancy {
 }
 import extdeps.access.posix { FileMode, FileOwnership, file_mode_of_octal_text }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
-import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.runner.runner_slot_allocation { identity_in_list, gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner.runner_slot_job_role {
   CiJobSlot, DeployJobSlot, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers,
-  runner_instance_job_role, srv1_deploy_slot, host_committed_ci_job_members, host_committed_deploy_members,
-  host_committed_github_members, srv1_modeled_deploy_slot_reading, runner_host_has_deploy_slot,
+  runner_instance_job_role, srv1_deploy_slot, host_committed_deploy_members,
+  host_committed_github_members, runner_host_has_deploy_slot,
 }
 import gunbc.runner.runner_registration_labels {
   runner_declared_slot_registration_labels, runner_slot_labels_conform, RegistrationLabelsResolved, RegistrationLabelsRefused,
@@ -33,8 +32,10 @@ import gunbc.executor_privileged_operation { executor_privileged_operations_sudo
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_content, deploy_slot_privileged_operations }
 import gunbc.fleet.fleet_posix_accounts { fleet_principal_intent, FleetAccountDeployJob, FleetAccountCiRunner, FleetPrincipalIntent }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_host_pinned_runner_spec }
-import extdeps.github.actions { RunsOnExpression }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_host_pinned_runner_spec, fleet_converge_microvm_controller_install_job, fleet_converge_microvm_controller_install_step, fleet_converge_dashboard_deploy_job }
+import extdeps.github.actions { RunsOnExpression, RunnerSpec, Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlString }
+import gunbc.auth.access_token_source { workload_identity_token_env }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -87,10 +88,8 @@ test fn witness_srv1_population_at_committed_width_is_one_ci_one_deploy_two_fabr
   let n = committed_srv1()
   n == 4
     && count(host_committed_github_members(host: operator_host_srv1, committed: n)) == 2
-    && count(host_committed_ci_job_members(host: operator_host_srv1, committed: n)) == 1
     && count(host_committed_deploy_members(host: operator_host_srv1, committed: n)) == 1
     && identity_in_list(identity: srv1_deploy_slot(), members: host_committed_deploy_members(host: operator_host_srv1, committed: n))
-    && !identity_in_list(identity: srv1_deploy_slot(), members: host_committed_ci_job_members(host: operator_host_srv1, committed: n))
     && runner_host_has_deploy_slot(host: operator_host_srv1)
     && !runner_host_has_deploy_slot(host: operator_host_srv3)
 }
@@ -262,16 +261,49 @@ test fn witness_deploy_job_account_is_declared_with_no_binary_grants() -> Bool {
   }
 }
 
-// THE ROUTE FOLLOWS THE ROOT SWITCH. With the group unobserved the modeled reading is shared, the
-// gate refuses, and fleet-converge keeps today's selector (no deploy label); a switch that admitted
-// would select the deploy label for srv1 only.
-test fn witness_fleet_converge_keeps_its_selector_until_the_readback_admits_the_switch() -> Bool {
-  let admitted = deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: deploy_slot_observed_tenancy(reading: srv1_modeled_deploy_slot_reading()))
-  !admitted
-    && match fleet_converge_host_pinned_runner_spec() {
-      RunsOnExpression { expression: e } => !string_contains(s: e, pattern: deploy_slot_runner_group_name as String)
-      _ => false
-    }
+// THE ROUTE SWITCHES PER JOB. The host-pinned selector carries no deploy label, so dashboard-deploy
+// and the other jobs whose root writes still run under the job user's grants keep srv1's host runner;
+// the microVM controller install, whose root writes all run over the administrator edge, selects the
+// deploy label, and only when the dispatch names srv1.
+fn runs_on_text(spec: RunnerSpec) -> String {
+  match spec {
+    RunsOnExpression { expression: e } => e
+    _ => ""
+  }
+}
+
+test fn witness_only_the_administrator_edge_job_selects_the_deploy_slot() -> Bool {
+  let host_pinned = runs_on_text(spec: fleet_converge_host_pinned_runner_spec())
+  let install = runs_on_text(spec: fleet_converge_microvm_controller_install_job().runner)
+  host_pinned != ""
+    && !string_contains(s: host_pinned, pattern: deploy_slot_runner_group_name as String)
+    && runs_on_text(spec: fleet_converge_dashboard_deploy_job().runner) == host_pinned
+    && string_contains(s: install, pattern: "github.event.inputs.host == 'srv1'")
+    && string_contains(s: install, pattern: concat("\"", concat(deploy_slot_runner_group_name as String, "\"")))
+    && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
+}
+
+// THE INSTALL STEP CAN MINT THE TOKEN ITS TENANCY READ NEEDS. The step runs the roster reader's mint,
+// down-scoped to organization_self_hosted_runners read, and that mint reads the app key with the job's
+// workload-identity token, so the step's environment must carry it. The RED is the step as it stood
+// before this route: no environment, so the mint would read an empty bearer and the install would
+// refuse every run at its admission.
+fn install_step_run_and_wif_env(st: Step) -> Bool {
+  match st {
+    RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      string_contains(s: r, pattern: "\"organization_self_hosted_runners\": \"read\"")
+        && string_contains(s: r, pattern: "export GUNBC_ORG_ADMIN_TOKEN")
+        && match e {
+          Present { value: kvs } => any(kvs, x => x.key == workload_identity_token_env as String
+            && match x.value { YamlString { value: v } => v == "${{ steps.wif_auth.outputs.access_token }}" _ => false })
+          Absent => false
+        }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+test fn witness_the_install_step_mints_a_read_only_roster_token_with_its_workload_identity() -> Bool {
+  install_step_run_and_wif_env(st: fleet_converge_microvm_controller_install_step())
 }
 
 fn id_of(x: RunnerGroupEnsureReceipt) -> Int {

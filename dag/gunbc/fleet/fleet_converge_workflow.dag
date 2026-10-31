@@ -257,7 +257,6 @@ import gunbc.spark.credential_workflow { spark_administrator_credential_roster_h
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
 import gunbc.host.host_reset_return {
   DispatchAssignment,
   DispatchAssignmentRefused,
@@ -1512,18 +1511,23 @@ fn fleet_converge_plan_revision_job() -> Job {
   }
 }
 
-// THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, NOT BEFORE IT. The deploy slot's account holds
-// per-unit grants only (decision D5), so a dispatch routed there still needs the root switch to the
-// administrator edge to do what it does today under the whole-binary grants; routing early would
-// leave srv1 with no deploy route. The selector therefore follows deploy_route_switch_admitted over
-// the modeled slot's reading, which reads shared until the host readback is produced, and the
-// generated workflow keeps today's expression until then.
+// THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, PER JOB, NOT BEFORE IT. The deploy slot's
+// account holds per-unit grants only (decision D5), so a job routed there can do only what it does
+// over the administrator edge; a job whose root writes still run under the job user's whole-binary
+// grants (dashboard-deploy, the broker dark install, and the rest of this selector's consumers) would
+// have no route left. So every srv1-pinned job keeps the host selector, and only a job whose
+// root-reach effects all run over the administrator edge selects the deploy slot
+// (fleet_converge_administrator_edge_runner_spec). Selection is not admission: that job reads the
+// slot's tenancy back in-job before opening the edge (gunbc.live_deploy.apply
+// microvm_controller_install_wet).
 fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
-  if srv1_deploy_route_switch_admitted() {
-    RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
-  } else {
-    RunsOnExpression { expression: fleet_converge_host_runner_expression }
-  }
+  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+}
+
+// The selector of a job whose host-root effects run as the fleet administrator over its SSH edge:
+// srv1's deploy slot, and every other host's own selector unchanged.
+fn fleet_converge_administrator_edge_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_deploy_slot_runner_expression }
 }
 
 data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)
@@ -4465,7 +4469,7 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
     id: Present { value: "microvm_controller_install" },
     run: gunbc_ci_microvm_controller_install_invoke(),
     shell: none,
-    env: none,
+    env: Present { value: [kv(key: workload_identity_token_env as String, value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -4487,7 +4491,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
     name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
+    runner: fleet_converge_administrator_edge_runner_spec(),
     environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
       fleet_converge_event_sha_consumer_prelude_steps(),

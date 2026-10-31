@@ -1653,8 +1653,14 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
   )
 }
 
+// THE INSTALL'S TENANCY READ NEEDS THE ORG'S RUNNER GROUPS (gunbc.live_deploy.apply
+// microvm_controller_install_wet reads the deploy group back before any root write), so the step mints
+// the roster reader's installation token, down-scoped at the mint to organization_self_hosted_runners
+// read: the job reads the groups and can change none of them. The mint reads the app key with the
+// job's workload-identity token, which the step's environment carries.
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_microvm_controller_install_target.entry,
     function: gunbc_ci_microvm_controller_install_target.function,

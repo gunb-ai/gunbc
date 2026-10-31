@@ -2432,52 +2432,48 @@ fn observe_deploy_slot_path_readings(subject: RunnerHostFileSubject, context: Fl
   concat(chain_readings, state_readings)
 }
 
-// ONE SHOW OF EVERY SLOT THE POPULATION NAMED, then the deploy slot's user, every other runnable slot's
-// user, each of those users' identity, and the deploy slot's paths.
-fn observe_deploy_slot_host_reading(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slots: RunnerSlotPopulation, slot: RunnerSlotIdentity) -> DeploySlotHostReading {
+// ONE SHOW OF EVERY SLOT UNIT NAMED, then the deploy slot's user, every other runnable slot's user,
+// each of those users' identity, and the deploy slot's paths. The names are the converge's population
+// or the install's own listing (observe_deploy_slot_host_reading_now); both derive them through
+// runner_slot_population_units, so the two reads cover one set of units.
+fn observe_deploy_slot_host_reading(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, names: List<NonEmptyStr>, slot: RunnerSlotIdentity) -> DeploySlotHostReading {
   let unit = runner_slot_unit_name(slot: slot)
-  match slots {
-    SlotPopulationUnobservable { reason: r } => DeploySlotHostUnread { unit: unit, cause: concat("the slot population was not read: ", r) }
-    SlotPopulationObserved { units: us } => {
-      let names = map(us, r => r.unit)
-      match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegShowSlotProperties { units: names }) {
-        TypedArgvExecRefused { reason: why } => DeploySlotHostUnread { unit: unit, cause: concat("systemctl show refused: ", why) }
-        TypedArgvExecConverged { result: r } => {
-          let readings = flat_map(names, n => match parse_runner_slot_reading_for(unit: n, show_stdout: r.stdout) { Absent => [] Present { value: rd } => [rd] })
-          if count(readings) != count(names) {
-            DeploySlotHostUnread { unit: unit, cause: "systemctl show returned no block for some slot" }
-          } else {
-            match first(filter(readings, rd => (rd.unit as String) == (unit as String))) {
-              Absent => DeploySlotHostUnread { unit: unit, cause: "the deploy slot's unit was not read" }
-              Present { value: own } =>
-                match slot_environment_value(environment: trim(s: own.environment), name: runner_job_user_env_name) {
-                  Absent => DeploySlotHostUnread { unit: unit, cause: concat("the deploy slot's Environment assigns no ", runner_job_user_env_name) }
-                  Present { value: deploy_user } => {
-                    let runnable = filter(readings, rd => (rd.unit as String) != (unit as String) && slot_load_state_can_run(load_state: rd.load_state))
-                    let unassigned = filter(runnable, rd => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) { Absent => true Present { value: v } => v == "" })
-                    match first(unassigned) {
-                      Present { value: bad } => DeploySlotHostUnread { unit: unit, cause: join(["slot ", bad.unit as String, " can run and its Environment assigns no ", runner_job_user_env_name], "") }
-                      Absent => {
-                        let others = fold(runnable, init: [], f: (acc, rd) => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) {
-                          Absent => acc
-                          Present { value: v } => if any(acc, a => (a as String) == v) { acc } else { concat(acc, [v as NonEmptyStr]) }
-                        })
-                        DeploySlotHostRead {
-                          unit: unit,
-                          deploy_slot_job_user: deploy_user as NonEmptyStr,
-                          other_slot_job_users: others,
-                          privacy: deploy_slot_privacy(
-                            private_paths: deploy_slot_private_paths(slot: slot),
-                            readings: observe_deploy_slot_path_readings(subject: subject, context: context, slot: slot),
-                            others: map(others, o => observe_deploy_slot_job_user_identity(subject: subject, context: context, user: o)),
-                          ),
-                        }
-                      }
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegShowSlotProperties { units: names }) {
+    TypedArgvExecRefused { reason: why } => DeploySlotHostUnread { unit: unit, cause: concat("systemctl show refused: ", why) }
+    TypedArgvExecConverged { result: r } => {
+      let readings = flat_map(names, n => match parse_runner_slot_reading_for(unit: n, show_stdout: r.stdout) { Absent => [] Present { value: rd } => [rd] })
+      if count(readings) != count(names) {
+        DeploySlotHostUnread { unit: unit, cause: "systemctl show returned no block for some slot" }
+      } else {
+        match first(filter(readings, rd => (rd.unit as String) == (unit as String))) {
+          Absent => DeploySlotHostUnread { unit: unit, cause: "the deploy slot's unit was not read" }
+          Present { value: own } =>
+            match slot_environment_value(environment: trim(s: own.environment), name: runner_job_user_env_name) {
+              Absent => DeploySlotHostUnread { unit: unit, cause: concat("the deploy slot's Environment assigns no ", runner_job_user_env_name) }
+              Present { value: deploy_user } => {
+                let runnable = filter(readings, rd => (rd.unit as String) != (unit as String) && slot_load_state_can_run(load_state: rd.load_state))
+                let unassigned = filter(runnable, rd => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) { Absent => true Present { value: v } => v == "" })
+                match first(unassigned) {
+                  Present { value: bad } => DeploySlotHostUnread { unit: unit, cause: join(["slot ", bad.unit as String, " can run and its Environment assigns no ", runner_job_user_env_name], "") }
+                  Absent => {
+                    let others = fold(runnable, init: [], f: (acc, rd) => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) {
+                      Absent => acc
+                      Present { value: v } => if any(acc, a => (a as String) == v) { acc } else { concat(acc, [v as NonEmptyStr]) }
+                    })
+                    DeploySlotHostRead {
+                      unit: unit,
+                      deploy_slot_job_user: deploy_user as NonEmptyStr,
+                      other_slot_job_users: others,
+                      privacy: deploy_slot_privacy(
+                        private_paths: deploy_slot_private_paths(slot: slot),
+                        readings: observe_deploy_slot_path_readings(subject: subject, context: context, slot: slot),
+                        others: map(others, o => observe_deploy_slot_job_user_identity(subject: subject, context: context, user: o)),
+                      ),
                     }
                   }
                 }
+              }
             }
-          }
         }
       }
     }
@@ -2486,7 +2482,36 @@ fn observe_deploy_slot_host_reading(subject: RunnerHostFileSubject, context: Fle
 
 fn observe_deploy_slot_host_readings(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slots: RunnerSlotPopulation) -> List<DeploySlotHostReading> {
   map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)),
-    slot => observe_deploy_slot_host_reading(subject: subject, context: context, slots: slots, slot: slot))
+    slot => match slots {
+      SlotPopulationUnobservable { reason: r } => DeploySlotHostUnread { unit: runner_slot_unit_name(slot: slot), cause: concat("the slot population was not read: ", r) }
+      SlotPopulationObserved { units: us } => observe_deploy_slot_host_reading(subject: subject, context: context, names: map(us, r => r.unit), slot: slot)
+    })
+}
+
+// THE DEPLOY SLOT'S HOST HALF, READ NOW over an administrator edge the caller opened: the slot units
+// the host lists beside the ones its deploy row names, then the same reading the converge prints. A
+// host that is not a runner host, or whose units cannot be listed, is an unread reading, never a
+// private one.
+fn observe_deploy_slot_host_reading_now(slot: RunnerSlotIdentity, context: FleetSshExecutionContext) -> DeploySlotHostReading {
+  let unit = runner_slot_unit_name(slot: slot)
+  match runner_host_file_subject(host: slot.host) {
+    RunnerHostFileSubjectRefused { cause: c } => DeploySlotHostUnread { unit: unit, cause: c }
+    RunnerHostFileSubjectAdmitted { subject: subject } =>
+      match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegListServiceUnits) {
+        TypedArgvExecRefused { reason: why } => DeploySlotHostUnread { unit: unit, cause: concat("systemctl list-units refused: ", why) }
+        TypedArgvExecConverged { result: listed } =>
+          if !listed.success {
+            DeploySlotHostUnread { unit: unit, cause: join(["systemctl list-units exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr)], "") }
+          } else {
+            observe_deploy_slot_host_reading(
+              subject: subject,
+              context: context,
+              names: runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout)),
+              slot: slot,
+            )
+          }
+      }
+  }
 }
 
 fn deploy_slot_host_reading_observed(r: DeploySlotHostReading) -> Bool {
