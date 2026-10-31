@@ -77,14 +77,14 @@ fn zone_token_accessor_cell_landed() -> Bool {
 data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append(
   left: non_empty_append(
     left: non_empty_singleton(
-      item: "a zone-scoped Cloudflare API token (zone-read, DNS-edit and R2 custom-domain scopes) minted through the mint route, never pasted by the operator"
+      item: "a zone-scoped Cloudflare API token (zone-read, DNS-edit and R2 custom-domain scopes) minted through the mint route, never pasted by the operator" as NonEmptyStr
     ),
     right: non_empty_singleton(
-      item: "its Secret Manager container (under the fleet secrets project, named by cloudflare_zone_token_secret_id)"
+      item: "its Secret Manager container (under the fleet secrets project, named by cloudflare_zone_token_secret_id)" as NonEmptyStr
     )
   ),
   right: non_empty_singleton(
-    item: "the accessor cell: a FleetAccessorGrantRow on that secret in gunbc.auth.fleet_secret_accessor_roster, converged by gunbc.auth.gcp_iam_converge"
+    item: "the accessor cell: a FleetAccessorGrantRow on that secret in gunbc.auth.fleet_secret_accessor_roster, converged by gunbc.auth.gcp_iam_converge" as NonEmptyStr
   )
 )
 
