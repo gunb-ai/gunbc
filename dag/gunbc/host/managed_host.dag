@@ -622,6 +622,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_an_observation_stale_against_the_committed_evidence_is_refused_as_not_current"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_the_same_anchors_on_another_reported_board_are_refused_unmodeled"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board"),
     decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "an_openbmc_bound_row_is_read_against_the_phosphor_policy"),

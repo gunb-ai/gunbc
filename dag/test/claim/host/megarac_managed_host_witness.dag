@@ -26,7 +26,7 @@ import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_b
 import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacCurrentBuild, CurrentBuildRead, megarac_current_build, megarac_operation_standings, standing_grounds, megarac_operation_eq }
 import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_3 }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.host.managed_host_boot { boot_selection, VirtualMediaBootSelectionAdmitted, VirtualMediaBootSelectionRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -35,7 +35,6 @@ data megarac_operations: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, Me
 
 // The operations with an executed standing at the committed 0.32 build. The KVM canvas still has none: the only
 // KVM receipt sits across the reflash, so production admission refuses it.
-data megarac_operations_executed_at_0_32: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming]
 
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The one managed row, mtcollins1, is admitted for every
 // MegaRAC operation with an executed standing at its build (the KVM canvas still has none and is refused),
@@ -47,8 +46,7 @@ test fn w_the_real_row_is_admitted_for_each_megarac_operation_through_its_bindin
   let hosts = managed_hosts()
   count(hosts) == 1
     && hosts |> all(h => (h.host as String) == (operator_host_mtcollins1 as String)
-      && match admit_megarac_host(host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: _ } => true  MegaRacHostAdmitted { host: _ } => false }
-      && megarac_operations_executed_at_0_32 |> all(op => match admit_megarac_host(host: h, operation: op) {
+      && megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: committed_evidence(), host: h, operation: op) {
         MegaRacHostAdmitted { host: a } =>
           // The carrier names the host, and its route is the binding's own: the endpoint the binding
           // observed, the account read through the binding, and the firmware that same observation read.
@@ -191,10 +189,11 @@ test fn w_a_historical_observation_beside_a_known_later_build_mints_no_carrier()
       let ev = megarac_operation_evidence_of(
         readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "historical reading"), observed_at: 1000)],
         receipts: [],
-        transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
+        transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.46"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
       )
       megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: op) {
-        MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } => (ob.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
+        MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } =>
+          (ob.raw_version as String) == (o.identity.firmware.raw_version as String) && (c.raw_version as String) == "0.46"
         _ => false
       })
     }
@@ -227,13 +226,30 @@ test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_
 // "0.45.3" (nothing machine-reads the page label any more), and the observed side is still the stale "0.32"
 // probe -- a "fix" that updated the bound observation here would silently cut the machine over inside a
 // witness module and go red on this arm.
-test fn w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current() -> Bool {
-  managed_hosts() |> all(h => megarac_operations |> all(op =>
-    match admit_megarac_host_at_current_build(evidence: committed_evidence(), host: h, operation: op) {
-      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: o, current: c } } =>
-        (c.raw_version as String) == "0.45" && (o.raw_version as String) == "0.32"
-      _ => false
-    }))
+// THE GATE STILL REFUSES AN OBSERVATION THAT IS STALE AGAINST THE COMMITTED EVIDENCE -- NOW AGAINST A
+// FORGED ROW, NOT THE PRODUCTION ONE. This claim used to be about the real row: its access observation
+// named the 2026-09-05 0.32 intake probe while the committed evidence read 0.45 off the controller, so every
+// operation refused with MegaRacObservationNotCurrent. The cutover moved the real row onto the machine-read
+// build, so patching this claim to agree would have deleted its teeth -- it now FORGES the stale state: the
+// same host, its observation's identity put back on the probe's 0.32.
+test fn w_an_observation_stale_against_the_committed_evidence_is_refused_as_not_current() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let stale = managed_host_fixture(
+        host: h.host,
+        access: BmcAccessObserved { observation: observation_with(o: o, host: (h.host as String), firmware: mtcollins1_firmware) },
+        secure: h.secure,
+        smpro: h.smpro,
+      )
+      megarac_operations |> all(op =>
+        match admit_megarac_host_at_current_build(evidence: committed_evidence(), host: stale, operation: op) {
+          MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } =>
+            (c.raw_version as String) == "0.45" && (ob.raw_version as String) == "0.32"
+          _ => false
+        })
+    }
+  })
     && count(managed_hosts()) == 1
 }
 
@@ -322,6 +338,11 @@ test fn w_every_admitted_operation_has_a_receipt_joining_the_committed_reading()
 // refuse EVERY operation and stop the boot: this claim, run before the cutover, is exactly what says so.
 // It goes green only when the observation is cut over with the switch, in the same transition — the
 // drop row's 'every caller switched at once' clause, tested rather than trusted.
+//
+// THIS IS HOW IT READS AFTER THE CUTOVER, and the history above is kept deliberately: the switch and the
+// observation moved in ONE transition, so the clause that was the RED is now the gate the cutover has to
+// keep green. The forged-stale claim w_an_observation_stale_against_the_committed_evidence_is_refused_as_
+// not_current is what replaced the old red, so the refusal is still witnessed rather than deleted.
 test fn w_the_switch_admits_every_operation_at_the_machine_read_build_and_the_boot_still_admits() -> Bool {
   match mtcollins1_current_build_identity {
     Absent => false

@@ -394,6 +394,9 @@ data mtcollins1_machine_read_access_observation: BmcAccessObservation? = match m
         SurfaceOemRestRemoteMedia,
       ],
       boot_control_routes: [mtcollins1_boot_run_40258937016_boot_control_route],
+      // Absent, and it is a finding: no Redfish VirtualMedia probe was answered at this build at all -- the
+      // Redfish path refused with 401 before any media call. A receipt arm here would be a fabricated read.
+      redfish_virtual_media_probe: none,
       // Boot 6 retained `mc info` (585 B) and `fru print 0` (894 B) verbatim per run id, read the sensor
       // table, the system event log, the media rows and settings, and boot parameter 5.
       successful_read_surfaces: [
