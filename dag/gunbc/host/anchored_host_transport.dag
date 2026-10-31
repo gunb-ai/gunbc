@@ -218,6 +218,20 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
+    reason: "anchored_host_transport_per_boot and per_boot_pin_from_console_line are called only by this module's witness: nothing reads the BMC serial console (SOL) of a boot, nothing supplies expected_boot_id from a real subject, and no production fold routes a transport through the per-boot binding (anchored_host_transport_live still compares against the row's static anchor)",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production fold acting on a mtcollins1 boot reads that boot's SOL console, parses its key line with per_boot_pin_from_console_line, supplies the subject's boot id as expected_boot_id, and refuses the leg on any non-Bound arm from anchored_host_transport_per_boot; a witness claim does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "per_boot_console_marker"),
+    reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) is a SUPPLIED boundary value with no producer: no runner-medium stage generates a host key at boot, prints this line or starts sshd with that key, so the pairing obligation (the real image emits exactly this shape) is open",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the runner medium (gunbc.runner.runner_host_medium) has a stage that generates the host key at boot, prints exactly this line on the console and starts sshd with that HostKey, and a claim over the real stage's rendered output parses through per_boot_pin_from_console_line; the line shape in this module is then derived from that stage, not retyped"
+    )
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
     reason: "the gated readback is prepared and GATED: it is called only by the witness (wet arms never execute) and no workflow dispatches it, so no presented key has ever been read back and every production anchor stays Absent",
     dissolution: unbound_dissolution(
