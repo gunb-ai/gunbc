@@ -7,7 +7,7 @@ import extdeps.bmc.pid_control_program { DemandCurvePoint, SensorTimeoutDeclared
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import product.zone_thermal_curve { ZoneCurve, ZoneCurveReady, ZoneCurveRefused, zone_curve }
-import gunbc.fleet.zone_curve_openbmc_projection { OpenBmcCurveZone, OpenBmcCurveZoneRow, openbmc_curve_points, openbmc_curve_zone }
+import gunbc.fleet.zone_curve_openbmc_projection { OpenBmcCurveProjected, OpenBmcCurveRefusal, OpenBmcCurveRefused, OpenBmcCurveZone, OpenBmcCurveZoneRow, OpenBmcPointsExceedUpstreamLimit, OpenBmcTimeoutNotPositive, openbmc_curve_points, openbmc_curve_zone }
 
 // SUPPLIED: the butch curve and row. The curve is ZoneCurve{floor 60, flat_until 60, full_at 80}; the
 // expected points are the GPU_MAX_CURVE of config-butch-gpumax-test2.json read from the butch BMC on
@@ -34,6 +34,49 @@ fn butch_row() -> OpenBmcCurveZoneRow {
     actuator_name: "CHASSIS" as NonEmptyStr,
     actuator_inputs: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr, "FAN4" as NonEmptyStr, "FAN5" as NonEmptyStr],
     excluded_inputs: ["FAN5" as NonEmptyStr],
+  }
+}
+
+fn projected(row: OpenBmcCurveZoneRow, curve: ZoneCurve?) -> OpenBmcCurveZone? {
+  match curve {
+    Absent => Absent
+    Present { value: c } => match openbmc_curve_zone(row: row, curve: c) {
+      OpenBmcCurveProjected { zone: z } => Present { value: z }
+      OpenBmcCurveRefused { causes: _ } => Absent
+    }
+  }
+}
+
+// A cause as an Int so the lists compare: 0 is a timeout not positive, N > 0 is N points required past the limit,
+// and an unbuilt fixture curve is -1 (a typed red in the assertion).
+fn cause_code(c: OpenBmcCurveRefusal) -> Int {
+  match c {
+    OpenBmcTimeoutNotPositive => 0
+    OpenBmcPointsExceedUpstreamLimit { required: n, limit: l } => if l == 20 { n } else { 0 - 2 }
+  }
+}
+
+fn refusal_codes(row: OpenBmcCurveZoneRow, curve: ZoneCurve?) -> List<Int> {
+  match curve {
+    Absent => [0 - 1]
+    Present { value: c } => match openbmc_curve_zone(row: row, curve: c) {
+      OpenBmcCurveProjected { zone: _ } => []
+      OpenBmcCurveRefused { causes: cs } => map(cs, cause_code)
+    }
+  }
+}
+
+fn butch_row_with_timeout(seconds: Nat) -> OpenBmcCurveZoneRow {
+  let r = butch_row()
+  OpenBmcCurveZoneRow {
+    zone_id: r.zone_id,
+    input_sensor: r.input_sensor,
+    input_read_path: r.input_read_path,
+    input_timeout: second(seconds),
+    controller_name: r.controller_name,
+    actuator_name: r.actuator_name,
+    actuator_inputs: r.actuator_inputs,
+    excluded_inputs: r.excluded_inputs,
   }
 }
 
@@ -79,10 +122,9 @@ test fn witness_last_point_is_full_at_when_range_is_not_a_step_multiple() -> Boo
 // stops pushing is detected) and both the zone and the controller fail to 100. Dropping any one of
 // the three reds this.
 test fn witness_stale_input_drives_full_duty_by_construction() -> Bool {
-  match butch_curve() {
+  match projected(row: butch_row(), curve: butch_curve()) {
     Absent => false
-    Present { value: bc } => {
-      let z = openbmc_curve_zone(row: butch_row(), curve: bc)
+    Present { value: z } => {
       let timed = match z.sensor.timeout {
         SensorTimeoutDeclared { seconds: s } => s.count.units == 15
         SensorTimeoutUnstated => false
@@ -97,12 +139,34 @@ test fn witness_stale_input_drives_full_duty_by_construction() -> Bool {
 // tach reads nan on butch and pins the BMC failsafe) is dropped by the projection from the row's four
 // listed fans; removing the filter leaves four inputs and reds this.
 test fn witness_failsafe_is_distinct_from_floor_and_fan5_is_excluded() -> Bool {
-  match butch_curve() {
+  match projected(row: butch_row(), curve: butch_curve()) {
     Absent => false
-    Present { value: bc } => {
-      let z = openbmc_curve_zone(row: butch_row(), curve: bc)
+    Present { value: z } => {
       exact_decimal_equal(a: z.zone.minimum_thermal_output.magnitude, b: whole(n: 60))
         && map(z.zone.actuator_controllers, a => length(a.inputs)) == [3]
     }
   }
+}
+
+// P1: A ZERO TIMEOUT DISABLES THE STALE-INPUT DETECTOR UPSTREAM, so it is refused at admission with its
+// named cause, and no OpenBmcCurveZone exists for it. The 15 s butch timeout is the positive control.
+test fn witness_zero_timeout_is_refused_and_a_positive_timeout_is_projected() -> Bool {
+  refusal_codes(row: butch_row_with_timeout(seconds: 0), curve: butch_curve()) == [0]
+    && refusal_codes(row: butch_row_with_timeout(seconds: 1), curve: butch_curve()) == []
+    && refusal_codes(row: butch_row(), curve: butch_curve()) == []
+}
+
+// P1: UPSTREAM CONSUMES KEYS 0..19 ONLY (maxStepwisePoints = 20). A curve sampling to 20 points is
+// accepted and its last point is the 100 at full_at; one sampling to 21 is refused naming 21 and 20, so
+// no accepted projection loses its full-duty endpoint. A zero timeout beside it names both causes.
+test fn witness_point_count_beyond_the_upstream_limit_is_refused() -> Bool {
+  let at_limit = projected(row: butch_row(), curve: curve_of(floor: 20, lo: 0, hi: 95))
+  let ends_at_full = match at_limit {
+    Absent => false
+    Present { value: z } => all(z.zone.thermal_demand_controllers, c => length(c.curve) == 20 && fold(outputs_of(points: c.curve), init: 0, f: (acc, x) => x) == 100)
+  }
+  ends_at_full
+    && refusal_codes(row: butch_row(), curve: curve_of(floor: 20, lo: 0, hi: 100)) == [21]
+    && refusal_codes(row: butch_row_with_timeout(seconds: 0), curve: curve_of(floor: 20, lo: 0, hi: 100))
+      == [0, 21]
 }

@@ -115,7 +115,7 @@ fn openbmc_whole(units: Int) -> ExactDecimal {
 // a zone whose thermal inputs are all unusable, and the controller's covers its own input going stale.
 // The input sensor always declares a timeout, because without one a host that stops pushing leaves
 // the last value in force and the fail-safe never fires.
-fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurveZone {
+fn openbmc_curve_zone_built(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurveZone {
   let full = openbmc_whole(units: percent_count(zone_full_duty()) as Int)
   OpenBmcCurveZone {
     sensor: ProgramSensor {
@@ -159,6 +159,45 @@ fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurv
         slew: SlewLimits { negative_coefficient: openbmc_whole(units: 0), positive_coefficient: openbmc_whole(units: 0) },
       }],
     },
+  }
+}
+
+// THE ACCEPTED INPUT DOMAIN. Two inputs would break the guarantees this projection states, so each is
+// refused with a named cause at admission, before any OpenBmcCurveZone exists (DESIGN 5):
+// - a timeout of zero. phosphor-pid-control reads a sensor timeout of 0 as "read-timeout checking
+//   disabled", so a host that stops publishing would leave its last cool value in force and the
+//   100 percent failsafes (which govern what happens AFTER a failure is detected) would never run.
+//   Zero is legitimate in the vendor model, where it means disabled; it is refused here, where the
+//   input is a host-pushed sensor.
+// - more sampled points than upstream consumes. phosphor-pid-control declares maxStepwisePoints = 20
+//   and its JSON parser reads only the keys 0..19, so a 21st point, which is the full_at point of a
+//   curve wider than 95 degrees at this step, is silently dropped and the zone holds the previous
+//   point's duty at full_at and above. The refusal is typed rather than a coarser sampling, so the
+//   approximation is never silently changed.
+data openbmc_stepwise_max_points: Int = 20
+
+type OpenBmcCurveRefusal
+  = OpenBmcTimeoutNotPositive
+  | OpenBmcPointsExceedUpstreamLimit { required: Int, limit: Int }
+
+type OpenBmcCurveProjection
+  = OpenBmcCurveProjected { zone: OpenBmcCurveZone }
+  | OpenBmcCurveRefused { causes: List<OpenBmcCurveRefusal> }
+
+fn openbmc_curve_refusals(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> List<OpenBmcCurveRefusal> {
+  let required = length(openbmc_curve_points(curve: curve))
+  concat(
+    if (second_count(row.input_timeout) as Int) > 0 { [] } else { [OpenBmcTimeoutNotPositive] },
+    if required > openbmc_stepwise_max_points { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: openbmc_stepwise_max_points }] } else { [] },
+  )
+}
+
+fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurveProjection {
+  let causes = openbmc_curve_refusals(row: row, curve: curve)
+  if length(causes) == 0 {
+    OpenBmcCurveProjected { zone: openbmc_curve_zone_built(row: row, curve: curve) }
+  } else {
+    OpenBmcCurveRefused { causes: causes }
   }
 }
 
