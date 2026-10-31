@@ -1,20 +1,13 @@
 module gunbc.host.host_axis_caps
-import std.optional { Absent, Optional, Present }
+import std.optional { Present }
 
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
   membership_plan_admitting_outcome,
-  membership_effects,
-  EffectsOrRefusal,
-  EffectsReady,
-  ApplyRefused,
-  membership_write_count,
-  membership_removal_count,
-  membership_refusal_count,
 }
 import gunbc.host.host_converge {
   gunbc_runner_per_slot_dropin_path,
@@ -23,18 +16,9 @@ import gunbc.host.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
   gunbc_runtime_system_control_dropin_dir_prefix,
-  slice_control_caps_for,
-  SliceControlCaps,
-  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
   SliceControlUnit, SessionsSliceControl, UncappedSliceControl,
-  SliceControlPlan, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
-  slice_control_plan_for,
 }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner.runner_unit { runner_slot_unit_name }
-import product.host_identity { HostIdentity }
 import extdeps.systemd {
   MemoryMax,
   MemoryHigh,
@@ -67,7 +51,7 @@ import gunbc.shell_command_text {
 // On the other runner hosts the same derived_runner_slot_cap_members list is written by
 // gunbc.runner.runner_host_file_converge (administrator over the fleet key; host-wide drain-first,
 // live-cgroup readback); the row below predates that route and is left as it was.
-data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here (derived_runner_slot_cap_settings) and written by gunbc.runner.runner_host_file_converge, the one writer of runner-unit drop-ins, under its drain bracket; the live_deploy instance apply carried a second copy until 2026-10-30. system.control set-property RESIDUE (50-<Property>.conf under /etc and /run systemd/system.control/<unit>.d) shadows those drop-ins and is removed by the same converge one file at a time (control_shadow_residue_paths), never by systemctl revert, which deletes every drop-in of the unit. A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMemberAt = NonEmptyStr
 
@@ -118,26 +102,17 @@ fn desired_cap_member(dropin_path: NonEmptyStr, property: NonEmptyStr, bytes_val
   }
 }
 
-// THE PROPERTY A MEMBER SETS, READ BACK FROM THE ONE RENDERING ABOVE rather than listed a second time
-// beside the members: cap_dropin_content writes one `[Service]` section with one assignment, so the
-// property is the text between the section line and the first `=`. Content of any other shape names
-// no property and is absent, never guessed.
-fn cap_member_property(m: CapMember) -> NonEmptyStr? {
-  let lines = split(s: m.content, delimiter: "\n")
-  match get(xs: lines, index: 0) {
-    Absent => none
-    Present { value: section } =>
-      if section != "[Service]" { none } else {
-        match get(xs: lines, index: 1) {
-          Absent => none
-          Present { value: assignment } =>
-            match get(xs: split(s: assignment, delimiter: "="), index: 0) {
-              Absent => none
-              Present { value: name } => if name == "" || name == assignment { none } else { Present { value: name as NonEmptyStr } }
-            }
-        }
-      }
-  }
+// ONE DESIRED CAP IS A TYPED SETTING: the drop-in it lives in, the property it sets and its value. The
+// member's file content is rendered from it (desired_cap_member); a consumer that needs the property
+// reads the field and never parses the rendering back.
+type CapSetting {
+  dropin_path: NonEmptyStr
+  property: NonEmptyStr
+  value: NonEmptyStr
+}
+
+fn cap_setting_member(s: CapSetting) -> CapMember {
+  desired_cap_member(dropin_path: s.dropin_path, property: s.property, bytes_value: s.value)
 }
 
 // Runtime shell is a MODELED BASH PROGRAM here, not a String built by join. Every
@@ -192,29 +167,6 @@ fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> Member
   )
 }
 
-fn caps_effects(desired: List<CapMember>, observed: List<CapMember>) -> EffectsOrRefusal<CapMember> {
-  membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
-}
-
-fn caps_upsert_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
-}
-
-fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
-}
-
-fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
-}
-
-// system.control set-property residue — shadows deploy-authored drop-ins (sorts later, wins).
-type ControlShadowMemberAt = NonEmptyStr
-
-type ControlShadowUnit {
-  unit: NonEmptyStr
-}
-
 // WHAT `systemctl set-property` LEAVES BEHIND, AND NOTHING ELSE. set-property writes one drop-in per
 // property, named 50-<Property>.conf, under the unit's .d directory in /etc/systemd/system.control
 // (persistent) or /run/systemd/system.control (--runtime) (systemctl(1), systemd 255). Those paths
@@ -248,86 +200,64 @@ fn control_shadow_removal_argvs(unit: NonEmptyStr, properties: List<NonEmptyStr>
   map(control_shadow_residue_paths(unit: unit, properties: properties), p => argv_words(command: rm_force_command(path: p as String)))
 }
 
-// The properties the runner-slot cap members set, read from the members themselves.
+// The properties the runner-slot caps set, read from the settings the members are rendered from.
 fn runner_slot_cap_properties() -> List<NonEmptyStr> {
-  flat_map(derived_runner_slot_cap_members(), m => match cap_member_property(m: m) { Present { value: p } => [p]  Absent => [] })
+  map(derived_runner_slot_cap_settings(), c => c.property)
 }
 
-fn control_shadow_unit(unit: NonEmptyStr) -> ControlShadowUnit {
-  ControlShadowUnit { unit: unit }
-}
-
-fn control_shadow_unit_key(u: ControlShadowUnit) -> NonEmptyStr {
-  u.unit
-}
-
-fn control_shadow_unit_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
-fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> Bool {
-  a.unit as String == b.unit as String
-}
-
-fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
-  Present { value: Owned }
-}
-
-fn derived_runner_memory_max_cap_member() -> CapMember {
-  desired_cap_member(
+fn derived_runner_memory_max_cap_setting() -> CapSetting {
+  CapSetting {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     property: systemd_memory_max_property as NonEmptyStr,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) as NonEmptyStr,
-  )
+    value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) as NonEmptyStr,
+  }
 }
 
-fn derived_runner_memory_high_cap_member() -> CapMember {
-  desired_cap_member(
+fn derived_runner_memory_high_cap_setting() -> CapSetting {
+  CapSetting {
     dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
     property: systemd_memory_high_property as NonEmptyStr,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) as NonEmptyStr,
-  )
+    value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) as NonEmptyStr,
+  }
 }
 
 // SWAP IS AUTHORED LIKE THE OTHER TWO CEILINGS. 30-fleet-swap.conf was enrolled in
 // caps_managed_dropin_paths but absent from the desired set, so gunbc_runner_slot_desired's
 // memory_swap_max (0) was written by nothing and a hand-set swap ceiling was neither authored
 // against nor reconciled.
-fn derived_runner_memory_swap_cap_member() -> CapMember {
-  desired_cap_member(
+fn derived_runner_memory_swap_cap_setting() -> CapSetting {
+  CapSetting {
     dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
     property: systemd_memory_swap_max_property as NonEmptyStr,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) as NonEmptyStr,
-  )
-}
-
-fn derived_runner_memory_cap_members() -> List<CapMember> {
-  [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member(), derived_runner_memory_swap_cap_member()]
+    value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) as NonEmptyStr,
+  }
 }
 
 // TasksMax IS THE FOURTH ROW OF THE ONE SLOT-CAP LIST, NOT A SECOND RENDERING. 50-fleet-tasks.conf was
 // authored a second time in gunbc.fleet.fleet_converge_plan beside this list, so the plan and the
-// deploy disagreed on how many drop-ins a slot carries. derived_runner_memory_cap_members stays the
-// three MEMORY rows because live_deploy's staged install consumes exactly that list and srv1's
-// rendered bytes must not move; derived_runner_slot_cap_members is that list plus tasks, and is what
-// the fleet plan and the runner-host converge both read.
-fn derived_runner_tasks_cap_member() -> CapMember {
-  desired_cap_member(
+// deploy disagreed on how many drop-ins a slot carries. The fleet plan and the runner-host converge
+// both read this one list.
+fn derived_runner_tasks_cap_setting() -> CapSetting {
+  CapSetting {
     dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
     property: systemd_tasks_max_property,
-    bytes_value: to_string(gunbc_runner_slot_desired().tasks_max) as NonEmptyStr,
-  )
+    value: to_string(gunbc_runner_slot_desired().tasks_max) as NonEmptyStr,
+  }
+}
+
+fn derived_runner_slot_cap_settings() -> List<CapSetting> {
+  [derived_runner_memory_max_cap_setting(), derived_runner_memory_high_cap_setting(), derived_runner_memory_swap_cap_setting(), derived_runner_tasks_cap_setting()]
 }
 
 fn derived_runner_slot_cap_members() -> List<CapMember> {
-  concat(derived_runner_memory_cap_members(), [derived_runner_tasks_cap_member()])
+  map(derived_runner_slot_cap_settings(), c => cap_setting_member(s: c))
 }
 
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
 //
-// WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
-// target by `gunbc_runner_committed_width`, so a host whose width is REFUSED gets no units and
-// therefore no caps. That answers WHETHER a host may be written to.
+// WHAT ADMISSION ALREADY DOES: the runner-host converge bounds the units these drop-ins target by
+// `gunbc_runner_committed_width`, so a host whose width is REFUSED gets no units and therefore no
+// caps. That answers WHETHER a host may be written to.
 //
 // WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
 // does not stop slots 13..21 EXISTING or SERVING. Applying the raise then commits the host to
@@ -381,149 +311,12 @@ fn cap_raise_standing(
   }
 }
 
-// A WITHHELD RAISE IS NOT AN EMPTY DESIRED SET, AND THE DIFFERENCE IS A TEARDOWN.
-//
-// The previous shape returned `[]` on every blocked arm, with a note claiming an empty member list
-// means "no change". IT DOES NOT. `caps_reconcile` treats an OWNED OBSERVED member absent from the
-// desired set as `MemberRemoved`, and `membership_effects` renders that as `EffectRemove` -- so
-// "this host is not authorised to change" was encoded as "this host should have no cap members",
-// which asks for the existing caps to be TORN DOWN. A blocked raise would have removed the very
-// ceilings it was blocked from raising.
-//
-// The disposition is therefore carried to the EFFECT decision rather than flattened into a list on
-// the way there, and the withheld arm emits neither upserts nor removals.
-// THE AUTHORIZATION CARRIES ITS SUBJECT, BECAUSE AN UNBOUND ONE AUTHORIZES ANYTHING.
-//
-// An earlier revision was `CapConvergeAuthorized { desired }` -- no host, no transition. The
-// production writer then reduced it to a Boolean and rebuilt the script from its own `spec`, so a
-// decision honestly produced from srv4's completed retirement would have authorized an srv1 apply.
-// No forged constructor is needed for that: the identity was simply erased, and "not withheld" is
-// not a statement about WHICH host or WHICH transition was proven.
-//
-// So the arm names the host it authorizes AND the retiring population whose retirement licensed it.
-// A writer must check both against the deployment in front of it, and must emit the members the
-// authorization carries rather than re-deriving equivalent ones -- re-derivation is what let the
-// Boolean check pass while the content came from somewhere else.
-// THE PLAN IS THE UNIT OF AUTHORIZATION, AND THE WRITER HAS NO OTHER SOURCE FOR IT.
-//
-// Carrying `authorized_retiring` was not enough: the writer matched it as `_` and then took its
-// target units independently from `runner_slot_service_units_for_host(host)`, so a legitimate
-// decision covering retirement set R1 could be spent on a transition of the same host that required
-// R2. The host check cannot see that -- both name the same host.
-//
-// THE REPAIR IS CONSTRUCTION, NOT A SECOND CHECK. The authorized arm now carries the TARGET UNITS
-// alongside the members and the retiring set, and the writer uses THOSE. There is no independent
-// second transition for it to mis-apply, because it has no independent way to name one: the units it
-// caps and the retirees whose retirement licensed the raise are produced together, at one point, from
-// one host. A checker comparing two populations would only have been as good as whoever supplied the
-// one to compare against.
-type CapConvergeDecision
-  = CapConvergeAuthorized {
-      host: HostIdentity,
-      authorized_retiring: List<NonEmptyStr>,
-      target_units: List<NonEmptyStr>,
-      desired: List<CapMember>,
-    }
-  | CapConvergeWithheld { cause: String }
-
-// THE TARGET SET IS RESOLVED BEFORE THE RAISE IS AUTHORIZED, because an authorization over a target
-// set nobody could derive is not a weaker authorization -- it is the same CapConvergeAuthorized the
-// caller acts on, carrying the ordinary nonempty desired cap members and an empty population to
-// write them to. Whether a later script-ordering guard happens to require nonempty units is not the
-// question: the refusal belongs at this decision, which is the one that says a raise is admitted.
-fn cap_converge_decision(
-  host: HostIdentity,
-  required_retiring: List<NonEmptyStr>,
-  observation: SurplusSlotObservation,
-) -> CapConvergeDecision {
-  match runner_slot_service_units_for_host(host: host) {
-    ServiceUnitsWidthUnresolved { host: uh, cause: uc } =>
-      CapConvergeWithheld {
-        cause: join([uh as String, " has no derivable cap-bearing unit population, so there is no target set a raise could be authorized over (", uc, "); existing caps are left exactly as observed"], ""),
-      }
-    ServiceUnitsDerived { units: target_units } =>
-      cap_converge_decision_over_targets(
-        host: host,
-        required_retiring: required_retiring,
-        observation: observation,
-        target_units: target_units,
-      )
-  }
-}
-
-fn cap_converge_decision_over_targets(
-  host: HostIdentity,
-  required_retiring: List<NonEmptyStr>,
-  observation: SurplusSlotObservation,
-  target_units: List<NonEmptyStr>,
-) -> CapConvergeDecision {
-  match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
-    CapRaiseAdmitted =>
-      CapConvergeAuthorized {
-        host: host,
-        authorized_retiring: required_retiring,
-        target_units: target_units,
-        desired: derived_runner_memory_cap_members(),
-      }
-    CapRaiseBlockedPendingRetirement { still_present: sp } =>
-      CapConvergeWithheld {
-        cause: join(["surplus slots have not retired: ", join(map(sp, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
-      }
-    CapRaiseBlockedIncompleteEvidence { missing: ms } =>
-      CapConvergeWithheld {
-        cause: join(["no retirement evidence for required retirees: ", join(map(ms, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
-      }
-    CapRaiseBlockedUnobserved { cause: c } =>
-      CapConvergeWithheld {
-        cause: join(["the slot population could not be observed (", c, "); existing caps are left exactly as observed"], ""),
-      }
-  }
-}
-
-fn cap_converge_is_withheld(d: CapConvergeDecision) -> Bool {
-  match d {
-    CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: _ } => false
-    CapConvergeWithheld { cause: _ } => true
-  }
-}
-
 fn cap_raise_standing_blocks(standing: CapRaiseStanding) -> Bool {
   match standing {
     CapRaiseAdmitted => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => true
     CapRaiseBlockedIncompleteEvidence { missing: _ } => true
     CapRaiseBlockedUnobserved { cause: _ } => true
-  }
-}
-
-fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
-  if slot > limit {
-    []
-  } else {
-    concat(
-      [runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: slot })],
-      runner_slot_service_units_range(host: host, slot: slot + 1, limit: limit)
-    )
-  }
-}
-
-// A HOST WHOSE WIDTH DOES NOT RESOLVE HAS NO UNIT ROSTER, AND "no units" WAS THE WRONG WAY TO SAY
-// IT. The note above records the intent -- "a host whose width is REFUSED gets no units" -- and an
-// earlier revision of this function reached it through a zero limit, so one empty list stood for
-// "this host carries no cap-bearing units" and "this host could not be asked". That looked
-// harmless because both produce nothing to converge, and it is not: cap_converge_decision builds
-// CapConvergeAuthorized around this list, so an unresolved host produced an AUTHORIZED decision
-// whose target set was empty -- an authorization reached because nothing could be asked.
-type RunnerSlotServiceUnits
-  = ServiceUnitsDerived { units: List<NonEmptyStr> }
-  | ServiceUnitsWidthUnresolved { host: HostIdentity, cause: String }
-
-fn runner_slot_service_units_for_host(host: HostIdentity) -> RunnerSlotServiceUnits {
-  match gunbc_runner_committed_width(host: host) {
-    RunnerWidthUnresolved { cause: c } =>
-      ServiceUnitsWidthUnresolved { host: host, cause: runner_width_unresolved_cause_text(cause: c) }
-    RunnerWidthDerived { slots: slots } =>
-      ServiceUnitsDerived { units: runner_slot_service_units_range(host: host, slot: 1, limit: slots) }
   }
 }
 
@@ -589,41 +382,4 @@ fn slice_control_converge_argvs_for_unit(u: SliceControlUnit) -> List<List<Strin
 // without going through the plan). Untouched from main; it is the leaf the roster enumerates over.
 fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
   map(slice_control_converge_argvs_for_unit(u: u), argv => shell_privileged_command_intent(argv: argv))
-}
-
-fn control_shadow_reconcile(
-  desired: List<ControlShadowUnit>,
-  observed: List<ControlShadowUnit>,
-) -> MembershipPlan<ControlShadowUnit, ControlShadowMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired,
-      observed: observed,
-      key_of: control_shadow_unit_key,
-      key_eq: control_shadow_unit_key_eq,
-      value_eq: control_shadow_unit_value_eq,
-      ownership_of: control_shadow_unit_ownership,
-    ),
-  )
-}
-
-fn control_shadow_effects(
-  desired: List<ControlShadowUnit>,
-  observed: List<ControlShadowUnit>,
-) -> EffectsOrRefusal<ControlShadowUnit> {
-  membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
-}
-
-fn control_shadow_teardown_count(
-  desired: List<ControlShadowUnit>,
-  observed: List<ControlShadowUnit>,
-) -> Int {
-  membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
-}
-
-fn control_shadow_refusal_count(
-  desired: List<ControlShadowUnit>,
-  observed: List<ControlShadowUnit>,
-) -> Int {
-  membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

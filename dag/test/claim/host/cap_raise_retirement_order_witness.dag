@@ -10,14 +10,13 @@ import gunbc.host.host_axis_caps {
   CapMember,
   SurplusSlotsObserved,
   SurplusSlotsUnobserved,
-  ApplyRefused,
-  EffectsReady,
-  caps_effects,
-  gunbc_runner_per_slot_dropin_path,
+  caps_reconcile,
   cap_raise_standing,
   cap_raise_standing_blocks,
   desired_cap_member,
 }
+import gunbc.membership_reconcile { ApplyRefused, EffectsReady, membership_effects }
+import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -92,7 +91,7 @@ test fn both_blocked_standings_report_as_blocking() -> Bool {
 //
 // NO PREDICATE-LEVEL ROW COULD HAVE CAUGHT THAT. `cap_raise_standing` was correct throughout; the
 // defect lived in what its result was flattened into on the way to the effect decision. So these
-// rows drive `authorized_caps_effects` with a NONEMPTY OBSERVED SET -- the only shape in which a
+// rows drive the reconcile's effects with a NONEMPTY OBSERVED SET -- the only shape in which a
 // removal can be produced at all.
 // THE FIXTURE MUST BE AN *OWNED* MEMBER OR IT TESTS NOTHING, and the first draft was not.
 //
@@ -117,7 +116,7 @@ fn observed_existing_caps() -> List<CapMember> {
 // that removes nothing is a choice and not a member that can never be removed, which is exactly the
 // defect this fixture had.
 test fn an_empty_desired_set_would_remove_the_owned_cap() -> Bool {
-  match caps_effects(desired: [], observed: observed_existing_caps()) {
+  match membership_effects(plan: caps_reconcile(desired: [], observed: observed_existing_caps())) {
     EffectsReady { effects: es } => es.length() == 1
     ApplyRefused { refusals: _ } => false
   }

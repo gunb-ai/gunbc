@@ -1,34 +1,36 @@
 module test.claim.host.host_axis_caps_witness
 
 import std.logic { Bool }
-import std.types { NonEmptyStr, String, List, list_length }
+import std.types { NonEmptyStr, String, List, Int, list_length }
 import gunbc.host.host_axis_caps {
   CapMember,
-  ControlShadowUnit,
-  control_shadow_unit,
   control_shadow_residue_paths,
   control_shadow_removal_argvs,
-  cap_member_property,
   runner_slot_cap_properties,
   slice_control_converge_argvs_for_unit,
   desired_cap_member,
   cap_dropin_content,
-  caps_effects,
-  caps_upsert_count,
-  caps_teardown_count,
-  caps_refusal_count,
-  control_shadow_effects,
-  control_shadow_teardown_count,
-  control_shadow_refusal_count,
-  derived_runner_memory_max_cap_member,
-  derived_runner_memory_high_cap_member,
-  derived_runner_memory_swap_cap_member,
+  cap_setting_member,
+  caps_reconcile,
+  derived_runner_memory_max_cap_setting,
+  derived_runner_memory_high_cap_setting,
+  derived_runner_memory_swap_cap_setting,
+  derived_runner_slot_cap_settings,
+  derived_runner_slot_cap_members,
   cap_upsert_script,
 }
 import gunbc.host.host_converge { SliceControlCaps, UncappedSliceControl, SessionsSliceControl }
 import std.measure { byte_size, byte_size_count, hardware_thread_count }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
+import gunbc.membership_reconcile {
+  EffectsOrRefusal,
+  EffectsReady,
+  ApplyRefused,
+  membership_effects,
+  membership_write_count,
+  membership_removal_count,
+  membership_refusal_count,
+}
 import gunbc.host.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
@@ -43,6 +45,24 @@ data swap_max: NonEmptyStr = "MemorySwapMax"
 data bytes16g: NonEmptyStr = "17179869184"
 data bytes32g: NonEmptyStr = "34359738368"
 data bytes8g: NonEmptyStr = "8589934592"
+
+// The reconcile's effects and counts, read here through the membership spine the fleet plan reads
+// caps_reconcile with (gunbc.fleet.fleet_converge_plan).
+fn caps_effects(desired: List<CapMember>, observed: List<CapMember>) -> EffectsOrRefusal<CapMember> {
+  membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_upsert_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
+  membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
 
 fn srv_caps_desired() -> List<CapMember> {
   [
@@ -100,26 +120,9 @@ test fn caps_content_is_derived_not_handspelled() -> Bool {
     && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
 }
 
-data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
-
-test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
-  let observed = [control_shadow_unit(unit: shadow_unit)]
-  control_shadow_teardown_count(desired: [], observed: observed) == 1
-    && control_shadow_refusal_count(desired: [], observed: observed) == 0
-    && match control_shadow_effects(desired: [], observed: observed) {
-         EffectsReady { effects: e } => list_length(items: e) == 1
-         ApplyRefused { refusals: _ } => false
-       }
-}
-
-test fn control_shadow_idempotence_zero_effects() -> Bool {
-  control_shadow_teardown_count(desired: [], observed: []) == 0
-    && control_shadow_refusal_count(desired: [], observed: []) == 0
-}
-
 test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
-  let max = derived_runner_memory_max_cap_member()
-  let high = derived_runner_memory_high_cap_member()
+  let max = cap_setting_member(s: derived_runner_memory_max_cap_setting())
+  let high = cap_setting_member(s: derived_runner_memory_high_cap_setting())
   let desired = gunbc_runner_slot_desired()
   string_contains(s: max.content, pattern: to_string(byte_size_count(b: desired.memory_max)))
     && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
@@ -128,7 +131,7 @@ test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
 }
 
 test fn witness_derived_swap_cap_is_the_declared_zero() -> Bool {
-  let swap = derived_runner_memory_swap_cap_member()
+  let swap = cap_setting_member(s: derived_runner_memory_swap_cap_setting())
   string_contains(s: swap.dropin_path as String, pattern: "30-fleet-swap")
     && string_contains(s: swap.content, pattern: "MemorySwapMax=0")
     && byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max) == 0
@@ -199,13 +202,17 @@ test fn the_residue_removal_never_reaches_the_units_own_dropins_or_a_directory()
     && control_shadow_residue_paths(unit: role_dropin_unit, properties: []) == []
 }
 
-// The properties the runner-slot cap members set are read back from the members' own content, and
-// content of any other shape names none.
-test fn the_runner_cap_properties_are_read_from_the_members() -> Bool {
+// The residue properties are the settings' own property field, one per setting, and each member the
+// converge writes is rendered from the same setting, so the residue list and the written drop-ins
+// cannot disagree on which properties exist (review 89000: the earlier reading parsed the rendered
+// content back and dropped a member it could not parse).
+test fn the_runner_cap_properties_are_the_settings_properties() -> Bool {
+  let settings = derived_runner_slot_cap_settings()
+  let members = derived_runner_slot_cap_members()
   runner_slot_cap_properties() == ["MemoryMax" as NonEmptyStr, "MemoryHigh" as NonEmptyStr, "MemorySwapMax" as NonEmptyStr, "TasksMax" as NonEmptyStr]
-    && cap_member_property(m: CapMember { dropin_path: path20, content: "[Unit]\nMemoryMax=1\n" }) == none
-    && cap_member_property(m: CapMember { dropin_path: path20, content: "[Service]\nno-assignment\n" }) == none
-    && cap_member_property(m: CapMember { dropin_path: path20, content: "" }) == none
+    && count(runner_slot_cap_properties()) == count(members)
+    && all(settings, c => any(members, m => (m.dropin_path as String) == (c.dropin_path as String)
+         && m.content == cap_dropin_content(property: c.property, bytes_value: c.value)))
 }
 
 fn slice_caps() -> SliceControlCaps {
