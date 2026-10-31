@@ -2762,14 +2762,14 @@ fn native_module_resolve_verdict(
         ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: bindings } =>
           match step.context.resolution {
             Accepted { value: inner_shared, diagnostics: inner_d } =>
-              let closure = closure_declarations_demand(shared: inner_shared)
+              let inner_closure = closure_declarations_demand(shared: inner_shared)
               NativeModuleResolveStep {
                 verdict: NativeModuleResolveAccepted {
                   resolved: resolved_tree_of(
                     root: resolved,
                     symbol_index: inner_shared.symbol_index,
-                    closure_declarations: closure.declarations,
-                    module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
+                    closure_declarations: inner_closure.declarations,
+                    module_outcomes: inner_closure.module_outcomes, outcome_index: inner_closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: inner_shared.type_declaration_modifiers,
                     bindings: bindings
@@ -2777,7 +2777,7 @@ fn native_module_resolve_verdict(
                 },
                 context: native_test_context_with_resolution(
                   context: step.context,
-                  resolution: Accepted { value: closure.context, diagnostics: inner_d }
+                  resolution: Accepted { value: inner_closure.context, diagnostics: inner_d }
                 ),
                 import_attribution: NativeImportTargetNotAsked,
                 partial: []
