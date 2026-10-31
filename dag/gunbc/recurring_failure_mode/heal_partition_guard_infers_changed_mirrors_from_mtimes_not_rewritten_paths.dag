@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths: RecurringFailureMode = RecurringFailureMode {
+  identity: "heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**the heal partition-rebuild guard infers changed mirrors from mtimes, not from the paths round 1 rewrote** (`gunbc.stage0_partition_rebuild_scope` `stage0_partition_rebuild_decision` fed by `claim_executor --regen-round-cost`, the converge step of `.github/workflows/heal.yml`).",
+
+    "INVALID STATE: a branch whose committed mirrors differ from the base mirror has round 1 rewrite those paths to head bytes after the base build, so cargo sees a newer mtime on mirrors the decision never listed. Round 2 then compiles packages the decision excluded and refuses with `StageSeedBuildRefused` ('compiled excluded packages'), though the decision's own `changed_mirrors` is correct for what round 2 changed.",
+
+    "RECEIPT (gunbc#15247): heal refused at ed60b63 (twice, two runners) and 1661751 with `changed_mirrors=[v1_compiler_infer_env.rs]` while round 1 reported `paths_rewritten=11` including `v1_std_core.rs`; dirty reason `StaleItem(ChangedFile ... v1_std_core.rs)`. The same branch passed at 72af527.",
+
+    "RUNG FOUND AT: mitigatable (the guard refuses loudly, so no silent wrong answer, but the refusal blames the wrong cause and blocks a correct change).",
+
+    "CEILING: structurally guaranteed -- derive the decision's changed set from the journalled rewritten paths (or preserve their mtimes on restore) rather than from filesystem timestamps.",
+
+    "NEXT TRIGGER (can climb now, unbuilt): the heal-instrument owner feeds `stage0_partition_rebuild_decision` the round-1 rewritten path list. Workaround for an affected branch, not a fix: commit the converged mirrors so round 1 rewrites nothing.",
+  ],
+
+  evidence: [],
+}
