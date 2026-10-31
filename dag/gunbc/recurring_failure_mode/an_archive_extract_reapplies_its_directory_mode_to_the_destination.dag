@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.an_archive_extract_reapplies_its_directory_mode_to_the_destination
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data an_archive_extract_reapplies_its_directory_mode_to_the_destination: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_archive_extract_reapplies_its_directory_mode_to_the_destination" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: the archive's entries and the mode the destination ends at are facts of the release bytes and the live host, so the guarantee is the extract argv the corpus builds for a destination that carries a mode (pinned by test.claim.runner.deploy_slot_account_witness) and the owner-only readback after the rebuild, which refuses a tree at any other mode; nothing makes an archive's directory entry unwritable." as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: a directory created at a deliberate mode (the deploy slot tree, owner-only 0700) into which an archive is then extracted with GNU tar's default behaviour. tar restores the metadata of an existing directory from the archive's entry for it, and a release tarball's leading `./` entry names the -C directory itself, so the destination ends at the archive's mode (actions/runner 2.336.0 and 2.337.0 archives: `./` drwxr-xr-x).",
+
+    "RECEIPT 2026-10-31, srv1, fleet-converge L2 run 41154097819 at main 25187f4a: the deploy slot tree rebuild ran `install -d -m 00700 -o ghdeploy` on /opt/actions-runner/srv1-02 and then `tar xf actions-runner-linux-arm64-2.336.0.tar.gz -C /opt/actions-runner/srv1-02 --strip-components=0` (read from srv1's sudo journal by crisp-ibex-490); the tree read back 0755 and the converge refused with 'rebuilt, but the tree does not read back owned by ghdeploy at mode 0700'. The tree held only the fresh archive (no listener credentials), and the slot stayed masked, so nothing was exposed.",
+
+    "HARM: an owner-only tree silently becomes world-traversable, so a credential later written inside it is reachable by other accounts; the confidentiality wall of gunbc.ci.deploy_slot_tenancy depends on the tree mode. RUNG FOUND AT: mechanically preventable (the converge's owner-only readback refused it loudly). NOW: the choice is a required typed parameter of the one extract builder (extdeps.tools.tar tar_extract_command existing_directories: TarOverwriteDir | TarNoOverwriteDir), so no caller inherits the default without stating it. CENSUS 2026-10-31, every caller classified by its -C destination: TarNoOverwriteDir where the destination carries a mode someone relies on -- the deploy slot tree (0700, gunbc.runner.runner_host_file_converge deploy_slot_tree_rebuild_commands), the private mktemp -d scratch of gunbc.native_product_shared_transfer native_product_restore_extract (0700), and the sccache install's -C /tmp (1777, gunbc.host.verified_binary_install verified_binary_install_install_steps); TarOverwriteDir, the unchanged argv, where the destination is a fresh mkdir -p directory or a new btrfs subvolume whose mode nothing relies on -- busybox_bmc_build, host_effect_realize (vmm stage), verified_archive_install, runner_guest_image, runner_host_medium, runner_microvm_host_ready, runner_revision_job_guest (two), runner_revision_job_image, runner_revision_job_stage, workspace_checkpoint_instrument (kopia dir, workspace subvolume). The owner-only readback stays as the deploy tree's boundary check."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.tools.tar", decl_name: "TarExistingDirectoryMetadata", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.tools.tar", decl_name: "tar_extract_command", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_file_converge", decl_name: "deploy_slot_tree_rebuild_commands", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_host_file_converge", decl_name: "deploy_slot_tree_owned_find_argv", field: WholeDeclaration },
+  ],
+}
