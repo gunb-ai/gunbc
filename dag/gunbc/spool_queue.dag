@@ -42,7 +42,7 @@ type SpoolKind
 // claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
 // because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
 // roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
-// (parent jolly-hawk-60, design approval). That PR deletes HostSpoolStage in the same change (DESIGN section 3).
+// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (DESIGN section 3).
 type SpoolRole
   = RolePending
   | RoleHandedOff
@@ -298,7 +298,8 @@ fn spool_stale_assess(observed: SpoolEntryState, liveness: SpoolClaimantLiveness
 }
 
 // FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
-// a String row that no fold reads is the dead data of DESIGN 4c. The implementation PR gives each a typed carrier.
+// a String row that no fold reads is the dead data of DESIGN 4c. The implementation change is node://adhoc-ec4fbad6-dec
+// (cut HostSpoolStage, move its 7 consumer modules, wire live_deploy.emit); it gives each a typed carrier.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
 //  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
