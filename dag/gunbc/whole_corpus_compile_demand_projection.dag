@@ -23,6 +23,10 @@ import gunbc.whole_corpus_compile_admission {
   whole_corpus_compile_measured_root_demands,
 }
 
+// PROVENANCE: every projected peak is a FROZEN DECLARED BUDGET, not a current measured peak and not
+// proof that a whole-root compile fits; nothing requires remeasuring it. The projection is the
+// memory bound the arm-time admission reads, and the dated receipt per row is history.
+//
 // THE ROWS TRAVEL AS DATA BECAUSE THE DECISION RUNS BEFORE THEY COULD BE RESOLVED. A whole-root
 // compile is admitted before any source is indexed, so the v1 seed cannot read a .dag row; it reads
 // this projection instead, from a location the run is handed. The authority stays the repository's
