@@ -11008,6 +11008,7 @@ pub enum WitnessRuntimeCause {
     NoSuchVariable,
     NoSuchField,
     TypeError,
+    CallDepthExceeded,
     CrossRepresentationEquality,
     StringRealizationStraddle,
     VariantRealizationRefused,
@@ -11052,6 +11053,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
             WitnessRuntimeCause::NoSuchField => "no-such-field",
             WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CallDepthExceeded => "call-depth-exceeded",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
@@ -11089,6 +11091,7 @@ impl WitnessRuntimeCause {
             E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
             E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
             E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CallDepthExceeded { .. } => WitnessRuntimeCause::CallDepthExceeded,
             E::CrossRepresentationEquality { .. } => {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
@@ -30915,7 +30918,7 @@ pub fn shell_transport_operation_declaration(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
@@ -31356,7 +31359,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),

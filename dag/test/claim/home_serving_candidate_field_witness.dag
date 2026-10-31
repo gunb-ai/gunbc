@@ -602,7 +602,7 @@ fn hscf_row_at_rung(row_name: String, rung_watts: Nat) -> String {
 fn hscf_without_gpus(f: GpuBoardCatalogFacts) -> GpuBoardCatalogFacts {
   GpuBoardCatalogFacts {
     vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment,
-    board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+    board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
     figure_citations: f.figure_citations,
   }
 }

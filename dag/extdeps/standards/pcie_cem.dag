@@ -1,0 +1,87 @@
+module extdeps.standards.pcie_cem
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// THE PCI EXPRESS ADD-IN CARD ENVELOPE, as PCI-SIG's Card Electromechanical (CEM) specification sets
+// it: the height class a card is built to, the bracket that height class takes, and the per-slot
+// width every card's slot count is a multiple of. This is the shared standard; a card's own row
+// (extdeps.gpu.passive_card_row CardRow) names which class it is and its vendor's drawing, and a
+// chassis row names how many slots it has. Neither restates these figures.
+//
+// The CEM specification is distributed to PCI-SIG members only, and this repository holds no copy.
+// Every figure here is therefore TranscribedUncited, read from a public secondary page that states
+// the envelope without naming the CEM revision. Two NVIDIA drawings this repository holds sit exactly
+// on two of them -- the T4 brief prints its height as "68.90 MAX" (extdeps.gpu.nvidia_t4) and the A100
+// brief prints 111.15 (extdeps.gpu.nvidia_a100_pcie) -- which corroborates the numbers but does not
+// cite them: a vendor drawing is a fact about that card, not about the standard.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "pcisig.com/specifications/card-electromechanical" }
+}
+
+data cem_secondary_page: NonEmptyStr = "resources.altium.com/p/pcb-design-and-pinout-pcie-edge-cards (read 2026-10-29): maximum add-in card size (L x H x W) full length 312 x 111.15 x 20.32 mm, half length 167.65 x 111.15 x 20.32 mm, low-profile 167.65 x 68.9 x 20.32 mm; no CEM revision named"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "extdeps.standards.pcie_cem", decl_name: "CemHeightClass", field: WholeDeclaration }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A card is built to one height class, and the class fixes the bracket it can wear in a slot. A card
+// sold with both brackets (the T4, the A2) is a low-profile card; the full-height bracket it ships
+// beside is an adapter for a full-height slot, not a second class.
+type CemHeightClass = CemFullHeight | CemLowProfile
+
+type CemBracket = CemFullHeightBracket | CemLowProfileBracket
+
+fn cem_class_bracket(class: CemHeightClass) -> CemBracket {
+  match class { CemFullHeight => CemFullHeightBracket CemLowProfile => CemLowProfileBracket }
+}
+
+// The envelope figures, each with its standing. The slot width is the W of every class: a card that
+// occupies N slots occupies N of these across the slot direction, which is the pitch adjacent slots
+// sit at.
+type CemEnvelopeFigure { value: Micrometer, standing: CitedFigureStanding }
+
+fn cem_transcribed(what: NonEmptyStr) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: join(["Read PCI-SIG's PCI Express Card Electromechanical specification (name the revision and the table or figure) for ", what as String, ". This figure was transcribed from ", cem_secondary_page as String, ", which names no revision; the specification is member-distributed and this repository holds no copy."], "") }
+}
+
+data cem_slot_width: CemEnvelopeFigure = CemEnvelopeFigure {
+  value: micrometer(count: 20320),
+  standing: cem_transcribed(what: "the per-slot card width W (the add-in card's z-axis envelope, and the slot-to-slot pitch)"),
+}
+
+data cem_full_height_max_card_height: CemEnvelopeFigure = CemEnvelopeFigure {
+  value: micrometer(count: 111150),
+  standing: cem_transcribed(what: "the maximum height H of a full-height add-in card"),
+}
+
+data cem_low_profile_max_card_height: CemEnvelopeFigure = CemEnvelopeFigure {
+  value: micrometer(count: 68900),
+  standing: cem_transcribed(what: "the maximum height H of a low-profile add-in card"),
+}
+
+fn cem_class_max_card_height(class: CemHeightClass) -> CemEnvelopeFigure {
+  match class { CemFullHeight => cem_full_height_max_card_height CemLowProfile => cem_low_profile_max_card_height }
+}
+
+// The width across the slot direction that a card of `slot_count` slots may occupy. Its standing is
+// the slot width's: a product computed from a transcribed figure is no better grounded than it.
+fn cem_slot_envelope(slot_count: Nat) -> CemEnvelopeFigure {
+  CemEnvelopeFigure { value: micrometer(count: micrometer_count(m: cem_slot_width.value) * slot_count), standing: cem_slot_width.standing }
+}
+
+// DESIGN section 3c declared frontier. CemHeightClass and CemBracket are consumed now (every card row
+// types its height class and brackets with them); the envelope functions and figures above are read only
+// by test.claim.duct_card_catalog_witness, which exercises them and is not a consumer.
+data pcie_cem_envelope_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the printed-chassis geometry refactor (product.printed_chassis.duct_card_catalog duct_card_catalog_consumer_frontier, following PR #15243) derives the duct's slot pitch from cem_slot_envelope over the card row's slot_count instead of the A16 blower design's slot_pitch constant, selects the bracket a part is fitted to by cem_class_bracket over the row's height class, and bounds a part's height clearance by cem_class_max_card_height where a card row's height is unread. SUFFICIENT FOR: cem_slot_width, cem_full_height_max_card_height, cem_low_profile_max_card_height, cem_class_bracket, cem_class_max_card_height and cem_slot_envelope have a production consumer." as NonEmptyStr
+)

@@ -11,7 +11,7 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
   classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
   DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
-  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned,
+  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned, deploy_slot_tree_owned_find_argv,
   deploy_slot_runner_stage_dir, deploy_slot_runner_stage_fetch_commands,
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
@@ -20,6 +20,7 @@ import gunbc.runner.runner_host_file_converge {
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation }
 import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
+import extdeps.sudo.elevation { sudo_program }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -137,6 +138,15 @@ test fn the_tree_owner_read_is_three_valued() -> Bool {
     && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
 }
 
+// THE TREE IS HELD ONLY OWNER-ONLY: the far-side find that answers "held" asks for the account AND the
+// deploy role's 0700, so a tree the account owns at 0755 -- srv1-02 as read on 2026-10-30, its listener's
+// RSA key 0644 inside -- answers not held and is rebuilt (gunbc.recurring_failure_mode
+// a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids). RED: drop the -perm word.
+test fn the_tree_is_held_only_at_the_owner_only_mode() -> Bool {
+  let argv = deploy_slot_tree_owned_find_argv(slot_dir: "/opt/actions-runner/srv1-02")
+  argv == ["find", "/opt/actions-runner/srv1-02", "-maxdepth", "0", "-type", "d", "-user", "ghdeploy", "-perm", "0700"]
+}
+
 // THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
 // that order, then removes the stage as root: no file of the old tree survives and no new file is root's.
 test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
@@ -144,11 +154,23 @@ test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
   length(lines) == 4
     && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 1), pattern: "ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "-m 00700")
     && string_contains(s: nth(xs: lines, i: 1), pattern: "/opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghdeploy")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "/var/lib/gunbc/stage/runner.tar.gz")
-    && starts_with(s: nth(xs: lines, i: 3), prefix: "sudo ")
+    && starts_with(s: nth(xs: lines, i: 3), prefix: elevated_prefix())
     && string_contains(s: nth(xs: lines, i: 3), pattern: "-rf /var/lib/gunbc/stage")
+}
+
+// THE EXTRACT LEAVES THE TREE AT THE MODE THE REBUILD MADE IT. The runner archive's leading `./` entry is
+// drwxr-xr-x, and GNU tar re-applies an existing directory's archived metadata to it, so L2 run 41154097819
+// (2026-10-31) extracted into a 0700 tree and left it 0755; the owner-only readback refused it. RED: the
+// default extract argv, without --no-overwrite-dir.
+test fn the_rebuild_extract_preserves_the_owner_only_tree_mode() -> Bool {
+  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  string_contains(s: nth(xs: lines, i: 2), pattern: "-C /opt/actions-runner/srv1-02")
+    && ends_with(s: nth(xs: lines, i: 2), suffix: "--no-overwrite-dir")
+    && length(filter(lines, l => string_contains(s: l, pattern: "--no-overwrite-dir"))) == 1
 }
 
 // THE ARCHIVE IS WRITABLE BY ROOT ALONE BETWEEN ITS DIGEST CHECK AND ITS EXTRACTION (review 87894): the
@@ -161,12 +183,18 @@ test fn the_runner_archive_stage_is_written_by_root_alone() -> Bool {
   starts_with(s: stage, prefix: "/var/lib/gunbc/")
     && !starts_with(s: stage, prefix: "/tmp")
     && length(lines) == 3
-    && all(lines, l => starts_with(s: l, prefix: "sudo "))
+    && all(lines, l => starts_with(s: l, prefix: elevated_prefix()))
     && string_contains(s: nth(xs: lines, i: 0), pattern: join(["-rf ", stage], ""))
     && string_contains(s: nth(xs: lines, i: 1), pattern: "-o root -g root")
     && string_contains(s: nth(xs: lines, i: 1), pattern: stage)
     && string_contains(s: nth(xs: lines, i: 2), pattern: "curl")
     && string_contains(s: nth(xs: lines, i: 2), pattern: join([stage, "/runner.tar.gz"], ""))
+}
+
+// AN ELEVATED LEG BEGINS WITH SUDO AS extdeps.sudo.elevation INVOKES IT, read from that authority
+// rather than spelled here.
+fn elevated_prefix() -> String {
+  join([sudo_program().invocation as String, " "], "")
 }
 
 fn nth(xs: List<String>, i: Int) -> String {

@@ -445,15 +445,16 @@ fn non_empty_test(name: String) -> Node {
 }
 
 // NAME=$SOURCE when SOURCE is set, NAME=<fallback> when it is not -- the grammar's spelling of a
-// parameter default.
+// parameter default. The two arms are STATEMENTS, so they go through the constructor that builds
+// the statement-list spine: passing a bare statement as a body is the shape the fold refuses.
 fn default_from(name: String, source: String, fallback: List<Node>) -> Node {
-  bash_build_if_else(
+  bash_build_if_else_from_stmts(
     cond: non_empty_test(name: source),
-    then_body: bash_build_assign(name: name, value: bash_build_word_var(name: source)),
-    else_body: bash_build_assign(
+    then_stmts: [bash_build_assign(name: name, value: bash_build_word_var(name: source))],
+    else_stmts: [bash_build_assign(
       name: name,
       value: bash_build_word_concat_from_nodes(parts: fallback)
-    )
+    )]
   )
 }
 

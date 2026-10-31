@@ -1,0 +1,80 @@
+module test.claim.nvidia_driver_supported_chips_witness
+
+// THE PINNED DRIVER APPENDIX IS THE WHOLE APPENDIX, AND WHAT IT DOES NOT LIST IS READ OFF IT. The page
+// module is checked closed (every table, every row, at the counts read off the README); supplied
+// appendices missing or repeating a row are refused; the Turing Tesla T10's device id is listed nowhere in
+// it while the T4's is, and the GT200 "Tesla T10 Processor" that shares the T10's name is listed under its
+// own device id; and every driver-listed name the GPU catalogue carries is a name the appendix lists.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.gpu.types { GpuBoardAdmission, gpu_board_admission_facts }
+import extdeps.nvidia.linux_driver_supported_chips {
+  NvidiaSupportedChipsAppendix,
+  NvidiaSupportedChipTable,
+  NvidiaSupportedChipRow,
+  CurrentUnifiedDriver,
+  LegacyDriverBranch,
+  nvidia_linux_driver_580_95_05_supported_chips,
+  nvidia_supported_chips_complete,
+  nvidia_supported_chip_rows_for_device,
+  nvidia_supported_chip_rows_named,
+}
+import extdeps.gpu.nvidia_t10 { nvidia_t10_driver_appendix_rows }
+import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_the_pinned_appendix_is_complete() -> Bool {
+  nvidia_supported_chips_complete(appendix: nvidia_linux_driver_580_95_05_supported_chips)
+}
+
+data fixture_source: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/README/supportedchips.html" } }
+
+fn fixture_row(ordinal: Nat) -> NvidiaSupportedChipRow {
+  NvidiaSupportedChipRow { ordinal: ordinal, name: "Fixture GPU", device_id: "0000" as PciDeviceId, subsystem_vendor_id: none, subsystem_device_id: none, vdpau_features: "-" }
+}
+
+fn fixture_appendix(rows: List<NvidiaSupportedChipRow>) -> NvidiaSupportedChipsAppendix {
+  NvidiaSupportedChipsAppendix {
+    driver_release: "0.0", source: fixture_source, html_sha256: "fixture", table_count: 1,
+    tables: [NvidiaSupportedChipTable { ordinal: 0, branch: CurrentUnifiedDriver, row_count: 3, rows: rows }],
+  }
+}
+
+test fn w_control_a_complete_fixture_appendix_is_complete() -> Bool {
+  nvidia_supported_chips_complete(appendix: fixture_appendix(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 1), fixture_row(ordinal: 2)]))
+}
+
+test fn w_red_an_appendix_missing_or_repeating_a_row_is_not_complete() -> Bool {
+  !nvidia_supported_chips_complete(appendix: fixture_appendix(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 2)]))
+    && !nvidia_supported_chips_complete(appendix: fixture_appendix(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 1), fixture_row(ordinal: 1)]))
+}
+
+// THE T10 FINDING, WITH BOTH CONTROLS. Absence alone would also be what a broken lookup returns, so the
+// same lookup must find the T4 (1eb8) and the GT200 Tesla T10 Processor (05e7, in a legacy table).
+test fn w_the_turing_t10_is_not_listed_and_the_lookup_can_find() -> Bool {
+  let appendix = nvidia_linux_driver_580_95_05_supported_chips
+  count(nvidia_t10_driver_appendix_rows) == 0
+    && count(nvidia_supported_chip_rows_for_device(appendix: appendix, device_id: "1eb8" as PciDeviceId)) > 0
+    && nvidia_supported_chip_rows_for_device(appendix: appendix, device_id: "05e7" as PciDeviceId)
+      |> filter(r => (r.name as String) == "Tesla T10 Processor") |> count > 0
+    && appendix.tables |> all(t => match t.branch {
+      CurrentUnifiedDriver => t.rows |> all(r => (r.name as String) != "Tesla T10 Processor")
+      LegacyDriverBranch { branch: _ } => true
+    })
+}
+
+// EVERY DRIVER-LISTED NAME IN THE CATALOGUE IS ONE THE DRIVER LISTS. The name is the identity a run
+// receipt's GPU joins through, so a misspelt one would join nothing, silently.
+test fn w_every_catalog_driver_name_is_listed() -> Bool {
+  let names = gpu_catalog_board_admissions |> flat_map(b => match gpu_board_admission_facts(admission: b).driver_listed_name {
+    Present { value: n } => [n]
+    Absent => []
+  })
+  count(names) > 0 && names |> all(n => count(nvidia_supported_chip_rows_named(appendix: nvidia_linux_driver_580_95_05_supported_chips, name: n)) > 0)
+}
