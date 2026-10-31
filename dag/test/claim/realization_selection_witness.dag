@@ -1,10 +1,12 @@
 module test.claim.realization_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, decl_type_parameter_ref, declaration_ref_eq, declaration_ref_display_key, declaration_ref_compare }
+import std.algebra { Ordering, Equal }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGap,
+  AxisGoal,
   AxisReading,
   HigherIsBetter,
   LowerIsBetter,
@@ -29,6 +31,8 @@ import std.decision {
   select_realization,
   receipts_eq,
   policy_equality,
+  term_valuation_compare,
+  term_valuation_eq,
   ValuedObjective,
   TermValuation,
   NetValue,
@@ -1065,4 +1069,102 @@ test fn policy_equality_accepts_reordered_unique_valuations() -> Bool {
   let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
   let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_b), tv(id_a)], measure: NetValue, currency: Usd }
   policy_equality(a: p, b: q) && policy_equality(a: q, b: p)
+}
+
+// A valuation with an explicit scale and goal, for the discrimination controls below.
+fn tv_with(term: DeclarationRef, scale: Int, goal: AxisGoal) -> TermValuation {
+  TermValuation { term: term, scale_micro: money_amount_micro(count: scale), goal: goal }
+}
+
+fn is_eq_ordering(o: Ordering) -> Bool {
+  match o { Equal => true _ => false }
+}
+
+// POLICY-EQUALITY CONTROL — reordered EQUAL DUPLICATES. [A,A,B] and [B,A,A] are the same multiset, so
+// they must be equal. This is the positive control for the sort-then-compare path: an order-sensitive
+// (elementwise-by-index) comparator, or one that deduped, would report them unequal.
+// RED: if the comparator compared valuations elementwise by index, the reordered duplicates would be
+// reported unequal -> red.
+test fn policy_equality_accepts_reordered_equal_duplicates() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_b), tv(id_a), tv(id_a)], measure: NetValue, currency: Usd }
+  policy_equality(a: p, b: q) && policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — same term, different scale. The scale is a behavior-affecting parameter, so
+// two valuations that share a term but differ in scale are different policies.
+// RED: if term_valuation_eq compared only the term (ignoring scale), these would be equal -> red.
+test fn policy_equality_refuses_same_term_different_scale() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 20, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — same term and scale, different goal.
+// RED: if term_valuation_eq ignored the axis goal, these would be equal -> red.
+test fn policy_equality_refuses_same_term_different_goal() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: LowerIsBetter)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — the DeclField alternatives. The same declaration named as a whole, as a
+// named field, and as a type parameter are three distinct terms; a comparator that ignored the field
+// variant would collapse them.
+// RED: if declaration_ref_compare compared only module_path and decl_name (ignoring the DeclField
+// variant), these would be equal -> red.
+test fn policy_equality_refuses_declfield_variants() -> Bool {
+  let whole = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
+  let named = decl_field_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a", field_name: "x")
+  let param = decl_type_parameter_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a", parameter: "x")
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(whole)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(named)], measure: NetValue, currency: Usd }
+  let r = ValuedObjective { identity: id_policy_usesep, valuations: [tv(param)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: p, b: r) && !policy_equality(a: q, b: r)
+}
+
+// POLICY-EQUALITY CONTROL — two DISTINCT refs that share a display key. decl_name "n::x" with
+// WholeDeclaration and decl_name "n" with NamedField "x" both render "m::n::x", yet they are structurally
+// different refs. The order must separate them (order-equality agrees with structural equality, not with
+// the display key).
+// RED: if the comparator ordered refs by declaration_ref_display_key, the collision would compare Equal
+// and the two policies would be reported equal -> red.
+test fn policy_equality_orders_by_structure_not_display_key() -> Bool {
+  let m = "test.claim.realization_selection_witness"
+  let ref1 = decl_ref(module_path: m, decl_name: "n::x")
+  let ref2 = decl_field_ref(module_path: m, decl_name: "n", field_name: "x")
+  let same_display = declaration_ref_display_key(ref: ref1) == declaration_ref_display_key(ref: ref2)
+  let structurally_distinct = !declaration_ref_eq(a: ref1, b: ref2)
+  let order_separates = !is_eq_ordering(o: declaration_ref_compare(a: ref1, b: ref2))
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(ref1)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(ref2)], measure: NetValue, currency: Usd }
+  same_display && structurally_distinct && order_separates && !policy_equality(a: p, b: q)
+}
+
+// LAW — the total order agrees with the equality: term_valuation_compare(a, b) == Equal exactly when
+// term_valuation_eq(a, b). This is what makes sort-then-compare a correct multiset comparison. The pairs
+// cover equal valuations, differing scale, differing goal, differing field variant, and the display-key
+// collision.
+// RED: if the order and the equality diverged on any axis (e.g. the order ignored the goal that the
+// equality checks, or vice versa), one of these pairs would break the law -> red.
+test fn term_valuation_order_agrees_with_equality() -> Bool {
+  let m = "test.claim.realization_selection_witness"
+  let a_hi = tv_with(term: id_a, scale: 10, goal: HigherIsBetter)
+  let a_hi_again = tv_with(term: id_a, scale: 10, goal: HigherIsBetter)
+  let a_scale = tv_with(term: id_a, scale: 20, goal: HigherIsBetter)
+  let a_goal = tv_with(term: id_a, scale: 10, goal: LowerIsBetter)
+  let whole = tv(decl_ref(module_path: m, decl_name: "id_a"))
+  let named = tv(decl_field_ref(module_path: m, decl_name: "id_a", field_name: "x"))
+  let ref1 = tv(decl_ref(module_path: m, decl_name: "n::x"))
+  let ref2 = tv(decl_field_ref(module_path: m, decl_name: "n", field_name: "x"))
+  let law = fn(x: TermValuation, y: TermValuation) -> Bool {
+    is_eq_ordering(o: term_valuation_compare(a: x, b: y)) == term_valuation_eq(a: x, b: y)
+  }
+  law(a_hi, a_hi_again) && law(a_hi, a_scale) && law(a_hi, a_goal)
+    && law(whole, named) && law(ref1, ref2)
+    && term_valuation_eq(a: a_hi, b: a_hi_again)
+    && !term_valuation_eq(a: a_hi, b: a_scale)
+    && !term_valuation_eq(a: a_hi, b: a_goal)
+    && !term_valuation_eq(a: whole, b: named)
+    && !term_valuation_eq(a: ref1, b: ref2)
 }

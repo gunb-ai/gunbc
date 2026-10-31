@@ -1,7 +1,7 @@
 module std.decl_ref
 
 import std.types { NonEmptyStr, List }
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, TotalOrder, Ordering, int_compare_canonical, string_compare_canonical }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -115,6 +115,56 @@ fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
   a.module_path == b.module_path
     && a.decl_name == b.decl_name
     && decl_field_eq(a: a.field, b: b.field)
+}
+
+// A STRUCTURAL TOTAL ORDER on DeclarationRef, living beside the type and its equality (single authority,
+// DESIGN 3). Lexicographic over module_path, then decl_name, then the DeclField variant and its payload.
+// It is deliberately NOT the display key: distinct refs can share a display key (decl_name "n::x" with
+// WholeDeclaration renders "m::n::x", the same string as decl_name "n" with NamedField "x"), so ordering
+// by the display key could collapse distinct refs into Equal. This compares the variant tag and payload
+// structurally. Law: declaration_ref_compare(a, b) == Equal exactly when declaration_ref_eq(a, b).
+fn decl_field_rank(f: DeclField) -> Int {
+  match f {
+    WholeDeclaration => 0
+    NamedField { field_name: _ } => 1
+    TypeParameter { name: _ } => 2
+  }
+}
+
+fn decl_field_compare(a: DeclField, b: DeclField) -> Ordering {
+  let rank = int_compare_canonical(a: decl_field_rank(a), b: decl_field_rank(b))
+  match rank {
+    Equal => match a {
+      WholeDeclaration => Equal
+      NamedField { field_name: fa } => match b {
+        NamedField { field_name: fb } => string_compare_canonical(a: fa as String, b: fb as String)
+        _ => Equal
+      }
+      TypeParameter { name: ta } => match b {
+        TypeParameter { name: tb } => string_compare_canonical(a: ta as String, b: tb as String)
+        _ => Equal
+      }
+    }
+    other => other
+  }
+}
+
+fn declaration_ref_compare(a: DeclarationRef, b: DeclarationRef) -> Ordering {
+  let m = string_compare_canonical(a: a.module_path as String, b: b.module_path as String)
+  match m {
+    Equal => {
+      let n = string_compare_canonical(a: a.decl_name as String, b: b.decl_name as String)
+      match n {
+        Equal => decl_field_compare(a: a.field, b: b.field)
+        other => other
+      }
+    }
+    other => other
+  }
+}
+
+fn declaration_ref_total_order() -> TotalOrder<DeclarationRef> {
+  TotalOrder { compare: declaration_ref_compare }
 }
 
 fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {

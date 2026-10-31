@@ -1,7 +1,7 @@
 module std.decision
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, declaration_ref_compare }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
 import std.measure {
@@ -28,7 +28,7 @@ import extdeps.external_authority {
 import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
 import std.frame_boundary { boundary_grade_meet }
 import std.nat { nat_compare }
-import std.algebra { Equal }
+import std.algebra { Equal, Less, Greater, Ordering, TotalOrder, list_sort_by_key, zip_eq }
 import std.pareto {
   AxisGoal,
   HigherIsBetter,
@@ -1212,15 +1212,50 @@ fn term_valuation_eq(a: TermValuation, b: TermValuation) -> Bool {
     && axis_goal_eq(a: a.goal, b: b.goal)
 }
 
+// A lawful TOTAL ORDER on TermValuation, extending the structural DeclarationRef order with scale_micro
+// (nat_compare) and then the axis goal. Law: term_valuation_compare(a, b) == Equal exactly when
+// term_valuation_eq(a, b) — order and equality agree, which is what makes "sort both, compare
+// elementwise" a correct multiset comparison.
+fn axis_goal_compare(a: AxisGoal, b: AxisGoal) -> Ordering {
+  match a {
+    HigherIsBetter => match b { HigherIsBetter => Equal LowerIsBetter => Less }
+    LowerIsBetter => match b { HigherIsBetter => Greater LowerIsBetter => Equal }
+  }
+}
+
+fn term_valuation_compare(a: TermValuation, b: TermValuation) -> Ordering {
+  let t = declaration_ref_compare(a: a.term, b: b.term)
+  match t {
+    Equal => {
+      let s = nat_compare(a: money_amount_micro_count(m: a.scale_micro), b: money_amount_micro_count(m: b.scale_micro))
+      match s {
+        Equal => axis_goal_compare(a: a.goal, b: b.goal)
+        other => other
+      }
+    }
+    other => other
+  }
+}
+
+fn term_valuation_total_order() -> TotalOrder<TermValuation> {
+  TotalOrder { compare: term_valuation_compare }
+}
+
 // Occurrence-sensitive, order-independent comparison of two valuation lists: equal as a MULTISET, so
 // multiplicity is preserved and nothing is deduped. A raw SelectionPolicy may carry repeated terms
 // (admission refuses duplicates, but this comparator must be lawful over SelectionPolicy as declared),
 // so membership plus cardinality is not enough: [A,A] and [A,B] have the same membership and the same
 // count yet are different policies, and [A,A,B] and [A,B,B] have the same membership in both directions
-// yet different multiplicities. Each element's multiplicity must match on both sides.
+// yet different multiplicities. Sorting both lists under the lawful total order above and comparing
+// elementwise (zip_eq also enforces equal length) decides multiset equality in O(n log n), replacing the
+// quadratic filter-and-count. Because the order's Equal agrees exactly with term_valuation_eq, two equal
+// multisets sort to elementwise-equal lists and vice versa.
 fn valuations_multiset_eq(a: List<TermValuation>, b: List<TermValuation>) -> Bool {
-  count(a) == count(b)
-    && all(a, x => (filter(a, y => term_valuation_eq(a: x, b: y)) |> count) == (filter(b, y => term_valuation_eq(a: x, b: y)) |> count))
+  zip_eq(
+    a: list_sort_by_key(xs: a, key: fn(v) { v }, order: term_valuation_total_order()),
+    b: list_sort_by_key(xs: b, key: fn(v) { v }, order: term_valuation_total_order()),
+    eq: term_valuation_eq
+  )
 }
 
 // Structural equality of two SelectionPolicy values: same arm, same identity, and same
