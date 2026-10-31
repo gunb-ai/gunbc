@@ -10,7 +10,7 @@ import product.printed_chassis.gpu_duct {
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design, duct_design, CardEnvelope, card_envelope_of,
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
-  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, um,
+  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, plane_on_end_keepout_relief, plane_on_end_duct_run_back, um,
 }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy, DuctFitPolicy, RingExercisedDims, UnqualifiedAllowances }
@@ -521,15 +521,23 @@ test fn w_the_flat_on_end_duct_cuts_clear_the_whole_power_keepout_envelope() -> 
   envelope_cleared_by_cuts(keepouts: power_keepouts(parts: parts), cuts: duct_part_cuts(parts: parts))
 }
 
-// RED for the above: without the cuts that reach the envelope's far end (the keep-out relief), the envelope is not
-// cleared -- the side wall left standing in it is the 455.139 mm3 the print route refused.
-test fn w_without_the_cuts_reaching_the_far_end_the_envelope_is_not_cleared() -> Bool {
+// RED for the above, on the REAL part: take out of the cuts exactly the keep-out relief (the primitive
+// plane_on_end_keepout_relief builds, found by its bounds) and the envelope is no longer cleared, because the
+// housing's top-end side wall is left standing in it. The relief must be among the cuts first, so deleting it from
+// the part cannot leave this red vacuously true.
+test fn w_without_the_keepout_relief_the_envelope_is_not_cleared() -> Bool {
   let parts = flat_on_end_parts()
   let keepouts = power_keepouts(parts: parts)
-  all(keepouts, k => {
-    let kb = primitive_bounds(p: k)
-    !envelope_cleared_by_cuts(keepouts: keepouts, cuts: filter(duct_part_cuts(parts: parts), c => primitive_bounds(p: c).lo_z > kb.lo_z))
-  })
+  let face_z = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_duct_design))
+  let rb = primitive_bounds(p: plane_on_end_keepout_relief(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design, face_z: face_z, seat_z: face_z))
+  let cuts = duct_part_cuts(parts: parts)
+  any(cuts, c => same_bounds(a: primitive_bounds(p: c), b: rb))
+    && envelope_cleared_by_cuts(keepouts: keepouts, cuts: cuts)
+    && !envelope_cleared_by_cuts(keepouts: keepouts, cuts: filter(cuts, c => !same_bounds(a: primitive_bounds(p: c), b: rb)))
+}
+
+fn same_bounds(a: Bounds, b: Bounds) -> Bool {
+  a.lo_x == b.lo_x && a.hi_x == b.hi_x && a.lo_y == b.lo_y && a.hi_y == b.hi_y && a.lo_z == b.lo_z && a.hi_z == b.hi_z
 }
 
 // The passage to the fins is the plug's BORE: no cut spans the plug lip's whole outer footprint, because a cut that
