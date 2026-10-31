@@ -12756,16 +12756,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         Present { value: ft }
       Absent => none
     }
-    let field_conformance_type = match field_declared_type {
-      Present { value: ft } => if instantiated_struct_fields != none { ft } else { match presence_variant_owner {
-        Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
-        Absent => match lookup_type_by_name(env: scope.type_env, name: tn_str) {
-          Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
-          Absent => ft
-        }
-      } }
-      Absent => error_type
-    }
     let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected, scope: scope) {
       Present { value: element } => Present { value: element }
       Absent =>
@@ -12786,96 +12776,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        let got_value = expression_value_type(e: ar_typed)
-        let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
-          []
-        } else {
-          optional_at_required_obligation_diags(
-            obligation: DeclaredTypeObligation {
-              position: PositionRecordLiteralField,
-              subject: fi_name,
-              declared: expected_node,
-              produced: got_node,
-              span: ar_typed.span
-            },
-            scope: scope)
+        // The field is judged by the one relation at its declared-type position. An unbound owner
+        // type variable is the generic formal the relation names UndecidableGenericFormal, and an
+        // optional carrier on either side (a Present payload, none) is UndecidableOptionalCarrier:
+        // both stay admitted here exactly as the replaced chain admitted them, so a field neither
+        // refuses nor starts reporting an undecided verdict; every other verdict is the relation's.
+        let obligation = DeclaredTypeObligation {
+          position: PositionRecordLiteralField,
+          subject: fi_name,
+          declared: expected_node,
+          produced: got_node,
+          span: ar_typed.span
         }
-        if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
-          []
-        } else if (field_cardinality_diags |> count) > 0 {
-          field_cardinality_diags
-        } else if either_side_is_arrow(declared: expected_node, produced: got_value)
-            && callable_inhabitance_mismatch(declared: expected_node, declared_basis: expected_node, produced: got_value, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
-          [type_mismatch_error(
-            expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
-            got: node_type_shape(n: got_value, source_indices: scope.type_env.source_indices),
-            span: ar_typed.span,
-            module_name: scope.module_name
-          )]
-        } else if node_type_compatible(
-          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
-          []
-        } else if rejects_string_for_optional_coproduct_field(
-          expected: expected_node,
-          got: got_node,
-          source_indices: scope.type_env.source_indices,
-          env: scope.type_env
-        ) {
-          let expected_for_shape = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
-            Present { value: resolved } => resolved
-            Absent => expected_node
-          }
-          [type_mismatch_error(
-            expected: node_type_shape(n: expected_for_shape, source_indices: scope.type_env.source_indices),
-            got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
-            span: ar_typed.span,
-            module_name: scope.module_name
-          )]
-        } else {
-          let expected_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
-            Present { value: resolved } => resolved
-            Absent => with_required_cardinality(n: expected_node)
-          }
-          let formal_peeled = expand_nominal_alias_rhs(n: expected_required, env: scope.type_env, module_name: scope.module_name)
-          let actual_peeled = expand_nominal_alias_rhs(n: got_node, env: scope.type_env, module_name: scope.module_name)
-          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
-              span: ar_typed.span,
-              module_name: scope.module_name
-            )]
-          } else if structured_application_site_type_mismatch(
-            formal: expected_node, actual_expr: field_init_node_value(n: fi), scope: scope) {
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
-              span: ar_typed.span,
-              module_name: scope.module_name
-            )]
-          } else if nominal_product_inhabitance_refusal(
-              declared: with_required_cardinality(n: expected_node), produced: got_node, scope: scope) != none {
-            [make_error_node(
-              diagnostic: DeclaredTypeNotInhabited {
-                position: declared_type_position_label(position: PositionRecordLiteralField, subject: fi_name),
-                expected: obligation_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
-                got: obligation_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
-                span: ar_typed.span
-              },
-              module_name: scope.module_name
-            )]
-          } else if expected_node.return_cardinality != CardOptional
-            && coproduct_payload_where_parent_required(
-              formal: formal_peeled, actual: actual_peeled, scope: scope) {
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
-              span: ar_typed.span,
-              module_name: scope.module_name
-            )]
-          } else {
-            []
-          }
+        match declared_type_inhabitance(obligation: obligation, scope: scope) {
+          Inhabits => []
+          InhabitanceUndecidable { reason: UndecidableGenericFormal } => []
+          InhabitanceUndecidable { reason: UndecidableOptionalCarrier } => []
+          _ => declared_type_obligation_diags(obligation: obligation, scope: scope)
         }
       Absent => []
     }
