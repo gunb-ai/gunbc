@@ -21,6 +21,10 @@ data a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_on
 
     "HARM: a tree that resolves differently from both the original and the intended edit; a later reader sees an unused import and a bare ambient call, and nothing records that an apply was interrupted.",
 
+    "PARTIAL REPAIR, gunbc#15474 (zesty-badger-599): the apply plans every path before the first write, so a refusal from PLANNING (path admission, read, sweep, splice) writes nothing, and a keyed pipe site that cannot be rewritten this pass refuses rather than being skipped (the SECOND ODDITY and the SECOND SPECIMEN's graph.dag:242:28). The rung is not updated by this row.",
+
+    "RESIDUAL after #15474: a refusal during the COMMIT (lock lost, stale read, host write failure) can still follow earlier file writes; no control covers that phase (review 89088). It is a host-boundary residual. Next trigger: stage every file's bytes and rename them into place through the declared filesystem effect, so no target changes until all are staged.",
+
     "RUNG FOUND AT: silent wrongness, below the ladder (DESIGN section 5). Ceiling: structurally guaranteed by an apply that plans all files first and refuses before the first write. Next trigger: the roster sweep apply plans the edits of every named file and refuses before writing any. Discriminating RED to author: a two-file apply whose second file refuses must leave the first file byte-identical; today it does not. The repair is the sweep machinery's, not this row's.",
   ],
 
