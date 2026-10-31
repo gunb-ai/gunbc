@@ -4,7 +4,7 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
 
-data claim_subject: String = "the seed-build preamble serializes to shell that carries every statement the producer authored: no refusal marker anywhere in it, and both arms of each parameter default present"
+data claim_subject: String = "the seed-build preamble serializes to shell that carries every statement the producer authored, in a shape that evaluates the way it reads: no refusal marker anywhere in it, both arms of each parameter default present, and the identity guard testing a quoted variable rather than a bare expansion"
 
 // WHERE THIS CLAIM ACTUALLY RUNS, stated rather than assumed, because the honest answer is not
 // "a job runs it". It is not discovered: witness discovery is a source-root walk for *_test.dag
@@ -55,4 +55,20 @@ test fn the_seed_build_preamble_keeps_both_default_arms() -> Bool {
     && string_contains(s: text, pattern: "GUNBC_SEED_TARGET=\"$GUNBC_SEED_CHECKOUT\"'/target'")
     && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$CARGO_HOME\"")
     && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$HOME\"'/.cargo'")
+}
+
+// THE IDENTITY GUARD TESTS A QUOTED VARIABLE, NOT A BARE EXPANSION. The guard decides whether the
+// materialized tree identity gets pinned, and a command substitution sitting inside `[ ]` is split
+// on whitespace and glob-expanded before `test` sees it: with two or more tracked edits the builtin
+// errors with "[: too many arguments" rather than evaluating false, so the step reaches the intended
+// branch through a diagnostic that misdescribes why, and a changed path containing `*`, `?` or a
+// space would glob first. The preamble reads the tracked state into GUNBC_SEED_WORKTREE_DIRTY and
+// tests "$GUNBC_SEED_WORKTREE_DIRTY", which the grammar renders quoted. The negative half is what
+// keeps the claim honest: a bare `$('` anywhere in a bracket test of the preamble fails it, so the
+// claim cannot be satisfied by the old text plus an added variable.
+test fn the_identity_guard_tests_a_quoted_variable_not_a_bare_substitution() -> Bool {
+  let text = repo_self_build_env_preamble()
+  string_contains(s: text, pattern: "GUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')")
+    && string_contains(s: text, pattern: "'[' '-z' \"$GUNBC_SEED_WORKTREE_DIRTY\" ']'")
+    && !string_contains(s: text, pattern: "'[' '-z' $(")
 }

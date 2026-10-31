@@ -85,7 +85,8 @@ jobs:
           'export' 'GUNBC_SEED_TARGET'
           'export' 'GUNBC_SEED_CARGO_HOME'
           'export' 'GUNBC_SEED_SYSROOT'
-          if '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' $('git' 'status' '--porcelain=1' '--untracked-files=no') ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi
+          GUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')
+          if '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi
 
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'

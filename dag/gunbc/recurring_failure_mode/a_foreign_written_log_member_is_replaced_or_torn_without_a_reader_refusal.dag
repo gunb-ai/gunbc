@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_foreign_written_log_member_is_replaced_or_torn_without_a_reader_refusal
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data a_foreign_written_log_member_is_replaced_or_torn_without_a_reader_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_foreign_written_log_member_is_replaced_or_torn_without_a_reader_refusal" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the worker appends through the served storage endpoint (gunbc.fabric.fabric_storage_client Served binding), so a worker-written log member is an event_chain partition whose append is a compare-and-set on the head and whose overwrite has no constructor" } },
+
+  receipts: [
+    "INVALID STATE: an attempt's events or wire member, written by a process the host does not author, is left mid-record, and a reader presents what it finds as the log. gunbc.roadmap.roadmap_attempt_state_store still accepts those members through the generic attempt_state_write, and dispatch_attempt_events_initialize_for_instance creates the events file by a bare create-new.",
+
+    "WRITER SHAPES, READ FROM THE CODE: the worker is one sandbox window after a host create (not concurrent writers), and gunbc.harness.harness_turn writes the .wire/<round>.request.json and <round>.response.json files in place with Filesystem.Write and no rename, so a round file is create-once by name only and is not atomic: a write killed mid-record is a torn record. THE EVENTS-FILE LOST UPDATE (the whole-file replace by harness_turn and harness_cli) is a different class, gunbc.recurring_failure_mode attempt_events_file_lost_update (keen-koi-712), and is not claimed here; this row owns only the reader-side refusal of a torn or foreign-written record. Neither row restates the other.",
+
+    "RUNG STATEMENT (no gunbc.rung_drop is declared because nothing is lowered; these are the facts a drop would carry). Rung now: Mitigatable -- std.durable_append_log append_stream_readback refuses a released-window stream that ends mid-record (AppendLogTornTail) and never presents the complete records as the log, and an open window reads as a prefix; append_write_admission never lets the host append during the window. Ceiling: StructurallyGuaranteed, when the member is an event_chain partition. Next trigger: the worker appends through the served storage endpoint. Executing evidence: test.claim.durable_append_log_witness (torn tail, truncated wire round read through the census framing of AttemptDirectoryWire, and foreign unterminated record refused; open window a prefix; unobserved standing admits nobody).",
+
+    "RESIDUAL, NOT A RUNG: the worker runs under ambient filesystem authority, so nothing structural stops it writing a member outside its declared window; the window is observed (std.durable_exclusive_hold ReleasedOnEvidence on the writer's exit), not enforced on the worker. It closes with the served-endpoint capability above and, for the host's own routes, with gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.durable_append_log", decl_name: "append_stream_readback", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.durable_append_log", decl_name: "append_write_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.durable_append_log_witness", decl_name: "a_released_stream_with_bytes_after_the_last_terminator_is_a_torn_tail_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.durable_append_log", decl_name: "append_readback", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.durable_append_log_witness", decl_name: "a_truncated_wire_round_is_refused_through_the_census_framing", field: WholeDeclaration },
+  ],
+}

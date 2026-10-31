@@ -140,6 +140,13 @@ data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
   provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
 }
 
+data bad_process_is_worse_than_no_process: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bad_process_is_worse_than_no_process"),
+  decided: "2026-10-30",
+  section: "6",
+  provenance: "Operator ruling, 2026-10-30: a bad process is worse than no process. A six-hour census that does not answer the decision is a broken method, not a standard to enforce. Until real lenses have bounded, discriminating consumers, prefer grep, qualitative source inspection and small real-route witnesses for investigation. These establish facts only over their inspected scope; they never silently discharge a completeness obligation. Census process is retired by default: existing census instruments and census-conditioned prerequisites are removed without successor instruments; the semantic requirements they served remain. The cost/coverage rule is permanent, and lens support landing does not revive the retired censuses.",
+}
+
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth"),
   decided: "2026-09-04",
@@ -574,6 +581,7 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
