@@ -23,6 +23,7 @@ import gunbc.compute.attempt_lifecycle {
   attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_record_state, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
 import gunbc.roadmap.roadmap_session_attempt_slots_root {
   session_attempt_slots, SessionAttemptSlotsStore,
 }
@@ -93,9 +94,14 @@ fn declare_replaced_attempt_slots_root(instance_id: NonEmptyStr, old_slots_root:
 // here would put a second, drift-prone copy of that path beside the declaration it must agree with.
 // What a row asserts is WHICH INSTANCE moved and where its state was left; the carry answers against
 // the live store it is handed, and refuses where the row and that store disagree.
+// WHY THIS IS THE WHOLE LIST ON THE HOST THAT CARRIES THE LEASES. The census instrument is
+// attempt_slots_census_for_instance, run per instance; the row set is complete for srv1 because the old
+// parent holds exactly one instance directory there (read-only listing, 2026-10-31) and that instance's
+// declared root is elsewhere. The srv2 rows cited above live on srv2, whose roots did not move; this
+// change does not reach that host, and a row for an instance whose root did not move would be a lie.
 data replaced_attempt_slots_roots: List<ReplacedAttemptSlotsRoot> = [
   ReplacedAttemptSlotsRoot {
-    instance_id: "codex-provider-feedback-v0" as NonEmptyStr,
+    instance_id: srv1_dashboard_lab_id,
     old_slots_root: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/session-attempts" as NonEmptyStr,
     moved_by: "gunb-ai/gunbc#14633 (WRE-1b lab re-root, 2026-10-24)" as NonEmptyStr,
   },
