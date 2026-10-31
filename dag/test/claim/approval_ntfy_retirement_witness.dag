@@ -1,0 +1,175 @@
+module test.claim.approval_ntfy_retirement_witness
+
+// THE RETIREMENT'S OWN CLAIMS: that the run asks for what it does and nothing wider, that its
+// completeness is measured against the roster rather than against the legs it ran, and that each
+// absence is read from the account of that member -- systemd, getent, the filesystem, tailscale --
+// rather than from the exit code of the leg that was supposed to remove it.
+
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.scoped_authorization { first_uncovered_scope, AuthorizationScope }
+import std.effect_grant { Write }
+import std.optional { Absent }
+import gunbc.fleet.approval_ntfy_retirement {
+  ntfy_retire_members, ntfy_retire_legs, ntfy_retire_receipt_text,
+  ntfy_retire_receipt_is_clean, ntfy_retire_unit_is_absent, ntfy_retire_account_is_absent,
+  ntfy_retire_path_is_absent, ntfy_retire_front_door_is_absent, ntfy_retire_verdict_text,
+  RetireMemberAbsent, RetireMemberPresent, NtfyRetireVerdict,
+  ntfy_retire_unit_name, ntfy_retire_account_name, ntfy_retire_config_dir, ntfy_retire_state_root,
+  ntfy_retire_binary_path, ntfy_retire_unit_path,
+  ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
+  ntfy_retire_removal_argv,
+}
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
+}
+
+// ── The approval the run asks for ──────────────────────────────────────────────────────────────
+
+test fn the_retirement_scopes_are_covered_by_the_job_approval() -> Bool {
+  match first_uncovered_scope(granted: srv1_root_mutation_approved_scopes, required: approval_ntfy_retire_root_scopes) {
+    Absent => true
+    _ => false
+  }
+}
+
+// A WRITE SCOPE IN THE ARM'S LIST MUST BE A REMOVAL, not an install: the arm inherits the job's
+// approval, and an arm that asked for install-scoped writes would be granted them by scopes that
+// exist for the OTHER arms.
+test fn the_retirement_asks_removal_actions_for_its_writes() -> Bool {
+  all(
+    filter(approval_ntfy_retire_root_scopes, s => match s {
+      AuthorizationScope { verb: Write, resource: _, action: _ } => true
+      _ => false
+    }),
+    s => match s {
+      AuthorizationScope { verb: _, resource: _, action: a } => a == srv1_root_removal_action
+    },
+  )
+}
+
+// ── The legs ───────────────────────────────────────────────────────────────────────────────────
+
+// THE UNIT IS STOPPED AND DISABLED BY NAME. No leg signals a process by pattern and no leg invokes a
+// package manager: the operator's ruling named the unit, and the binary was installed by hand, so it
+// comes off as a file.
+test fn the_legs_address_the_unit_by_name_and_never_by_pattern() -> Bool {
+  let names = map(ntfy_retire_legs, leg => leg.name)
+  let argv = map(ntfy_retire_legs, leg => leg.argv)
+  all(names, n => n != "kill" && n != "pkill")
+    && all(argv, words => !any(words, w => string_contains(s: w, pattern: "pkill")))
+    && all(argv, words => !any(words, w => string_contains(s: w, pattern: "apt")))
+    && any(argv, words => any(words, w => w == (ntfy_retire_unit_name as String)))
+}
+
+// THE REMOVAL TARGETS ARE ROSTER LITERALS. Every target a removal leg names is one of the four paths
+// the roster states, absolute and non-empty, and the legs are built from that same list -- so the
+// target checked here and the target the leg removes cannot be two different things.
+test fn every_removal_target_is_a_stated_roster_path() -> Bool {
+  count(ntfy_retire_removals) == 4
+    && ntfy_retire_removals_are_stated()
+    && count(filter(ntfy_retire_removals, r => r.recursive)) == 2
+}
+
+// RED: THE THREE TARGETS A RETIREMENT MUST NEVER NAME. Empty (the recursive removal that eats the
+// host), the filesystem root, and a path DERIVED from a roster path -- the parent of the config
+// directory, which is a different tree than the one the operator approved under a name the approval
+// never used. A relative path is refused too: it would be read against whatever directory the leg
+// happens to land in.
+test fn red_an_unstated_removal_target_is_refused() -> Bool {
+  !ntfy_retire_removal_target_is_stated(target: "")
+    && !ntfy_retire_removal_target_is_stated(target: "/")
+    && !ntfy_retire_removal_target_is_stated(target: "/etc")
+    && !ntfy_retire_removal_target_is_stated(target: "gunbc-ntfy")
+    && ntfy_retire_removal_target_is_stated(target: "/etc/gunbc-ntfy")
+}
+
+// THE RECURSIVE FLAG TRAVELS WITH THE TARGET: a tree is removed with -r and a file without it, so a
+// leg cannot quietly turn a file removal into a tree walk.
+test fn the_recursive_flag_travels_with_the_target() -> Bool {
+  all(ntfy_retire_removals, r =>
+    any(ntfy_retire_legs, leg => any(leg.argv, w => w == r.target)
+      && (r.recursive == any(leg.argv, w => w == "-rf"))))
+}
+
+// ── The readback verdicts ──────────────────────────────────────────────────────────────────────
+
+data verdict_all_absent: List<NtfyRetireVerdict> = [
+  RetireMemberAbsent { member: "unit" as NonEmptyStr, evidence: "systemd LoadState is not-found" },
+  RetireMemberAbsent { member: "front door" as NonEmptyStr, evidence: "tailscale serve status lists no route" },
+  RetireMemberAbsent { member: "account" as NonEmptyStr, evidence: "getent passwd resolves no entry" },
+  RetireMemberAbsent { member: "config directory" as NonEmptyStr, evidence: "the config path does not exist" },
+  RetireMemberAbsent { member: "state root" as NonEmptyStr, evidence: "the state root does not exist" },
+  RetireMemberAbsent { member: "binary" as NonEmptyStr, evidence: "the binary path does not exist" },
+]
+
+test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
+  ntfy_retire_receipt_is_clean(vs: verdict_all_absent)
+    && count(ntfy_retire_members) == 6
+    && all(ntfy_retire_members, m => string_contains(s: ntfy_retire_receipt_text(vs: verdict_all_absent), pattern: m as String))
+}
+
+// RED: A MEMBER FOUND PRESENT. The receipt is the condition the step passes on, so a present member
+// must make it unclean rather than merely a line the operator may disagree with.
+test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
+  let one_present = map(verdict_all_absent, v => match v {
+    RetireMemberAbsent { member: m, evidence: e } =>
+      if m == ("state root" as NonEmptyStr) {
+        RetireMemberPresent { member: m, evidence: e }
+      } else {
+        RetireMemberAbsent { member: m, evidence: e }
+      }
+    RetireMemberPresent { member: m, evidence: e } => RetireMemberPresent { member: m, evidence: e }
+  })
+  !ntfy_retire_receipt_is_clean(vs: one_present)
+    && string_contains(s: ntfy_retire_receipt_text(vs: one_present), pattern: "STILL PRESENT")
+}
+
+// RED: A MEMBER NEVER READ. Six legs ran and five verdicts came back: the roster is the standard, so
+// a receipt that simply omits a member is not clean coverage, it is a gap.
+test fn red_a_roster_member_never_read_makes_the_receipt_unclean() -> Bool {
+  let five = filter(verdict_all_absent, v => match v {
+    RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
+    RetireMemberPresent { member: _, evidence: _ } => true
+  })
+  count(five) == 5 && !ntfy_retire_receipt_is_clean(vs: five)
+}
+
+// THE UNIT. systemd answers for a unit it cannot load with not-found and exit 0, so the exit code
+// cannot carry this verdict.
+test fn the_unit_absence_is_read_from_load_state_not_the_exit_code() -> Bool {
+  ntfy_retire_unit_is_absent(show_output: "not-found\n")
+    && !ntfy_retire_unit_is_absent(show_output: "loaded\n")
+    && !ntfy_retire_unit_is_absent(show_output: "masked\n")
+    && !ntfy_retire_unit_is_absent(show_output: "")
+}
+
+// THE ACCOUNT. getent's not-found exit and an empty line together; an exit code alone would read a
+// transport error as an absent account.
+test fn the_account_absence_is_getent_not_found_and_no_line() -> Bool {
+  ntfy_retire_account_is_absent(exit_code: 2, stdout: "")
+    && !ntfy_retire_account_is_absent(exit_code: 0, stdout: "gunbc-ntfy:x:994:984::/nonexistent:/usr/sbin/nologin")
+    && !ntfy_retire_account_is_absent(exit_code: 1, stdout: "")
+}
+
+// A PATH. The probe exits non-zero exactly when the path is not there.
+test fn a_path_probe_reads_nonzero_as_absent() -> Bool {
+  ntfy_retire_path_is_absent(exit_code: 1) && !ntfy_retire_path_is_absent(exit_code: 0)
+}
+
+// THE FRONT DOOR. tailscale's own status is the account of what it serves: a route on the retired
+// port means the door is still standing, and a status that cannot be parsed is NOT read as absence.
+test fn the_front_door_absence_is_read_from_tailscales_own_status() -> Bool {
+  let with_route = "{\"TCP\":{\"8443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:8443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}"
+  let without_route = "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:18789\"}}}}}"
+  let unreadable = "{\"TCP\":{"
+  ntfy_retire_front_door_is_absent(status_json: without_route)
+    && !ntfy_retire_front_door_is_absent(status_json: with_route)
+    && !ntfy_retire_front_door_is_absent(status_json: unreadable)
+}
+
+// THE ROSTER PATHS ARE THE ONES THE RUN REMOVES: each member's path appears in a leg, so the roster
+// and the legs cannot drift into different lists.
+test fn every_roster_path_is_removed_by_a_leg() -> Bool {
+  all([ntfy_retire_unit_path, ntfy_retire_config_dir, ntfy_retire_state_root, ntfy_retire_binary_path], p =>
+    any(ntfy_retire_legs, leg => any(leg.argv, w => w == (p as String))))
+}

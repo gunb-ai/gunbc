@@ -1,0 +1,25 @@
+module extdeps.shadow.account_deletion
+
+// userdel(8) -- the shadow suite's account removal. The suite's other half (useradd, newusers) is
+// modeled in extdeps.shadow.subordinate_ids and gunbc.executor_privileged_operation; removal had no
+// model because nothing in the corpus removed an account until a retired service's account had to
+// come off its host. The invocation is the whole of it: the login name, and nothing else.
+//
+// NO -r, AND THAT IS A CHOICE. userdel -r would delete the account's home and mail spool, which for
+// a service account means whatever the packager decided those paths are. The retirement names its
+// directories itself -- the config directory and the state root the service was configured with --
+// so the account removal removes the identity and the tree removals remove the trees, and no leg
+// deletes a path this corpus has not stated.
+
+import std.types { NonEmptyStr, List, Int }
+
+data userdel_binary_path: NonEmptyStr = "/usr/sbin/userdel"
+
+fn userdel_remove_account_argv(account: NonEmptyStr) -> List<String> {
+  [userdel_binary_path as String, account as String]
+}
+
+// userdel(8), EXIT STATUS: "6 specified user doesn't exist". The retirement reads it as a failure of
+// the roster, not as success: a member the run expected to remove and did not find is a host that
+// differs from the roster, and the run says so rather than reporting a removal it did not perform.
+data userdel_user_not_found_exit: Int = 6
