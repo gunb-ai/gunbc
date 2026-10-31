@@ -74,7 +74,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
-import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_redfish_surface, bmc_redfish_authorize, bmc_redfish_note_failed_login, bmc_redfish_account_collection_body, BmcRedfishLockoutNever, BmcRedfishLockoutAfter, bmc_redfish_account_member_body, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange, RedfishAuthSurfaceUnmodeled, RedfishOrdinaryRequest, RedfishBasicAuth, BmcRedfishLockoutThreshold, bmc_redfish_change_password, bmc_redfish_change_step_world, BmcRedfishPasswordChangeStep, BmcRedfishChangeCompleted, BmcRedfishChangeRefused }
+import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_redfish_surface, bmc_redfish_authorize, bmc_redfish_note_failed_login, bmc_redfish_account_collection_body, bmc_redfish_account_odata_id, BmcRedfishLockoutNever, BmcRedfishLockoutAfter, bmc_redfish_account_member_body, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange, RedfishAuthSurfaceUnmodeled, RedfishOrdinaryRequest, RedfishBasicAuth, BmcRedfishLockoutThreshold, bmc_redfish_change_password, bmc_redfish_change_step_world, BmcRedfishPasswordChangeStep, BmcRedfishChangeCompleted, BmcRedfishChangeRefused }
 import extdeps.bmc.redfish { redfish_manager_account_collection_from_json, redfish_manager_account_from_json, redfish_manager_account_name_from_odata_id, RedfishAccountCollection, RedfishAccountCollectionUnreadable, RedfishAccountResource, RedfishAccountResourceUnreadable, RedfishRoleIdServed, RedfishRoleIdAbsent, RedfishRoleIdUnknown, RedfishRoleIdMalformed, redfish_account_password_patch_body, RedfishFirstLoginPasswordChange }
 import extdeps.languages.json.parse { FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.machine_intake.bmc_rotation_route {
@@ -3241,13 +3241,6 @@ type BmcAccountDryStep {
   application: BmcAccountApplication
 }
 
-fn published_write_text(write: PlannedPublishedWrite) -> String {
-  match write {
-    PublishedIsTheManagedWrite => "the published account, which is the managed account (no second write)"
-    PublishedWrittenSeparately { write: w } => account_write_request_text(request: w.request) as String
-  }
-}
-
 fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) -> String? {
   match fetch {
     SecretCredentialReady { credential: c, resolved_version: r } =>
@@ -3262,38 +3255,53 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
 // THE WRITES, IN THE SECRET ORDER. Each write's bytes come from a fetch that resolved to exactly that
 // write's generation; a fetch of any other version writes nothing, and the application records the
 // write as not completed rather than writing a different credential.
-// THE OUTCOME of applying one planned account write to the dry world: the world as the transport left it, and
-// whether that write completed. Shared by the managed write and a separate published write so the plan applies
-// a write by its OWN request (one dispatch, §6b), not by which slot it sits in.
+// THE OUTCOME of applying one planned account write to the dry world: the world as the transport left it, whether
+// that write completed, and the request the dispatch ACTUALLY issued -- the transport, its target, and the secret
+// redacted to its generation reference (never credential bytes). Shared by the managed write and a separate
+// published write so the plan applies a write by its OWN request (one dispatch, §6b), and the application's
+// request receipt records what was really sent, in order -- which is what makes the plan-path witness sensitive to
+// WHICH transport ran, not just that the controller ended up secured.
 type AccountWriteDryOutcome {
   world: BmcWorld
   completed: Bool
+  issued_request: String
 }
 
 // Apply one PlannedAccountWrite by dispatching on its own request. It resolves that write's own generation
-// through dry_fetch_resolves (a write whose generation the fetch does not resolve changes nothing and completes
-// nothing), then routes to the transport the request names: IPMI Set User Password, the Redfish Password PATCH,
-// or -- for a privilege-limit row, which is not a credential write at all -- completed:false, leaving the world
-// unchanged. A Redfish PATCH that the world refuses leaves the world exactly as it was and completes nothing;
-// the post-read, not this apply, decides whether the account is secured.
+// through dry_fetch_resolves (a write whose generation the fetch does not resolve changes nothing, completes
+// nothing, and issues no request), then routes to the transport the request names: IPMI Set User Password, the
+// Redfish Password PATCH, or -- for a privilege-limit row, which is not a credential write at all -- completed:false,
+// leaving the world unchanged. A Redfish PATCH that the world refuses leaves the world exactly as it was and completes
+// nothing; the post-read, not this apply, decides whether the account is secured. Each arm returns the request it
+// issued, with the secret named only by its generation reference.
 fn apply_planned_account_write(
   world: BmcWorld,
   fetch: SecretCredentialFetch,
   write: PlannedAccountWrite,
 ) -> AccountWriteDryOutcome {
   match dry_fetch_resolves(fetch: fetch, write: write) {
-    Absent => AccountWriteDryOutcome { world: world, completed: false }
+    Absent => AccountWriteDryOutcome { world: world, completed: false, issued_request: "" }
     Present { value: pw } =>
       match write.request {
         IpmiSetUserPassword { user: _ } => {
           let step = bmc_ipmi_set_user_password(world: world, user: write.user, password: pw)
-          AccountWriteDryOutcome { world: step.world, completed: step.completed }
+          AccountWriteDryOutcome {
+            world: step.world,
+            completed: step.completed,
+            issued_request: join([account_write_request_text(request: write.request) as String, " to generation ", write.generation.stored.stored_version as String], ""),
+          }
         }
         RedfishAccountPasswordWrite { account: name, transport_operation: _, action_shape: _ } => {
           let step = dry_apply_bmc_redfish_password_write(world: world, account: name, new_password: pw)
-          AccountWriteDryOutcome { world: bmc_redfish_change_step_world(step: step.step), completed: bmc_redfish_password_write_completed(step: step) }
+          AccountWriteDryOutcome {
+            world: bmc_redfish_change_step_world(step: step.step),
+            completed: bmc_redfish_password_write_completed(step: step),
+            // The PATCH target is the account's @odata.id and the body carries the generation REFERENCE, never the
+            // password bytes -- so the receipt records the route the dispatch issued while leaking no credential.
+            issued_request: join(["Redfish PATCH ", bmc_redfish_account_odata_id(name: name as String), " ", redfish_account_password_patch_body(password: write.generation.stored.stored_version as String)], ""),
+          }
         }
-        IpmiSetUserPrivilegeLimit { access: _ } => AccountWriteDryOutcome { world: world, completed: false }
+        IpmiSetUserPrivilegeLimit { access: _ } => AccountWriteDryOutcome { world: world, completed: false, issued_request: account_write_request_text(request: write.request) as String }
       }
   }
 }
@@ -3319,7 +3327,7 @@ fn dry_apply_bmc_account_plan(
   // privilege-limit row that is not a credential write at all -- completes nothing).
   let managed_step = apply_planned_account_write(world: world, fetch: managed_fetch, write: plan.managed_write)
   let published_step = match plan.published_write {
-    PublishedIsTheManagedWrite => AccountWriteDryOutcome { world: managed_step.world, completed: managed_step.completed }
+    PublishedIsTheManagedWrite => AccountWriteDryOutcome { world: managed_step.world, completed: managed_step.completed, issued_request: managed_step.issued_request }
     PublishedWrittenSeparately { write: w } => apply_planned_account_write(world: managed_step.world, fetch: published_fetch, write: w)
   }
   let channel_steps = fold(plan.channel_writes, init: BmcChannelWritesDryStep { world: published_step.world, completed: true }, f: (acc, w) =>
@@ -3335,9 +3343,18 @@ fn dry_apply_bmc_account_plan(
       IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
       RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
     })
+  // The receipt records the requests the DISPATCH issued, in order (not the plan's declared labels): the managed
+  // write's issued request, then the published write's if it was a SEPARATE write, then each channel row the fold
+  // applied, then the endpoint. This is what lets a witness tell which transport ran -- revert the Redfish arm to
+  // IPMI and the receipt's managed slot says "IPMI Set User Password", not "Redfish PATCH", and the route claim
+  // goes red even though the controller still ends up secured.
+  let issued_text = match plan.published_write {
+    PublishedIsTheManagedWrite => managed_step.issued_request
+    PublishedWrittenSeparately { write: _ } => join([managed_step.issued_request, " then ", published_step.issued_request], "")
+  }
   let request_text = join(
     concat(
-      ["dry ", account_write_request_text(request: plan.managed_write.request) as String, " then ", published_write_text(write: plan.published_write)],
+      ["dry ", issued_text],
       concat(map(plan.channel_writes, w => concat(" then ", account_write_request_text(request: w.request) as String)), [" on ", plan.endpoint.host as String]),
     ),
     "",
