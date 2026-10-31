@@ -1,0 +1,46 @@
+module test.claim.record_field_expected_type_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// E1 ROUTE (4): a record literal passes its declared field type as the field's `expected`, for applied and
+// anonymous declared types as well as named ones (infer_record_lit_structural field_expected no longer gates on
+// ident_span / callable / optional shape). Route (2) (failed-authority and sig-less-lambda arguments) is a declared
+// residual: no formal exists there to pass.
+//
+// CONTROL ONLY today. The discriminating evidence arrives with E1: once E1 deletes the numeric shortcut
+// (declared_realizes_as_kernel_numeric), this same control is the RED-equivalent -- without route (4) the literal 3
+// would type Int and refuse at the Nat field. Until then it passes either way.
+//
+// UNRUN: authored, not executed.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn refd_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn refd_source(field_value: String) -> String {
+  "module refd.probe\n\nimport std.types { Int, String }\n\nimport std.nat { Nat }\n\ntype Box<T> = Box { n: Nat, v: T }\n\nfn probe(m: Nat) -> Box<String> {\n  Box { n: " + field_value + ", v: \"a\" }\n}\n"
+}
+
+// CONTROL (route 4): literal 3 at a Nat field of an applied type compiles.
+test fn a_literal_at_a_nat_field_of_an_applied_type_is_accepted() -> Bool {
+  refd_refusal_count(source: refd_source(field_value: "3")) == 0
+}
+
+// CONTROL (widening risk): the same applied-type field fed a non-literal expression that compiles today still
+// compiles once the field type is passed as expected.
+test fn a_nat_value_at_a_nat_field_of_an_applied_type_is_accepted() -> Bool {
+  refd_refusal_count(source: refd_source(field_value: "m")) == 0
+}
