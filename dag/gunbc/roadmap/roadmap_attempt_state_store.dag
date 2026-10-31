@@ -676,7 +676,7 @@ data attempt_append_log_events_group_writable_mode: FileMode = FileMode {
 }
 
 type AttemptAppendLogHostCreate
-  = AttemptAppendLogCreated { path: String }
+  = AttemptAppendLogCreated { path: String, created_mode: FileMode? }
   | AttemptAppendLogAlreadyExists { path: String }
   | AttemptAppendLogCreateRefused { detail: String }
   | AttemptAppendLogUnready { detail: String }
@@ -707,10 +707,10 @@ fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String,
           AppendWriteAdmitted => match instance.worker {
             WorkerDedicatedAccount =>
               let created = Filesystem.WriteCreateNewWithMode(path: member_path, content: "", mode: file_mode_bits(mode: attempt_append_log_events_group_writable_mode))
-              if created.success { AttemptAppendLogCreated { path: member_path } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+              if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Present { value: attempt_append_log_events_group_writable_mode } } } else { AttemptAppendLogCreateRefused { detail: created.error } }
             WorkerIsServiceUser =>
               let created = Filesystem.WriteCreateNew(path: member_path, content: "")
-              if created.success { AttemptAppendLogCreated { path: member_path } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+              if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Absent } } else { AttemptAppendLogCreateRefused { detail: created.error } }
           }
           AppendWriteRefused { refusal: r } => match r {
             CreateOverExistingMember => AttemptAppendLogAlreadyExists { path: member_path }

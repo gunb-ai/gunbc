@@ -1,0 +1,156 @@
+module test.claim.attempt_append_log_host_create_wet_witness
+
+// THE HOST-SIDE CREATE OF AN APPEND-LOG MEMBER, RUN WET OVER A REAL ATTEMPT-STATE DIRECTORY THE TEST OWNS.
+// Under std.durable_append_log's HostCreatesThenSandboxWrites window the host's only write is this create, and
+// it is admitted only while the member does not exist; the window then passes to the sandbox by the member's
+// existence (no hold to acquire or release -- contract: std.durable_append_log append_write_admission, standing
+// WriterWindowReleased). The dedicated-account branch keeps the group-writable mode AT CREATION (the defect this
+// witness guards: a create that drops the mode leaves the dedicated worker unable to append). The service-user
+// branch was historically a plain create with no mode and stays so; an existing member is a typed outcome
+// (AlreadyExists), never an overwrite. Business key only -- the path is derived from the sealed instance, never
+// supplied by the caller.
+
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, isolated_dashboard_instance_admitting,
+  DashboardActuating, DashboardLocalProvision, dashboard_home_provision_parent_root,
+  fleet_admitted_revision_source, WorkerIsServiceUser, WorkerDedicatedAccount,
+}
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptStateMember, AttemptWorkerEvents,
+  attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
+  AttemptAppendLogCreateRefused, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
+  attempt_state_open, AttemptStateReady, AttemptStateUnready,
+  attempt_state_member_directory, attempt_state_directory_path, attempt_state_member_path,
+  attempt_append_log_events_group_writable_mode,
+}
+import std.durable_append_log {
+  MemberWriterPolicy, HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty,
+  AppendWriteAdmitted, AppendWriteRefused, WriterStandingUnknown, append_write_admission,
+}
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_appendlog.XXXXXX").path
+}
+
+fn instance_service_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "appendlog-wet" as NonEmptyStr),
+    instance_id: "appendlog-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn instance_dedicated_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance_admitting(
+    deployment: deployment_id(name: "appendlog-wet" as NonEmptyStr),
+    instance_id: "appendlog-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+    admitted_revision: fleet_admitted_revision_source,
+    publication_base_branch: "main" as NonEmptyStr,
+    worker: WorkerDedicatedAccount,
+    provision_parent_root: dashboard_home_provision_parent_root,
+  )
+}
+
+// The per-attempt member directory the dispatch prepare step would have made before the create; the create is
+// driven the way the provider drives it, over a directory that already exists.
+fn ensure_member_dir(instance: HostDashboardInstance) -> Bool {
+  match attempt_state_open(instance: instance, node: "wet-node", attempt_key: "wet-key") {
+    AttemptStateUnready { detail: _ } => false
+    AttemptStateReady { store: s } =>
+      let dir = attempt_state_directory_path(store: s, directory: attempt_state_member_directory(member: AttemptWorkerEvents))
+      shell.Mkdir.Parents(path: dir as FilePath).success
+  }
+}
+
+// WET GREEN, SERVICE USER: the host create makes the member and it reads back present.
+test fn the_service_user_host_create_creates_the_member() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let ok = service_user_create_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn service_user_create_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && Filesystem.Read(path: p).success
+    _ => false
+  }
+}
+
+// WET GREEN, DEDICATED ACCOUNT -- THE MODE GUARD: the host create makes the member AND the created mode is the
+// group-writable mode, so the dedicated worker can append it. file_mode_octal is the mode-read-back the codebase
+// uses for declared created modes (dispatch_unit_created_paths precedent).
+test fn the_dedicated_host_create_keeps_the_group_writable_mode() -> Bool {
+  let root = fresh_root()
+  let inst = instance_dedicated_at(root: root)
+  let ok = dedicated_create_mode_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn dedicated_create_mode_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: m } =>
+      match m {
+        Present { value: mode } => ensured && file_mode_octal(mode: mode) == "660" && Filesystem.Read(path: p).success
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// WET RED (a typed outcome, not a crash): creating over an existing member reports AlreadyExists -- an existing
+// member is an outcome, never an overwrite.
+test fn a_host_create_on_an_existing_member_reports_already_exists() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let ok = already_exists_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn already_exists_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: _, created_mode: _ } =>
+      match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+        AttemptAppendLogAlreadyExists { path: _ } => ensured
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// PURE (executed claim): the contract refuses a host create whose writer standing is unobserved -- the host cannot
+// mint its own standing to slip a create past the window.
+test fn the_unobserved_standing_refuses_a_host_create() -> Bool {
+  match append_write_admission(policy: HostCreatesThenSandboxWrites, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterStandingUnobserved { cause: "no window observed" }, member_exists: false) {
+    AppendWriteRefused { refusal: r } => match r {
+      WriterStandingUnknown { cause: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
