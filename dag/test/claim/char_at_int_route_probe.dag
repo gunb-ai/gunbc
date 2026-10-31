@@ -1,0 +1,55 @@
+module test.claim.char_at_int_route_probe
+
+import std.types { Char, Int, List }
+
+// Q4 ROUTE-DECIDING PROBE FIXTURE: WHICH ARM OF v1.compiler.infer declared_type_inhabitance ADMITS A Char VALUE AT A
+// DECLARED Int? AUTHORED, UNRUN. This is a COMPILE fixture read for advisories, not a claim: it has no test fn and
+// is not enrolled in any gate. Char is `type Char = Int where unicode_scalar, brand("Char")` (std.types).
+//
+// SEED REQUIRED: the Q1b step-1 seed (gunbc sha 646d4747, from kh/q1b-terminal-arm-census @ d5e1c4544f7), whose
+// terminal arm of declared_type_inhabitance answers the counted advisory 'unmodeled: no arm judges this pair'
+// (UnmodeledNoArmDecides) instead of Inhabits. On any older seed the terminal arm is silent, and this fixture
+// cannot separate anything.
+//
+// COMMAND (one run, serial, own scope, private mktemp dir, fixture already under dag/):
+//   gunbc compile --output-dir <private dir>/out --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/char_at_int_route_probe.dag --target dag 2>&1 | grep -A3 'char_at_int_route_probe'
+// Read ONLY diagnostics whose location is this file (the closure's std advisories are noise).
+//
+// SITES (one per line so the location names the cell): probe_char_at_int (the target), probe_list_char_at_list_int
+// (the container path may differ per position), probe_int_at_int (the control).
+//
+// EXPECTED SIGNATURES, by reading of the arm order (declared Int is the std.integer coproduct, so
+// refinement_inhabitance has an EMPTY declared chain and cannot be the admitting arm):
+//   (b) TERMINAL FALL-THROUGH: an advisory 'unmodeled: no arm judges this pair' located at the probe_char_at_int call
+//       argument for parameter 'n'. Every earlier arm declined.
+//   (a) alias_identity_in_judgment, or any earlier admitting arm (the produced_is_kernel_grounded_carrier arm if
+//       Char resolves to the grounded Int, or the numeric arm below): NO diagnostic at that site.
+//   (d) THIRD OUTCOME, declared_realizes_as_kernel_numeric: authored_name_at may yield Int for a Char-typed value, or
+//       Char's produced type may admit a numeral; the numeric arm then answers Inhabits. Signature: NO diagnostic,
+//       the same as (a). The two silent outcomes are NOT separable by this run; a run answers (b) versus
+//       not-(b) only, and the split of not-(b) is by reading plus a follow-up deletion probe.
+//   CONTROL probe_int_at_int: NO diagnostic at that site under every outcome. If it shows the advisory, the fixture or
+//       the seed is invalid and nothing above is read.
+//   The List pair, if its position differs: the same two signatures at probe_list_char_at_list_int; a divergence from
+//       the scalar cell means the container path decides it, which is a separate finding.
+
+fn take_int(n: Int) -> Int {
+  n
+}
+
+fn take_ints(ns: List<Int>) -> Int {
+  0
+}
+
+fn probe_char_at_int(c: Char) -> Int {
+  take_int(n: c)
+}
+
+fn probe_list_char_at_list_int(cs: List<Char>) -> Int {
+  take_ints(ns: cs)
+}
+
+fn probe_int_at_int(i: Int) -> Int {
+  take_int(n: i)
+}
