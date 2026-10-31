@@ -47,7 +47,7 @@ import product.fabric.demand {
 }
 import product.fabric.selection {
   select_supply, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
-  PlacementAffinityKey, StableRosterOrder,
+  PlacementAffinityKey, StableRosterOrder, CandidateOffer,
 }
 import product.fabric.flex_vast_shadow { flex_candidates_from_vast_offer, flex_machine_key_for_offer, flex_vast_offer_key, flex_delay_unvalued, flex_objective, VastOfferCandidateStanding, VastCandidateDerived, VastCandidateConsequencesUnestablished }
 import product.fabric.flex_vast_loop {
@@ -269,7 +269,7 @@ type FlexDemandStanding
 // fold refused, a demand whose directive is not to seek new supply, offers whose consequences the search
 // answer does not carry, a selection that admitted no offer, and a selection that chose one.
 type FlexPassSelection
-  = FlexSelectionOffer { chosen: FlexScreenedOffer, considered: Int }
+  = FlexSelectionOffer { chosen_key: NonEmptyStr, considered: Int }
   | FlexSelectionUnreadDemand { reason: NonEmptyStr }
   | FlexSelectionDemandRefused { refusal: DemandRefusal<NonEmptyStr> }
   | FlexSelectionNotSeeking { directive: SatisfactionDirective }
@@ -277,6 +277,11 @@ type FlexPassSelection
   | FlexSelectionRequirementsUnread { reason: NonEmptyStr }
   | FlexSelectionWorkChanged { word: NonEmptyStr }
   | FlexSelectionNoOffer { considered: Int }
+  // select_supply answered with an unresolved equal-cost tie. It is NOT a no-offer: the authority
+  // examined a population and could not order it. Its digest and collision live in select_supply's
+  // own record (Fnv1a64StructuralDigestHex, AffinityCollision); this arm narrows to the count it
+  // considered and never reports a tie as "nothing to buy" - DESIGN 5: a failure arm refuses.
+  | FlexSelectionTieUnresolved { considered: Int }
 
 // THE DEMAND STANDING THIS PASS HAS. Unread, by construction, until the front door's callout exists.
 fn flex_demand_standing() -> FlexDemandStanding {
@@ -341,53 +346,98 @@ fn flex_pass_select(
   }
 }
 
-// THE FIRST OFFER WHOSE CANDIDATES CANNOT BE BOUND, in roster order. The search answer carries no start
-// cost, no transition, no opportunity cost, no readiness, no cited region and no use permit, so on live
-// search data this is where the route stops -- naming the fields, which is the whole point of routing it
-// through the adapter instead of filling the gaps in here.
-fn flex_first_unbound(derived: List<VastOfferCandidateStanding>) -> VastOfferCandidateStanding? {
-  first_where(derived, d => match d { VastCandidateDerived { candidates: _ } => false  VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => true })
+// THE SHADOW'S BINDING VERDICT on the screened offers, in the shape the pass can act on. This is
+// the only place the Vast search answer is asked to become a candidacy, and the shadow authority
+// owns the answer: flex_candidates_from_vast_offer refuses today, because the search-offers
+// response carries none of the six facts a candidacy needs (start cost, transition, opportunity
+// cost, readiness, cited region, use permit). The pass stops here and NAMES the offer and the
+// missing fields - it does not rank what the authority refused to bind, and it does not invent an
+// "unbound means no offer" answer of its own.
+type FlexCandidatePopulation
+  = FlexCandidatesBound { candidates: List<CandidateOffer<NonEmptyStr>> }
+  | FlexCandidatesUnestablished { offer_key: OfferKey, missing: List<NonEmptyStr> }
+
+// TRUE when the shadow refused to bind this offer's candidates. A named function rather than an
+// inline match in a lambda: a match inside a call argument does not parse in this grammar.
+fn flex_candidate_refused(d: VastOfferCandidateStanding) -> Bool {
+  match d {
+    VastCandidateDerived { candidates: _ } => false
+    VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => true
+  }
 }
 
+fn flex_pass_candidates(screened: List<FlexScreenedOffer>) -> FlexCandidatePopulation {
+  let derived = map(
+    screened,
+    s => flex_candidates_from_vast_offer(
+      offer: s.offer,
+      machine: flex_machine_key_for_offer(account: flex_vast_account, offer: s.offer),
+    ),
+  )
+  match first_where(derived, flex_candidate_refused) {
+    Present { value: VastCandidateConsequencesUnestablished { offer_key: k, missing: m } } =>
+      FlexCandidatesUnestablished { offer_key: k, missing: m }
+    Absent => FlexCandidatesBound {
+      candidates: fold(
+        derived,
+        init: [],
+        f: (acc, d) => match d {
+          VastCandidateDerived { candidates: cs } => concat(acc, map(cs, c => c.candidate))
+          VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => acc
+        },
+      ),
+    }
+  }
+}
+
+// THE SELECTION STEP, run by product.fabric.selection. This function ADDS NOTHING to the answer:
+// its three arms are select_supply's three arms, one for one, and it has NO arm of its own - in
+// particular no "no candidates, so no offer" arm, because that answer is the authority's to give
+// (NoAdmissibleOffer, with the population it considered). It takes an already-bound population:
+// the binding is bind_candidate's, the shadow's verdict is flex_pass_candidates', and this is the
+// only ranking path (DESIGN 3c: one binding route, one ranking route).
+fn flex_rank_candidates<P>(
+  policy: FlexPolicy,
+  requirements: ExecutionRequirements,
+  cap: MoneyAmountMicro,
+  candidates: List<CandidateOffer<P>>,
+) -> FlexPassSelection {
+  let selection = select_supply(
+    requirements: requirements,
+    candidates: candidates,
+    duration: flex_horizon_duration(policy: policy),
+    maximum_buy_order: cap,
+    budget_currency: vast_ai_quote_currency,
+    delay_valuation: flex_delay_unvalued,
+    tie: StableRosterOrder,
+    affinity: flex_pass_affinity,
+  )
+  match selection {
+    OfferSelected { candidate: chosen, considered: considered, tie_policy: _, cost: _, basis: _, horizon: _ } =>
+      FlexSelectionOffer { chosen_key: chosen.candidate.offer.id.key, considered: length(considered) }
+    NoAdmissibleOffer { considered: considered } => FlexSelectionNoOffer { considered: length(considered) }
+    EqualCostTieUnresolved { digest: _, cause: _, considered: considered } =>
+      FlexSelectionTieUnresolved { considered: length(considered) }
+  }
+}
+
+// THE PASS'S SELECTION STEP: the shadow's binding verdict first, and only then the authority's
+// ranking. On live search data this stops at candidates-unestablished, naming the fields the
+// search answer does not carry. The witness drives flex_rank_candidates directly with a population
+// bound by the fabric's own binding route, which is what proves the ranking call is live rather
+// than a hand-written arm: the selected key and the considered count are answers nothing else here
+// can produce.
 fn flex_select_offers(
   policy: FlexPolicy,
   screened: List<FlexScreenedOffer>,
   requirements: ExecutionRequirements,
   cap: MoneyAmountMicro,
 ) -> FlexPassSelection {
-  let derived = map(screened, s => flex_candidates_from_vast_offer(offer: s.offer, machine: flex_machine_key_for_offer(account: flex_vast_account, offer: s.offer)))
-  match flex_first_unbound(derived: derived) {
-    Present { value: VastCandidateConsequencesUnestablished { offer_key: k, missing: m } } =>
+  match flex_pass_candidates(screened: screened) {
+    FlexCandidatesUnestablished { offer_key: k, missing: m } =>
       FlexSelectionCandidatesUnestablished { offer_key: k, missing: m }
-    Present { value: VastCandidateDerived { candidates: _ } } => FlexSelectionNoOffer { considered: 0 }
-    Absent =>
-      let candidates = fold(
-        derived,
-        init: [],
-        f: (acc, d) => match d {
-          VastCandidateDerived { candidates: cs } => concat(acc, cs)
-          VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => acc
-        },
-      )
-      let selection = select_supply(
-        requirements: requirements,
-        candidates: candidates,
-        duration: flex_horizon_duration(policy: policy),
-        maximum_buy_order: cap,
-        budget_currency: vast_ai_quote_currency,
-        delay_valuation: flex_delay_unvalued,
-        tie: StableRosterOrder,
-        affinity: flex_pass_affinity,
-      )
-      match selection {
-        OfferSelected { candidate: chosen, considered: considered, tie_policy: _ } =>
-          match first_where(screened, s => flex_vast_offer_key(offer: s.offer) == chosen.candidate.offer.id) {
-            Present { value: s } => FlexSelectionOffer { chosen: s, considered: length(considered) }
-            Absent => FlexSelectionNoOffer { considered: length(considered) }
-          }
-        NoAdmissibleOffer { considered: considered } => FlexSelectionNoOffer { considered: length(considered) }
-        EqualCostTieUnresolved { digest: _, cause: _, considered: considered } => FlexSelectionNoOffer { considered: length(considered) }
-      }
+    FlexCandidatesBound { candidates: cs } =>
+      flex_rank_candidates(policy: policy, requirements: requirements, cap: cap, candidates: cs)
   }
 }
 
@@ -405,8 +455,8 @@ fn flex_demand_word(d: FlexDemandStanding) -> NonEmptyStr {
 // admitted no offer.
 fn flex_selection_wire(s: FlexPassSelection) -> NonEmptyStr {
   match s {
-    FlexSelectionOffer { chosen: c, considered: n } =>
-      concat("offer id=", int_to_decimal_string(value: c.offer.id), " machine=", int_to_decimal_string(value: c.offer.machine_id), " considered=", int_to_decimal_string(value: n), " (bid admission unwired: product.fabric.flex_policy flex_bid_admission_frontier)")
+    FlexSelectionOffer { chosen_key: k, considered: n } =>
+      concat("offer key=", k, " considered=", int_to_decimal_string(value: n), " (bid admission unwired: product.fabric.flex_policy flex_bid_admission_frontier)")
     FlexSelectionUnreadDemand { reason: r } => concat("unread-demand: ", r)
     FlexSelectionDemandRefused { refusal: r } => concat("demand-refused: ", flex_demand_refusal_word(refusal: r))
     FlexSelectionNotSeeking { directive: d } => concat("directive=", flex_directive_word(directive: d), " (the fold says do not seek new supply)")
@@ -415,6 +465,8 @@ fn flex_selection_wire(s: FlexPassSelection) -> NonEmptyStr {
     FlexSelectionRequirementsUnread { reason: r } => concat("requirements-unread: ", r)
     FlexSelectionWorkChanged { word: w } => concat("work-changed: ", w)
     FlexSelectionNoOffer { considered: n } => concat("no-admissible-offer considered=", int_to_decimal_string(value: n))
+    FlexSelectionTieUnresolved { considered: n } =>
+      concat("tie-unresolved considered=", int_to_decimal_string(value: n), " (equal cost, no ordering; select_supply names the digest and the collision)")
   }
 }
 

@@ -24,6 +24,7 @@ import product.fabric.demand {
 import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
 import product.fabric.flex_vast_shadow { flex_trial_policy }
 import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements }
+import test.claim.rtx_pro_6000_catalog_witness { vast_offer_bound, candidate_of }
 import gunbc.fleet.flex_pass_run {
   FlexDemandStanding, FlexDemandRead, FlexDemandUnread, FlexPassSelection, FlexSelectionUnreadDemand,
   FlexSelectionRequirementsUnread, FlexSelectionNotSeeking, FlexSelectionDemandRefused,
@@ -216,22 +217,31 @@ test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool 
 
 // 6. THE SELECTION ITSELF RUNS BY EXECUTION. Given requirements (supplied here from the fabric's own
 // fixture, not invented in this file) and no bindable candidates, the route reaches
-// product.fabric.selection select_supply and takes its NO-OFFER arm: considered=0 is that authority's
-// answer, not a string this entry could have written, because nothing else in the route can produce it.
-// Together with claim 2 this is the discriminating pair at ONE call site: the same route yields
-// requirements-unread when the CALLER has no requirements and no-admissible-offer when it does. If the
-// selection call were removed or short-circuited, one of these two arms would stop existing.
-test fn the_selection_route_runs_select_supply_and_reports_its_own_no_offer_arm() -> Bool {
-  let stop = flex_select_offers(
-    policy: flex_trial_policy,
-    screened: [],
-    requirements: fixture_requirements,
-    cap: money_amount_micro(count: 200000),
-  )
-  match stop {
-    FlexSelectionNoOffer { considered: n } =>
-      n == 0 && string_contains(s: flex_selection_wire(s: stop), pattern: "no-admissible-offer considered=0")
-    _ => false
+// THE SELECTION ROUTE HANDS A REAL POPULATION TO product.fabric.selection. The one candidate is bound
+// by the fabric's own binding route (test.claim.rtx_pro_6000_catalog_witness's Vast-offer binder, which
+// is product.fabric.selection bind_candidate under a thinner name), and the requirements are the fabric's
+// OWN fixture_requirements, which that offer does not satisfy. The answer must be the authority's
+// NoAdmissibleOffer with CONSIDERED=1: it examined the candidate and refused it. Nothing else in this
+// file can produce a nonzero considered count - flex_rank_candidates has no arm of its own, and the two
+// hand-written no-offer arms a reviewer found in the earlier draft both reported considered=0, which is
+// exactly why an empty population could not serve as the control. Replace the select_supply call with a
+// constant and this goes red; so does changing the requirements, the horizon, the buy order or the
+// tie-break, because the refusal is the authority's own verdict on those inputs.
+//
+// What is NOT claimed here: this is not a positive control. The binding route refuses every Vast SEARCH
+// offer, because the search response carries none of the six facts a candidacy needs, so no live pass can
+// reach the ranking call at all - product.fabric.flex_vast_loop flex_select_supply_consumer_frontier part
+// (b) says so, and part (a) of that row is what this claim establishes.
+test fn the_selection_route_hands_the_bound_population_to_the_authority() -> Bool {
+  match vast_offer_bound(rate_micro: 200000) {
+    // Absent means the catalog fixture stopped binding; the control would then prove nothing.
+    Absent => false
+    Present { value: o } => flex_rank_candidates(
+      policy: flex_trial_policy,
+      requirements: fixture_requirements,
+      cap: money_amount_micro(count: 200000),
+      candidates: candidate_of(offer: o),
+    ) == FlexSelectionNoOffer { considered: 1 }
   }
 }
 
