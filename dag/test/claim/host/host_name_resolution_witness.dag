@@ -48,10 +48,7 @@ import extdeps.network.endpoint {
 }
 import extdeps.bmc.capability { bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac {
-  MegaRacMediaAddressFieldProbe,
-  megarac_media_address_field_probe_set,
   megarac_redirection_status_of_wire,
-  megarac_release_is_the_committed_hpm_read,
   RedirectionStatusKnown,
   RedirectionStatusFirmwareUncatalogued,
 }
@@ -83,7 +80,15 @@ import extdeps.dns.resolver {
   resolve_name,
   resolution_from_answer,
 }
+import gunbc.host.host_primary_network_observed {
+  lan_router_ipv4,
+  srv1_primary_network_receipt_2026_10_25,
+}
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
 import gunbc.host.host_name_resolution {
+  MegaRacMediaAddressFieldProbe,
+  megarac_media_address_field_probe_set,
+  bmc_membership_receipt,
   ObservationReceipt,
   UdpQuery,
   TcpQuery,
@@ -131,7 +136,6 @@ import gunbc.host.host_name_resolution {
   NotOnTailnet,
   TailnetMember,
   megarac_bmc_tailnet_membership,
-  router_address,
   srv2_lan_name,
   srv2_lan_name_under,
   srv2_tailnet_name_refused,
@@ -186,19 +190,19 @@ data foreign_fqdn: String = "srv2.example.com"
 // the impossible shapes have no syntax, so there is nothing left for a helper to paper over.
 
 fn answered(addrs: FreeSemigroup<Ipv4Address>) -> ResolverAnswer {
-  Addresses { server: router_address, addresses: addrs }
+  Addresses { server: lan_router_ipv4, addresses: addrs }
 }
 
 fn name_unknown() -> ResolverAnswer {
-  NameDoesNotExist { server: router_address }
+  NameDoesNotExist { server: lan_router_ipv4 }
 }
 
 fn nodata() -> ResolverAnswer {
-  NoAnswerOfThisType { server: router_address }
+  NoAnswerOfThisType { server: lan_router_ipv4 }
 }
 
 fn unanswered() -> ResolverAnswer {
-  ServerGaveNoReply { server: router_address }
+  ServerGaveNoReply { server: lan_router_ipv4 }
 }
 
 fn one_address() -> FreeSemigroup<Ipv4Address> {
@@ -232,12 +236,12 @@ fn probe_date_is_the_recorded_one() -> Bool {
 
 // TWO ADDRESSES, to show a resolved reply does not silently keep only the author's favourite.
 fn two_addresses() -> FreeSemigroup<Ipv4Address> {
-  non_empty_append(left: one_address(), right: non_empty_singleton(item: router_address))
+  non_empty_append(left: one_address(), right: non_empty_singleton(item: lan_router_ipv4))
 }
 
 // THE ADDRESS THAT KILLED THE BOOT: srv2's old 10G lease, 192.168.1.188, which the BMC's media share still
 // names and which no longer serves anything. Deliberately not `srv2_lan_ipv4` (the live address) and not
-// `router_address` (which `two_addresses` uses), so a claim can say "cited .188, answered .201" and mean it.
+// `lan_router_ipv4` (which `two_addresses` uses), so a claim can say "cited .188, answered .201" and mean it.
 // This is a witness's own construction — the hermetic point is the JUDGMENT, not the address — and the
 // address itself is documented in docs/probes/bmc_media_share_naming_2026-10-27.md.
 fn dead_address() -> FreeSemigroup<Ipv4Address> {
@@ -501,7 +505,7 @@ fn resolver_cardinality_probe_source(servers: String) -> String {
 data resolver_no_servers_source: String = resolver_cardinality_probe_source(servers: "[]")
 
 data resolver_one_server_source: String = resolver_cardinality_probe_source(
-  servers: "non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1))",
+  servers: "non_empty_singleton(item: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 1))",
 )
 
 // THE KEY THE COMPILER ACTUALLY EMITS, measured and not guessed — and the guess was wrong once. This
@@ -523,7 +527,7 @@ data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolv
 
 // THE CONTROL: the identical intentions, built through the admissions. It must be CLEAN of every class the
 // holes are refused for, or the holes are refusing something unrelated to forging.
-data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _, cause: _ } => Absent\n  }\n}\n"
+data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _, cause: _ } => Absent\n  }\n}\n"
 
 test fn a_host_row_forging_a_sealed_name_is_refused_at_compile_time() -> ProcessExit {
   census_verdict_all(
@@ -576,7 +580,7 @@ test fn a_share_whose_name_does_not_resolve_refuses_before_attach() -> Bool {
           match filed_row(name: n, space: space, answer: answered(addrs: one_address())) {
             Absent => false
             Present { value: row } =>
-              match standing_cause(standing: gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: router_address)), answer: name_unknown())) {
+              match standing_cause(standing: gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)), answer: name_unknown())) {
                 Present { value: NameUnknown { server: _ } } => true
                 _ => false
               }
@@ -597,7 +601,7 @@ test fn a_share_whose_name_resolves_is_usable() -> Bool {
           match filed_row(name: n, space: space, answer: answered(addrs: one_address())) {
             Absent => false
             Present { value: row } =>
-              standing_is_usable(standing: gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: router_address)), answer: answered(addrs: one_address())))
+              standing_is_usable(standing: gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)), answer: answered(addrs: one_address())))
           }
       }
   }
@@ -620,7 +624,7 @@ test fn a_share_naming_the_abandoned_address_refuses_even_though_the_ask_would_a
               match media_share_address_gate(
                 share_server: "192.168.1.188" as NonEmptyStr,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
@@ -659,7 +663,7 @@ test fn a_single_label_share_refuses_because_the_consumer_would_reject_it() -> B
                   match media_share_address_gate(
                     share_server: srv2_lan_short as NonEmptyStr,
                     row: row,
-                    reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                    reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                     rule: megarac_media_address_rule,
                     ask: fn(_s, _nm) { answered(addrs: one_address()) },
                   ) {
@@ -675,7 +679,7 @@ test fn a_single_label_share_refuses_because_the_consumer_would_reject_it() -> B
 
 // ── THE FLOOR HELD AGAINST THE VENDOR ROWS IT CAME FROM ─────────────────────────────────────────────
 // `megarac_media_address_rule.minimum_labels` is OUR inference, not a vendor fact. The firmware's verdicts
-// are the rows in extdeps.bmc.megarac.megarac_media_address_field_probe_set; the number is what this repo
+// are the rows in megarac_media_address_field_probe_set (this module, an executed receipt); the number is what this repo
 // concluded from them. A number with no witness is a number that outlives its evidence, so these claims
 // hold it against the rows instead against a paragraph.
 //
@@ -803,10 +807,45 @@ test fn the_rule_is_keyed_to_a_release_the_committed_read_evidences() -> Bool {
     // gate's `ConsumerFirmwareUnevidenced` arm exists to refuse, so a green that stopped checking the key
     // would be the red this claim is guarding.
     Absent => false
-    // ASKED THROUGH THE CORPUS'S OWN TEST, not by re-deriving a version string here: the key and the
-    // media-attach stop must name the same release, and the only honest way to say that is to ask the one
-    // function that answers it (`megarac_release_is_the_committed_hpm_read`).
-    Present { value: key } => megarac_release_is_the_committed_hpm_read(firmware: key)
+    // ONE SOURCE, CHECKED FROM THE OTHER END. The key is the capability catalog's read of the retained
+    // hpm-check stdout; this asks that read again, separately, and compares the identities. Re-key the probe
+    // rows to a spelled label, or to a second parse of the capture, and the two stop agreeing here.
+    Present { value: key } =>
+      match megarac_committed_hpm_check_identity {
+        Absent => false
+        Present { value: read_release } => bmc_firmware_release_identity_eq(a: key, b: read_release)
+      }
+  }
+}
+
+// THE RULE AND THE PROOF KEY ON ONE RELEASE. The gate's rule carries the unit's release, and the verdicts its
+// floor was inferred from carry theirs; if those two ever name different builds, the floor is being applied on
+// evidence from another machine. Both fields read the same datum, so this is cheap to satisfy and expensive
+// to break -- which is the point.
+test fn the_rule_and_the_probe_rows_key_on_one_release() -> Bool {
+  match megarac_media_address_rule.firmware {
+    Absent => false
+    Present { value: rule_release } =>
+      match megarac_media_address_field_probe_set.firmware {
+        Absent => false
+        Present { value: probe_release } => bmc_firmware_release_identity_eq(a: rule_release, b: probe_release)
+      }
+  }
+}
+
+// ONE ROUTER, ONE SOURCE. This module asks a resolver; the module that OBSERVED this network records the DHCP
+// lease that named the router as both gateway and sole DNS server. The address is declared ONCE, in that
+// observing module (gunbc.host.host_primary_network_observed lan_router_ipv4), and the lease row reads its own
+// datum. This claim goes the other way: it reads the lease's dns list and compares it against the server every
+// receipt in this module names. If either side re-spells the four octets, the paths diverge and this goes red
+// -- which is the only reason a single source stays single.
+test fn the_cited_resolver_is_the_server_the_lease_named() -> Bool {
+  match list_head(xs: srv1_primary_network_receipt_2026_10_25.lease.dns) {
+    Absent => false
+    Present { value: server } =>
+      ipv4_address_eq(a: server, b: lan_probe_receipt.asked)
+        && ipv4_address_eq(a: server, b: bmc_membership_receipt.asked)
+        && ipv4_address_eq(a: server, b: lan_router_ipv4)
   }
 }
 
@@ -849,7 +888,7 @@ test fn a_rule_with_no_evidenced_release_refuses_before_the_floor_is_applied() -
               match media_share_address_gate(
                 share_server: srv2_lan_fqdn as NonEmptyStr,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: MediaShareConsumerRule {
                   consumer: megarac_media_address_rule.consumer,
                   member: megarac_media_address_rule.member,
@@ -885,7 +924,7 @@ test fn the_evidenced_rule_lets_the_same_name_through_to_the_live_answer() -> Bo
               match media_share_address_gate(
                 share_server: srv2_lan_fqdn as NonEmptyStr,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
@@ -916,7 +955,7 @@ test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() ->
               match media_share_address_gate(
                 share_server: mtcollins1_media_share.server_address,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: megarac_media_address_rule,
                 // An ask that would admit anything: the refusal must come from the row's own spelling.
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
@@ -1021,7 +1060,7 @@ test fn a_share_naming_a_different_host_than_its_row_grounds_refuses() -> Bool {
               match media_share_address_gate(
                 share_server: srv2_tailnet_fqdn as NonEmptyStr,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
@@ -1055,7 +1094,7 @@ test fn a_bmc_share_filed_under_the_tailnet_space_refuses_even_when_the_name_res
                 share_server: srv2_tailnet_fqdn as NonEmptyStr,
                 row: row,
                 // The BMC's reach, as configured: the LAN space only.
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
@@ -1082,7 +1121,7 @@ test fn the_same_share_is_usable_once_the_consumer_is_given_that_space() -> Bool
               standing_is_usable(standing: gate(
                 share: srv2_tailnet_fqdn,
                 row: row,
-                reach: bmc_reach(reaches: [space], resolver: resolver_of(server: router_address), observed: []),
+                reach: bmc_reach(reaches: [space], resolver: resolver_of(server: lan_router_ipv4), observed: []),
                 answer: answered(addrs: one_address()),
               ))
           }
@@ -1200,7 +1239,7 @@ test fn when_every_server_is_silent_the_first_server_is_the_one_reported() -> Bo
     Absent => false
     Present { value: n } =>
       match resolve_name(name: n, resolver: two_server_resolver(), ask: fn(_s, _nm) { unanswered() }) {
-        Unresolved { name: _, cause: ServerUnreachable { server: s } } => ipv4_address_eq(a: s, b: router_address)
+        Unresolved { name: _, cause: ServerUnreachable { server: s } } => ipv4_address_eq(a: s, b: lan_router_ipv4)
         _ => false
       }
   }
@@ -1213,8 +1252,8 @@ test fn an_earlier_authoritative_negative_is_not_overruled_by_a_later_answer() -
   match name_of(spelling: srv2_lan_fqdn) {
     Absent => false
     Present { value: n } =>
-      match resolve_name(name: n, resolver: resolver_of(server: router_address), ask: fn(s, _nm) {
-        if ipv4_address_eq(a: s, b: router_address) { name_unknown() } else { answered(addrs: one_address()) }
+      match resolve_name(name: n, resolver: resolver_of(server: lan_router_ipv4), ask: fn(s, _nm) {
+        if ipv4_address_eq(a: s, b: lan_router_ipv4) { name_unknown() } else { answered(addrs: one_address()) }
       }) {
         Unresolved { name: _, cause: NameUnknown { server: _ } } => true
         _ => false
@@ -1234,7 +1273,7 @@ test fn a_usable_share_names_the_address_it_resolved_to() -> Bool {
           match filed_row(name: n, space: space, answer: answered(addrs: two_addresses())) {
             Absent => false
             Present { value: row } =>
-              match gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: router_address)), answer: answered(addrs: two_addresses())) {
+              match gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)), answer: answered(addrs: two_addresses())) {
                 Usable { host: _, name: _, address: a } => ipv4_address_eq(a: a, b: srv2_lan_ipv4)
                 _ => false
               }
@@ -1276,7 +1315,7 @@ test fn a_row_cannot_be_filed_against_a_refused_reply() -> Bool {
 
 // THE CONTROL, so the claim above is a refusal and not a blanket ban on rows: the identical filing with a
 // reply that carries an address is admitted, AND KEEPS THE TYPED RECEIPT IT WAS FILED WITH. The receipt is
-// read field by field against the module's own rows — the server compared to `router_address` as an address,
+// read field by field against the module's own rows — the server compared to `lan_router_ipv4` as an address,
 // the date compared as year/month/day, the transport as an arm, the citation as a `Uri` — so what this claim
 // proves is that the filing carries evidence a consumer can act on, not a description of evidence.
 test fn a_row_is_filed_when_its_reply_carries_an_address() -> Bool {
@@ -1294,7 +1333,7 @@ test fn a_row_is_filed_when_its_reply_carries_an_address() -> Bool {
             receipt: lan_probe_receipt,
           ) {
             HostNameResolutionAdmitted { resolution: r } =>
-              ipv4_address_eq(a: r.grounded.receipt.asked, b: router_address)
+              ipv4_address_eq(a: r.grounded.receipt.asked, b: lan_router_ipv4)
                 && civil_date_is(r.grounded.receipt.on, 2026, 10, 27)
                 && (match r.grounded.receipt.transport { UdpQuery => true TcpQuery => false })
                 && citation_names_the_probe(uri: r.grounded.receipt.citation.uri)
@@ -1428,7 +1467,7 @@ test fn a_consumer_with_no_configured_space_resolves_nothing() -> Bool {
               match gate(
                 share: srv2_lan_fqdn,
                 row: row,
-                reach: bmc_reach(reaches: [], resolver: resolver_of(server: router_address), observed: []),
+                reach: bmc_reach(reaches: [], resolver: resolver_of(server: lan_router_ipv4), observed: []),
                 answer: answered(addrs: one_address()),
               ) {
                 NeedsLanNameSpace { host: _, space: _ } => true
@@ -1465,7 +1504,7 @@ test fn observations_for_another_name_neither_confirm_nor_block_the_share() -> B
                     row: row,
                     reach: bmc_reach(
                       reaches: [space],
-                      resolver: resolver_of(server: router_address),
+                      resolver: resolver_of(server: lan_router_ipv4),
                       observed: [ResolutionObservation {
                         outcome: Resolved { name: other, addresses: two_addresses() },
                         answer: answered(addrs: two_addresses()),
@@ -1502,7 +1541,7 @@ test fn a_share_whose_name_now_answers_a_different_address_refuses_before_attach
               match gate(
                 share: srv2_lan_fqdn,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 // NOW the name answers srv2's real address. The attach is still refused.
                 answer: answered(addrs: one_address()),
               ) {
@@ -1537,7 +1576,7 @@ test fn a_share_whose_answer_still_matches_its_citation_is_usable() -> Bool {
               standing_is_usable(standing: gate(
                 share: srv2_lan_fqdn,
                 row: row,
-                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                reach: bmc_lan_reach(resolver: resolver_of(server: lan_router_ipv4)),
                 // The reply agrees with the citation, so nothing moved: the row is honored, .188 and all.
                 answer: answered(addrs: dead_address()),
               ))
@@ -1572,7 +1611,7 @@ test fn a_consumer_receipt_that_disagrees_with_the_reply_refuses_the_attach() ->
                 row: row,
                 reach: bmc_reach(
                   reaches: [space],
-                  resolver: resolver_of(server: router_address),
+                  resolver: resolver_of(server: lan_router_ipv4),
                   // The consumer was told .188; the reply now says .201. One of the two is stale, and
                   // attaching is not how to find out which.
                   observed: [ResolutionObservation {
@@ -1705,10 +1744,10 @@ test fn the_bmc_membership_row_records_the_observed_not_on_tailnet_receipt() -> 
     // The arm that licenses refusing a tailnet-filed share: not-on-tailnet, WITH its citation attached.
     NotOnTailnet { receipt: rc } =>
       // The typed fields, read individually: the date as Ints and the server as the module's OWN typed row
-      // (`router_address`), not as characters inside a sentence. If the receipt is edited to name some other
+      // (`lan_router_ipv4`), not as characters inside a sentence. If the receipt is edited to name some other
       // server, or the date drifts, this goes red — which is the difference between a citation that can rot
       // and one a reader can trust.
-      ipv4_address_eq(a: rc.asked, b: router_address)
+      ipv4_address_eq(a: rc.asked, b: lan_router_ipv4)
         && civil_date_is(rc.on, 2026, 10, 27)
         && (match rc.transport { UdpQuery => true TcpQuery => false })
         && citation_names_the_probe(uri: rc.citation.uri)
@@ -1718,7 +1757,7 @@ test fn the_bmc_membership_row_records_the_observed_not_on_tailnet_receipt() -> 
     // The other arm is a constructible, differently-shaped fact — read on its own to show this row does not
     // silently mean both.
     TailnetMember { receipt: rc2 } =>
-      ipv4_address_eq(a: rc2.asked, b: router_address) && (match rc2.transport { TcpQuery => true UdpQuery => false })
+      ipv4_address_eq(a: rc2.asked, b: lan_router_ipv4) && (match rc2.transport { TcpQuery => true UdpQuery => false })
   }
     // The other arm read on its own, to show this row does not silently mean both: it is a constructible
     // fact with its own fields, and nothing here derives it from the row above.
@@ -1810,7 +1849,7 @@ test fn a_zone_configured_as_an_ip_literal_is_refused_as_an_address() -> Bool {
       // can report what was written AND what it meant; both are checked, so neither can drift.
       r == "192.168.1.1" && inner == "192.168.1.1"
         && (match a {
-          IpV4 { v4: v } => ipv4_address_eq(a: v, b: router_address)
+          IpV4 { v4: v } => ipv4_address_eq(a: v, b: lan_router_ipv4)
           IpV6 { v6: _ } => false
         })
     ZoneRefused { raw: _, cause: _ } => false
@@ -1838,14 +1877,14 @@ test fn a_zone_configured_as_an_ip_literal_is_refused_as_an_address() -> Bool {
 fn two_server_resolver() -> Resolver {
   resolver_admit(
     servers: non_empty_append(
-      left: non_empty_singleton(item: router_address),
+      left: non_empty_singleton(item: lan_router_ipv4),
       right: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 53)),
     ),
   )
 }
 
 test fn the_first_server_reported_is_the_one_configured_first() -> Bool {
-  ipv4_address_eq(a: resolver_first_server(resolver: two_server_resolver()), b: router_address)
+  ipv4_address_eq(a: resolver_first_server(resolver: two_server_resolver()), b: lan_router_ipv4)
 }
 
 // THE THREE CAUSES ARE STILL THREE DISTINCT ARMS, told by matching them — the way the whole change now
@@ -1855,13 +1894,13 @@ test fn the_first_server_reported_is_the_one_configured_first() -> Bool {
 // and nodata are three different remedies, and if any two are ever merged upstream, one of these matches
 // stops being the arm the claim named and this refuses.
 test fn the_three_reply_causes_stay_three_distinct_arms() -> Bool {
-  is_server_unreachable(cause: ServerUnreachable { server: router_address })
-    && is_name_unknown(cause: NameUnknown { server: router_address })
-    && is_answer_empty(cause: AnswerEmpty { server: router_address })
+  is_server_unreachable(cause: ServerUnreachable { server: lan_router_ipv4 })
+    && is_name_unknown(cause: NameUnknown { server: lan_router_ipv4 })
+    && is_answer_empty(cause: AnswerEmpty { server: lan_router_ipv4 })
     // ...and each is not the others, so no two arms can be collapsed without this going red.
-    && !is_name_unknown(cause: ServerUnreachable { server: router_address })
-    && !is_answer_empty(cause: NameUnknown { server: router_address })
-    && !is_name_unknown(cause: AnswerEmpty { server: router_address })
+    && !is_name_unknown(cause: ServerUnreachable { server: lan_router_ipv4 })
+    && !is_answer_empty(cause: NameUnknown { server: lan_router_ipv4 })
+    && !is_name_unknown(cause: AnswerEmpty { server: lan_router_ipv4 })
 }
 
 fn is_server_unreachable(cause: ResolutionCause) -> Bool {

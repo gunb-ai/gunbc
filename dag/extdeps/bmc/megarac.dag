@@ -261,58 +261,6 @@ fn megarac_release_is_the_committed_hpm_read(firmware: BmcFirmwareReleaseIdentit
   }
 }
 
-// THE cd_remote_server_address FIELD'S OWN VALIDATOR, AS EXECUTED, KEYED TO THE RELEASE IT WAS READ
-// AGAINST. The field is a String on purpose: the empty spelling was executed and REFUSED, and a
-// NonEmptyStr could not record that fact. WHY KEYED TO A RELEASE: the verdicts are a property of one
-// firmware build's validator, not of the field's name, so a rule that consults them must say which
-// release they describe or it silently applies one build's validator to another's. The key is the
-// machine-read identity megarac_committed_hpm_read_release above -- derived here from the committed
-// hpm-check capture, the same grain the boot reaches and the grain the redirection table below is keyed
-// on -- NOT the vendor page label, which production keys nothing on: megarac_release_is_the_committed_hpm_read
-// is the only test of a carried identity against this datum, and the corpus pins that a caller carrying
-// the label inherits nothing. The probe was executed against the bundle the device now serving this unit
-// offered, and this corpus's evidence for that device's build is that committed capture. IF THE CAPTURE
-// IS ABSENT there is no evidenced release at all: the key is then Absent, and a consumer that needs these
-// verdicts must refuse rather than assume a build -- a rule of unknown provenance is no rule.
-//
-// WHY `raw` IS A String AND NOT A NonEmptyStr: the empty spelling is one of the spellings that was
-// actually handed over and refused, and narrowing the carrier would make one of the executed verdicts
-// unwritable -- the type would silently drop a row of the evidence.
-type MegaRacMediaAddressFieldProbe {
-  raw: String
-  accepted: Bool
-}
-
-// THE SET, PAIRED WITH ITS KEY AT CONSTRUCTION. A bare list of verdicts could be read against the wrong
-// release; carrying the key beside the rows is what makes "which build answered this" part of the fact
-// rather than part of a comment above it. An Absent key means the committed capture is missing, so
-// NOTHING here is evidenced about any build.
-type MegaRacMediaAddressFieldProbeSet {
-  firmware: BmcFirmwareReleaseIdentity?
-  probes: List<MegaRacMediaAddressFieldProbe>
-}
-
-// THE EXECUTED VERDICTS, keyed to the release the committed capture derives. These rows are the
-// firmware's OUTPUTS, not a second implementation of its predicate: each is a spelling handed to the
-// controller's own client-side validator and the verdict it returned, executed 2026-10-27 (the predicate
-// was extracted verbatim and run, not read -- docs/probes/bmc_media_share_naming_2026-10-27.md, "The
-// firmware's own field validator, executed"). A spelling outside this set is not covered, not guessed at.
-data megarac_media_address_field_probe_set: MegaRacMediaAddressFieldProbeSet = MegaRacMediaAddressFieldProbeSet {
-  firmware: megarac_committed_hpm_read_release,
-  probes: [
-    MegaRacMediaAddressFieldProbe { raw: "192.168.1.201", accepted: true },
-    MegaRacMediaAddressFieldProbe { raw: "192.168.1.188", accepted: true },
-    MegaRacMediaAddressFieldProbe { raw: "srv2", accepted: false },
-    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com", accepted: true },
-    MegaRacMediaAddressFieldProbe { raw: "SRV2.MYNETWORKSETTINGS.COM", accepted: true },
-    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com.", accepted: false },
-    MegaRacMediaAddressFieldProbe { raw: "srv_2.mynetworksettings.com", accepted: false },
-    MegaRacMediaAddressFieldProbe { raw: "localhost", accepted: false },
-    MegaRacMediaAddressFieldProbe { raw: "::1", accepted: false },
-    MegaRacMediaAddressFieldProbe { raw: "255.255.255.0", accepted: false },
-  ],
-}
-
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.

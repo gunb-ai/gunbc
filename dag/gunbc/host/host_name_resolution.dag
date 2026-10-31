@@ -71,7 +71,8 @@ import std.algebra {
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.megarac { MegaRacMediaAddressFieldProbe, megarac_media_address_field_probe_set }
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
+import gunbc.host.host_primary_network_observed { lan_router_ipv4 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 import extdeps.dns.domain_name {
   DnsLabel,
@@ -361,7 +362,7 @@ fn tailnet_zone() -> Zone? {
 // zone no citation shows exists (§4d).
 type NameSpace
   // THE ROUTER'S ZONE. RATIONALE (comment, not data): the BMC is not on the tailnet, so it has no daemon to
-  // ask and no route to the tailnet resolver; the router at `router_address` below is the server it was given,
+  // ask and no route to the tailnet resolver; the router at `lan_router_ipv4` below is the server it was given,
   // so the router's answers are what its stub resolver will see. Measured 2026-10-27 by direct UDP query to
   // that address, bypassing this container's cache.
   = Lan { zone: Zone }
@@ -424,9 +425,9 @@ data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet { receipt:
 // refuses to accept as fact, and a blank is visible in a review where "true" is not.
 // HOW A PROBE WAS RUN, TYPED (review 87319, §4c). The field used to be one `reader: NonEmptyStr` holding
 // "read-only probe, direct UDP to 192.168.1.1:53 (see docs/probes/...)" — three facts in a sentence, none of
-// them readable by the substrate. The server in particular was RE-SPELLED as text while `router_address` two
+// them readable by the substrate. The server in particular was RE-SPELLED as text while `lan_router_ipv4` two
 // lines above was its one typed home, so changing the router would silently age every receipt and nothing
-// would notice; now `asked` is an `Ipv4Address` that production fills from `router_address` itself, and a
+// would notice; now `asked` is an `Ipv4Address` that production fills from `lan_router_ipv4` itself, and a
 // claim compares the two, so drift turns the witness red instead of turning it stale.
 //
 // THE TRANSPORT IS AN ARM, NOT A WORD: "UDP" and "TCP" are different questions to a resolver (UDP is the
@@ -468,10 +469,10 @@ data naming_probe_citation: ObservationCitation = ObservationCitation {
 data naming_probe_date: Iso8601CivilDate = Iso8601CivilDate { year: 2026, month: 10, day: 27 }
 
 // THE LAN READ: a UDP query to the router, which is the BMC's DNS server and the only resolver on the LAN.
-// `asked` is `router_address` — the module's own typed row — so if the router moves, the receipt moves with
+// `asked` is `lan_router_ipv4` — the module's own typed row — so if the router moves, the receipt moves with
 // it and a claim that compares the two goes red rather than the receipt quietly ageing.
 data lan_probe_receipt: ObservationReceipt = ObservationReceipt {
-  asked: router_address,
+  asked: lan_router_ipv4,
   transport: UdpQuery,
   on: naming_probe_date,
   citation: naming_probe_citation,
@@ -480,7 +481,7 @@ data lan_probe_receipt: ObservationReceipt = ObservationReceipt {
 // THE SAME READ, EVIDENCE FOR THE BMC'S MEMBERSHIP: asked of the router from a tailnet member, which is what
 // distinguishes "the BMC is not on the tailnet" from "nobody can ask".
 data bmc_membership_receipt: ObservationReceipt = ObservationReceipt {
-  asked: router_address,
+  asked: lan_router_ipv4,
   transport: UdpQuery,
   on: naming_probe_date,
   citation: naming_probe_citation,
@@ -792,10 +793,60 @@ type MediaShareAddressStanding
   }
   | Usable { host: HostIdentity, name: ResolvableName, address: Ipv4Address }
 
+// THE cd_remote_server_address FIELD'S VALIDATOR, AS THIS REPOSITORY EXECUTED IT. These rows are a RECEIPT,
+// not an upstream fact: §3's external-upstream decomposition puts observations this repository makes in the
+// observing layer, and this repository RAN the controller's client-side predicate over candidate spellings
+// (docs/probes/bmc_media_share_naming_2026-10-27.md, "The firmware's own field validator, executed",
+// 2026-10-27). An earlier draft filed them under extdeps.bmc.megarac, which models the vendor and reads no
+// machine's capture — the same class of defect a review found in a neighbouring module this week, and the
+// reason they sit here instead, beside the release read they are keyed to.
+//
+// `raw` is a String on purpose: the empty spelling was executed and REFUSED, and a NonEmptyStr could not
+// record that fact — narrowing the carrier would silently drop a row of the evidence.
+type MegaRacMediaAddressFieldProbe {
+  raw: String
+  accepted: Bool
+}
+
+// THE SET, PAIRED WITH ITS KEY AT CONSTRUCTION. A bare list of verdicts could be read against the wrong
+// release; carrying the key beside the rows makes "which build answered this" part of the fact rather than
+// part of a comment above it.
+//
+// THE KEY IS THIS LAYER'S OWN READ: gunbc.host.bmc_release_capability_catalog
+// megarac_committed_hpm_check_identity, which walks the retained hpm-check stdout through the parser and
+// answers Absent when the read refuses. It is Optional because it IS a machine read — "this unit's build is
+// not evidenced" is a state of the world, and it is the one state in which these verdicts must not be
+// applied (ConsumerFirmwareUnevidenced). It is NOT the vendor page label "0.45.3", which production keys
+// nothing on, and it is not the release the vendor module DECLARES: whether a particular unit's build is one
+// of the vendor's releases is answered here, and the join from this read to the vendor's own declaration is
+// a claim in the corpus, never a parse inside the vendor model.
+type MegaRacMediaAddressFieldProbeSet {
+  firmware: BmcFirmwareReleaseIdentity?
+  probes: List<MegaRacMediaAddressFieldProbe>
+}
+
+// THE EXECUTED VERDICTS, keyed to the release this unit's build has been read as. A spelling outside this set
+// is not covered, not guessed at.
+data megarac_media_address_field_probe_set: MegaRacMediaAddressFieldProbeSet = MegaRacMediaAddressFieldProbeSet {
+  firmware: megarac_committed_hpm_check_identity,
+  probes: [
+    MegaRacMediaAddressFieldProbe { raw: "192.168.1.201", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "192.168.1.188", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "srv2", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "SRV2.MYNETWORKSETTINGS.COM", accepted: true },
+    MegaRacMediaAddressFieldProbe { raw: "srv2.mynetworksettings.com.", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "srv_2.mynetworksettings.com", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "localhost", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "::1", accepted: false },
+    MegaRacMediaAddressFieldProbe { raw: "255.255.255.0", accepted: false },
+  ],
+}
+
 // THE CONSUMER'S OWN FIELD RULE, as data — and the number in it is AN INFERENCE OF OURS, so it is carried
-// beside the vendor rows it was inferred from rather than as a bare constant. The verdicts themselves are
-// the firmware's and live in extdeps (extdeps.bmc.megarac.megarac_media_address_field_probe_set), keyed to
-// the release they were read from; what this module adds is the one generalization its gate can act on.
+// beside the vendor rows it was inferred from rather than as a bare constant. The verdicts they were
+// inferred from are filed above, keyed to the release they were read from; what this module adds is the one
+// generalization its gate can act on.
 //
 // THE GENERALIZATION IS ONE-DIRECTIONAL, AND SAYING SO OUT LOUD IS THE POINT. Every name the firmware
 // accepted carries at least two DNS labels, so two labels is NECESSARY for a name to be accepted and NOT
@@ -851,7 +902,7 @@ fn media_share_address_gate(
     ResolvableNameRefused { refusal: r } => not_a_name_standing(raw: share_server, refusal: r)
     ResolvableNameAdmitted { name: share_name } =>
       // THE RULE IS ONLY APPLICABLE IF ITS RELEASE IS EVIDENCED. The probe verdicts the floor rests on
-      // are keyed to the machine-read release (extdeps.bmc.megarac.megarac_committed_hpm_read_release);
+      // are keyed to this layer's read of the unit's build (megarac_committed_hpm_check_identity);
       // when that capture is missing there is no build these verdicts describe, and a floor of unknown
       // provenance is not a floor. This REFUSES where the media-attach stop does the OPPOSITE -- there an
       // unevidenced capture leaves the release-keyed exception UNFIRED, because firing an exception on
@@ -974,10 +1025,15 @@ fn not_a_name_standing(raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> Medi
 // declared at all: it is a historical receipt, recorded in
 // docs/probes/bmc_media_share_naming_2026-10-27.md, and a row for it would be dangling (§3c).
 //
-// THE ROUTER'S ADDRESS IS DECLARED, because nothing else declares it and it is not host identity: it is a
-// wire value (a gateway/resolver), which this module's own rule says keeps its Ipv4Address type. It is the
-// address the cited probe queried, so it is the server named in every resolution cause.
-data router_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)
+// THE LAN RESOLVER IS READ, NOT DECLARED HERE. This module used to spell 192.168.1.1 itself and claim
+// nothing else carried it; that claim was false. gunbc.host.host_primary_network_observed
+// srv1_primary_network_receipt_2026_10_25 records the DHCP lease the router handed srv1 -- gateway AND dns
+// list -- observed 2026-10-25, and that module now declares the address once (lan_router_ipv4) for both
+// fields. This module reads that datum: the router's being the LAN's only resolver is not an assumption here
+// but a fact the lease recorded, and a second literal would be free to drift from the read that cited it.
+// It is the server named in every resolution cause and asked by every receipt below.
+//
+// It is not host identity, so it keeps its Ipv4Address type (this module's own rule for wire values).
 
 // srv2's LAN NAME, FILED — the row the BMC media share is allowed to cite. Built through the admissions and
 // grounded by a cited reply, so nothing here is hand-written: the name comes from the admission that refuses
@@ -1024,7 +1080,7 @@ fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
               host: operator_host_srv2,
               space: space,
               name: n,
-              answer: Addresses { server: router_address, addresses: non_empty_singleton(item: srv2_lan_ipv4) },
+              answer: Addresses { server: lan_router_ipv4, addresses: non_empty_singleton(item: srv2_lan_ipv4) },
               receipt: lan_probe_receipt,
             )
             // Unreachable in practice — the zone parsed a moment ago, and `lan_name_space_under` parses the

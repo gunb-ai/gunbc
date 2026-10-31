@@ -40,10 +40,11 @@ is observed behaviour, not reading:
 | `255.255.255.0` | **REFUSED** |
 
 These verdicts are carried in the corpus as data, keyed to the release they were read from:
-`extdeps.bmc.megarac.megarac_media_address_field_probe_set`, keyed by
-`extdeps.bmc.megarac.megarac_committed_hpm_read_release` -- the release identity DERIVED from the committed
-`ipmitool hpm-check` capture (boot run 40082618814), the build the device has run since the 2026-10-02
-reflash. The key is that derived identity and not the vendor page label "0.45.3", because production keys
+`gunbc.host.host_name_resolution.megarac_media_address_field_probe_set` — an executed RECEIPT of this
+repository's, so it lives in the observing layer, not under `extdeps.bmc.megarac` (which models the vendor and
+reads no machine's capture). It is keyed by
+`gunbc.host.bmc_release_capability_catalog.megarac_committed_hpm_check_identity`, the identity that module
+derives by walking the retained `ipmitool hpm-check` stdout through the parserreflash. The key is that derived identity and not the vendor page label "0.45.3", because production keys
 nothing on the label: the redirection table, the media-attach stop and the release capability catalog all key
 on the derived grain, and nothing asserts the label names it. The generalization this repo draws from them — a label floor —
 is a separate row, `gunbc.host.host_name_resolution.megarac_media_address_rule`, and the witness claims
@@ -138,9 +139,9 @@ identity, several typed resolutions, no nicknames.
 | Row | Value | Why an address is the right type here |
 |---|---|---|
 | `operator_lan_segment.cidr` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.0/24` | A prefix is not a host. `NetworkSegment` (gunbc/product/network_topology.dag) models `cidr` as `NonEmptyStr`; the replacement cut (gunbc/endpoint_authority_replacement_cut.dag) models it as `CidrAddress`, correctly. |
-| `operator_lan_segment.gateway` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.1` | A next-hop, consumed by netplan. Identity would be wrong: the gateway is whatever the router is, and the route needs the number. |
+| `operator_lan_segment.gateway` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.1` (as a `String`) | A next-hop, consumed by netplan. Identity would be wrong: the gateway is whatever the router is, and the route needs the number. **Known duplicate of the value above, not converged in this change:** the carriers differ (`String` for netplan rendering vs `Ipv4Address` for the lease and the resolver), and converging them means moving the datum to or below the fleet layer so `fleet_intent_network` can read it — a naming decision that crosses into the primary-network item's rows, so it is recorded here rather than made silently across an ownership line. |
 | `operator_docker_bridge_default_segment` (gunbc/fleet/fleet_intent_network.dag) | `172.17.0.0/16`, `172.18.0.0/16` | Prefixes on an ephemeral bridge. |
-| `router_address` (gunbc/host/host_name_resolution.dag) | `192.168.1.1` | Declared here because it is a wire value — the resolver a cited probe queried and the server every `ResolutionCause` names — and nothing else in the corpus carries it. |
+| `lan_router_ipv4` (gunbc/host/host_primary_network_observed.dag) | `192.168.1.1` | Declared ONCE, in the module that OBSERVED it: srv1's DHCP lease (`srv1_primary_network_receipt_2026_10_25`) names this address as both gateway and sole DNS server, so "the router is the LAN's resolver" is a recorded fact rather than an assumption. The naming module reads that datum — it is the resolver a cited probe queried and the server every `ResolutionCause` names. An earlier draft spelled the four octets a second time inside the naming module and claimed nothing else carried the value; that claim was false, and the duplicate is what a review caught. Pinned by `the_cited_resolver_is_the_server_the_lease_named`. |
 
 ### Host identity by IP: the debt, by consumer leg
 
