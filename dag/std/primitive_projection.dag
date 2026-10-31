@@ -112,6 +112,7 @@ data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "lis
 data primitive_shell_materialize_operation_argv: PrimitiveIdentity = primitive_identity_slug(name: "shell_materialize_operation_argv")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
+data primitive_string_length: PrimitiveIdentity = primitive_identity_slug(name: "string_length")
 data primitive_sha256_hex_of_text: PrimitiveIdentity = primitive_identity_slug(name: "sha256_hex_of_text")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
 data primitive_compile_dag_diagnostic_census: PrimitiveIdentity = primitive_identity_slug(name: "compile_dag_diagnostic_census")
@@ -163,6 +164,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_machine_word_native_operate, module_path: "std.machine_word", decl_name: "machine_word_native_operate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_compile_dag_diagnostic_census, module_path: "gunbc.compile_diagnostic_census", decl_name: "compile_dag_diagnostic_census", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
+    primitive_projection_row(primitive: primitive_string_length, module_path: "std.host_text", decl_name: "string_length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_lookup, module_path: "std.algebra", decl_name: "map_lookup", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_get, module_path: "std.algebra", decl_name: "list_at_optional", fidelity: ModeledProjection),
