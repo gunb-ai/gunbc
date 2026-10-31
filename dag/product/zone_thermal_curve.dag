@@ -24,7 +24,7 @@ import std.measure { Celsius, Percent, Second, second_count, celsius, celsius_co
 // (sha256 4ff02eb223003349): bash integer d0 + (t-t0)*(100-d0)/(t1-t0), truncating toward zero, and
 // the witness pins the interior to it. That script is an observed behaviour this module reproduces
 // and replaces at cutover; it is not the authority, and the cutover deletes it.
-type ZoneCurve {
+type ZoneCurve sole_constructor {
   floor: Percent
   flat_until: Celsius
   full_at: Celsius
@@ -47,20 +47,32 @@ fn zone_hottest(readings: List<Celsius>) -> Celsius? {
   }
 }
 
-// A CURVE EXISTS ONLY IF IT IS A CURVE: floor within 100 and flat_until strictly below full_at. The
-// checked constructor refuses (Absent) rather than repairing to the floor. zone_curve_duty also fails
-// to full duty on a ZoneCurve built by literal that does not hold, so an unchecked literal can never
-// answer below the cooling the curve names; the constructor is the route that says why it was refused.
-fn zone_curve_valid(floor: Percent, flat_until: Celsius, full_at: Celsius) -> Bool {
-  percent_count(floor) <= 100 && celsius_count(flat_until) < celsius_count(full_at)
+// A CURVE EXISTS ONLY IF IT IS A CURVE (the carrier is sole_constructor, as std.interval
+// OrderedClosedInterval is): floor within 100 and flat_until strictly below full_at. zone_curve is the
+// one mint and refuses with every constraint that failed, never repairing to the floor, so a
+// malformed configuration has no ZoneCurve to be read as successful curve-following.
+type ZoneCurveRefusal
+  = ZoneCurveFloorOverFullDuty
+  | ZoneCurveThresholdsNotAscending
+
+type ZoneCurveConstruction
+  = ZoneCurveReady { curve: ZoneCurve }
+  | ZoneCurveRefused { causes: List<ZoneCurveRefusal> }
+
+fn zone_curve(floor: Percent, flat_until: Celsius, full_at: Celsius) -> ZoneCurveConstruction {
+  let causes = concat(
+    if percent_count(floor) > 100 { [ZoneCurveFloorOverFullDuty] } else { no_refusals() },
+    if celsius_count(flat_until) < celsius_count(full_at) { no_refusals() } else { [ZoneCurveThresholdsNotAscending] },
+  )
+  if length(causes) == 0 {
+    ZoneCurveReady { curve: ZoneCurve { floor: floor, flat_until: flat_until, full_at: full_at } }
+  } else {
+    ZoneCurveRefused { causes: causes }
+  }
 }
 
-fn zone_curve(floor: Percent, flat_until: Celsius, full_at: Celsius) -> ZoneCurve? {
-  if zone_curve_valid(floor: floor, flat_until: flat_until, full_at: full_at) {
-    Present { value: ZoneCurve { floor: floor, flat_until: flat_until, full_at: full_at } }
-  } else {
-    Absent
-  }
+fn no_refusals() -> List<ZoneCurveRefusal> {
+  []
 }
 
 fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
@@ -68,9 +80,7 @@ fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
   let hi = celsius_count(curve.full_at)
   let at = celsius_count(t)
   let floor = percent_count(curve.floor) as Int
-  if !zone_curve_valid(floor: curve.floor, flat_until: curve.flat_until, full_at: curve.full_at) {
-    zone_full_duty()
-  } else if at <= lo {
+  if at <= lo {
     curve.floor
   } else {
     if at >= hi {
