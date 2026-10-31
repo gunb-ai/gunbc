@@ -133,7 +133,10 @@ test fn an_unread_demand_stops_the_selection_before_any_offer_is_touched() -> Bo
   }
 }
 
-// 2. AN ADMITTED DEMAND THAT REQUIRES A NEW ATTEMPT REACHES THE REQUIREMENTS GATE. The fold said buy;
+// 2. AN ADMITTED DEMAND THAT REQUIRES A NEW ATTEMPT REACHES THE REQUIREMENTS GATE. The population is the
+// EMPTY one here on purpose: the core command being decided is the submit that puts this demand into the
+// population, so deciding it against a population that already holds it would be a duplicate and the fold
+// would refuse -- which is test 4, not this one. The fold said buy;
 // the pass still cannot, because nothing turns the flex serving recipe into the fabric's
 // ExecutionRequirements. That gap is reported as a typed stop naming the producer owed -- it is NOT papered
 // over with a shape invented at the call site, which is the whole discipline of this route.
@@ -142,14 +145,14 @@ test fn an_admitted_demand_that_requires_a_new_attempt_stops_at_the_requirements
   match core {
     Present { value: c } =>
       match flex_pass_select(
-        demand: FlexDemandRead { population: population_after_submit(demand: seeking_demand()), core: c },
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
         policy: flex_trial_policy,
         screened: [],
       ) {
         FlexSelectionRequirementsUnread { reason: r } =>
           string_contains(s: r, pattern: "ExecutionRequirements")
             && string_contains(s: flex_selection_wire(s: flex_pass_select(
-                 demand: FlexDemandRead { population: population_after_submit(demand: seeking_demand()), core: c },
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
                  policy: flex_trial_policy,
                  screened: [],
                )), pattern: "requirements-unread")
