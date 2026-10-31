@@ -3185,6 +3185,23 @@ pub fn bag_eq<T: Clone>(
     }
 }
 
+pub fn map_values_eq<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    a: Rc<HashMap<K, V>>,
+    b: Rc<HashMap<K, V>>,
+    eq: impl Fn(V, V) -> bool + Clone,
+) -> bool {
+    (((Rc::new(v1_rt::map_keys(&a)).len() as i64) == (Rc::new(v1_rt::map_keys(&b)).len() as i64))
+        && for_all(Rc::new(v1_rt::map_keys(&a)), |k| {
+            match v1_rt::map_get(&a, k.clone()) {
+                Some(x) => match v1_rt::map_get(&b, k.clone()) {
+                    Some(y) => eq(x.clone(), y.clone()),
+                    std::option::Option::None => false,
+                },
+                std::option::Option::None => false,
+            }
+        }))
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound(
     serialize = "T: Clone + serde::Serialize",
