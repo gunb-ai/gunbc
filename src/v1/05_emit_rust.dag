@@ -1581,6 +1581,37 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   }
 }
 
+// A COPRODUCT ARM WHOSE OWNER IS AMBIGUOUS IS STILL AN ARM, NOT A TYPE. is_value_variant_type_arg honors the
+// "" sentinel (derive_variant_to_enum: two closure enums claim one arm name) by NOT collapsing the argument to
+// unit, because collapsing fabricates an owner it cannot know. Honoring that is right for a rendering that
+// must name a type; it leaves a fold accumulator annotation naming the ARM as a type (`Option<Present<_>>`,
+// rustc E0425), because the annotation is one an inference-capable target can simply decline. The accumulator
+// annotation therefore asks this predicate beside the owned-arm one, so ownership and ambiguity both decline
+// to `_` and neither invents a type.
+fn is_ambiguous_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
+  if generic_param_names |> any(g => g == name) {
+    false
+  } else {
+    match map_get(variant_to_enum, name) {
+      Present { value: owner } => owner == ""
+      Absent => false
+    }
+  }
+}
+
+fn type_node_has_ambiguous_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if is_ambiguous_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
+    true
+  } else if n.children |> any(c => type_node_has_ambiguous_variant_arg(n: c, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices)) {
+    true
+  } else {
+    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+      Present { value: applied } => applied.children |> any(c => type_node_has_ambiguous_variant_arg(n: c, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices))
+      Absent => false
+    }
+  }
+}
+
 fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
   match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env, width_position: width_position) {
     Present { value: identity } => identity
@@ -14368,7 +14399,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
   let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let acc_names_ambiguous_arm = type_node_has_ambiguous_variant_arg(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, variant_to_enum: emit_info.variant_to_enum, source_indices: scope.type_env.source_indices)
+  let lambda_acc_type_str = if acc_names_ambiguous_arm || is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
