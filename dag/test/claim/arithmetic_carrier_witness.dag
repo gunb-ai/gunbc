@@ -59,6 +59,14 @@ test fn w_nat_plus_unmodeled_carrier_refuses() -> Bool {
   blocking_count(source: nat_plus_unmodeled_source) >= 1
 }
 
+// The same RED with the DECLARED Int (std.integer), which names a declaration; the kernel Int above is read through
+// kernel_grounding_rows to the same carrier (v1.compiler.types operand_carrier_ref).
+data nat_plus_declared_int_source: String = "module probe_arith_nat_plus_declared_int\nimport std.integer { Int }\nimport std.nat { Nat }\nfn f(a: Nat, b: Int) -> Nat { (a + b) as Nat }\n"
+
+test fn w_nat_plus_declared_int_is_not_nat() -> Bool {
+  blocking_count(source: nat_plus_declared_int_source) >= 1
+}
+
 test fn w_nat_plus_int_is_not_nat() -> Bool {
   blocking_count(source: nat_plus_int_source) >= 1
 }
