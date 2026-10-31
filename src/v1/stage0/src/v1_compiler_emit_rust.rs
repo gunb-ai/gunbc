@@ -2226,6 +2226,88 @@ pub fn type_node_has_value_variant_arg(
     })
 }
 
+pub fn is_ambiguous_variant_type_arg(
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    name: String,
+) -> bool {
+    if {
+        let mut __found = false;
+        for g in generic_param_names.iter().cloned() {
+            if (g.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        false
+    } else {
+        match v1_rt::map_get(&variant_to_enum, name.clone()) {
+            Some(owner) => (owner.clone() == "".to_string()),
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn type_node_has_ambiguous_variant_arg(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if is_ambiguous_variant_type_arg(
+            generic_param_names.clone(),
+            variant_to_enum.clone(),
+            type_leaf_name_for_collapse(n.clone(), source_indices.clone()),
+        ) {
+            true
+        } else {
+            if {
+                let mut __found = false;
+                for c in n.children.clone().iter().cloned() {
+                    if type_node_has_ambiguous_variant_arg(
+                        c.clone(),
+                        generic_param_names.clone(),
+                        variant_to_enum.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                true
+            } else {
+                match crate::v1_std_core::find_property(
+                    n.properties.clone(),
+                    "__applied_type_args".to_string(),
+                    source_indices.clone(),
+                ) {
+                    Some(applied) => {
+                        let mut __found = false;
+                        for c in applied.children.clone().iter().cloned() {
+                            if type_node_has_ambiguous_variant_arg(
+                                c.clone(),
+                                generic_param_names.clone(),
+                                variant_to_enum.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }
+                    std::option::Option::None => false,
+                }
+            }
+        }
+    })
+}
+
 pub fn render_rust_phantom_opaque_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -30506,7 +30588,14 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.source_indices.clone(),
             fold_emit_info.clone(),
         );
-        let lambda_acc_type_str = if ((((((is_bare_container.clone()
+        let acc_names_ambiguous_arm = type_node_has_ambiguous_variant_arg(
+            acc_type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            emit_info.variant_to_enum.clone(),
+            scope.type_env.source_indices.clone(),
+        );
+        let lambda_acc_type_str = if (((((((acc_names_ambiguous_arm.clone()
+            || is_bare_container.clone())
             || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
