@@ -85,6 +85,12 @@ fn refused_for_every_operation(h: ManagedHost, refused: fn(MegaRacHostAdmission)
   megarac_operations |> all(op => refused(admit_megarac_host(host: h, operation: op)))
 }
 
+// THE SAME DISCRIMINATION AT THE GATE THE PRODUCTION CALLERS USE: the committed evidence carries the
+// build this repository actually read, so a forged row is judged against the build it would have to claim.
+fn refused_at_the_build_the_evidence_reads(h: ManagedHost, refused: fn(MegaRacHostAdmission) -> Bool) -> Bool {
+  megarac_operations |> all(op => refused(admit_megarac_host_at_current_build(evidence: committed_evidence(), host: h, operation: op)))
+}
+
 // RED: THE SAME BOUND CONTROLLER, OBSERVED AS OPENBMC. Everything else of the real row is kept; the
 // observation's family is the only change, and every MegaRAC operation refuses it by family.
 test fn w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation() -> Bool {
@@ -158,18 +164,19 @@ test fn w_a_host_that_is_not_managed_is_refused_for_every_operation() -> Bool {
 }
 
 // RED: ANOTHER PRODUCT LINE REPORTING THE SAME BUILD. The real row's binding is kept and its observed
-// baseboard becomes the Mt. Jade board (a different bound authority) at MegaRAC 0.32: family and raw version match the Mt. Collins
-// controller exactly, and every operation still refuses, because none was grounded on that baseboard.
+// baseboard becomes the Mt. Jade board (a different bound authority), at whatever build the row's own
+// observation names: family and raw version match the Mt. Collins controller exactly, and every operation
+// still refuses -- the committed receipts were executed on the board the READING of the current build
+// names, and a row observing a different board cannot inherit them.
 test fn w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation() -> Bool {
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
       let other = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_on(o: o, host: o.endpoint.host as String, identity: BmcObservedIdentity { board: jade_fru_read, chassis_part_number: none, firmware: o.identity.firmware }) }, secure: h.secure, smpro: h.smpro)
-      (o.identity.firmware.raw_version as String) == "0.32"
-        && refused_for_every_operation(h: other, refused: a => match a {
-          MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: i } } => i.board == jade_fru_read
-          _ => false
-        })
+      refused_at_the_build_the_evidence_reads(h: other, refused: a => match a {
+        MegaRacHostRefused { cause: MegaRacObservationControllerMismatch { observed: oi, current: _ } } => oi.board == jade_fru_read
+        _ => false
+      })
     }
   }) && count(managed_hosts()) == 1
 }
@@ -238,7 +245,7 @@ test fn w_an_observation_stale_against_the_committed_evidence_is_refused_as_not_
     BmcAccessObserved { observation: o } => {
       let stale = managed_host_fixture(
         host: h.host,
-        access: BmcAccessObserved { observation: observation_with(o: o, host: (h.host as String), firmware: mtcollins1_firmware) },
+        access: BmcAccessObserved { observation: observation_with(o: o, host: o.endpoint.host as String, firmware: mtcollins1_firmware) },
         secure: h.secure,
         smpro: h.smpro,
       )
