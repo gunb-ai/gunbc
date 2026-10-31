@@ -26,7 +26,7 @@ import product.host_identity { HostIdentity }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
-  FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, FlexReleaseNow,
+  FlexCleanupAction, FlexDestroy, FlexKeep,
   flex_release_pass, flex_cleanup_dead,
 }
 import product.fabric.serving_recipe { ServingRecipe, ServingSelectionQuote, SelectionQuoteEstablished }
@@ -529,8 +529,12 @@ type FlexPassPlan
   | FlexPlanCreate { request: FlexCreateRequest, intent: FlexCreateIntent }
   | FlexPlanDestroy { action: FlexCleanupAction, allocation: RentedServingAllocation }
 
-fn flex_first_destroy(plan: FlexReleasePlan) -> FlexCleanupAction? {
-  first_where(plan.actions, a =>
+// The first destroy in a cleanup plan, if there is one. It takes the ACTIONS, not a FlexReleasePlan:
+// a plan's admit field records WHY a release is authorized, and this function decides nothing about
+// authorization - wrapping a cleanup verdict in a FlexReleasePlan whose three release reasons are all
+// false, just to satisfy the signature, would put a contradictory record on the path (DESIGN 5).
+fn flex_first_destroy(actions: List<FlexCleanupAction>) -> FlexCleanupAction? {
+  first_where(actions, a =>
     match a {
       FlexDestroy { id: _, why: _ } => true
       FlexKeep { id: _ } => false
@@ -600,7 +604,7 @@ fn flex_plan_pass(input: FlexPassInput) -> FlexPassPlan {
       // numbers wrong — it can hold the cap shut and stop a create that the fleet actually needs. This is
       // flex_market's flex_cleanup_dead, and until this line it had no production caller: the pass could
       // run forever next to a stuck-loading card without ever releasing it.
-      match flex_first_destroy(plan: FlexReleasePlan { actions: flex_cleanup_dead(cards: input.cards, ours: input.policy.owner), admit: FlexReleaseNow { because_over_cap: false, because_no_room: false, replacement_serving: false } }) {
+      match flex_first_destroy(flex_cleanup_dead(cards: input.cards, ours: input.policy.owner)) {
         Present { value: action } => flex_plan_destroy(input: input, action: action)
         Absent => flex_plan_release_or_create(input: input, decision: decision, cap: cap)
       }
@@ -609,7 +613,7 @@ fn flex_plan_pass(input: FlexPassInput) -> FlexPassPlan {
 }
 
 fn flex_plan_release_or_create(input: FlexPassInput, decision: FlexWriteDecision, cap: FlexCapAssessment) -> FlexPassPlan {
-      match flex_first_destroy(plan: flex_release_pass(cards: input.cards, ours: input.policy.owner, cap: cap, no_room: input.no_room, replacement_serving: input.replacement_serving)) {
+      match flex_first_destroy(flex_release_pass(cards: input.cards, ours: input.policy.owner, cap: cap, no_room: input.no_room, replacement_serving: input.replacement_serving).actions) {
         Present { value: action } => flex_plan_destroy(input: input, action: action)
         Absent =>
           match input.intent {
