@@ -239,6 +239,11 @@ fn observe_fan_round(
   password_file: NonEmptyStr,
   round_index: Int,
   cipher_suite: IpmiCipherSuite?,
+  // THE OBSERVED-AT IS AN INPUT, NOT AN AMBIENT PROBE: the round used to clock itself, which made it
+  // un-runnable inside an evaluation frame (the hermetic frame faults an ambient time probe). The wet
+  // lanes pass the clock they are standing in; a witness passes the time it is fixing. Same value the
+  // round has always carried - only WHO reads the clock moved, not what the round records.
+  observed_at: NonEmptyStr,
 ) -> FanObservationRound
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
@@ -292,7 +297,7 @@ fn observe_fan_round(
     SdrVerboseNotRequired
   }
   return FanObservationRound {
-    observed_at: clock_now_probed_at_or_unknown(),
+    observed_at: observed_at,
     round_index: round_index,
     chassis: chassis_observation(success: status.success, stdout: status.stdout),
     chassis_raw: join(["exit=", to_string(status.exit_code), " stdout=[", status.stdout, "] stderr=[", status.transport_stderr, "]"], ""),
@@ -373,6 +378,7 @@ fn observe_fan_series(
     password_file: password_file,
     round_index: round_index,
     cipher_suite: cipher_suite,
+    observed_at: clock_now_probed_at_or_unknown(),
   )
   let next = acc.append(round)
   if rounds_remaining == 1 {

@@ -988,7 +988,7 @@ fn fan_round_surface(temps: List<BmcSdrRecord>, fans: List<BmcSdrRecord>) -> Bmc
 }
 
 fn fan_round_subject() -> FanObservationRound {
-  observe_fan_round(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, round_index: 0, cipher_suite: Absent)
+  observe_fan_round(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, round_index: 0, cipher_suite: Absent, observed_at: "2026-10-31T00:00:00Z" as NonEmptyStr)
 }
 
 test fn a_round_whose_thermal_rows_all_decode_never_asks_for_the_verbose_read() -> Bool {
