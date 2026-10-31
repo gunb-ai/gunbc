@@ -1902,7 +1902,7 @@ fn roster_primary_heads(parse_root: Node, call: String) -> List<Node> {
 }
 
 // Every match arm whose WHOLE pattern is one bare atom spelled `binder`: the arm's capture (pattern, `=>`, body). The pattern
-// production is peeled through its captured child until an atom or a non-atom is reached, so a constructor pattern
+// pattern's authored atoms (roster_pattern_authored_atoms) must be exactly the binder, so a constructor pattern
 // (`T { f: a }`) or a payload-bearing one never reads as a bare atom. Whether the atom binds or names a nullary tag is
 // resolution's fact, decided by the occurrence's census locus (OnlyOccurrences), never here.
 fn roster_bare_atom_arms(parse_root: Node, binder: String) -> List<Node> {
@@ -1914,10 +1914,7 @@ fn roster_bare_atom_arms(parse_root: Node, binder: String) -> List<Node> {
             Present { value: cap } =>
               match find_named_child(root: cap, name: ^grammar_sequence_left_node_projection) {
                 Accepted { value: left, diagnostics: _ } =>
-                  match roster_peel_to_atom(node: left) {
-                    Present { value: sym } => if symbol_lexeme(sym: sym) == binder { list_snoc_item(xs: acc, item: cap) } else { acc }
-                    Absent => acc
-                  }
+                  if roster_pattern_authored_atoms(pattern: left) == [binder] { list_snoc_item(xs: acc, item: cap) } else { acc }
                 Rejected { diagnostics: _ } => acc
               }
             Absent => acc
@@ -1930,15 +1927,17 @@ fn roster_bare_atom_arms(parse_root: Node, binder: String) -> List<Node> {
   })
 }
 
-fn roster_peel_to_atom(node: Node) -> Optional<Symbol> {
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } => Present { value: sym }
-    Absent =>
-      match parse_production_captured_child_optional(node: node) {
-        Present { value: inner } => roster_peel_to_atom(node: inner)
-        Absent => Absent
-      }
-  }
+// The authored atoms of a pattern, in tree order: the parse tree carries the grammar's own marker atoms (`dag_surface_*`
+// productions, `dag_token_*` punctuation) beside the authored ones, so those are dropped by their reserved prefixes. A pattern
+// that is one bare atom has exactly one authored atom; `T { f: a }` has three, `T.A` two.
+fn roster_pattern_authored_atoms(pattern: Node) -> List<String> {
+  fold_list(xs: node_subtree_nodes(root: pattern), empty: [], cons: fn(acc, m) {
+    match node_atom_identity_optional(node: m) {
+      Present { value: sym } =>
+        if starts_with(s: symbol_lexeme(sym: sym), prefix: "dag_surface_") || starts_with(s: symbol_lexeme(sym: sym), prefix: "dag_token_") { acc } else { list_snoc_item(xs: acc, item: symbol_lexeme(sym: sym)) }
+      Absent => acc
+    }
+  })
 }
 
 // THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. The pipe sites of the parse are indexed ONCE
