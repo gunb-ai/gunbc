@@ -771,6 +771,14 @@ type ValuedObjectiveMeasure
 type SelectionPolicy
   = UniqueSurvivorRequired { identity: DeclarationRef }
   | PreferSurvivor { identity: DeclarationRef, preferred: DeclarationRef }
+  // UniqueSurvivorElsePrefer resolves a single survivor on its own merit, and only falls to the
+  // preferred identity when the frontier genuinely ties (several survivors). A single survivor that is
+  // NOT the preferred one is still selected — a dominating candidate must win, which PreferSurvivor
+  // cannot express (it refuses a dominating non-preferred candidate). Several survivors that exclude
+  // the preferred identity stay SelectionNeedsPolicy rather than refusing, so an unresolved field is
+  // never silently decided. This is the policy the relocation decision needs: a move wins when it
+  // strictly dominates, stay wins only on a genuine tie, and an undecided field defers.
+  | UniqueSurvivorElsePrefer { identity: DeclarationRef, preferred: DeclarationRef }
   | ValuedObjective {
       identity: DeclarationRef
       valuations: List<TermValuation>
@@ -1651,6 +1659,57 @@ fn apply_policy(
         }
       } else {
         RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
+      }
+    UniqueSurvivorElsePrefer { identity: pol, preferred: pref } =>
+      if (survivors |> count) == 1 {
+        // A single survivor wins on its own merit, whether or not it is the preferred identity.
+        match survivors.first() {
+          Absent => NoFeasibleRealization {
+            causes: ["unique-survivor-else-prefer policy over empty survivor set" as NonEmptyStr],
+            scope: scope,
+          }
+          Present { value: sid } =>
+            match entry_by_identity(field: remaining, wanted: sid) {
+              Absent => RealizationSelectionRefused { defects: ["unique survivor missing from remaining field" as NonEmptyStr] }
+              Present { value: cand } =>
+                SelectedWithin {
+                  candidate: cand,
+                  receipt: mint_receipt(
+                    scope: scope,
+                    pareto_survivors: survivors,
+                    policy_authority: pol,
+                    selected_identity: sid,
+                  ),
+                }
+            }
+        }
+      } else {
+        if (survivors |> count) == 0 {
+          NoFeasibleRealization {
+            causes: ["no non-dominated feasible realization" as NonEmptyStr],
+            scope: scope,
+          }
+        } else {
+          // A genuine tie: the preferred identity wins only among the survivors; if it is not one of
+          // them the field stays unresolved (needs policy), never a silent refusal or a fallthrough.
+          if any(survivors, s => declaration_ref_eq(a: s, b: pref)) {
+            match entry_by_identity(field: remaining, wanted: pref) {
+              Absent => RealizationSelectionRefused { defects: ["preferred identity is not a remaining candidate" as NonEmptyStr] }
+              Present { value: cand } =>
+                SelectedWithin {
+                  candidate: cand,
+                  receipt: mint_receipt(
+                    scope: scope,
+                    pareto_survivors: survivors,
+                    policy_authority: pol,
+                    selected_identity: pref,
+                  ),
+                }
+            }
+          } else {
+            SelectionNeedsPolicy { survivors: survivors }
+          }
+        }
       }
     ValuedObjective { identity: pol, valuations: vals, measure: measure, currency: pol_cur } =>
       let axis_defects = admit_term_valuations(valuations: vals, terms: objective_terms, pareto_axes: axes, measure: measure, policy_currency: pol_cur, constraints: hard_constraints)

@@ -15,6 +15,7 @@ import std.decision {
   HardConstraint, NonMoneyConstraint,
   PreferSurvivor,
   UniqueSurvivorRequired,
+  UniqueSurvivorElsePrefer,
   SelectionPolicy,
   SelectionReceipt,
   SelectedWithin,
@@ -73,6 +74,8 @@ import extdeps.uri { Uri, Https }
 
 data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
 data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_b")
+data id_c: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_c")
+data id_policy_usesep: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_usesep")
 data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_subject")
 data id_field: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field")
 data id_field2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field2")
@@ -230,6 +233,20 @@ fn entry_over_cap_missing_tput(id: DeclarationRef, label: NonEmptyStr, power: In
     display_label: label,
     readings: [reading(axis: ax_power, v: power)],
     missing_inputs: [AxisGap { axis: ax_tput, cause: "tput unread on a forbidden candidate" as NonEmptyStr }],
+  }
+}
+
+// An interval reading on the throughput axis: dominance may be UNDECIDED (overlapping intervals),
+// which must never be read as a tie.
+fn entry_interval_tput(id: DeclarationRef, label: NonEmptyStr, tput_low: Int, tput_high: Int, power: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [
+      AxisReading { axis: ax_tput, interval_micro: span(low: tput_low, high: tput_high) },
+      reading(axis: ax_power, v: power),
+    ],
+    missing_inputs: [],
   }
 }
 
@@ -799,5 +816,124 @@ test fn two_refusals_over_different_fields_carry_distinguishable_scopes() -> Boo
             && declaration_ref_eq(a: s1.evidence_snapshot, b: id_evidence)
             && count(s1.funded_axes) > 0
       }
+  }
+}
+
+// ── UniqueSurvivorElsePrefer: one arm, one witness per branch, each with a discriminating red ────
+
+// BRANCH 1 — a single survivor wins on its own merit even when it is NOT the preferred identity.
+// Here id_a strictly dominates id_b (higher tput AND lower power), so id_a is the sole survivor; the
+// preferred identity id_b is dominated and must NOT be chosen.
+// RED: swap the policy to PreferSurvivor { preferred: id_b } — id_b is dominated, so PreferSurvivor
+// returns RealizationSelectionRefused, not SelectedWithin(id_a). This is exactly the gap the new arm
+// closes: PreferSurvivor cannot let a dominating non-preferred candidate win.
+test fn usesep_single_survivor_wins_even_when_not_preferred() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [dominator, dominated],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_a)
+    _ => false
+  }
+}
+
+// BRANCH 2 — a genuine tie (two survivors) that INCLUDES the preferred identity selects the preferred.
+// id_a wins tput, id_b wins power: neither dominates, so both survive; preferred id_b is selected.
+// RED: swap the policy to UniqueSurvivorRequired — two survivors is not one, so it returns
+// SelectionNeedsPolicy and never selects id_b. The "else prefer" branch is what resolves the tie.
+test fn usesep_tie_including_preferred_selects_preferred() -> Bool {
+  let tput_winner = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
+  let power_winner = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [tput_winner, power_winner],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_b)
+    _ => false
+  }
+}
+
+// BRANCH 3 — a genuine tie that EXCLUDES the preferred identity stays SelectionNeedsPolicy, never a
+// silent refusal or a fallthrough. id_a and id_b both survive; the preferred id_c is not in the field.
+// RED: swap the policy to PreferSurvivor { preferred: id_c } — id_c is not a survivor, so PreferSurvivor
+// returns RealizationSelectionRefused. The new arm defers instead of refusing an unresolved field.
+test fn usesep_tie_excluding_preferred_needs_policy_not_refused() -> Bool {
+  let tput_winner = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
+  let power_winner = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [tput_winner, power_winner],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_c },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsPolicy { survivors: sv } =>
+      (sv |> count) == 2
+        && any(sv, s => declaration_ref_eq(a: s, b: id_a))
+        && any(sv, s => declaration_ref_eq(a: s, b: id_b))
+    _ => false
+  }
+}
+
+// BRANCH 4 — no survivors (the only candidate violates a hard constraint) is NoFeasibleRealization,
+// matching the existing arms.
+// RED: drop the count == 0 guard so an empty survivor set falls into the tie branch — any([], ...) is
+// false, so it would return SelectionNeedsPolicy { survivors: [] } instead of NoFeasibleRealization.
+test fn usesep_no_survivors_is_no_feasible_not_needs_policy() -> Bool {
+  let forbidden = entry(id: id_a, label: "over cap" as NonEmptyStr, tput: 10, power: 200)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [forbidden],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_a },
+    evidence_snapshot: id_evidence,
+  ) {
+    NoFeasibleRealization { causes: _, scope: _ } => true
+    _ => false
+  }
+}
+
+// BRANCH 5 — interval readings that leave dominance UNDECIDED stay SelectionNeedsEvidence; they are
+// never read as a tie that the policy could resolve. id_a's tput interval [50,100] and id_b's [0,60]
+// overlap, so neither dominates and neither is dominated: the standing is undecided, not two survivors.
+// RED: if undecided dominance were folded into the survivor set, both would survive and the preferred
+// id_b would be SelectedWithin — this witness asserts SelectionNeedsEvidence, so that mutation goes red.
+test fn usesep_undecided_dominance_stays_needs_evidence_never_a_tie() -> Bool {
+  let a = entry_interval_tput(id: id_a, label: "tput [50,100]" as NonEmptyStr, tput_low: 50, tput_high: 100, power: 20)
+  let b = entry_interval_tput(id: id_b, label: "tput [0,60]" as NonEmptyStr, tput_low: 0, tput_high: 60, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [a, b],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { needs: _ } => true
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    _ => false
   }
 }
