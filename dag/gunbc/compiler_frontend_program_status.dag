@@ -784,6 +784,15 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: stage_subject_outstanding(stage: StageXL7GrammarDeletion)
         )
       )
+    // DELIBERATELY NOT RETIRED IN V2-GOV-001 PART A (operator scope correction, 2026-10-31). The
+    // ruling retires census-CONDITIONED obligations; it does not retire every reader of a shared
+    // series. S5 asks a diagnostic question of one reconciled, non-vacuous historical receipt
+    // (receipt_4_e0d0e01e, 2026-09-29, cargo check profile check/dev), so it is a historical
+    // observation, not fresh codegen or link evidence, and not a census gate. S2 above was a
+    // population-completeness obligation, which is what was retired. FOLLOW-UP: V2-GOV-001 Part B
+    // owns S5's interlock edges and the historical-retirement redesign. Until then this arm reads only
+    // that receipt. gunbc.design_ledgers compile_phase_frontier_blocks renders the same series as
+    // documentation and sets no standing.
     SelfHostCorpusEmitsCleanly =>
       match current_compile_phase_frontier_standing() {
         CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
