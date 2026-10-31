@@ -370,12 +370,21 @@ fn router_dev_access_lines() -> List<String> {
     // RETENTION ADMISSION: a NEW session binds to a row only while the sessions bound there are fewer than
     // the conversations it retains (the row's derived retain). A bound session always returns to its own row,
     // and a row without retain admits as before.
+    // One pass over the shared dict per request, built on first use: bindings expire by TTL, so a maintained
+    // per-row counter would drift on expiry; the scan is bounded by the live bindings and runs only for a new
+    // session facing a row that has a retain.
+    "local bound_counts = nil",
     "local function bound_count(name)",
-    "  local n = 0",
-    "  for _, k in ipairs(state:get_keys(0)) do",
-    "    if k:sub(1, 8) == 'session:' and k:sub(9) ~= session and state:get(k) == name then n = n + 1 end",
+    "  if not bound_counts then",
+    "    bound_counts = {}",
+    "    for _, k in ipairs(state:get_keys(0)) do",
+    "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
+    "        local row = state:get(k)",
+    "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
+    "      end",
+    "    end",
     "  end",
-    "  return n",
+    "  return bound_counts[name] or 0",
     "end",
     "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
