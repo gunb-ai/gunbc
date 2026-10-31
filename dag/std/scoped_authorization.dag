@@ -1,7 +1,7 @@
 module std.scoped_authorization
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, List, Int, brand }
-import std.algebra { skip, is_empty, length }
+import std.algebra { skip, is_empty, length, is_prefix_of }
 import std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,
@@ -21,7 +21,6 @@ import std.effect_grant {
   effect_verb_label,
   namespace_position_label,
   namespace_tree_label,
-  path_is_prefix,
   verb_of_label,
   namespace_tree_of_label,
 }
@@ -654,8 +653,8 @@ fn parse_authorization_scope_wire(wire: String) -> AuthorizationScope? {
 fn authorization_scope_eq(a: AuthorizationScope, b: AuthorizationScope) -> Bool {
   verb_eq(a: a.verb, b: b.verb)
     && a.resource.tree == b.resource.tree
-    && path_is_prefix(prefix: a.resource.path, path: b.resource.path)
-    && path_is_prefix(prefix: b.resource.path, path: a.resource.path)
+    && is_prefix_of(prefix: a.resource.path, xs: b.resource.path, eq: fn(x, y) { x == y })
+    && is_prefix_of(prefix: b.resource.path, xs: a.resource.path, eq: fn(x, y) { x == y })
     && a.action == b.action
 }
 

@@ -1611,28 +1611,6 @@ fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T
   }
 }
 
-type ListPrefixState<T> {
-  rest: FreeMonoid<T>
-  matched: Bool
-}
-
-fn list_starts_with<T>(xs: FreeMonoid<T>, prefix: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
-  let state = fold_list(
-    xs: prefix,
-    empty: ListPrefixState { rest: xs, matched: true },
-    cons: fn(acc, item) {
-      match acc.matched {
-        false => acc
-        true => match acc.rest {
-          Empty => ListPrefixState { rest: Empty, matched: false }
-          Cons { head: h, tail: t } => ListPrefixState { rest: t, matched: eq(h, item) }
-        }
-      }
-    }
-  )
-  state.matched
-}
-
 fn non_empty_singleton<T>(item: T) -> FreeSemigroup<T> {
   FreeSemigroup { head: item, tail: Empty }
 }
@@ -1784,4 +1762,15 @@ fn is_prefix_of<T>(
           eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
       }
   }
+}
+
+// THE SUFFIX HALF OF is_prefix_of: suffix ends xs exactly when its reverse begins xs's reverse.
+// Element equality is the caller's declared parameter, as for the prefix; there is one prefix predicate
+// and one suffix predicate over FreeMonoid, and every specialised path or text check calls them.
+fn is_suffix_of<T>(
+  suffix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  is_prefix_of(prefix: list_reverse(xs: suffix), xs: list_reverse(xs: xs), eq: eq)
 }

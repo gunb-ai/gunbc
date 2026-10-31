@@ -3,7 +3,7 @@ module std.declaring_identity_spelling
 import std.types { Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
-import std.algebra { is_prefix_of, list_reverse }
+import std.algebra { is_suffix_of }
 import v2.std.qualified_name { QualifiedName }
 
 // XL-3: whether one mention is spelled as the identity that declared its target.
@@ -66,18 +66,10 @@ type DeclaringIdentitySpelling
       cause: UnresolvableCause
     }
 
-fn authored_is_suffix_of_canonical(authored: QualifiedName, canonical: QualifiedName) -> Bool {
-  is_prefix_of(
-    prefix: list_reverse(xs: authored),
-    xs: list_reverse(xs: canonical),
-    eq: fn(a, b) { a == b }
-  )
-}
-
 fn resolved_path_verdict(authored: QualifiedName, canonical: QualifiedName) -> ResolvedPathVerdict {
   if authored == canonical {
     SpelledCanonically
-  } else if authored_is_suffix_of_canonical(authored: authored, canonical: canonical) {
+  } else if is_suffix_of(suffix: authored, xs: canonical, eq: fn(a, b) { a == b }) {
     SpelledShorter
   } else {
     ResolvedAuthoredNotOnCanonicalPath
