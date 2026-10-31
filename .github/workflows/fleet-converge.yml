@@ -3507,10 +3507,10 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet
         timeout-minutes: 47
   microvm-controller-install:
-    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    runs-on: ${{ github.event.inputs.host == 'srv1' && fromJSON('["self-hosted","linux","arm64","srv1","gunbc-deploy"]') || fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 127
     if: github.event.inputs.mode == 'microvm_controller_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3613,6 +3613,46 @@ jobs:
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5
+      - name: "Deploy slot tenancy admission: read the deploy group and the slot's host half without the fleet key; nothing later runs unless the slot is the sole tenant of its uid"
+        id: microvm_controller_install_admission
+        run: |-
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/org-admin-app-key"
+          HDR_FILE="$RUNNER_TEMP/org-admin-auth-header"
+          JWT_FILE="$RUNNER_TEMP/org-admin-app-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/org-admin-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/org-admin-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/org-admin-app-key-sm-body"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/org-admin-app-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest:access")"
+          rm -f "$HDR_FILE"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "2653532" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' -d '{"permissions": {"organization_self_hosted_runners": "read"}}' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/104134109/access_tokens"
+          rm -f "$JWT_FILE"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization" >&2; exit 1; fi
+          GUNBC_ORG_ADMIN_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_ORG_ADMIN_TOKEN
+          export GH_TOKEN="$GUNBC_ORG_ADMIN_TOKEN"
+          echo "org-admin: installation token minted in-run for app gunbai-ci installation 104134109 (organization_self_hosted_runners read only; one-hour lifetime; key wiped; token held in this step's environment only)"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function microvm_controller_install_admission_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 30
       - name: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it"
         id: srv1_root_mutation_approval
         run: |
