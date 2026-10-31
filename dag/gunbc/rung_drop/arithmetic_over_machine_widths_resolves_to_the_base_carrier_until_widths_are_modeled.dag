@@ -1,0 +1,29 @@
+module gunbc.rung_drop.arithmetic_over_machine_widths_resolves_to_the_base_carrier_until_widths_are_modeled
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+// DECLARED 4b(3) FRONTIER (Q1e). Arithmetic result typing is derived from the operands' declared carriers and the
+// implicit-safe injections between them (std.coercion select_arithmetic_carrier). The ten machine-width rows of
+// std.integer are Compose<Int|UInt, MachineWidth<N>>, a phantom composition transparent to Int at a formal, so
+// an operation over them is judged as the base carrier's operation: nothing models the width of a result, the
+// overflow outcome of an operation, or a mixed-width sum. A `UInt8 + UInt8` is typed as the base carrier and
+// an overflow past 2^8 is not a typed refusal. This is the honest current standing, declared rather than left to
+// read as covered. (The schema has no never-had form; the previous rung is the ceiling the fold targets.)
+data arithmetic_over_machine_widths_resolves_to_the_base_carrier_until_widths_are_modeled: RungDrop = RungDrop {
+  identity: "arithmetic_over_machine_widths_resolves_to_the_base_carrier_until_widths_are_modeled" as NonEmptyStr,
+
+  subject: "std.integer machine-width arithmetic: the result width and overflow outcome of an operator over a width-composed carrier",
+
+  declared: "2026-10-31",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "a width-aware profile per carrier that declares each operator's result width and its overflow outcome (checked or widening), read by std.coercion select_arithmetic_carrier in place of the base carrier's profile" },
+    population: Enumerated { members: FreeSemigroup { head: "std.integer Int8", tail: ["std.integer Int16", "std.integer Int32", "std.integer Int64", "std.integer Int128", "std.integer UInt8", "std.integer UInt16", "std.integer UInt32", "std.integer UInt64", "std.integer UInt128"] } },
+    restoration_trigger: "width-parameterized carriers whose profile declares, per operator, the result width and a typed overflow outcome, so an operation over any of the ten std.integer width rows is typed and its overflow refused by the fold rather than resolved to the base carrier"
+  } }
+}
