@@ -1,0 +1,40 @@
+module test.claim.callable_param_variance_differential_witness
+
+import std.types { String }
+import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_exit }
+import std.process { ProcessExit }
+
+// MIRROR CELLS FOR CALLABLE VARIANCE (v1.compiler.infer callable_arrow_mismatch). N = std.nat Nat, W = std.integer Int; Nat -> Int is a
+// declared total widening (std.literal_elaboration kernel_grounding_crossing, CrossingTotalWidening) and the converse is refused. NOT the kernel Int.
+// Expectations are the contravariant-parameter / covariant-return reading. NOT YET RUN: no direction of today's defect is asserted, and a
+// cell that disagrees with its expectation is the measurement. Pairs: A/B mirror in the parameter, C/D mirror in the return, C1 control.
+
+data param_narrow_declared_wide_offered_source: String = "module test.claim.tmp_variance_probe\nimport std.integer { Int }\nimport std.nat { Nat }\nfn vp_take(f: fn(Nat) -> Int) -> Int { 0 }\nfn vp_wide(i: Int) -> Int { i }\nfn vp_a() -> Int { vp_take(f: vp_wide) }\n"
+
+data param_wide_declared_narrow_offered_source: String = "module test.claim.tmp_variance_probe\nimport std.integer { Int }\nimport std.nat { Nat }\nfn vp_take(f: fn(Int) -> Int) -> Int { 0 }\nfn vp_narrow(n: Nat) -> Int { 0 }\nfn vp_b() -> Int { vp_take(f: vp_narrow) }\n"
+
+data return_wide_declared_narrow_offered_source: String = "module test.claim.tmp_variance_probe\nimport std.integer { Int }\nimport std.nat { Nat }\nfn vp_take(f: fn(Int) -> Int) -> Int { 0 }\nfn vp_narrow_ret(i: Int) -> Nat { 0 }\nfn vp_c() -> Int { vp_take(f: vp_narrow_ret) }\n"
+
+data return_narrow_declared_wide_offered_source: String = "module test.claim.tmp_variance_probe\nimport std.integer { Int }\nimport std.nat { Nat }\nfn vp_take(f: fn(Int) -> Nat) -> Int { 0 }\nfn vp_wide_ret(i: Int) -> Int { i }\nfn vp_d() -> Int { vp_take(f: vp_wide_ret) }\n"
+
+data same_types_control_source: String = "module test.claim.tmp_variance_probe\nimport std.integer { Int }\nimport std.nat { Nat }\nfn vp_take(f: fn(Int) -> Int) -> Int { 0 }\nfn vp_same(i: Int) -> Int { i }\nfn vp_c1() -> Int { vp_take(f: vp_same) }\n"
+
+test fn a_function_taking_a_wider_param_is_accepted_where_a_narrower_is_declared() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: param_narrow_declared_wide_offered_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_function_taking_a_narrower_param_is_refused_where_a_wider_is_declared() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: param_wide_declared_narrow_offered_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n > 0 }))
+}
+
+test fn a_function_returning_a_narrower_type_is_accepted_where_a_wider_is_declared() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: return_wide_declared_narrow_offered_source), holds: fn(n) { n == 0 }))
+}
+
+test fn a_function_returning_a_wider_type_is_refused_where_a_narrower_is_declared() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: return_narrow_declared_wide_offered_source, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n > 0 }))
+}
+
+test fn identical_function_types_are_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: same_types_control_source), holds: fn(n) { n == 0 }))
+}
