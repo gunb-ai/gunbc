@@ -390,12 +390,22 @@ fn gate_with(i: HostDashboardInstance, f: LegacyWriterFence) -> DashboardExecRes
 
 // ARM 17: THE ACTIVATION GATE (DashboardAssertLegacyWriterExcluded, last in the plan) refuses to let the new
 // dispatcher start while a declared legacy unit runs or is unmasked, and passes when they are excluded.
-test fn the_activation_gate_refuses_a_running_or_unmasked_writer_and_passes_an_excluded_one() -> Bool {
-  let i = fresh_instance(tag: "gate")
-  let running = gate_with(i: i, f: fence_stub(i: i, active: "active", enabled: "masked"))
-  let unmasked = gate_with(i: i, f: fence_stub(i: i, active: "inactive", enabled: "enabled"))
-  let held = gate_with(i: i, f: excluded_fence(i: i))
-  !running.success && string_contains(s: running.stderr, pattern: "must not be activated")
-    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
-    && held.success
+test fn the_activation_gate_refuses_a_running_writer() -> Bool {
+  let i = fresh_instance(tag: "gate1")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "active", enabled: "masked"))
+  ready && !r.success && string_contains(s: r.stderr, pattern: "must not be activated")
+}
+
+test fn the_activation_gate_refuses_an_unmasked_writer() -> Bool {
+  let i = fresh_instance(tag: "gate2")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "inactive", enabled: "enabled"))
+  ready && !r.success && string_contains(s: r.stderr, pattern: "is not masked")
+}
+
+test fn the_activation_gate_passes_an_excluded_writer() -> Bool {
+  let i = fresh_instance(tag: "gate3")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  ready && gate_with(i: i, f: excluded_fence(i: i)).success
 }
