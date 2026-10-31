@@ -8,7 +8,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.integer { int_to_decimal_string }
 import std.measure { money_amount_micro_count, money_per_hour_micros, milliseconds_per_second }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemFileAbsent, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree,
+  Filesystem, FilesystemListingObservation, FilesystemReadOutcome, FilesystemFileAbsent, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree,
   FilesystemFileRead, FilesystemFileSubjectRefused, filesystem_file_observation, filesystem_listing_observation,
   filesystem_read_outcome,
 }
@@ -329,13 +329,21 @@ data flex_pass_carry_directory: String = "target"
 data flex_pass_carry_name: String = "flex-pass-carry.txt"
 
 data flex_carry_header: String = "flex-carry v1"
-data flex_carry_prefix_sightings_complete: String = "sightings complete"
-data flex_carry_prefix_sightings_incomplete: String = "sightings incomplete"
+data flex_carry_line_sightings_complete: String = "sightings complete"
+data flex_carry_line_sightings_incomplete: String = "sightings incomplete"
 data flex_carry_prefix_cooldown: String = "cooldown "
 data flex_carry_prefix_loading: String = "loading "
 data flex_carry_prefix_answered: String = "create answered "
 data flex_carry_prefix_lost: String = "create lost "
 data flex_carry_prefix_refused: String = "create refused "
+// The TRAILER: the last line, "end <n>" where n is the number of lines before it. A write cut off anywhere
+// loses it or mismatches it, so a truncated carry reads unread instead of as a shorter, well-formed one.
+// Filesystem.Write is not atomic, so the trailer is the only thing that says the file was written whole.
+data flex_carry_prefix_end: String = "end "
+// The remedy an operator owes whenever the standing of the last ask is not established: the pass cannot
+// repair it (an ask that has produced no instance yet is invisible to the roster), so the route is named.
+data flex_carry_remedy: String = "REMEDY: an operator reads the account asks and instances, then writes target/flex-pass-carry.txt as the four lines flex-carry v1, sightings incomplete, standing none, end 3 once the account is known clear"
+data flex_carry_absent_reason: String = "no carry file exists, and a missing file does not say that no ask is in flight (cargo clean, a fresh worktree or another runner loses it); an operator must restate the standing before a create is planned"
 // The standing of the last ask is written as a WHOLE line, one of these two. A carry that states no standing
 // at all reads untrusted rather than defaulting to "no ask in flight".
 data flex_carry_line_standing_none: String = "standing none"
@@ -370,106 +378,136 @@ type FlexCarryStanding
 type FlexCarryLine
   = FlexCarrySightingsBasis { basis: FlexSightingsBasis }
   | FlexCarryCooldown { asked_at: EpochMs, until: EpochMs }
-  | FlexCarryLoading { instance_id: Int, first_seen_ms: EpochMs }
+  | FlexCarryLoading { instance_id: Int, first_sampled_loading_ms: EpochMs }
   | FlexCarryAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
   | FlexCarryLost { machine_id: Int, ask_id: Int }
   | FlexCarryRefused { machine_id: Int, ask_id: Int }
   | FlexCarryHeader
   | FlexCarryNoAskLine
   | FlexCarryStandingUnknownLine
+  | FlexCarryTrailer { count: Int }
   | FlexCarryLineUnread { text: String }
 
-type FlexCarryNums { first: Int?, second: Int?, third: Int? }
-
-// The first three integer tokens of a line, in order; a non-integer token is passed over. A line that
-// needs three and has two reads as unread, which drops it -- the pass never fills a gap with a guess.
-fn flex_carry_nums(line: String) -> FlexCarryNums {
-  fold(
-    split(s: line, delimiter: " "),
-    init: FlexCarryNums { first: none, second: none, third: none },
-    f: (acc, token) =>
+// THE GRAMMAR IS EXACT. A line is its keyword, then exactly the integers it declares, separated by single
+// spaces: a token that is not an integer, a missing token, an extra token or a doubled space makes the line
+// unread, never a shorter or a longer record. (The first cut skipped non-integer tokens and ignored extras,
+// so a write cut off mid-number, "loading 42 1792", still parsed, with an instant in 1970.)
+fn flex_carry_push(acc: List<Int>?, token: String) -> List<Int>? {
+  match acc {
+    Absent => none
+    Present { value: xs } =>
       match parse_int(s: token) {
-        Absent => acc
-        Present { value: n } =>
-          match acc.first {
-            Absent => FlexCarryNums { first: Present { value: n }, second: none, third: none }
-            Present { value: f0 } =>
-              match acc.second {
-                Absent => FlexCarryNums { first: Present { value: f0 }, second: Present { value: n }, third: none }
-                Present { value: s0 } =>
-                  match acc.third {
-                    Absent => FlexCarryNums { first: Present { value: f0 }, second: Present { value: s0 }, third: Present { value: n } }
-                    Present { value: _ } => acc
-                  }
-              }
-          }
-      },
-  )
+        Absent => none
+        Present { value: n } => Present { value: concat(xs, [n]) }
+      }
+  }
+}
+
+// The integers of the tokens after the keyword, when there are exactly `arity` of them and every one parses.
+fn flex_carry_ints(line: String, keyword_tokens: Int, arity: Int) -> List<Int>? {
+  let rest = split(s: line, delimiter: " ").skip(n: keyword_tokens)
+  if length(rest) != arity {
+    none
+  } else {
+    fold(rest, init: Present { value: [] }, f: (acc, token) => flex_carry_push(acc: acc, token: token))
+  }
+}
+
+fn flex_carry_unread_line(line: String) -> FlexCarryLine {
+  FlexCarryLineUnread { text: line }
+}
+
+fn flex_carry_cooldown_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [asked, until] => FlexCarryCooldown { asked_at: asked, until: until }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
+}
+
+fn flex_carry_loading_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 2) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [id, at] => FlexCarryLoading { instance_id: id, first_sampled_loading_ms: at }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
+}
+
+fn flex_carry_answered_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 3) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [id, machine, ask] => FlexCarryAnswered { instance_id: id, machine_id: machine, ask_id: ask }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
+}
+
+fn flex_carry_lost_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [machine, ask] => FlexCarryLost { machine_id: machine, ask_id: ask }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
+}
+
+fn flex_carry_refused_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 2, arity: 2) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [machine, ask] => FlexCarryRefused { machine_id: machine, ask_id: ask }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
+}
+
+fn flex_carry_trailer_line(line: String) -> FlexCarryLine {
+  match flex_carry_ints(line: line, keyword_tokens: 1, arity: 1) {
+    Absent => flex_carry_unread_line(line: line)
+    Present { value: ns } =>
+      match ns {
+        [n] => FlexCarryTrailer { count: n }
+        _ => flex_carry_unread_line(line: line)
+      }
+  }
 }
 
 fn flex_carry_line(line: String) -> FlexCarryLine {
-  let nums = flex_carry_nums(line: line)
-  if starts_with(s: line, prefix: flex_carry_header) {
+  if line == flex_carry_header {
     FlexCarryHeader
-  } else if starts_with(s: line, prefix: flex_carry_prefix_sightings_complete) {
+  } else if line == flex_carry_line_sightings_complete {
     FlexCarrySightingsBasis { basis: FlexSightingsBaselineComplete }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_sightings_incomplete) {
+  } else if line == flex_carry_line_sightings_incomplete {
     FlexCarrySightingsBasis { basis: FlexSightingsBaselineIncomplete }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_cooldown) {
-    match nums.first {
-      Absent => FlexCarryLineUnread { text: line }
-      Present { value: asked } =>
-        match nums.second {
-          Absent => FlexCarryLineUnread { text: line }
-          Present { value: until } => FlexCarryCooldown { asked_at: asked, until: until }
-        }
-    }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_loading) {
-    match nums.first {
-      Absent => FlexCarryLineUnread { text: line }
-      Present { value: id } =>
-        match nums.second {
-          Absent => FlexCarryLineUnread { text: line }
-          Present { value: at } => FlexCarryLoading { instance_id: id, first_seen_ms: at }
-        }
-    }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_answered) {
-    match nums.first {
-      Absent => FlexCarryLineUnread { text: line }
-      Present { value: id } =>
-        match nums.second {
-          Absent => FlexCarryLineUnread { text: line }
-          Present { value: machine } =>
-            match nums.third {
-              Absent => FlexCarryLineUnread { text: line }
-              Present { value: ask } => FlexCarryAnswered { instance_id: id, machine_id: machine, ask_id: ask }
-            }
-        }
-    }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_lost) {
-    match nums.first {
-      Absent => FlexCarryLineUnread { text: line }
-      Present { value: machine } =>
-        match nums.second {
-          Absent => FlexCarryLineUnread { text: line }
-          Present { value: ask } => FlexCarryLost { machine_id: machine, ask_id: ask }
-        }
-    }
-  } else if starts_with(s: line, prefix: flex_carry_prefix_refused) {
-    match nums.first {
-      Absent => FlexCarryLineUnread { text: line }
-      Present { value: machine } =>
-        match nums.second {
-          Absent => FlexCarryLineUnread { text: line }
-          Present { value: ask } => FlexCarryRefused { machine_id: machine, ask_id: ask }
-        }
-    }
-  } else if starts_with(s: line, prefix: flex_carry_line_standing_none) {
+  } else if line == flex_carry_line_standing_none {
     FlexCarryNoAskLine
-  } else if starts_with(s: line, prefix: flex_carry_line_standing_unknown) {
+  } else if line == flex_carry_line_standing_unknown {
     FlexCarryStandingUnknownLine
+  } else if starts_with(s: line, prefix: flex_carry_prefix_cooldown) {
+    flex_carry_cooldown_line(line: line)
+  } else if starts_with(s: line, prefix: flex_carry_prefix_loading) {
+    flex_carry_loading_line(line: line)
+  } else if starts_with(s: line, prefix: flex_carry_prefix_answered) {
+    flex_carry_answered_line(line: line)
+  } else if starts_with(s: line, prefix: flex_carry_prefix_lost) {
+    flex_carry_lost_line(line: line)
+  } else if starts_with(s: line, prefix: flex_carry_prefix_refused) {
+    flex_carry_refused_line(line: line)
+  } else if starts_with(s: line, prefix: flex_carry_prefix_end) {
+    flex_carry_trailer_line(line: line)
   } else {
-    FlexCarryLineUnread { text: line }
+    flex_carry_unread_line(line: line)
   }
 }
 
@@ -507,7 +545,7 @@ type FlexCarryReading
 // in flight".
 fn flex_carry_trust(reading: FlexCarryReading) -> FlexCarryTrust {
   match reading {
-    FlexCarryAbsent => FlexCarryTrusted
+    FlexCarryAbsent => FlexCarryUntrusted { reason: flex_carry_absent_reason as NonEmptyStr }
     FlexCarryLoaded { carry: c } =>
       match c.standing {
         FlexCarryStandingUnknown { reason: r } => FlexCarryUntrusted { reason: r }
@@ -571,7 +609,7 @@ fn flex_carry_standing_word(carry: FlexCarry) -> String {
   match carry.standing {
     FlexCarryAsk { ask: _ } => " standing=yes"
     FlexCarryNoAsk => " standing=no"
-    FlexCarryStandingUnknown { reason: _ } => " standing=UNKNOWN (the create gate stays shut)"
+    FlexCarryStandingUnknown { reason: _ } => concat(" standing=UNKNOWN (the create gate stays shut; ", concat(flex_carry_remedy, ")"))
   }
 }
 
@@ -586,9 +624,9 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
     // was an argument list left open, which the parser locates at the enclosing block's closing brace and
     // not at the call (see the note on flex_member_line and the recurring_failure_mode row filed for it).
     FlexCarryAbsent =>
-      "carry=absent (no carry file at that path, absence established by listing the directory: no previous pass recorded anything)"
+      concat("carry=absent (no carry file at that path, established by listing the directory; absence is not a record that no ask is in flight, so the create gate stays shut; ", concat(flex_carry_remedy, ")"))
     FlexCarryUnread { reason: r } =>
-      concat("carry=UNREAD (", concat(r, " ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed"))
+      concat("carry=UNREAD (", concat(r, concat(" ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed, the create gate stays shut; ", flex_carry_remedy)))
   }
 }
 
@@ -599,17 +637,22 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
 fn flex_carry_read(path: String) -> FlexCarryReading {
   let listed = Filesystem.List(path: flex_pass_carry_directory)
   let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
+  flex_carry_reading_of(
     listing: filesystem_listing_observation(
       directory: flex_pass_carry_directory,
       success: listed.success,
       entries: listed.entries,
       error: listed.error,
     ),
-    name: flex_pass_carry_name,
-    path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+    path: path,
+  )
+}
+
+// THE FOLD OVER THE TWO OBSERVATIONS, apart from the effects that make them, so a witness supplies the
+// observations and runs THIS mapping rather than constructing its result.
+fn flex_carry_reading_of(listing: FilesystemListingObservation, read: FilesystemReadOutcome, path: String) -> FlexCarryReading {
+  match filesystem_file_observation(listing: listing, name: flex_pass_carry_name, path: path, read: read) {
     FilesystemFileAbsent(absence) => FlexCarryAbsent
     FilesystemFileRead { content: content, path: _ } => flex_carry_gate(content: content)
     FilesystemFileIndeterminate { cause: c } => FlexCarryUnread { reason: c as NonEmptyStr }
@@ -624,6 +667,57 @@ fn flex_carry_line_unread(l: FlexCarryLine) -> Bool {
   match l {
     FlexCarryLineUnread { text: _ } => true
     _ => false
+  }
+}
+
+fn flex_carry_is_trailer(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarryTrailer { count: _ } => true
+    _ => false
+  }
+}
+
+fn flex_carry_is_header(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarryHeader => true
+    _ => false
+  }
+}
+
+fn flex_carry_is_standing(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarryNoAskLine => true
+    FlexCarryStandingUnknownLine => true
+    FlexCarryAnswered { instance_id: _, machine_id: _, ask_id: _ } => true
+    FlexCarryLost { machine_id: _, ask_id: _ } => true
+    FlexCarryRefused { machine_id: _, ask_id: _ } => true
+    _ => false
+  }
+}
+
+fn flex_carry_is_basis(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarrySightingsBasis { basis: _ } => true
+    _ => false
+  }
+}
+
+fn flex_carry_is_cooldown(l: FlexCarryLine) -> Bool {
+  match l {
+    FlexCarryCooldown { asked_at: _, until: _ } => true
+    _ => false
+  }
+}
+
+// The trailer is the LAST line and its count is the number of lines before it.
+fn flex_carry_trailer_agrees(parsed: List<FlexCarryLine>, lines: Int) -> Bool {
+  match parsed.skip(n: length(parsed) - 1).first() {
+    Absent => false
+    Present { value: l } =>
+      match l {
+        FlexCarryTrailer { count: n } => n == lines - 1
+        _ => false
+      }
   }
 }
 
@@ -642,6 +736,7 @@ fn flex_carry_gate(content: String) -> FlexCarryReading {
   let lines = filter(split(s: content, delimiter: "\n"), l => length(l) > 0)
   let parsed = map(lines, flex_carry_line)
   let unread = length(filter(parsed, flex_carry_line_unread))
+  let trailers = length(filter(parsed, flex_carry_is_trailer))
   match first(lines) {
     Absent => FlexCarryUnread { reason: "the carry file is empty" as NonEmptyStr }
     Present { value: head } =>
@@ -654,6 +749,10 @@ fn flex_carry_gate(content: String) -> FlexCarryReading {
             " carry line(s) the pass could not parse",
           ) as NonEmptyStr,
         }
+      } else if trailers != 1 || !flex_carry_trailer_agrees(parsed: parsed, lines: length(lines)) {
+        FlexCarryUnread { reason: "the carry does not end with one `end <count>` trailer naming the number of lines before it, so it may have been cut off mid-write" as NonEmptyStr }
+      } else if length(filter(parsed, flex_carry_is_header)) != 1 || length(filter(parsed, flex_carry_is_standing)) > 1 || length(filter(parsed, flex_carry_is_basis)) > 1 || length(filter(parsed, flex_carry_is_cooldown)) > 1 {
+        FlexCarryUnread { reason: "the carry states a header, standing, basis or cooldown line more than once" as NonEmptyStr }
       } else {
         flex_carry_loaded(lines: lines)
       }
@@ -688,11 +787,11 @@ fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
                 sightings: acc.sightings,
                 standing: acc.standing,
               }
-            FlexCarryLoading { instance_id: instance_id, first_seen_ms: first_seen_ms } =>
+            FlexCarryLoading { instance_id: instance_id, first_sampled_loading_ms: first_sampled_loading_ms } =>
               FlexCarry {
                 cooldown: acc.cooldown,
                 basis: acc.basis,
-                sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_seen_ms: first_seen_ms }]),
+                sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_sampled_loading_ms: first_sampled_loading_ms }]),
                 standing: acc.standing,
               }
             FlexCarryNoAskLine =>
@@ -725,16 +824,25 @@ fn flex_carry_loaded(lines: List<String>) -> FlexCarryReading {
                 sightings: acc.sightings,
                 standing: FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
               }
+            FlexCarryTrailer { count: _ } => acc
             FlexCarryLineUnread { text: _ } => acc
           },
       ),
     }
 }
 
+fn flex_carry_prior_sightings(reading: FlexCarryReading) -> List<FlexLoadingSighting> {
+  match reading {
+    FlexCarryLoaded { carry: c } => c.sightings
+    FlexCarryAbsent => []
+    FlexCarryUnread { reason: _ } => []
+  }
+}
+
 fn flex_carry_render(carry: FlexCarry) -> String {
   let basis_line = match carry.basis {
-    FlexSightingsBaselineComplete => [flex_carry_prefix_sightings_complete]
-    FlexSightingsBaselineIncomplete => [flex_carry_prefix_sightings_incomplete]
+    FlexSightingsBaselineComplete => [flex_carry_line_sightings_complete]
+    FlexSightingsBaselineIncomplete => [flex_carry_line_sightings_incomplete]
   }
   let cooldown_lines = match carry.cooldown {
     Absent => []
@@ -742,7 +850,7 @@ fn flex_carry_render(carry: FlexCarry) -> String {
       [concat(concat(flex_carry_prefix_cooldown, int_to_decimal_string(value: c.asked_at)), concat(" ", int_to_decimal_string(value: c.until)))]
   }
   let loading_lines = map(carry.sightings, s =>
-    concat(concat(flex_carry_prefix_loading, int_to_decimal_string(value: s.instance_id)), concat(" ", int_to_decimal_string(value: s.first_seen_ms))))
+    concat(concat(flex_carry_prefix_loading, int_to_decimal_string(value: s.instance_id)), concat(" ", int_to_decimal_string(value: s.first_sampled_loading_ms))))
   // Exactly one standing line is always written: the file states its standing or it does not load trusted.
   // The UNKNOWN reason is not round-tripped as text -- the line records the STATE, and the reason the pass
   // that found the corruption printed is in that pass's receipt; re-deriving a cause string from a file that
@@ -757,10 +865,8 @@ fn flex_carry_render(carry: FlexCarry) -> String {
     FlexCarryAsk { ask: FlexCreateRefused { ask_id: ask, machine_id: machine } } =>
       [concat(concat(flex_carry_prefix_refused, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
   }
-  join(
-    concat([flex_carry_header], concat(basis_line, concat(cooldown_lines, concat(loading_lines, standing_lines)))),
-    "\n",
-  )
+  let body = concat([flex_carry_header], concat(basis_line, concat(cooldown_lines, concat(loading_lines, standing_lines))))
+  join(concat(body, [concat(flex_carry_prefix_end, int_to_decimal_string(value: length(body)))]), "\n")
 }
 
 // WHAT THE NEXT PASS READS. A create this pass PERFORMED supersedes the standing carried in: there is
@@ -779,8 +885,10 @@ fn flex_carry_after(
 ) -> FlexCarry {
   let known = match prior {
     FlexCarryLoaded { carry: c } => c
+    // An absent prior is NOT a first pass with nothing in flight: the file's absence does not say the last ask
+    // is gone, so the UNKNOWN standing is written forward exactly as an unread prior's is.
     FlexCarryAbsent =>
-      FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: FlexCarryNoAsk }
+      FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: FlexCarryStandingUnknown { reason: flex_carry_absent_reason as NonEmptyStr } }
     // The unread prior does NOT become an empty carry: the standing it could not state is written forward as
     // UNKNOWN, so the next pass reads the same fact this pass read (review 89235). The sightings and cooldown
     // this pass observed are still written -- losing those would freeze the loading cut and stop the pass
@@ -879,7 +987,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   )
   match flex_vast_offer_query(recipe: flex_serving_recipe) {
     Absent =>
-      FlexPassReport { receipt: join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], ""), carry: FlexCarryWriteSkipped { because: "the pass made no decision to carry: the instance walk refused" as NonEmptyStr } }
+      FlexPassReport { receipt: join(["key=live secret_manager version=", resolved_version as String, "\n", flex_instances_wire(s: instances), flex_walk_refusal_wire(refused: instance_walk.refused), "\n", flex_charges_wire(s: charges), "\noffers=unsearched (the recipe has no Vast host filters)"], ""), carry: FlexCarryWriteSkipped { because: "the pass made no decision to carry: the recipe has no Vast host filters, so no offer search ran" as NonEmptyStr } }
     Present { value: query } =>
   match flex_search(key: key, q: query) {
     FlexOffersRefused { cause: c } =>
@@ -914,11 +1022,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       // loadings sighted now, anything no longer loading dropped), the standing of the ask this pass
       // made or inherited, and the cooldown it recorded. Written whether or not the pass wrote to Vast:
       // the observations it made are what the next pass needs either way.
-      let prior_sightings = match carry {
-        FlexCarryLoaded { carry: c } => c.sightings
-        FlexCarryAbsent => []
-        FlexCarryUnread { reason: _ } => []
-      }
+      let prior_sightings = flex_carry_prior_sightings(reading: carry)
       let carry_out = flex_carry_after(
         prior: carry,
         roster: instances,
@@ -957,6 +1061,16 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   }
 }
 
+// The exit the dispatch sees: a pass that could not record its own carry fails the run, a skipped write
+// does not (it made no decision to carry).
+fn flex_pass_exit(carry: FlexCarryWrite) -> ProcessExit {
+  match carry {
+    FlexCarryWriteFailed { error: e } => exit_failure(reason: concat("THE PASS COULD NOT RECORD ITS CARRY: ", e))
+    FlexCarryWritten => ExitSuccess
+    FlexCarryWriteSkipped { because: _ } => ExitSuccess
+  }
+}
+
 fn pass() -> ProcessExit uses net: Network {
   match observer_clock_read() {
     ObserverClockUnreadable { detail: d } => exit_failure(reason: concat("THE CLOCK COULD NOT BE READ: ", d))
@@ -973,11 +1087,7 @@ fn pass() -> ProcessExit uses net: Network {
             // that could not record its OWN carry must not report success: the next pass would read a stale
             // carry and treat an ask that may still land as no ask at all. Failing the run is the typed
             // refusal; proceeding would be the escape hatch DESIGN 5 forbids.
-            match report.carry {
-              FlexCarryWriteFailed { error: e } =>
-                exit_failure(reason: concat("THE PASS COULD NOT RECORD ITS CARRY: ", e))
-              _ => ExitSuccess
-            }
+            flex_pass_exit(carry: report.carry)
           }
         }
       }

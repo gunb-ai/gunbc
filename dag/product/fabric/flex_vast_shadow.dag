@@ -1066,8 +1066,10 @@ fn flex_reconcile_acquisition(
 //     age a loading card has is not on the wire. It comes from the pass's OWN carry: the instant an
 //     earlier pass FIRST SAW that id loading (FlexLoadingSighting), written by the entry and read back
 //     next pass. Three cases, and only the middle one is a number: the carry was read and this id was in
-//     the previous complete walk NOT loading, so it started since and age 0 is a true lower bound; the
-//     carry was read and this id was already sighted, so the age accrues from that FIRST sighting; and the
+//     the previous complete walk NOT loading, so it was first sampled loading now and its age is 0 sampled
+//     passes (NOT a bound on how long it has loaded: a card can load between two samples); the carry was
+//     read and this id was already sighted, so the age counts from the FIRST sample that saw it loading --
+//     a loading-at-two-samples age, which says it was loading at both instants and nothing between; and the
 //     carry was missing or unreadable, which makes the age UNREAD (FlexSightingsUnread) -- not zero. A
 //     pass that cannot age a card cannot cut it, and the next complete walk repairs the carry.
 //   outbid -- whether a host has taken an interruptible contract back is a fact of the market (our bid
@@ -1077,7 +1079,7 @@ fn flex_reconcile_acquisition(
 //     card only through the loading cut. `held` asks the weaker question -- is this contract a bid
 //     contract, which is what the vendor's own is_bid names -- so it is read from is_bid, UNVERIFIED
 //     against a live instance row; it moves only the switch premium in the ranking, never a destroy.
-type FlexLoadingSighting { instance_id: Int, first_seen_ms: EpochMs }
+type FlexLoadingSighting { instance_id: Int, first_sampled_loading_ms: EpochMs }
 
 data flex_instance_status_running: String = "running"
 data flex_instance_status_loading: String = "loading"
@@ -1151,10 +1153,10 @@ fn flex_loading_age(sightings: FlexLoadingSightings, instance_id: Int, now: Epoc
       match flex_loading_sighting_for(sightings: known, instance_id: instance_id) {
         Absent => Present { value: second(count: 0) }
         Present { value: seen } =>
-          if (now < seen.first_seen_ms) {
+          if (now < seen.first_sampled_loading_ms) {
             Present { value: second(count: 0) }
           } else {
-            Present { value: second(count: (now - seen.first_seen_ms) / milliseconds_per_second()) }
+            Present { value: second(count: (now - seen.first_sampled_loading_ms) / milliseconds_per_second()) }
           }
       }
   }
@@ -1283,8 +1285,9 @@ fn flex_cards_from_roster(
 // accrues from the first time we saw it, not from the last); a loading id we have not seen before is
 // sighted now; a row that is no longer loading, and an id no longer in the complete roster, drops out --
 // its card is running or gone, and a stale sighting would age nothing (Vast contract ids are not
-// reused). A roster that is not complete keeps the prior sightings but marks the BASIS incomplete, and the
-// next pass then reads UNREAD bounds rather than bounds built on a partial walk.
+// reused). A roster that is not complete RESETS the sightings and marks the BASIS incomplete: the prior
+// instants span a gap this pass cannot see across, so keeping them would age a card over samples that
+// never covered it; the next complete walk re-takes the baseline.
 fn flex_loading_sightings_after(
   ours: FlexOwnerLabel,
   roster: FlexInstancesStanding,
@@ -1306,7 +1309,7 @@ fn flex_loading_sightings_after(
                 FlexInstanceStatusLoading =>
                   match flex_loading_sighting_for(sightings: prior, instance_id: row.id) {
                     Present { value: s } => concat(acc, [s])
-                    Absent => concat(acc, [FlexLoadingSighting { instance_id: row.id, first_seen_ms: now }])
+                    Absent => concat(acc, [FlexLoadingSighting { instance_id: row.id, first_sampled_loading_ms: now }])
                   }
                 FlexInstanceStatusRunning => acc
                 FlexInstanceStatusUnread { raw: _ } => acc
@@ -1314,13 +1317,12 @@ fn flex_loading_sightings_after(
             }
         ),
       }
-    // NOTHING IS AGED OFF AN INCOMPLETE WALK. The prior sightings are kept -- their instants are still
-    // facts -- but the basis is marked incomplete, so the next pass reads UNREAD bounds until a complete
-    // walk re-establishes the baseline.
-    FlexInstancesUnobserved => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: prior }
-    FlexInstancesUnreadable => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: prior }
+    // AN INCOMPLETE WALK ESTABLISHES NO BASELINE. The prior is dropped and the basis marked incomplete, so
+    // the next pass reads UNREAD ages until a complete walk re-takes the sightings.
+    FlexInstancesUnobserved => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
+    FlexInstancesUnreadable => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
     FlexInstancesPartial { next_token: _, observed: _, total: _ } =>
-      FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: prior }
+      FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
   }
 }
 type FlexPassRecord {

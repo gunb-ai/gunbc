@@ -1219,7 +1219,7 @@ test fn a_loading_card_ages_from_the_sighting_an_earlier_pass_left_and_from_noth
   match flex_cards_from_roster(
     ours: flex_owner_label_gunbc_flex,
     roster: roster,
-    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: now - 7200000 }] },
+    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: now - 7200000 }] },
     now: now,
   ) {
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
@@ -1270,7 +1270,7 @@ test fn an_unread_carry_leaves_every_loading_bound_unread_and_a_known_one_leaves
         Present { value: a } =>
           second_count(s: a) == 0
             && match flex_loading_age(
-              sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: now - 7200000 }] },
+              sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: now - 7200000 }] },
               instance_id: 5,
               now: now,
             ) {
@@ -1305,16 +1305,16 @@ test fn the_sightings_a_pass_leaves_keep_the_first_time_a_card_was_seen_loading(
     ours: flex_owner_label_gunbc_flex,
     roster: roster,
     prior: [
-      FlexLoadingSighting { instance_id: 10, first_seen_ms: now - 3600000 },
-      FlexLoadingSighting { instance_id: 12, first_seen_ms: now - 7200000 },
+      FlexLoadingSighting { instance_id: 10, first_sampled_loading_ms: now - 3600000 },
+      FlexLoadingSighting { instance_id: 12, first_sampled_loading_ms: now - 7200000 },
     ],
     now: now,
   )
   match carried.basis {
     FlexSightingsBaselineComplete =>
       length(carried.sightings) == 2
-        && any(carried.sightings, x => x.instance_id == 10 && x.first_seen_ms == now - 3600000)
-        && any(carried.sightings, x => x.instance_id == 11 && x.first_seen_ms == now)
+        && any(carried.sightings, x => x.instance_id == 10 && x.first_sampled_loading_ms == now - 3600000)
+        && any(carried.sightings, x => x.instance_id == 11 && x.first_sampled_loading_ms == now)
     FlexSightingsBaselineIncomplete => false
   }
 }
@@ -1328,7 +1328,7 @@ test fn a_partial_roster_marks_the_baseline_incomplete_and_keeps_the_prior_sight
   let carried = flex_loading_sightings_after(
     ours: flex_owner_label_gunbc_flex,
     roster: partial,
-    prior: [FlexLoadingSighting { instance_id: 10, first_seen_ms: now - 3600000 }],
+    prior: [FlexLoadingSighting { instance_id: 10, first_sampled_loading_ms: now - 3600000 }],
     now: now,
   )
   match carried.basis {
