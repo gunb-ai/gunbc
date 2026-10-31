@@ -1140,6 +1140,14 @@ fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, appl
     none
   } else if (application.plan.subject.attempt_id as String) != (leg.write.attempt as String) {
     none
+  } else if !observer_instant_precedes(earlier: leg.deadline.started, later: application.applied_at) || !observer_instant_precedes(earlier: application.applied_at, later: leg.completed.finished) {
+    // THE WRITE LANDS INSIDE THE LEG IT WAS ADMITTED UNDER: the application's own stamped instant must fall
+    // between the leg's start and its completion. An application stamped outside the window is a write the leg
+    // never carried -- the same ordering fact the boundary reads off the archives, checked where the transition
+    // is built instead of only where it is consumed. (The account producer stamps its instant under its own
+    // modeled realization; cross-clock comparability of ObserverClockInstant is a declared follow-up, not
+    // settled here.)
+    none
   } else {
     Present { value: ForcedFirstRotationWriteTransition { leg: leg, application: application, pre_capture: pre_capture } }
   }

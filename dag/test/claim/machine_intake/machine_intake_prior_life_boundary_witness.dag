@@ -141,6 +141,8 @@ data t_after_write_returned_p: EpochMs = 1791158462000
 data t_pre_capture_p: EpochMs = 1791158300000
 data t_write_began_p: EpochMs = 1791158360000
 data t_write_finished_p: EpochMs = 1791158365000
+// THE WRITE LANDS INSIDE ITS LEG: the application's stamped instant, between the leg's start and completion.
+data t_write_applied_p: EpochMs = 1791158362000
 
 // A minute after the post-write archive was read: a capture taken at this instant is a POST-write capture,
 // and the RED that hands one over as the pre-capture relies on that.
@@ -471,8 +473,8 @@ fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs, returned_at: Epoch
 // test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness); the inference is the row's
 // reason, typed as an inference (§4d), minted from the same admitted write. A producer that refuses returns
 // none, so no claim here can pass over a transition that was not produced.
-fn forced_ctx(pre: PriorLifeArchive?, began: EpochMs, finished: EpochMs) -> PriorLifeForcedWriteContext? {
-  match srv13_forced_write_transition(subject: subject_p(), pre_capture: pre, began_millis: began, finished_millis: finished) {
+fn forced_ctx(pre: PriorLifeArchive?, began: EpochMs, finished: EpochMs, applied: EpochMs) -> PriorLifeForcedWriteContext? {
+  match srv13_forced_write_transition(subject: subject_p(), pre_capture: pre, began_millis: began, finished_millis: finished, applied_at_millis: applied) {
     Absent => none
     Present { value: tr } => Present {
       value: prior_life_forced_write_context(
@@ -536,7 +538,7 @@ test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bo
   match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
-      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
         Absent => false
         Present { value: ctx } =>
           match dry_archive_prior_life_across_forced_write(
@@ -575,7 +577,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
   match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
-      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
         Absent => false
         Present { value: ctx } =>
           match dry_archive_prior_life_across_forced_write(
@@ -609,7 +611,7 @@ test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_for
   match pre_capture_at(world: zero_entry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
-      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
         Absent => false
         Present { value: ctx } =>
           match dry_archive_prior_life_across_forced_write(
@@ -640,7 +642,7 @@ test fn w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish() ->
   match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_after_write_p, returned_at: t_after_write_returned_p) {
     Absent => false
     Present { value: pre } =>
-      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
         Absent => false
         Present { value: ctx } =>
           match dry_archive_prior_life_across_forced_write(
@@ -669,7 +671,7 @@ test fn w_a_refusal_across_the_forced_write_stays_a_refusal() -> Bool {
   match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
-      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
         Absent => false
         Present { value: ctx } =>
           match dry_archive_prior_life_across_forced_write(

@@ -385,6 +385,7 @@ fn forced_write_sequence_at(
   pre_capture: PriorLifeArchive?,
   began_millis: EpochMs,
   finished_millis: EpochMs,
+  applied_at_millis: EpochMs,
 ) -> ForcedWriteSequence?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
@@ -448,7 +449,7 @@ fn forced_write_sequence_at(
                     plan: p,
                     managed_fetch: ready(version: "2", bytes: generation_2),
                     published_fetch: ready(version: "2", bytes: generation_2),
-                    applied_at_millis: t_apply,
+                    applied_at_millis: applied_at_millis,
                   )
                   // THE AUTHENTICATED READ AFTER THE WRITE, by the real producer, over the world the apply
                   // returned: root now holds the generation the plan wrote, and this is the reading the
@@ -490,10 +491,11 @@ fn forced_write_sequence_at(
 
 // srv13's own sequence: the controller the committed 403 and the committed post-rotation Manager read are
 // of, at the address first contact recorded for it.
-fn srv13_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence?
+fn srv13_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_transition"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_first_write_transition_is_produced_by_the_real_producers"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "a_write_applied_outside_its_leg_window_produces_no_transition"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_sequence_for_the_captured_unit"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_pre_write_entry_across_the_forced_write_establishes_normally"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write"),
@@ -502,19 +504,19 @@ fn srv13_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: Prior
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
   ]
 {
-  forced_write_sequence_at(endpoint: srv13(), census: srv13_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis)
+  forced_write_sequence_at(endpoint: srv13(), census: srv13_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
 }
 
 // THE MATCHING-FOREIGN-CONTROLLER PAIR: the same producers, at another address (srv4, 192.168.1.195, the
 // other ALTRAD8UD in the fleet intent). The forced state, the admitted write, the plan, the application and
 // the readback all describe THAT controller, consistently -- which is exactly the shape the arrival
 // classifier must refuse when the run's own readings are srv13's.
-fn srv4_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence?
+fn srv4_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_sequence_for_the_foreign_unit"),
   ]
 {
-  forced_write_sequence_at(endpoint: another_controller(), census: srv4_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis)
+  forced_write_sequence_at(endpoint: another_controller(), census: srv4_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
 }
 
 fn srv4_dry_census() -> IpmiControllerChannelCensus {
@@ -529,8 +531,8 @@ fn srv4_dry_census() -> IpmiControllerChannelCensus {
 // real dry apply returns, join into one transition: the leg names the same write, the plan's managed write
 // is the root password write the admission names, and the attempt is the subject's own. A producer that
 // refused would return none here, so this claim cannot pass over a transition that was not produced.
-fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedFirstRotationWriteTransition? {
-  match srv13_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis) {
+fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedFirstRotationWriteTransition? {
+  match srv13_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis) {
     Absent => none
     Present { value: s } => Present { value: s.transition }
   }
@@ -538,7 +540,7 @@ fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: Pri
 
 test fn the_forced_first_write_transition_is_produced_by_the_real_producers() -> Bool {
   let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
-  match srv13_forced_write_sequence(subject: subject, pre_capture: none, began_millis: 1793145630000, finished_millis: 1793145635000) {
+  match srv13_forced_write_sequence(subject: subject, pre_capture: none, began_millis: 1793145630000, finished_millis: 1793145635000, applied_at_millis: t_apply) {
     Absent => false
     Present { value: s } =>
       (s.transition.leg.write.attempt as String) == (subject.attempt_id as String)
@@ -554,5 +556,24 @@ test fn the_forced_first_write_transition_is_produced_by_the_real_producers() ->
         && (s.post_read.endpoint.host as String) == (srv13().host as String)
         && s.post_read.subject == subject
         && (s.post_read.attempt as String) == (subject.attempt_id as String)
+  }
+}
+
+// THE OPPOSITE-ORDER RED, at the transition mint: the same producers, the same leg, the same plan -- but the
+// application is stamped AFTER the leg it was admitted under had completed. There is no transition that can
+// carry a write its own leg never carried, so the sequence produces nothing at all. Paired positive: the claim
+// above, identical but for the apply instant (t_apply, inside the window).
+// Rung: the real producers, refusing at the transition mint.
+test fn a_write_applied_outside_its_leg_window_produces_no_transition() -> Bool {
+  let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
+  match srv13_forced_write_sequence(
+    subject: subject,
+    pre_capture: none,
+    began_millis: 1793145630000,
+    finished_millis: 1793145635000,
+    applied_at_millis: 1793145695000,
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
