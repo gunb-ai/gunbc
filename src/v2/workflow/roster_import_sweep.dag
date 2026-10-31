@@ -484,14 +484,14 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }, scope: AnySite },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }, scope: RequiresOccurrences },
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/string",
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }, scope: AnySite },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }, scope: RequiresOccurrences },
     // A digest key (Fnv1a64Structural.digest, a String where lower_hex_16) is its own key kind: its declared order is over
     // Fnv1a64StructuralDigestHex, which is not String at a typed argument, so it gets its own row and its own order.
     RosterHeadRow {
@@ -500,7 +500,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }, scope: AnySite },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }, scope: RequiresOccurrences },
     RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead, scope: AnySite },
     // string_total_order is declared in std.algebra beside list_sort_by_key: the row covers the sort_by/string appended callee.
     RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, scope: AnySite },
@@ -3032,7 +3032,8 @@ fn roster_rename_control_names() -> List<String> {
     "requires-scope-scoped-run-rewrites-only-its-keyed-site",
     "requires-scope-list-receiver-site-untouched",
     "requires-scope-spelling-safe-row-unscoped-still-sweeps",
-    "requires-scope-planted-any-site-row-no-longer-refuses"
+    "requires-scope-planted-any-site-row-no-longer-refuses",
+    "requires-scope-sort-by-unscoped-run-refuses"
   ]
 }
 
@@ -3172,10 +3173,10 @@ fn roster_scope_gate(keys: List<String>, text: String) -> List<RosterSiteGate> {
   [RosterSiteGate { home: "std.algebra", row_key: "contains", call: "contains", keys: keys, path: "control/scope.dag", starts: line_starts(text: text) }]
 }
 
-fn roster_scope_expect_refused(name: String, outcome: RosterOutcome) -> String {
+fn roster_scope_expect_refused(name: String, outcome: RosterOutcome, expected: String) -> String {
   match outcome {
     RosterRefused { reason: r } =>
-      if roster_refusal_text(reason: r) == "row-requires-occurrence-scope path=control/scope.dag call=contains key=contains" { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
+      if roster_refusal_text(reason: r) == expected { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
     other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/scope.dag", outcome: other)
   }
 }
@@ -3207,12 +3208,14 @@ fn roster_requires_scope_controls(prepared: PreparedGrammar, lex: PreparedLexRul
   let concat_src = "module c.scope\n\nimport std.algebra { Cons }\n\nfn f(a: List<String>, b: List<String>) -> List<String> {\n  concat(a, b)\n}\n"
   let concat_after = "module c.scope\n\nimport std.algebra { Cons, collection_concat_shape }\n\nfn f(a: List<String>, b: List<String>) -> List<String> {\n  concat(a, b)\n}\n"
   let concat_rows = list_append(left: roster_row_by_key(key: "concat"), right: contains_rows)
+  let sort_src = "module c.sort\n\nimport std.algebra { Cons }\n\nfn f(xs: List<Symbol>) -> List<Symbol> {\n  sort_by(xs, k)\n}\n"
   [
-    roster_control_verdict(name: "requires-scope-unscoped-run-refuses", fail: roster_scope_expect_refused(name: "requires-scope-unscoped-run-refuses", outcome: roster_scope_outcome(rows: contains_rows, gates: [], text: src, prepared: prepared, lex: lex))),
+    roster_control_verdict(name: "requires-scope-unscoped-run-refuses", fail: roster_scope_expect_refused(name: "requires-scope-unscoped-run-refuses", outcome: roster_scope_outcome(rows: contains_rows, gates: [], text: src, prepared: prepared, lex: lex), expected: "row-requires-occurrence-scope path=control/scope.dag call=contains key=contains")),
     roster_control_verdict(name: "requires-scope-scoped-run-rewrites-only-its-keyed-site", fail: roster_scope_expect_text(name: "requires-scope-scoped-run-rewrites-only-its-keyed-site", before: src, outcome: roster_scope_outcome(rows: contains_rows, gates: keyed, text: src, prepared: prepared, lex: lex), after: after)),
     roster_control_verdict(name: "requires-scope-list-receiver-site-untouched", fail: roster_scope_expect_any_refusal(name: "requires-scope-list-receiver-site-untouched", outcome: roster_scope_outcome(rows: contains_rows, gates: roster_scope_gate(keys: ["control/scope.dag:7:3"], text: src), text: src, prepared: prepared, lex: lex))),
     roster_control_verdict(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", fail: roster_scope_expect_text(name: "requires-scope-spelling-safe-row-unscoped-still-sweeps", before: concat_src, outcome: roster_scope_outcome(rows: concat_rows, gates: [], text: concat_src, prepared: prepared, lex: lex), after: concat_after)),
-    roster_control_verdict(name: "requires-scope-planted-any-site-row-no-longer-refuses", fail: roster_scope_planted_control(rows: any_site, text: planted_src, prepared: prepared, lex: lex))
+    roster_control_verdict(name: "requires-scope-planted-any-site-row-no-longer-refuses", fail: roster_scope_planted_control(rows: any_site, text: planted_src, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "requires-scope-sort-by-unscoped-run-refuses", fail: roster_scope_expect_refused(name: "requires-scope-sort-by-unscoped-run-refuses", outcome: roster_scope_outcome(rows: roster_row_by_key(key: "sort_by/symbol"), gates: [], text: sort_src, prepared: prepared, lex: lex), expected: "row-requires-occurrence-scope path=control/scope.dag call=sort_by key=sort_by/symbol")))
   ]
 }
 
