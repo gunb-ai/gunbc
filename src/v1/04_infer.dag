@@ -109,7 +109,7 @@ import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, collection_carrier_node, is_fully_resolved,
-  kernel_profile_lookup,
+  kernel_profile_lookup, build_type_substitution, apply_type_substitution,
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node, bare_set_node,
   callable_inferred,
@@ -126,7 +126,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, template_renders_receiver_elements_as_host_text, builtin_receiver_self_host_text_param_names, builtin_host_display_deferred_param_names,
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, builtin_signature, template_renders_receiver_elements_as_host_text, builtin_receiver_self_host_text_param_names, builtin_host_display_deferred_param_names,
   is_empty_map_constructor, is_empty_set_constructor,
   bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
   KernelMethodOnly, DeclarationOnly
@@ -7429,6 +7429,67 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
   }
 }
 
+// A BUILTIN ARGUMENT IS JUDGED BY THE SAME DECLARED-TYPE OBLIGATION AS A USER-FUNCTION ARGUMENT.
+// The registry types a builtin call by its return alone and the call never passes through
+// build_call_application_plan, so direct_call_argument_inhabitance_diags never built a
+// PositionDirectCallArgument obligation for it: parse_int(s: xs.first()) was admitted while the same
+// argument at a user fn refused RefusedOptionalAtRequired. This builds the plan the user-fn route
+// builds, from BuiltinSignature params instantiated per call (build_type_substitution over the
+// arguments, apply_type_substitution per template), and hands it to the one existing relation -- no
+// builtin-specific arm. A ReceiverSelf parameter is the receiver itself: its declared type IS the
+// argument's, so it carries no obligation. A parameter no argument is bound to has no matched index.
+fn builtin_call_application_plan(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ResolvedCallFormal> {
+  match builtin_signature(name: func_name) {
+    Absent => []
+    Present { value: sig } => {
+      let source_indices = scope.type_env.source_indices
+      let templates = sig.params |> map(p => p.ty)
+      let first_is_self = match templates |> first {
+        Present { value: t } => match t { ReceiverSelf => true  _ => false }
+        Absent => false
+      }
+      let receiver = match typed_args |> first {
+        Present { value: ta } => expression_value_type(e: arg_value(n: ta))
+        Absent => error_type
+      }
+      let operand_args = if first_is_self { typed_args |> skip(1) } else { typed_args }
+      let subst = build_type_substitution(
+        param_templates: templates,
+        arg_types: operand_args |> map(ta => expression_value_type(e: arg_value(n: ta))),
+        receiver: receiver, base_subst: empty_map(), source_indices: source_indices)
+      sig.params |> enumerate |> flat_map(pair => {
+        let param = pair.second
+        let matched = typed_args |> enumerate |> filter(ap =>
+          builtin_argument_bound_name(func_name: func_name, arg: ap.second, index: ap.first, scope: scope) == param.name
+        ) |> map(ap => ap.first) |> first
+        match param.ty {
+          ReceiverSelf => []
+          _ => {
+            let declared = apply_type_substitution(template: param.ty, subst: subst, receiver: receiver, source_indices: source_indices).ty
+            [ResolvedCallFormal {
+              formal_index: pair.first,
+              formal: ResolvedFormal {
+                parameter_identity: concat("'", concat(param.name, concat("' of ", func_name))),
+                declared_type: declared,
+                declaration_bound_conformance: declared,
+                substitution_basis: declared
+              },
+              matched_argument_index: matched
+            }]
+          }
+        }
+      })
+    }
+  }
+}
+
+fn builtin_argument_inhabitance_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  direct_call_argument_inhabitance_diags(
+    plan: builtin_call_application_plan(func_name: func_name, typed_args: typed_args, scope: scope),
+    typed_args: typed_args,
+    scope: scope)
+}
+
 // A ROSTER RESULT NAMED BY ITS DECLARATION (a v1.compiler.infer_method registry row whose result is
 // nominal_type_ref of a qualified name) IS THAT DECLARATION AT THE CALL, joined through the
 // closure's symbol index by declaring module and name
@@ -10474,7 +10535,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope)))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, concat(builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope), builtin_argument_inhabitance_diags(func_name: func_name, typed_args: typed_args, scope: scope))))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
