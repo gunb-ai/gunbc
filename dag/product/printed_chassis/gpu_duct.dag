@@ -427,9 +427,10 @@ fn blower_duct_design_of(row: CardRow) -> BlowerDuctDesign? {
 }
 
 // The A16 instance, kept for the A16-only route reports (product.printed_chassis.card_cooling_route).
-// test.claim.duct_card_catalog_witness pins that it equals blower_duct_design_of over the A16 row, so the
-// 40.64 mm here and the one the selection derives cannot drift apart.
-data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: micrometer(count: 40640))
+// The pitch is cem_slot_envelope over the A16's two slots, not a second spelling of 40.64 mm. BlowerDuctDesign
+// carries the pitch as a bare Micrometer, so the figure's CitedFigureStanding stops at card_slot_pitch and
+// the printed designs do not carry it; that is the type's grain, named here rather than hidden.
+data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: cem_slot_envelope(slot_count: 2).value)
 
 fn larger_um(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }
