@@ -10,12 +10,12 @@ import std.roster_frontier { FrontierRow, frontier_row_path }
 data sort_by_migration_frontier_rows: List<FrontierRow> = [
   frontier_row_path(
     path: "src/v2/compiler/infer.dag",
-    reason: "four bare sort_by sites remain: 4361:15 and 4362:16 (Symbol keys, row sort_by/symbol, order symbol_total_order()) and 4398:16 and 6214:12 (Int keys, row sort_by/int, order int_total_order()); the OnlyOccurrences sweep over infer.dag exceeded MemoryMax=16G (EXIT=137)",
-    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope (zesty-badger-599's sweep-cost fix), so the infer.dag passes run to completion as generator output and no bare sort_by remains in the file")
+    reason: "four bare sort_by sites remain, by enclosing function: two in infer_formals_in_declared_order (Symbol keys, row sort_by/symbol, order symbol_total_order()), one in infer_pairings_in_declared_order and one in infer_formal_args_by_plan (Int keys, row sort_by/int, order int_total_order()); the sweep's occurrence keys are 4361:15 4362:16 4398:16 6214:12 at this revision, selectors only; the OnlyOccurrences sweep over infer.dag exceeded MemoryMax=16G (EXIT=137)",
+    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope, so the infer.dag passes run to completion as generator output and no bare sort_by remains in the file")
   ),
   frontier_row_path(
     path: "src/v2/compiler/source_authority.dag",
-    reason: "one bare sort_by site remains: 1683:48 (String key, row sort_by/string, order string_total_order()); not swept, because the sweep-cost fix that unblocks infer.dag gates the chain",
-    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope (zesty-badger-599's sweep-cost fix), so the source_authority.dag pass runs as generator output and no bare sort_by remains in the file")
+    reason: "one bare sort_by site remains in derived_roster_select (occurrence key 1683:48 at this revision, a selector only; String key, row sort_by/string, order string_total_order()); not swept, because the sweep-cost fix that unblocks infer.dag gates the chain",
+    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope, so the source_authority.dag pass runs as generator output and no bare sort_by remains in the file")
   ),
 ]
