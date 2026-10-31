@@ -300,7 +300,9 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
   refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
 }
 
-// ARITHMETIC OVER DECLARED CARRIERS (Q1e). The result carrier of an operator is DERIVED, never read from
+// ARITHMETIC OVER DECLARED CARRIERS (Q1e), for the operators v1.compiler.types arithmetic_requirement declares
+// (Add, Mul, Sub, unary Neg; Div and Mod are the declared stall division_and_remainder_typed_from_left_operand_stall).
+// The result carrier of such an operator is DERIVED, never read from
 // the left operand and never from a name-preference table: the candidates are the operands' declared
 // carriers closed upward under the implicit-safe injections the conversion plan rows declare
 // (InjectionPhase), restricted to the carriers whose algebra profile defines the operator's field
