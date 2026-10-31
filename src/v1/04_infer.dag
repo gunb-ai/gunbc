@@ -1,5 +1,10 @@
 module v1.compiler.infer
 
+import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
+import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
+import v1.compiler.infer_env { declared_module_owner }
+import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments }
+import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
