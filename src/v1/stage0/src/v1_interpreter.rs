@@ -1396,6 +1396,54 @@ pub struct Env {
     parent: Option<Rc<Env>>,
 }
 
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
+}
+
 impl Env {
     pub fn empty() -> Rc<Self> {
         Rc::new(Env {
@@ -1463,6 +1511,14 @@ pub enum InterpError {
     },
     TypeError {
         msg: String,
+    },
+    /// The interpreted call chain reached `CALL_DEPTH_LIMIT`. Its own variant, not a `TypeError`
+    /// string: the count is the refusal's whole content, and a sentence cannot be told apart from
+    /// any other type error by a caller or a witness classifier. `at` names the fn, or the closure
+    /// application, whose frame crossed the limit.
+    CallDepthExceeded {
+        limit: u32,
+        at: String,
     },
     CrossRepresentationEquality {
         detail: String,
@@ -1785,6 +1841,11 @@ impl fmt::Display for InterpError {
                     elapsed_ms, budget_ms
                 )
             }
+            InterpError::CallDepthExceeded { limit, at } => write!(
+                f,
+                "call depth exceeded {} at {} -- the interpreted call chain did not terminate within the limit (a divergent chain, or a host seam whose realization this binary lacks); refused, never a host stack overflow",
+                limit, at
+            ),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -7777,13 +7838,9 @@ fn call_function_guarded(
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: format!("fn '{}'", fn_node.name),
         });
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
@@ -25506,13 +25563,9 @@ fn apply_closure(
     });
     if depth > CALL_DEPTH_LIMIT {
         CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: "closure application".to_string(),
         });
     }
     let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
@@ -30684,5 +30737,186 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod t9_host_recursion_probes {
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{no_span, Cardinality, Connective, ExprData, Node};
+
+    use super::{list_value, map_value, Env, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn body_node() -> Rc<Node> {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "body".to_string(),
+            span: no_span(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
+        std::env::var("T9_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
+    }
+
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
+    fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
+        Value::Closure {
+            params: vec![],
+            body: body.clone(),
+            env,
+        }
+    }
+
+    /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
+    #[test]
+    fn probe_env_parent_chain_drops() {
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
+    }
+
+    /// Each closure captures an env binding the previous closure.
+    #[test]
+    fn probe_closure_capture_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
+    }
+
+    /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
+    #[test]
+    fn probe_closure_via_env_parent_chain_drops() {
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
+    }
+
+    /// Closure env binds a List holding the previous closure.
+    #[test]
+    fn probe_closure_env_list_of_closures_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let env = Env::with_binding(&Env::empty(), f, list_value(vec![value]));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Closure env binds a Map whose value is the previous closure.
+    #[test]
+    fn probe_closure_env_map_value_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let mut entries = super::HamtMap::new();
+            entries.insert(
+                super::CanonKey::new(super::str_value("k")).expect("canonical key"),
+                value,
+            );
+            let env = Env::with_binding(&Env::empty(), f, map_value(entries));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Positive control: shallow chain drops fine (proves the probe builds what it claims).
+    #[test]
+    fn control_shallow_closure_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..1_000 {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
     }
 }
