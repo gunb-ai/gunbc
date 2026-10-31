@@ -71,14 +71,16 @@ fn implicit_argument() -> String {
   concat("module probe_ht_implicit_argument\n", text_header(), "fn take(s: String) -> Int { string_length(s: s) }\nfn at(xs: v2.std.text.String) -> Int { take(s: xs) }\n")
 }
 
-// OBSERVED, NOT ASSERTED: at a call argument the crossing gate blocks with class `InternalError`
-// (subject "text representation crossing at a call argument: declared Primitive(String), ..."), where at
-// a return it blocks with TextCrossingHasNoImplicitRoute naming the route. The refusal is right; the
-// class is a defect in v1.compiler.infer's argument arm, outside this crossing. Asserting only that it
-// REFUSES: this row stays correct when the arm is fixed to name the route, and goes red if the argument
-// position ever admits an implicit crossing. It does not certify the class.
+// The same refusal as at a return, now asserted by CLASS too: the argument arm of v1.compiler.infer
+// direct_call_arg_mismatch_diags refuses with TextCrossingHasNoImplicitRoute naming the fold, through the
+// one route chooser text_crossing_route_of_produced. Before that repair it refused under InternalError,
+// which the refuses row alone could not tell apart from a crash in the checker.
 test fn r_code_point_sequence_at_host_text_argument_refuses() -> Bool {
   refuses(source: implicit_argument())
+}
+
+test fn r_code_point_sequence_at_host_text_argument_names_the_fold_route() -> Bool {
+  names_route(source: implicit_argument(), route: "unicode_scalar_fold")
 }
 
 // THE DECLARED CROSSING AT THE SAME POSITION: the inverse called by name admits, with no blocking row
