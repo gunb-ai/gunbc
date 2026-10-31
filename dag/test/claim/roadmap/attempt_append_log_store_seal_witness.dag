@@ -1,0 +1,55 @@
+module test.claim.roadmap.attempt_append_log_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, census_exit, total_blocking_census, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE ATTEMPT APPEND-LOG STORE IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR BUILT AROUND A PATH.
+// The seal lives in the module that DECLARES the members (gunbc.roadmap.roadmap_attempt_state_store), with the one
+// business-key mint attempt_append_log_store_open; the generic AppendLogStore/AppendLogParent in
+// gunbc.durable_append_log_store are now UNSEALED data carriers -- that constructibility is the accepted residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (the same wall as
+// test.claim.attempt_store_seal_witness for the other attempt stores). This is the relocated a_forged_append_log_parent
+// from test.claim.durable_append_log_witness (decision B: the seal moved out of the generic module into the
+// declaring module). Every RED hands the compiler a module outside the defining file and asserts on the real path:
+//   * a forged sealed-store literal -- the caller supplies `directory`, which IS the raw-root route -- EXACTLY ONE
+//     SoleConstructorViolation on AttemptAppendLogStore;
+//   * the mint handed a path where the member business key is required -- at least one blocking diagnostic beyond a
+//     baseline importing the same closure (gunbc.compile_diagnostic_census cancels the shared closure);
+//   * the lawful mint (instance + node + attempt key + member) -- no blocking diagnostic, no seal violation.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+// One shared import closure; the offending fn body is the only difference, so the delta isolates it.
+data append_log_seal_baseline_source: String = "module probe_append_log_seal_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptAppendLogStore, AttemptAppendLogReading, AttemptLogMember, AttemptWorkerEvents, attempt_append_log_store_open }\nfn f(s: String) -> String {\n  s\n}\n"
+
+data append_log_seal_forged_literal_source: String = "module probe_append_log_seal_forged\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptAppendLogStore, AttemptAppendLogReading, AttemptLogMember, AttemptWorkerEvents, attempt_append_log_store_open }\nfn f(d: NonEmptyStr, s: AppendLogSlot) -> AttemptAppendLogStore {\n  AttemptAppendLogStore { instance: \"srv1-lab\", node: \"n\", attempt_key: \"k\", member_name: \"AttemptWorkerEvents\", directory: d, slot: s }\n}\n"
+
+data append_log_seal_path_minter_source: String = "module probe_append_log_seal_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptAppendLogStore, AttemptAppendLogReading, AttemptLogMember, AttemptWorkerEvents, attempt_append_log_store_open }\nfn f(i: HostDashboardInstance, p: NonEmptyStr) -> AttemptAppendLogReading {\n  attempt_append_log_store_open(instance: i, node: \"n\", attempt_key: \"k\", member: p)\n}\n"
+
+data append_log_seal_lawful_source: String = "module probe_append_log_seal_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptAppendLogStore, AttemptAppendLogReading, AttemptLogMember, AttemptWorkerEvents, attempt_append_log_store_open }\nfn f(i: HostDashboardInstance) -> AttemptAppendLogReading {\n  attempt_append_log_store_open(instance: i, node: \"n\", attempt_key: \"k\", member: AttemptWorkerEvents)\n}\n"
+
+// (a) The seal: a foreign module cannot spell the sealed store (the caller-chosen `directory` is the raw-root route).
+test fn a_forged_attempt_append_log_store_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: append_log_seal_forged_literal_source, subject: "AttemptAppendLogStore"), holds: fn(n) { n == 1 }))
+}
+
+// (b) No raw-root route: the only mint is the business key; handing it a path (in place of the member) is refused.
+test fn no_attempt_append_log_store_mint_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: append_log_seal_path_minter_source, safe: append_log_seal_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// The lawful route: the business-key mint into a foreign consumer, no blocking diagnostic and no seal violation.
+test fn the_lawful_attempt_append_log_store_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: append_log_seal_lawful_source, safe: append_log_seal_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: append_log_seal_lawful_source, subject: "AttemptAppendLogStore"), holds: fn(n) { n == 0 }),
+  ])
+}
