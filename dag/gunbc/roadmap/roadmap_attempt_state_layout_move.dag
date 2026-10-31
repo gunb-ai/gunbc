@@ -1,0 +1,174 @@
+module gunbc.roadmap.roadmap_attempt_state_layout_move
+
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldOwnerRef }
+import std.durable_compare_and_set { cas_generation_first }
+import gunbc.durable_cas_file_store { cas_file_slot_name }
+import gunbc.durable_exclusive_hold_file_store { hold_slot_payload }
+
+// THE ONE RULE FOR MOVING A STORE'S FLAT ENTRIES OUT OF THE SHARED DISPATCH ATTEMPT-STATE ROOT INTO ITS OWN
+// MEMBER DIRECTORY. A store that used to keep its entries directly in the shared parent root declares one
+// MoveRow: the member it now owns and the pattern its legacy flat entries match. Every store's mint refuses
+// while any legacy entry remains (move_row_legacy_names), and the deploy legs converge the move with this
+// plan (move_plan). Adding a store to the move is a data row, never new control flow (DESIGN section 6b).
+//
+// The refusal is permanent and typed, never a dual read: a mint that read both layouts would let an ordinal
+// claimed in the flat layout be re-claimed in the member.
+//
+// `content` says what the moved slot holds: HoldPayload for a store whose entry is only an occupied marker (the
+// identity ordinals: the owner of an occupied slot is never read), CarryBytes for a store whose entry IS the
+// record (the executor writes the legacy bytes and reads them back byte-equal before removing the flat entry).
+type MoveContent = HoldPayload | CarryBytes
+type MoveRow { member: NonEmptyStr, legacy_flat_prefix: NonEmptyStr, content: MoveContent }
+
+// What the moved slot must hold, given the legacy entry's bytes: the one place the content mode is read.
+fn move_expected_content(row: MoveRow, legacy_bytes: String) -> String {
+  match row.content {
+    HoldPayload => move_hold_payload()
+    CarryBytes => legacy_bytes
+  }
+}
+
+fn move_row_legacy_names(row: MoveRow, parent_listing: String) -> List<String> {
+  split(s: parent_listing, delimiter: "\n").filter(fn(n) { starts_with(s: n, prefix: row.legacy_flat_prefix as String) })
+}
+
+// The target stem of a legacy entry is its name without the legacy prefix; the member holds records whose
+// names begin with that stem.
+fn move_target_stem(row: MoveRow, legacy_name: String) -> String {
+  match row.content {
+    HoldPayload => substring(s: legacy_name, start: string_length(s: row.legacy_flat_prefix as String), end: string_length(s: legacy_name))
+    CarryBytes => legacy_name
+  }
+}
+
+// ONE LEGACY ENTRY'S STEP. `slot_present` is true when the member already lists the exact hold-slot name, i.e. a
+// previous run wrote the slot and stopped before removing the flat entry (a failed rm, a dead host). The executor
+// reads that slot back: its bytes equal the content the row demands -> only the removal is left (converge); they
+// differ -> a real collision, refused. A slot absent from the member is written create-only first.
+type MoveEntry { legacy_name: String, slot_name: String, slot_present: Bool }
+
+type MovePlan
+  = MoveNoop
+  | MoveApply { entries: List<MoveEntry> }
+  | MoveRefused { collision: String }
+
+// Noop when nothing remains in the flat layout. Refused when a member entry begins with a legacy entry's target
+// stem (equal to it, or followed by the member's separator ".") but is not that entry's own hold-slot name: the
+// entry would be claimed twice under another generation. Apply otherwise, naming every legacy entry with whether
+// its own slot is already there. Nothing is overwritten and nothing is lost: an entry leaves the old place only
+// after its slot exists and has been read back (the executor), so no state is both absent from the old place and
+// unwritten in the new one, and a rerun after any stop converges to the same end state.
+fn move_plan(row: MoveRow, parent_listing: String, member_listing: String) -> MovePlan {
+  let legacy = move_row_legacy_names(row: row, parent_listing: parent_listing)
+  if length(xs: legacy) == 0 {
+    MoveNoop
+  } else {
+    let members = split(s: member_listing, delimiter: "\n")
+    let clashes = legacy.filter(fn(l) {
+      let stem = move_target_stem(row: row, legacy_name: l)
+      let own = move_hold_slot_name(row: row, legacy_name: l)
+      members.any(fn(m) { m != own && (m == stem || starts_with(s: m, prefix: join([stem, "."], ""))) })
+    })
+    if length(xs: clashes) > 0 {
+      MoveRefused { collision: join(clashes, ",") }
+    } else {
+      MoveApply { entries: map(legacy, l => MoveEntry {
+        legacy_name: l,
+        slot_name: move_hold_slot_name(row: row, legacy_name: l),
+        slot_present: members.any(fn(m) { m == move_hold_slot_name(row: row, legacy_name: l) }),
+      }) }
+    }
+  }
+}
+
+// THE HOLD-SLOT SHAPE A MOVED ENTRY TAKES. A hold store's slot is `<key>.<generation>` holding the held
+// payload, both derived by the hold and CAS libraries' own pure functions, so the move writes what
+// file_hold_acquire would have written and the store decodes it as occupied. The legacy entry's own content
+// is not carried: an occupied identity slot is never read for its owner, and the owner here names the move.
+// A CarryBytes entry is already a slot (`<key>.<generation>`): it keeps its name, so the generation it was
+// written at survives the move.
+fn move_hold_slot_name(row: MoveRow, legacy_name: String) -> String {
+  match row.content {
+    HoldPayload => cas_file_slot_name(key: move_target_stem(row: row, legacy_name: legacy_name) as NonEmptyStr, generation: cas_generation_first())
+    CarryBytes => legacy_name
+  }
+}
+
+fn move_hold_payload() -> String {
+  hold_slot_payload(state: DurableHoldHeld { owner: "moved from the flat attempt-state layout" as DurableHoldOwnerRef }) as String
+}
+
+// THE READBACK OF A MOVE, as a refusal text ("" when it held). Nothing legacy remains in the parent, and
+// every moved entry is present in the member under its hold-slot name; the legacy set equals the moved set,
+// so the highest ordinal moves with it.
+fn move_readback_refusal(row: MoveRow, before_parent: String, after_parent: String, after_member: String) -> String {
+  let remaining = move_row_legacy_names(row: row, parent_listing: after_parent)
+  let members = split(s: after_member, delimiter: "\n")
+  let missing = move_row_legacy_names(row: row, parent_listing: before_parent).filter(fn(l) {
+    !members.any(fn(m) { m == move_hold_slot_name(row: row, legacy_name: l) })
+  })
+  if length(xs: remaining) > 0 {
+    join(["the move left legacy entries in the parent: ", join(remaining, ",")], "")
+  } else if length(xs: missing) > 0 {
+    join(["the move lost entries; absent from the member: ", join(missing, ",")], "")
+  } else {
+    ""
+  }
+}
+
+// THE LEGACY WRITER MUST BE EXCLUDED BEFORE AND THROUGH THE MOVE, AND THAT IS AN OBSERVATION, NOT AN OPERATOR
+// NOTE. The old dispatcher claims an ordinal by creating a flat entry; once the flat entries have moved, its
+// first create-only claim on a node succeeds again and re-mints an ordinal the member already holds (a
+// duplicate attempt key). The old binary takes the first free ordinal per node, so a filesystem fence would have
+// to cover every node and ordinal, which is unbounded; the exclusion is therefore the old writer's own units,
+// read from host authority: each stopped now (is-active) AND masked (is-enabled), because a unit that is only
+// stopped or only disabled can be started again by a person, a dependency or a .path/.timer trigger (a masked
+// unit refuses every start). A move over a non-excluded writer is refused before any entry is touched.
+//
+// Two fence kinds:
+//   LegacyWriterUnits           the units whose ExecStart entry reaches the identity mint (the set is data,
+//                               traced by symbol; see legacy_writer_units in roadmap_dashboard_instance);
+//   LegacyWriterUndeclared      nothing is declared: refuses, never reads as excluded.
+type LegacyWriterFence
+  = LegacyWriterUnits { systemctl: NonEmptyStr, units: List<NonEmptyStr> }
+  | LegacyWriterUndeclared
+
+type LegacyWriterExclusion
+  = LegacyWriterExcluded
+  | LegacyWriterNotExcluded { reason: String }
+
+// The unit state words systemctl is-active prints for a unit that is not running.
+fn legacy_writer_state_is_stopped(active_state: String) -> Bool {
+  active_state == "inactive" || active_state == "failed"
+}
+
+fn legacy_writer_exclusion(unit: String, active_state: String, enabled_state: String) -> LegacyWriterExclusion {
+  if !legacy_writer_state_is_stopped(active_state: active_state) {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not stopped (is-active read '", active_state, "')"], "") }
+  } else if enabled_state != "masked" {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not masked (is-enabled read '", enabled_state, "'), so it can be started again"], "") }
+  } else {
+    LegacyWriterExcluded
+  }
+}
+
+// The first refusal over a unit set, or Excluded when every unit is.
+fn legacy_writer_exclusion_all(exclusions: List<LegacyWriterExclusion>) -> LegacyWriterExclusion {
+  fold(exclusions, init: LegacyWriterExcluded, f: (acc, e) => match acc {
+    LegacyWriterNotExcluded { reason: _ } => acc
+    LegacyWriterExcluded => e
+  })
+}
+
+// One instance's declared fence. Data, never control flow: a new instance is a row.
+type LegacyWriterFenceRow { instance_id: NonEmptyStr, fence: LegacyWriterFence }
+
+// The fence an instance's declared row yields, or Undeclared when it has none.
+fn legacy_writer_fence_for(rows: List<LegacyWriterFenceRow>, instance_id: NonEmptyStr) -> LegacyWriterFence {
+  fold(
+    rows.filter(fn(r) { r.instance_id == instance_id }),
+    init: LegacyWriterUndeclared,
+    f: (acc, r) => r.fence,
+  )
+}

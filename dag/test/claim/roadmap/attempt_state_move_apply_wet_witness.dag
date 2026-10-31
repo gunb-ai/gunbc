@@ -1,0 +1,411 @@
+module test.claim.roadmap.attempt_state_move_apply_wet_witness
+
+// THE MOVE OP ITSELF (DashboardMoveAttemptStateEntries) APPLIED OVER A FIXTURE INSTANCE, then the store it
+// unblocks. Apply moves every flat entry into the member and the readback holds; a second run is a Noop; a
+// collision is Refused and nothing moves; and the identity store mints Ready only after the Apply. The mint is
+// Unready before it, named by its detail, never projected to an empty value.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries, DashboardAssertLegacyWriterExcluded,
+}
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
+import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
+import gunbc.roadmap.roadmap_attempt_identity_store_root {
+  attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
+  AttemptIdentityClaimed, AttemptIdentityClaimRefused, attempt_identity_slots_path,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_attempt_state_move_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["attempt-state-move-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["attempt-state-move-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18106,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn parent_of(i: HostDashboardInstance) -> String {
+  dashboard_instance_dispatch_attempt_state_root(instance: i) as String
+}
+
+fn member_of(i: HostDashboardInstance) -> String {
+  attempt_identity_slots_path(instance: i) as String
+}
+
+fn flat(i: HostDashboardInstance, name: String) -> String {
+  join([parent_of(i: i), "/", attempt_identity_slots.move.legacy_flat_prefix as String, name], "")
+}
+
+// The instance with the member directory, one other attempt store file that must stay put, and three flat
+// identity entries -- node a ordinals 1 and 2, node b ordinal 7 -- written by the old layout. A claim begins
+// with `ready` (plant): a failed plant fails the claim, it never hands back a different instance.
+fn plant(i: HostDashboardInstance) -> Bool {
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+    && Filesystem.Write(path: flat(i: i, name: "a-n1"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: flat(i: i, name: "a-n2"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: flat(i: i, name: "b-n7"), content: "minted_at: old\n").success
+    && Filesystem.Write(path: join([parent_of(i: i), "/belt-last-tick.json"], ""), content: "{}").success
+}
+
+// A stand-in for systemctl, written executable into the fixture instance: it answers the two questions the
+// fence asks from two marker files beside it, so a test chooses what the host "says" by what it plants. The
+// real transport reaches /usr/bin/systemctl; the stand-in exercises the same argv through the same target.
+fn fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> LegacyWriterFence {
+  let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", enabled], "")
+  let body = join(["#!/bin/sh\ncase \"$1\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr, "legacy-dispatcher-two.service" as NonEmptyStr] }
+}
+
+fn excluded_fence(i: HostDashboardInstance) -> LegacyWriterFence {
+  fence_stub(i: i, active: "inactive", enabled: "masked")
+}
+
+fn run_move(i: HostDashboardInstance) -> Bool {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: excluded_fence(i: i) },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  ).success
+}
+
+// ARM 1: Apply, then readback. The member holds exactly the three moved entries as hold slots (set equal,
+// count equal), the highest ordinal (node b, 7) is among them, nothing legacy remains in the parent, and an
+// unrelated store file in the parent stays.
+test fn apply_then_readback_has_the_ordinal_set_equal_and_the_max_preserved() -> Bool {
+  let i = fresh_instance(tag: "apply")
+  let ready = plant(i: i)
+  let applied = run_move(i: i)
+  let members = split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  ready && applied
+    && length(xs: members) == 3
+    && members.any(fn(m) { m == "a-n1.1" }) && members.any(fn(m) { m == "a-n2.1" })
+    && members.any(fn(m) { m == "b-n7.1" })
+    && !string_contains(s: parent, pattern: "attempt-identity-")
+    && string_contains(s: parent, pattern: "belt-last-tick.json")
+    && string_contains(s: Filesystem.Read(path: join([member_of(i: i), "/b-n7.1"], "")).content, pattern: "held|")
+}
+
+// ARM 4: the mint is Unready (naming the legacy entries) before the Apply and Ready only after it; the moved
+// ordinals are occupied, so node a continues at 3.
+test fn the_mint_is_unready_before_apply_and_ready_only_after() -> Bool {
+  let i = fresh_instance(tag: "mint")
+  let ready = plant(i: i)
+  let before_unready = match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreReady { store: _ } => false
+    AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
+  }
+  ready && before_unready && run_move(i: i) && match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail: _ } => false
+    AttemptIdentityStoreReady { store } =>
+      match attempt_identity_claim(store: store, node_id: "a", minted_at: "t", ordinal: 1) {
+        AttemptIdentityClaimRefused { detail: _ } => false
+        AttemptIdentityClaimed { ordinal: next } => next == 3
+      }
+  }
+}
+
+// ARM 2: a second run is a Noop.
+test fn a_second_run_is_a_noop_that_changes_nothing() -> Bool {
+  let i = fresh_instance(tag: "noop")
+  let ready = plant(i: i)
+  let first = run_move(i: i)
+  let members_after_first = Filesystem.List(path: member_of(i: i)).entries
+  let second = run_move(i: i)
+  ready && first && second && Filesystem.List(path: member_of(i: i)).entries == members_after_first
+}
+
+// ARM 3: a collision is Refused and nothing moves. A refusal-subject claim: it passes whenever the op does
+// not move, so it is not expected to fail under a broken apply step.
+test fn a_collision_is_refused_and_nothing_moves() -> Bool {
+  let i = fresh_instance(tag: "collide")
+  let ready = plant(i: i)
+  let seeded = Filesystem.Write(path: join([member_of(i: i), "/a-n1.1"], ""), content: "held|other").success
+  let refused = dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: excluded_fence(i: i) },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+  ready && seeded && !refused.success
+    && string_contains(s: refused.stderr, pattern: "differ from the legacy entry")
+    && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
+    && Filesystem.Read(path: join([member_of(i: i), "/a-n1.1"], "")).content == "held|other"
+}
+
+fn move_of(i: HostDashboardInstance, row: MoveRow) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: row, fence: excluded_fence(i: i) },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 5: A HALF MOVE CONVERGES. A previous run wrote the slot (with the held payload) and stopped before the
+// removal; the rerun finishes the removal and the legacy entry is gone, the slot unchanged.
+test fn a_rerun_after_a_half_move_finishes_the_removal() -> Bool {
+  let i = fresh_instance(tag: "half")
+  let ready = plant(i: i)
+  let slot = join([member_of(i: i), "/a-n1.1"], "")
+  let seeded = Filesystem.Write(path: slot, content: move_hold_payload()).success
+  let applied = move_of(i: i, row: attempt_identity_slots.move)
+  applied.success && ready && seeded
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && Filesystem.Read(path: slot).content == move_hold_payload()
+}
+
+// ARM 6, RED: THE WRITE IS REFUSED. The member is read-only, so every create-only write is refused; the move
+// refuses and every flat entry is still there (nothing is removed on a write that did not land).
+test fn a_refused_write_removes_no_flat_entry() -> Bool {
+  let i = fresh_instance(tag: "refused")
+  let ready = plant(i: i)
+  let locked = shell.Chmod.RecursiveReadOnly(path: member_of(i: i) as FilePath).success
+  let refused = move_of(i: i, row: attempt_identity_slots.move)
+  let restored = shell.Chmod.RecursiveWritable(path: member_of(i: i) as FilePath).success
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  ready && locked && restored && !refused.success
+    && string_contains(s: refused.stderr, pattern: "create-only write")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n1")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n2")
+    && string_contains(s: parent, pattern: "attempt-identity-b-n7")
+}
+
+// ARM 7: A CARRY-BYTES ROW (B2, the dogfood start receipt) moves the legacy bytes themselves, read back
+// byte-equal before the flat entry is removed, under the same name (the generation survives).
+fn plant_receipt(i: HostDashboardInstance, bytes: String) -> Bool {
+  shell.Mkdir.Parents(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String], "") as FilePath).success
+    && Filesystem.Write(path: join([parent_of(i: i), "/dogfood-start-receipt.1"], ""), content: bytes).success
+}
+
+test fn a_carry_bytes_row_moves_the_receipt_bytes_equal_under_the_same_name() -> Bool {
+  let i = fresh_instance(tag: "carry")
+  let bytes = "{\"schema\": \"dogfood-start-receipt/v6\", \"pr_number\": 424}"
+  let ready = plant_receipt(i: i, bytes: bytes)
+  let applied = move_of(i: i, row: dogfood_start_slots.move)
+  ready && applied.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.")
+    && Filesystem.Read(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String, "/dogfood-start-receipt.1"], "")).content == bytes
+}
+
+// ARM 8, RED: a slot already in the member with DIFFERENT bytes is a refusal and the legacy receipt stays.
+test fn a_carry_bytes_destination_with_other_bytes_is_refused_and_the_receipt_stays() -> Bool {
+  let i = fresh_instance(tag: "carrymismatch")
+  let ready = plant_receipt(i: i, bytes: "legacy-receipt")
+  let seeded = Filesystem.Write(path: join([parent_of(i: i), "/", dogfood_start_slots.move.member as String, "/dogfood-start-receipt.1"], ""), content: "different").success
+  let refused = move_of(i: i, row: dogfood_start_slots.move)
+  ready && seeded && !refused.success
+    && Filesystem.Read(path: join([parent_of(i: i), "/dogfood-start-receipt.1"], "")).content == "legacy-receipt"
+}
+
+// THE LIVE SHAPE (inventory of 2026-10-31: 105 flat 32-byte attempt-identity entries, n1..nK per node): two nodes
+// with n1..n5 each, entries of exactly 32 bytes. ARM 9: the move reads every legacy entry (32 bytes each), keeps
+// each ordinal's number as the slot `<node>-n<k>.1`, and the NEXT mint after the move continues the sequence at n6
+// for both nodes. The hold slot does not carry the old bytes (HoldPayload); the ordinal set is what the store reads.
+fn plant_sequences(i: HostDashboardInstance) -> Bool {
+  let entry = "minted_at: 2026-10-29T10:00:00Z\n"
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+    && [1, 2, 3, 4, 5].all(fn(k) {
+      Filesystem.Write(path: flat(i: i, name: join(["c-n", to_string(value: k)], "")), content: entry).success
+        && Filesystem.Write(path: flat(i: i, name: join(["d-n", to_string(value: k)], "")), content: entry).success
+    })
+}
+
+fn next_ordinal(i: HostDashboardInstance, node: String) -> Int {
+  match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail: _ } => 0 - 1
+    AttemptIdentityStoreReady { store } =>
+      match attempt_identity_claim(store: store, node_id: node, minted_at: "t", ordinal: 1) {
+        AttemptIdentityClaimRefused { detail: _ } => 0 - 2
+        AttemptIdentityClaimed { ordinal } => ordinal
+      }
+  }
+}
+
+test fn the_numbering_survives_the_move_and_the_next_mint_continues_the_sequence() -> Bool {
+  let i = fresh_instance(tag: "sequences")
+  let ready = plant_sequences(i: i)
+  let applied = move_of(i: i, row: attempt_identity_slots.move)
+  let members = split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")
+  ready && applied.success
+    && string_contains(s: applied.stdout, pattern: "c-n5: slot written, 31 legacy bytes read back")
+    && length(xs: members) == 10
+    && members.any(fn(m) { m == "c-n5.1" }) && members.any(fn(m) { m == "d-n1.1" })
+    && next_ordinal(i: i, node: "c") == 6 && next_ordinal(i: i, node: "d") == 6
+}
+
+// ARM 10, RED: A MINT RACING THE MOVE IS NOT LOST AND DOES NOT INTERLEAVE. The old writer is the only source of a
+// flat entry: one that appears after the move (here c-n6) leaves the store Unready, so the new mint refuses
+// (never claims n1 of a fresh sequence); the rerun moves it and the sequence continues at n7.
+test fn a_flat_entry_minted_after_the_move_refuses_the_mint_and_the_rerun_keeps_the_sequence() -> Bool {
+  let i = fresh_instance(tag: "late")
+  let ready = plant_sequences(i: i)
+  let first = move_of(i: i, row: attempt_identity_slots.move)
+  let late = Filesystem.Write(path: flat(i: i, name: "c-n6"), content: "minted_at: 2026-10-30T10:00:00Z\n").success
+  let refused_mint = next_ordinal(i: i, node: "c") == 0 - 1
+  let rerun = move_of(i: i, row: attempt_identity_slots.move)
+  ready && first.success && late && refused_mint && rerun.success
+    && Filesystem.Read(path: join([member_of(i: i), "/c-n6.1"], "")).success
+    && next_ordinal(i: i, node: "c") == 7
+}
+
+// ARM 11, RED (the readback's side of the race): an entry the old writer minted between the plan's listing and the
+// readback is a legacy entry remaining after the move: the readback refuses, so the move does not report success.
+test fn a_flat_entry_appearing_between_plan_and_readback_refuses_the_move() -> Bool {
+  let row = attempt_identity_slots.move
+  let refusal = move_readback_refusal(row: row, before_parent: "attempt-identity-c-n1", after_parent: "attempt-identity-c-n6", after_member: "c-n1.1")
+  string_contains(s: refusal, pattern: "left legacy entries") && string_contains(s: refusal, pattern: "attempt-identity-c-n6")
+}
+
+// ARM 12, RED: A CARRIED ENTRY THE TRANSPORT WOULD TRIM IS NOT CARRIED. A receipt ending in a newline reads back one
+// byte short through the exec transport; a CarryBytes move refuses it and the receipt stays.
+test fn a_carry_bytes_entry_the_transport_would_trim_is_refused_and_stays() -> Bool {
+  let i = fresh_instance(tag: "trim")
+  let ready = plant_receipt(i: i, bytes: "{\"schema\": \"dogfood-start-receipt/v6\"}\n")
+  let refused = move_of(i: i, row: dogfood_start_slots.move)
+  ready && !refused.success && string_contains(s: refused.stderr, pattern: "not read faithfully")
+    && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.1")
+}
+
+fn move_with_fence(i: HostDashboardInstance, fence: LegacyWriterFence) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardMoveAttemptStateEntries { row: attempt_identity_slots.move, fence: fence },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 13, RED THEN GREEN ON THE SAME TREE: the legacy writer not excluded refuses the move with every flat entry
+// still in place and the member empty (a running unit; a stopped but unmasked one; an unreadable stand-in; an
+// undeclared unit); with the writer observed stopped AND masked the same tree moves.
+test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked() -> Bool {
+  let i = fresh_instance(tag: "fence")
+  let ready = plant(i: i)
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
+  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] })
+  let undeclared = move_with_fence(i: i, fence: LegacyWriterUndeclared)
+  let untouched = string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
+    && string_length(s: Filesystem.List(path: member_of(i: i)).entries) == 0
+  let moved = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "is not stopped")
+    && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "no legacy dispatcher unit is declared")
+    && untouched
+    && moved.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && length(xs: split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")) == 3
+}
+
+// ARM 14: a Noop move needs no fence (nothing to move, no writer to exclude): the undeclared fence on a tree
+// with no flat entries still reads Noop, so srv2's 0-entry instance is not blocked.
+test fn a_noop_move_does_not_need_the_fence() -> Bool {
+  let i = fresh_instance(tag: "fencenoop")
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success && move_with_fence(i: i, fence: LegacyWriterUndeclared).success
+}
+
+
+// A stand-in whose host CHANGES ITS MIND: the first `quiet_calls` is-active questions read inactive, every later one
+// reads active (the old unit restarted mid-cutover) while is-enabled keeps reading masked. The call count lives in a
+// file beside the stub, so the answer depends on when the move asks, not on which unit it asks about.
+fn flipping_fence(i: HostDashboardInstance, quiet_calls: Int) -> LegacyWriterFence {
+  let stub = join([parent_of(i: i), "/../fence-systemctl-flip-", to_string(value: quiet_calls)], "")
+  let count = join([stub, ".n"], "")
+  let body = join(["#!/bin/sh\nn=$(cat ", count, " 2>/dev/null || echo 0)\ncase \"$1\" in is-active) n=$((n+1)); echo $n > ", count, "; if [ $n -gt ", to_string(value: quiet_calls), " ]; then echo active; else echo inactive; fi; exit 3;; is-enabled) echo masked; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] }
+}
+
+// ARM 15, BROKEN: the exclusion is lifted MID-CUTOVER. The start check (call 1) and the first entry's boundary
+// (call 2) read stopped and masked; the check before that entry's removal (call 3) reads the unit running. The move
+// stops there, typed: the first entry's slot is written but NO flat entry was removed, every flat entry is still in
+// the parent, and the mint stays Unready. A rerun with the host restored converges (the slot is read back equal).
+test fn the_exclusion_lifted_mid_cutover_stops_the_line_before_any_flat_entry_is_removed() -> Bool {
+  let i = fresh_instance(tag: "midcut")
+  let ready = plant(i: i)
+  let stopped = move_with_fence(i: i, fence: flipping_fence(i: i, quiet_calls: 2))
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  let kept = string_contains(s: parent, pattern: "attempt-identity-a-n1")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n2")
+    && string_contains(s: parent, pattern: "attempt-identity-b-n7")
+  let unready = match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreReady { store: _ } => false
+    AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
+  }
+  let rerun = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !stopped.success && string_contains(s: stopped.stderr, pattern: "is not stopped")
+    && kept && unready
+    && rerun.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && length(xs: split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")) == 3
+}
+
+// ARM 16, BROKEN: the MoveNoop route with a LIVE writer. Nothing is left to move, yet an already-moved store may
+// not proceed while a declared legacy unit is running or unmasked; stopped and masked proceeds.
+test fn a_noop_move_with_a_live_or_unmasked_writer_is_refused_and_with_an_excluded_one_proceeds() -> Bool {
+  let i = fresh_instance(tag: "noopfence")
+  let ready = shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
+  let held = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && held.success
+}
+
+fn gate_with(i: HostDashboardInstance, f: LegacyWriterFence) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardAssertLegacyWriterExcluded { fence: f },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 17: THE ACTIVATION GATE (DashboardAssertLegacyWriterExcluded, last in the plan) refuses to let the new
+// dispatcher start while a declared legacy unit runs or is unmasked, and passes when they are excluded.
+test fn the_activation_gate_refuses_a_running_writer() -> Bool {
+  let i = fresh_instance(tag: "gate1")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "active", enabled: "masked"))
+  ready && !r.success && string_contains(s: r.stderr, pattern: "must not be activated")
+}
+
+test fn the_activation_gate_refuses_an_unmasked_writer() -> Bool {
+  let i = fresh_instance(tag: "gate2")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "inactive", enabled: "enabled"))
+  ready && !r.success && string_contains(s: r.stderr, pattern: "is not masked")
+}
+
+test fn the_activation_gate_passes_an_excluded_writer() -> Bool {
+  let i = fresh_instance(tag: "gate3")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  ready && gate_with(i: i, f: excluded_fence(i: i)).success
+}
