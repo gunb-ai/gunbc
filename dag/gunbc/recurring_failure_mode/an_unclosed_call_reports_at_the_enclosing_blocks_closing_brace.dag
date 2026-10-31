@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.an_unclosed_call_reports_at_the_enclosing_blocks_closing_brace
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_unclosed_call_reports_at_the_enclosing_blocks_closing_brace: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unclosed_call_reports_at_the_enclosing_blocks_closing_brace" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "TWO HALVES, and §4b makes the first one the trigger rather than an excuse: (a) a SOURCE-TEXT parse harness -- a witness that hands source text to the real parse, not a supplied token stream, and asserts the diagnostic's LOCUS and the callee it names -- because today no harness can express this RED at all, and a ceiling with no authorable RED has nothing to climb to; (b) parse keeps the location of every open argument list and reports the missing closer AT that open paren, naming the callee, so the reported line is the line that holds the defect. The probe pair in the receipts below is that harness's first fixture: it is already written, in the only form the current tooling allows, and it already discriminates." } },
+
+  receipts: [
+    "INVALID STATE: a call expression whose argument list is left open -- one ')' short, the commonest typo in a receipt-building expression. The file fails to parse with 'parse-failed at <file>:<line>: expected RParen, found RBrace', and the reported line is the CLOSING BRACE OF THE ENCLOSING BLOCK (the match's brace, or the function's), not the line holding the call. The message names no callee, no argument, and no position for the token it wanted.",
+
+    "HARM: the reader is sent to a line that is correct only in the sense that it is where the block ended. In the flex autoscaler lane on 2026-10-30 this cost about an hour of hand-bisection of dag/gunbc/fleet/flex_pass_run.dag, and the reported line MOVED (468:3, then 474:3) across two edits made above it, which is what invites bisecting by eye instead of reading the construct. The harm in its worst form is what the bisection produced: a FALSE toolchain theory -- that a string literal whose first character is ')' followed by text fails to parse -- reported to the lane's manager and very nearly filed as a row against the lexer. A mislocated diagnostic does not only slow the reader; it manufactures wrong bug reports against the toolchain.",
+
+    "RECEIPT, 2026-10-31, deep-raven-765 (flex autoscaler lane), gunbc built from 1170b706a63, run locally. A 15-line probe whose match arm at line 13 reads: P2B { reason: why } => concat(\"UNREAD (\", concat(why, \")): cut cannot fire\") -- two open argument lists, one closer -- reports 'parse-failed at <probe>:14:3: expected RParen, found RBrace': line 14 is the match's closing brace, one line below the defect, and the message never mentions concat. Adding the one missing ')' at line 13 makes the same file parse (it proceeds to the claim-run stage and stops only for having no test fn). The same defect written at function-body level instead of in a match arm reports at the FUNCTION's closing brace (7:1), which is where the reader is least likely to look.",
+
+    "THE FALSE THEORY, AND HOW IT DIED: the theory under test was that a string literal beginning with ')' followed by text does not parse. About forty probes over literal content and nesting kill it: concat(\"A \", concat(why, \")): cut cannot fire\")) parses, as does concat(why, \")): tail\") at the top of a match arm, a literal beginning ')' inside a nested call, a literal whose text is exactly the two characters '))', and the same bodies written at function-body level rather than in a match arm. Every failing body in the battery was one ')' short. The lexer was never involved: the string literal in the failing probe was read correctly, and the missing token was the outer call's closer. This receipt is itself the harm's evidence -- an hour spent falsifying a diagnostic's consequence instead of reading the construct it pointed away from.",
+
+    "CONTROL AND WHY THERE IS NO FIXTURE: none in the tree, and the parse-gate witnesses cannot hold this one. The parse witnesses under src/v2/test/claim/parse (for example supplied_token_stream_support.dag and parse_g0_tokens_remain_furthest_locus.dag) are handed SUPPLIED TOKEN STREAMS, not source text, so the invalid state -- a text-level construct whose lexed form is fine and whose PARSE locus is wrong -- is expressible nowhere they run. §4b: 'where no harness can express it, the missing harness is the next-rung trigger', so the trigger names the source-text parse harness and the probe pair above is its first fixture, rather than a green-by-construction check written against token streams that would be cited as coverage of a defect it cannot see.",
+  ],
+
+  evidence: [],
+}
