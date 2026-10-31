@@ -10,7 +10,7 @@ import product.printed_chassis.gpu_duct {
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design, duct_design, CardEnvelope, card_envelope_of,
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
-  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, plane_on_end_keepout_relief, plane_on_end_duct_run_back, um,
+  BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,  plane_on_end_duct_parts, plane_on_end_keepout_relief, plane_on_end_duct_run_back, card_interface, um,
 }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy, DuctFitPolicy, RingExercisedDims, UnqualifiedAllowances }
@@ -555,5 +555,26 @@ test fn w_no_flat_on_end_cut_spans_the_plug_lips_outer_footprint() -> Bool {
       let cb = primitive_bounds(p: c)
       touches(a: cb, b: lb) && cb.lo_x <= lb.lo_x && lb.hi_x <= cb.hi_x && cb.lo_y <= lb.lo_y && lb.hi_y <= cb.hi_y
     })
+  })
+}
+
+// THE PASSAGE FOOTPRINT IS THE INTERFACE'S BORE, derived from it and not restated: the interface's own bore cut and a
+// second, longer cut of the DUCT share one x/y footprint, so the two cannot drift apart. The interface is built with
+// the same arguments plane_on_end_duct_parts gives it.
+test fn w_the_flat_on_end_passage_footprint_is_the_card_interfaces_bore() -> Bool {
+  let f = a16_end_face
+  let top = um(m: f.face_length) / 2
+  let wl = um(m: f.window_length)
+  let wd = um(m: f.window_depth)
+  let face_z = um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_duct_design))
+  let interface = card_interface(f: f, d: a16_duct_design, mount: PlugAndFlange, face_z: face_z, window_x: top - um(m: f.window_from_top) - wl / 2, window_y: 0 - wd / 2, card_y: um(m: f.window_from_back) - um(m: f.face_thickness) / 2, top: top)
+  let cuts = duct_part_cuts(parts: flat_on_end_parts())
+  length(list: interface.cuts) >= 1 && any(interface.cuts, bore => {
+    let bb = primitive_bounds(p: bore)
+    let shares = filter(cuts, c => {
+      let cb = primitive_bounds(p: c)
+      cb.lo_x == bb.lo_x && cb.hi_x == bb.hi_x && cb.lo_y == bb.lo_y && cb.hi_y == bb.hi_y
+    })
+    length(list: shares) >= 2 && any(shares, c => primitive_bounds(p: c).lo_z < bb.lo_z)
   })
 }
