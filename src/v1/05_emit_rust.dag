@@ -14153,6 +14153,25 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 
 // A unit-element accumulator rendering is an inference gap, not a type, so both fold realizations
 // leave it to the target's inference rather than annotate it.
+// ONE RULE FOR WHAT A FOLD ACCUMULATOR MAY BE DECLARED AS: the rendered type of the node when that type is
+// closed, and "_" (left to rustc) when it is open. The init's own type is tried first and the fold's
+// resolved result type second (emit_rust_fold_method_call), because an init such as `none`, `[]` or
+// `empty_map()` is open until the step fixes it; the effectful loop has no closure for rustc to infer
+// that from, so an open declaration there is E0282 on `let mut __fold_acc`.
+fn rust_fold_declarable_acc_type(acc_type_node: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: si, emit_info: emit_info)
+  let acc_type_name = authored_name_at(source_indices: si, node: acc_type_node)
+  let is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
+  let child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
+  let has_unbound = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: si)
+  let has_closure_unbound = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: si)
+  let render_spurious = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
+  let bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
+  let bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: si, emit_info: emit_info)
+  if bare_container || is_type_var || child_is_type_var || has_unbound || has_closure_unbound || render_spurious || bare_parametric_head { "_" } else { acc_type_str }
+}
+
 fn rust_fold_safe_acc_type(acc_type_str: String) -> String {
   if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
 }
@@ -14360,15 +14379,14 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     }
   } else { emit_info }
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
-  let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
-  let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
-  let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
-  let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
-  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let init_acc_type_str = rust_fold_declarable_acc_type(acc_type_node: acc_type_node, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
+  let lambda_acc_type_str = if init_acc_type_str != "_" { init_acc_type_str } else {
+    match contextual_acc_type {
+      Present { value: result_node } => rust_fold_declarable_acc_type(acc_type_node: result_node, shared_types: shared_types, scope: scope, emit_info: fold_emit_info)
+      Absent => "_"
+    }
+  }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
