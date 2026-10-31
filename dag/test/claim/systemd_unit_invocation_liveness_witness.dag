@@ -5,6 +5,9 @@ import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, Hold
 import gunbc.systemd_unit_invocation_liveness {
   SystemManager, UserManager, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable,
   unit_invocation_observation, unit_invocation_holder_liveness, unit_run_wire, unit_run_of_wire,
+  BootObserved, BootUnreadable, unit_boot_observation,
+  BootStartsAfterAcquisition, BootStartsBeforeAcquisition, BootOrderUndecided, BootOrderUnreadable,
+  unit_boot_order, unit_reboot_holder_liveness,
 }
 
 data boot_a: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
@@ -51,4 +54,139 @@ test fn a_run_round_trips_its_wire_and_a_bare_legacy_id_is_unreadable() -> Bool 
     }
     _ => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BOOT-ONLY READING, AND THE OBSERVED-REBOOT ARM BUILT ON IT. These are the rows for the weaker
+// carrier: a holder whose run identity was never recorded, where the only host fact that can bind a unit
+// name to a lifetime is the boot. The RED rows are the point of the change -- a boot that predates the
+// acquisition, a unit that still reports an InvocationID, and a boot that cannot be ordered must ALL keep
+// the hold; only the conjunction of "the manager that ran the unit has no such unit" and "this boot began
+// after the acquisition, by more than the skew bound" may free it.
+
+data boot_good: String = "6f2f9a1c-3b7e-4a55-9c1d-2a4e6b8c0d11"
+data stat_btime_1792000000: String = "cpu  1 2 3 4\nbtime 1792000000\nprocesses 7\n"
+data stat_btime_bad: String = "cpu  1 2 3 4\nbtime not-a-number\n"
+data stat_no_btime: String = "cpu  1 2 3 4\nprocesses 7\n"
+data stat_btime_negative: String = "cpu  1 2 3 4\nbtime -5\n"
+
+test fn the_boot_only_reading_refuses_everywhere_a_default_would_sit() -> Bool {
+  let good = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  let bad_id = unit_boot_observation(boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000)
+  let no_btime = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_no_btime)
+  let bad_btime = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_bad)
+  let negative = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_negative)
+  (match good { BootObserved { boot_id: _, boot_started_at: t } => t == 1792000000  _ => false })
+    && (match bad_id { BootUnreadable { cause: _ } => true  _ => false })
+    && (match no_btime { BootUnreadable { cause: _ } => true  _ => false })
+    && (match bad_btime { BootUnreadable { cause: _ } => true  _ => false })
+    && (match negative { BootUnreadable { cause: _ } => true  _ => false })
+}
+
+// ONE READING, ONE REFUSAL. The run reading and the boot-only reading take the same two host texts, and a
+// malformed one must produce the SAME located cause from both -- otherwise the two consumers of this
+// module are acting on two different accounts of the same file (DESIGN 3).
+test fn the_two_readings_refuse_with_the_same_cause_for_the_same_bad_host_text() -> Bool {
+  let run_reading = unit_invocation_observation(manager: SystemManager, boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000, invocation_text: inv_a)
+  let boot_reading = unit_boot_observation(boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000)
+  let run_no_btime = unit_invocation_observation(manager: SystemManager, boot_id_text: boot_good, proc_stat_text: stat_no_btime, invocation_text: inv_a)
+  let boot_no_btime = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_no_btime)
+  match run_reading {
+    UnitInvocationUnreadable { cause: c1 } =>
+      match boot_reading {
+        BootUnreadable { cause: c2 } => c1 == c2
+        _ => false
+      }
+    _ => false
+  }
+  && match run_no_btime {
+    UnitInvocationUnreadable { cause: c3 } =>
+      match boot_no_btime { BootUnreadable { cause: c4 } => c3 == c4  _ => false }
+    _ => false
+  }
+}
+
+// THE BOOT AND THE RUN AGREE ABOUT WHEN THE BOOT BEGAN, because they read it once.
+test fn the_boot_instant_the_run_reading_carries_is_the_boot_instant_the_boot_reading_carries() -> Bool {
+  match unit_invocation_observation(manager: SystemManager, boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, invocation_text: inv_a) {
+    UnitInvocationPresent { run: r } =>
+      match unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000) {
+        BootObserved { boot_id: b, boot_started_at: t } => (t == r.boot_started_at) && ((b as String) == (r.boot_id as String))
+        BootUnreadable { cause: _ } => false
+      }
+    _ => false
+  }
+}
+
+// BOOT ORDER IS A THREE-WAY FACT, AND THE SKEW BOUND IS THE CALLER'S. The bound is not a fudge factor: an
+// overlap says "this cannot be ordered", which is a different value from "after" and from "before".
+test fn boot_and_acquisition_are_ordered_only_outside_the_callers_skew_bound() -> Bool {
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  (match unit_boot_order(boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    BootStartsAfterAcquisition { boot_started_at: s, acquired_at: a } => (s == 1792000000) && (a == 1791900000)
+    _ => false
+  })
+  && (match unit_boot_order(boot: boot, acquired_at: 1792100000, skew_bound_seconds: 120) {
+    BootStartsBeforeAcquisition { boot_started_at: s, acquired_at: a } => (s == 1792000000) && (a == 1792100000)
+    _ => false
+  })
+  && (match unit_boot_order(boot: boot, acquired_at: 1792000060, skew_bound_seconds: 120) {
+    BootOrderUndecided { boot_started_at: s, acquired_at: a, skew_bound_seconds: b } => (s == 1792000000) && (a == 1792000060) && (b == 120)
+    _ => false
+  })
+  && (match unit_boot_order(boot: unit_boot_observation(boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000), acquired_at: 1791900000, skew_bound_seconds: 120) {
+    BootOrderUnreadable { cause: _ } => true
+    _ => false
+  })
+}
+
+// THE LAWFUL CONTROL: the manager that ran the unit has no such unit, AND this boot began after the hold
+// was acquired. That is death evidence, and it is the only shape that produces it here.
+test fn an_absent_unit_and_a_boot_that_began_after_the_acquisition_is_death_evidence() -> Bool {
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  match unit_reboot_holder_liveness(standing: UnitInvocationAbsent, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderObservedDead { evidence: _ } => true
+    _ => false
+  }
+}
+
+// RED: A BOOT THAT PREDATES THE ACQUISITION IS NOT DEATH EVIDENCE. The unit is gone from the manager, and
+// that still does not free the hold: the process that took it can be running in this very boot.
+test fn a_boot_that_predates_the_acquisition_keeps_the_hold_even_with_the_unit_gone() -> Bool {
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  match unit_reboot_holder_liveness(standing: UnitInvocationAbsent, boot: boot, acquired_at: 1792100000, skew_bound_seconds: 120) {
+    HolderObservedLive { evidence: _ } => true
+    _ => false
+  }
+}
+
+// RED: A UNIT THAT STILL REPORTS AN INVOCATIONID IS ALIVE TO THIS ARM, whatever the boot says.
+test fn a_unit_that_still_reports_an_invocation_is_alive_to_the_boot_arm() -> Bool {
+  let standing = unit_invocation_observation(manager: SystemManager, boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, invocation_text: inv_a)
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  match unit_reboot_holder_liveness(standing: standing, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderObservedLive { evidence: _ } => true
+    _ => false
+  }
+}
+
+// RED: AN OVERLAP WITHIN THE SKEW BOUND REFUSES TO DECIDE, and an unreadable boot or an unreadable unit
+// standing refuses too. "No reading" and "no order" are kept apart in the cause text, and neither one is
+// ever death.
+test fn an_unorderable_boot_or_an_unreadable_standing_never_frees_the_hold() -> Bool {
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  let unreadable_boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_no_btime)
+  let unreadable_standing = unit_invocation_observation(manager: SystemManager, boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000, invocation_text: "not-hex")
+  (match unit_reboot_holder_liveness(standing: UnitInvocationAbsent, boot: boot, acquired_at: 1792000060, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
+  })
+  && (match unit_reboot_holder_liveness(standing: UnitInvocationAbsent, boot: unreadable_boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
+  })
+  && (match unit_reboot_holder_liveness(standing: unreadable_standing, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
+  })
 }
