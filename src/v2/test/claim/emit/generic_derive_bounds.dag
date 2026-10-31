@@ -4,7 +4,7 @@ import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documen
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
-import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
+import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode, Instantiation, NotADeclaration }
@@ -82,7 +82,7 @@ fn gdb_nongeneric_enum() -> Node {
 }
 
 fn gdb_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: node, target: rust_semantic_decl_target_model_staging(), realization_host: rust_semantic_decl_target_model_staging()) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: node, target: rust_target_model(), realization_host: rust_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -106,4 +106,12 @@ test fn generic_enum_over_scalar_param_stays_bare() -> Bool {
 
 test fn nongeneric_enum_over_list_is_unchanged() -> Bool {
   gdb_text_has(name: ^Ints, params: Empty, node: gdb_nongeneric_enum(), pattern: "enum Ints {")
+}
+
+// Probe: the list-field emission is Accepted at all (a Rejected here, not the bound check, explains a failing control).
+test fn list_field_enum_emission_is_accepted() -> Bool {
+  match gdb_emit_text(name: ^Ints, params: Empty, node: gdb_nongeneric_enum()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
