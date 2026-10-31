@@ -15,7 +15,8 @@ import std.types { String, NonEmptyStr, List, FilePath, list_length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
-import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_state_group }
+import gunbc.fleet.printer_workflow_artifact { printer_state_group }
+import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -750,7 +751,7 @@ fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<Executo
   if (deploy.host_label as String) != (printer_lan_host_identity() as String) {
     []
   } else {
-    let targets = printer_state_directories()
+    let targets = printer_state_directories(tree: host_state_tree())
     let paths = map(targets, t => owned_directory_path(t: t) as String)
     let listed = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
     executor_privileged_plan_rows(plan: printer_state_store_plan(spec: runner_host_spec_of(deploy: deploy)))
@@ -767,6 +768,6 @@ fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvision
   if (spec.host_label as String) != (printer_lan_host_identity() as String) {
     executor_privileged_empty_provisioning_plan()
   } else {
-    executor_privileged_owned_directory_plans(targets: printer_state_directories())
+    executor_privileged_owned_directory_plans(targets: printer_state_directories(tree: host_state_tree()))
   }
 }
