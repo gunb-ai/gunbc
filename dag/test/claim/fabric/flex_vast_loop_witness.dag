@@ -259,7 +259,7 @@ test fn the_card_the_roster_builds_is_the_card_the_pass_destroys() -> Bool {
   match flex_cards_from_roster(
     ours: flex_owner_label_gunbc_flex,
     roster: roster,
-    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 1001, first_seen_ms: now - 7260000 }] },
+    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 1001, first_sampled_loading_ms: now - 7260000 }] },
     now: now,
   ) {
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
@@ -696,6 +696,24 @@ test fn an_unread_carry_refuses_the_create_where_a_trusted_one_plans_it() -> Boo
     FlexPlanRefused { refusal: FlexPassCarryUnread { reason: r } } =>
       string_contains(s: r, pattern: "could not parse")
         && w_plan_create_request(p: flex_plan_pass(input: trusted)) != none
+    _ => false
+  }
+}
+
+// THE CARRY IS CHECKED BEFORE THE COOLDOWN. With an ACTIVE cooldown and an untrusted carry the refusal is
+// still the carry's, so the receipt names the unread standing (and its remedy) instead of a cooldown that
+// would expire into an unexamined create: the order is what the two lines of the plan encode, and this
+// claim is red if a cooldown is allowed to answer first.
+test fn an_active_cooldown_does_not_answer_before_an_untrusted_carry() -> Bool {
+  let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) })
+  let input = FlexPassInput {
+    policy: base.policy, gates: w_open, now: base.now,
+    cooldown: Present { value: FlexRentCooldown { asked_at: base.now, until: base.now + 900000 } },
+    carry: FlexCarryUntrusted { reason: "no carry file exists" as NonEmptyStr },
+    observation: base.observation, cards: [], allocations: base.allocations, intent: base.intent, recipe: w_recipe, template_hashes: w_hashes, no_room: false, replacement_serving: false,
+  }
+  match flex_plan_pass(input: input) {
+    FlexPlanRefused { refusal: FlexPassCarryUnread { reason: r } } => string_contains(s: r, pattern: "no carry file")
     _ => false
   }
 }
