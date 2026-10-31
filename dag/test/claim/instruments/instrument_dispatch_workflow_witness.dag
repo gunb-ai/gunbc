@@ -15,11 +15,16 @@ import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
   instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
   instrument_dispatch_compute_run_unit_cold_memory_demand,
+  instrument_dispatch_wave_concurrency_group_keys, instrument_dispatch_wave_concurrency_group_expression,
+  instrument_dispatch_concurrency_key_is_closed, instrument_dispatch_concurrency_cap,
+  instrument_dispatch_base_probe_budget,
+  instrument_dispatch_wave_shard_count,
   instrument_dispatch_group_prefix, instrument_dispatch_label_input,
   instrument_dispatch_concurrency_group, instrument_dispatch_concurrency_group_template,
 }
 import extdeps.github.expressions {
   ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs, serialize_template,
+  StringLiteral, LogicalOr, LogicalAnd, Equals, FunctionCall, Format, interpolate,
 }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.ci.ci_runner_target { selected_ci_runner_target, ci_runner_target_ram_speed_budget }
@@ -72,13 +77,41 @@ test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -
     && !contains(t, "push:")
     && contains(t, "type: choice")
     && contains(t, "timeout-minutes: 360")
-    && contains(t, concat(concat("concurrency:\n  queue: max\n  group: ", instrument_dispatch_concurrency_group), "\n  cancel-in-progress: false\n"))
+    && contains(t, "concurrency:\n  queue: max\n  group: ")
+    && contains(t, "\n  cancel-in-progress: false\n")
     && !contains(t, "concurrency: instrument-dispatch")
     && !contains(t, "group: instrument-dispatch\n")
     && contains(t, "contents: read")
     && !contains(t, ": write")
     && contains(t, "instrument-dispatch-receipt")
     && contains(t, "if: always()")
+    && contains(t, instrument_dispatch_wave_concurrency_group_expression())
+    && all(instrument_dispatch_wave_concurrency_group_keys(), k => contains(t, k))
+    && all(instrument_dispatch_wave_concurrency_group_keys(), k => instrument_dispatch_concurrency_key_is_closed(key: k))
+    && (length(xs: instrument_dispatch_wave_concurrency_group_keys()) == instrument_dispatch_concurrency_cap)
+    && (instrument_dispatch_concurrency_cap == instrument_dispatch_wave_shard_count + 2)
+    // THE SPINE FALLTHROUGH: the chain's last operand is format() over the same (prefix, ref, label)
+    // parts as instrument_dispatch_concurrency_group_template -- the same VALUE the spine emits, so a
+    // non-wave dispatch queues per (ref, label) exactly as main's #14613 dispatch key does. And the
+    // name GitHub holds WEDGED ('instrument-dispatch-queued'; evidence recorded beside the wave group
+    // keys) must appear NOWHERE in the emitted yml -- not as the default of the group expression, not
+    // as any literal. A yml still naming it queues labels into a group whose members never promote.
+    && contains(t, "format('instrument-dispatch-', '-', github.ref, '-', inputs.label)")
+    && !contains(t, "instrument-dispatch-queued")
+}
+
+// THE BOUNDED SET IS THE CAP (operator ruling 2026-10-20). Max concurrency IS the number of keys, so
+// the key set is checked closed against the shapes the ruling forbids: a key built from the run id or
+// run number (per-run-unique: every dispatch gets its own group, which is no bound at all), a key
+// interpolated from a free-text input (bounded only by what a dispatcher can type), and an empty key.
+// Each is a RED: the predicate must refuse it. The positive half -- the emitted keys all pass -- lives
+// in the claim above, over the generated text, not over a hand-listed roster.
+test fn an_unbounded_or_per_run_concurrency_key_refuses() -> Bool {
+  !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-run-${{ github.run_id }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-run-${{ github.run_number }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-${{ inputs.wave_shard }}")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "")
+    && !instrument_dispatch_concurrency_key_is_closed(key: "instrument-dispatch-wave-0/4")
 }
 
 fn step_name(step: Step) -> String {
@@ -239,7 +272,8 @@ test fn the_emitted_group_carries_the_ref_and_label_expressions_holds() -> Bool 
         LiteralText { text: "-" },
         Interpolation { expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] } }
       ]
-    && contains(t, concat(concat("group: ", instrument_dispatch_concurrency_group), "\n"))
+    && contains(t, instrument_dispatch_wave_concurrency_group_expression())
+    && contains(t, "group: ${{ ")
 }
 
 // THE RED FOR THE OLD SHAPE. One global group name for every label is what the fleet ran with, and it
@@ -336,4 +370,24 @@ test fn the_relaxation_is_authorized_by_a_row_and_its_cost_is_declared_holds() -
 test fn no_upper_edge_rung_drop_is_restored_holds() -> Bool {
   let identities = map(standing_rung_drops(), d => d.identity)
   length(xs: filter(identities, i => i == "instrument_dispatch_upper_edge_unmeasured")) == 0
+}
+
+// THE FAST PATH PROVES WHO PUBLISHED THE ARTIFACT (side-chat Q3 blocker at 3c78dc9fa49, 2026-10-25).
+// The repo-wide artifacts endpoint filters by NAME only, so a different workflow's same-named
+// artifact would otherwise reach the reader's staging dir -- fail-open provenance. The emitted
+// transport must therefore prove the producing run's identity per candidate before download
+// (runs/<id> TOP-LEVEL path == '.github/workflows/' + this workflow file -- the recorded response
+// shape: the single-run endpoint returns workflow: null; the earlier probe read workflow.path from
+// an invented fixture shape and rejected every real candidate, fleet defect 2026-10-26; cached,
+// errors closed), exactly what the fallback path gets structurally by enumerating only this
+// workflow's runs. A transport that drops the proof REDs here; the budget for candidate attempts
+// is the declared row, never an inline literal.
+test fn the_transport_proves_the_producing_workflow_before_download_holds() -> Bool {
+  let t = generated_text()
+  contains(t, "def run_produced_by_this_workflow(rid):")
+    && contains(t, "'.github/workflows/' + WORKFLOW_FILE")
+    && contains(t, "if not run_produced_by_this_workflow(rid):")
+    && contains(t, "artifact_candidates('base', False)[:16]")
+    && (instrument_dispatch_base_probe_budget == 16)
+    && (instrument_dispatch_base_probe_budget > 0)
 }

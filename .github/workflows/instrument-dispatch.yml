@@ -5,16 +5,22 @@ run-name: instrument-dispatch ${{ inputs.label }}
 on:
   workflow_dispatch:
     inputs:
+      wave_shard:
+        description: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)."
+        required: false
+        default: none
+        options: [none, base, 0/4, 1/4, 2/4, 3/4, merge/4]
+        type: choice
       label:
         description: The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref.
         required: true
-        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:self-host-frontier, //gunbc/instruments:decl-ref-census, //gunbc/instruments:effect-pair-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:known-red-derivation, //gunbc/instruments:roster-reach-inhabitance, //gunbc/instruments:router-proxy-falsifier, //gunbc/instruments:serving-benchmark-run, //gunbc/instruments:ambient-name-census, //gunbc/instruments:roster-import-sweep-controls, //gunbc/instruments:credential-acquisition-systemd-rows]
+        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:self-host-frontier, //gunbc/instruments:decl-ref-census, //gunbc/instruments:effect-pair-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:known-red-derivation, //gunbc/instruments:roster-reach-inhabitance, //gunbc/instruments:router-proxy-falsifier, //gunbc/instruments:serving-benchmark-run, //gunbc/instruments:ambient-name-census, //gunbc/instruments:roster-import-sweep-controls, //gunbc/instruments:credential-acquisition-systemd-rows, //gunbc/instruments:namespace-wave-binding-diff]
         type: choice
 permissions:
   contents: read
 concurrency:
   queue: max
-  group: instrument-dispatch-${{ github.ref }}-${{ inputs.label }}
+  group: ${{ inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'merge/4' && 'instrument-dispatch-wave-merge-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '3/4' && 'instrument-dispatch-wave-3-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '2/4' && 'instrument-dispatch-wave-2-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '1/4' && 'instrument-dispatch-wave-1-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '0/4' && 'instrument-dispatch-wave-0-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'base' && 'instrument-dispatch-wave-base' || format('instrument-dispatch', '-', github.ref, '-', inputs.label) }}
   cancel-in-progress: false
 jobs:
   instrument:
@@ -22,6 +28,7 @@ jobs:
     timeout-minutes: 360
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Seed the run's receipt before anything that can fail
         id: seed_receipt
@@ -120,6 +127,23 @@ jobs:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           REQUIRED_MEMORY_BYTES: "18253611008"
         if: inputs.label == '//gunbc/instruments:compute-dependency-wrong-capture'
+      - name: Require the declared memory for //gunbc/instruments:namespace-wave-binding-diff
+        run: |
+          set -e
+          machine=$('free' '-b' | 'grep' '^Mem:' | 'tr' '-s' ' ' | 'cut' '-d' ' ' '-f' '2')
+          cg=$('cut' '-d' ':' '-f' '3' '/proc/self/cgroup' | 'head' '-n' '1')
+          memory_high=$('cat' '/sys/fs/cgroup'"$cg"'/memory.high' 2>/dev/null || 'echo' 'max')
+          memory_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.max' 2>/dev/null || 'echo' 'max')
+          memory_swap_max=$('cat' '/sys/fs/cgroup'"$cg"'/memory.swap.max' 2>/dev/null || 'echo' 'max')
+          'echo' 'instrument memory: machine='"$machine"' cgroup='"$cg"' memory.high='"$memory_high"' memory.max='"$memory_max"' memory.swap.max='"$memory_swap_max"' required='"$REQUIRED_MEMORY_BYTES"
+          if '[' "$machine" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' machine='"$machine"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_high" '!=' 'max' ']' && '[' "$memory_high" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_high='"$memory_high"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+          if '[' "$memory_max" '!=' 'max' ']' && '[' "$memory_max" '-lt' "$REQUIRED_MEMORY_BYTES" ']'; then 'echo' '::error::InstrumentMemoryBudgetUnmet label='"$INSTRUMENT_LABEL"' memory_max='"$memory_max"' required='"$REQUIRED_MEMORY_BYTES"' -- this runner cannot hold the dispatched subject (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_memory_demands)' >&2; exit 1; fi
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
+          REQUIRED_MEMORY_BYTES: "17179869184"
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff'
       - name: Require the declared memory for //gunbc/instruments:dependency-demand-census
         run: |
           set -e
@@ -322,6 +346,179 @@ jobs:
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
         if: "!cancelled()"
+      - name: Stage the receipts this shape consumes (transport; the reader judges them)
+        id: wave_receipt_transport
+        run: |
+          python3 - <<'PYEOF'
+          import glob, json, os, shutil, subprocess, tempfile, urllib.request, urllib.error, zipfile
+          HEAD = os.environ['GITHUB_SHA']
+          REPO = os.environ['GITHUB_REPOSITORY']
+          RUN = int(os.environ['GITHUB_RUN_ID'])
+          TOKEN = os.environ['GITHUB_TOKEN']
+          MODE = os.environ['GUNBC_WAVE_SHARD']
+          STAGING = os.environ['WAVE_RECEIPT_STAGING']
+          WORKFLOW_FILE = 'instrument-dispatch.yml'
+          def api(path):
+              req = urllib.request.Request('https://api.github.com' + path, headers={'Authorization': 'Bearer ' + TOKEN, 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.load(r)
+          import base64 as _b64
+          SERVER = os.environ['GITHUB_SERVER_URL']
+          BASE_REF = 'origin/main'.replace('origin/', '')
+          def auth_header():
+              return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()
+          def ensure_objects(rev):
+              subprocess.run(['git', 'config', '--global', '--replace-all', 'http.' + SERVER + '/.extraHeader', auth_header()], check=True)
+              subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=50', 'origin', rev], check=False)
+              subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)
+              shallow = os.path.exists(os.path.join('.git', 'shallow'))
+              for _round in range(8):
+                  probe = subprocess.run(['git', 'cat-file', '-t', rev], capture_output=True, text=True)
+                  if probe.returncode == 0 and probe.stdout.strip() == 'commit':
+                      return
+                  subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', BASE_REF + ':refs/remotes/origin/' + BASE_REF], check=True)
+                  if shallow:
+                      subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)
+              raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
+          def merge_base():
+              return api('/repos/' + REPO + '/compare/' + BASE_REF + '...' + HEAD)['merge_base_commit']['sha']
+          def clear(dest):
+              os.makedirs(dest, exist_ok=True)
+              for old in os.listdir(dest):
+                  p = os.path.join(dest, old)
+                  shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+          ARTIFACT_PREFIX = 'instrument-dispatch-receipt'
+          SHARD_ROLES = ['0-of-4', '1-of-4', '2-of-4', '3-of-4']
+          def role_artifact_name(role):
+              return ARTIFACT_PREFIX + '-' + role
+          _workflow_cache = {}
+          _workflow_path_seen = {}
+          def run_produced_by_this_workflow(rid):
+              if rid not in _workflow_cache:
+                  try:
+                      w = api('/repos/' + REPO + '/actions/runs/' + str(rid))
+                      _workflow_path_seen[rid] = str(w.get('path'))
+                      _workflow_cache[rid] = w.get('path') == '.github/workflows/' + WORKFLOW_FILE
+                  except urllib.error.HTTPError:
+                      _workflow_path_seen[rid] = 'HTTPError'
+                      _workflow_cache[rid] = False
+              return _workflow_cache[rid]
+          def artifact_candidates(role, head_ok):
+              target = role_artifact_name(role)
+              out = []
+              def _decide(tag, rid, created, aid, verdict, why):
+                  print('stager: ' + tag + ' run=' + str(rid) + ' created=' + str(created) + ' artifact=' + str(aid) + ' -> ' + str(verdict) + (' (' + why + ')' if why else ''))
+              try:
+                  for a in api('/repos/' + REPO + '/actions/artifacts?name=' + target + '&per_page=100')['artifacts']:
+                      wr = a.get('workflow_run') or {}
+                      rid = wr.get('id')
+                      if rid is None or rid == RUN:
+                          _decide('fast', rid, a.get('created_at'), a.get('id'), 'skip', 'own run or missing run id')
+                          continue
+                      if head_ok and (wr.get('head_sha') or '') != HEAD:
+                          _decide('fast', rid, a.get('created_at'), a.get('id'), 'skip', 'head_sha != HEAD')
+                          continue
+                      if not run_produced_by_this_workflow(rid):
+                          _decide('fast', rid, a.get('created_at'), a.get('id'), 'reject', 'producing-run path ' + str(_workflow_path_seen.get(rid)) + ' is not .github/workflows/' + WORKFLOW_FILE)
+                          continue
+                      _decide('fast', rid, a.get('created_at'), a.get('id'), 'accept', 'identity proven')
+                      out.append((str(a.get('created_at') or ''), rid))
+                  out.sort(reverse=True)
+                  return out
+              except urllib.error.HTTPError:
+                  print('stager: fast path raised HTTPError; falling back to per-run enumeration for ' + target)
+              for w in api('/repos/' + REPO + '/actions/workflows/' + WORKFLOW_FILE + '/runs?per_page=100')['workflow_runs']:
+                  rid = w.get('id')
+                  if rid is None or rid == RUN:
+                      _decide('fallback', rid, w.get('created_at'), None, 'skip', 'own run or missing run id')
+                      continue
+                  if head_ok and w.get('head_sha') != HEAD:
+                      _decide('fallback', rid, w.get('created_at'), None, 'skip', 'head_sha != HEAD')
+                      continue
+                  try:
+                      arts = api('/repos/' + REPO + '/actions/runs/' + str(rid) + '/artifacts')['artifacts']
+                  except urllib.error.HTTPError:
+                      _decide('fallback', rid, w.get('created_at'), None, 'skip', 'artifact listing HTTPError')
+                      continue
+                  _hit = any(a.get('name') == target and not a.get('expired') for a in arts)
+                  _decide('fallback', rid, w.get('created_at'), None, 'accept' if _hit else 'skip', 'named non-expired receipt present' if _hit else 'no non-expired ' + target)
+                  if _hit:
+                      out.append((str(w.get('created_at') or ''), rid))
+              out.sort(reverse=True)
+              return out
+          class _StripAuthRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return urllib.request.Request(newurl, headers={}, method=req.get_method())
+          def download(url, path):
+              opener = urllib.request.build_opener(_StripAuthRedirect)
+              req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + TOKEN})
+              with opener.open(req, timeout=600) as r, open(path, 'wb') as f:
+                  while True:
+                      chunk = r.read(1048576)
+                      if not chunk:
+                          break
+                      f.write(chunk)
+          def place(dest, src):
+              dst = os.path.join(dest, os.path.basename(src))
+              if os.path.exists(dst) and open(dst, 'rb').read() != open(src, 'rb').read():
+                  raise SystemExit('wave-transport: transport_duplicate_receipt_bytes_differ: ' + os.path.basename(src) + ' staged twice with different bytes -- refusing before the instrument runs')
+              shutil.copy2(src, dst)
+          def fetch(wid, dest, want_name, must_glob):
+              for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:
+                  if a.get('name') != want_name or a.get('expired'):
+                      continue
+                  st = a.get('state')
+                  if st is not None and st != 'completed':
+                      continue
+                  tmp = tempfile.mkdtemp(dir=os.path.dirname(dest))
+                  zp = os.path.join(tmp, 'receipt.zip')
+                  download(a['archive_download_url'], zp)
+                  with zipfile.ZipFile(zp) as z:
+                      z.extractall(tmp)
+                  os.remove(zp)
+                  hits = glob.glob(os.path.join(tmp, '**', must_glob), recursive=True)
+                  if not hits:
+                      shutil.rmtree(tmp)
+                      return False
+                  for hit in hits:
+                      place(dest, hit)
+                  shutil.rmtree(tmp)
+                  return True
+              return False
+          os.makedirs(STAGING, exist_ok=True)
+          clear(STAGING)
+          MB = merge_base()
+          ensure_objects(MB)
+          PROBE = os.path.join(os.path.dirname(STAGING), 'base-probe')
+          if MODE != 'base':
+              if MODE.startswith('merge/'):
+                  for role in SHARD_ROLES:
+                      for created, wid in artifact_candidates(role, True):
+                          if fetch(wid, STAGING, role_artifact_name(role), 'shard-*-' + role + '.txt'):
+                              break
+              for created, wid in artifact_candidates('base', False)[:16]:
+                  clear(PROBE)
+                  if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):
+                      for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):
+                          place(STAGING, hit)
+                      break
+              clear(PROBE)
+          PYEOF
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
+          WAVE_RECEIPT_STAGING: ${{ runner.temp }}/instrument-dispatch/wave-staging
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard != 'none'
+      - name: Move the staged receipts into the reader's directory
+        id: wave_receipt_import
+        run: |
+          'mkdir' '-p' '././target/namespace-wave-binding-diff/shards'
+          'find' "$WAVE_RECEIPT_STAGING" '-type' 'f' '(' '-name' 'base-*.txt' '-o' '-name' 'shard-*.txt' '-o' '-name' 'verdict-*.txt' ')' '-exec' 'cp' '-a' '-t' '././target/namespace-wave-binding-diff/shards' '{}' '+'
+        shell: bash
+        env:
+          WAVE_RECEIPT_STAGING: ${{ runner.temp }}/instrument-dispatch/wave-staging
+        if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard != 'none'
       - name: Run the dispatched instrument
         id: instrument
         run: |
@@ -335,10 +532,17 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
+          GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
+      - name: Copy the reader's receipts into the artifact tree
+        id: wave_receipt_export
+        run: |
+          if '[' '-d' '././target/namespace-wave-binding-diff/shards' ']'; then 'mkdir' '-p' "$RUNNER_TEMP"'/instrument-dispatch''/shards'; 'cp' '-a' '././target/namespace-wave-binding-diff/shards''/.' "$RUNNER_TEMP"'/instrument-dispatch''/shards'; fi
+        shell: bash
+        if: always()
       - name: Upload the run's receipt and output
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: instrument-dispatch-receipt
+          name: ${{ inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'merge/4' && 'instrument-dispatch-receipt-merge-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '3/4' && 'instrument-dispatch-receipt-3-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '2/4' && 'instrument-dispatch-receipt-2-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '1/4' && 'instrument-dispatch-receipt-1-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == '0/4' && 'instrument-dispatch-receipt-0-of-4' || inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard == 'base' && 'instrument-dispatch-receipt-base' || 'instrument-dispatch-receipt' }}
           path: ${{ runner.temp }}/instrument-dispatch
           if-no-files-found: error
           retention-days: 30
