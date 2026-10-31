@@ -21,7 +21,7 @@ import gunbc.fabric.fabric_storage_wire {
   FabricIdentityRead, FabricIdentityUnproxied, FabricIdentityReadRefused, fabric_storage_unwire_identity,
 }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
+  FabricStorageOperations, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of
@@ -32,7 +32,10 @@ import gunbc.fabric.fabric_storage_file_store {
 //                             socket, where the kernel attests the caller to the door.
 //   FabricStorageServed       every other host; one bounded HTTPS POST to the placed host's endpoint
 //                             (tailscale serve, which proxies to the same socket).
-//   FabricStorageLocalFiles   the file store in process, over a root the caller names. NO PLACEMENT
+//   FabricStorageLocalFiles   the file store in process, over the operations record the ONE mint of
+//   gunbc.fabric.fabric_storage_file_store put up from a declared member chain and a business key: the
+//   arm carries the sealed record, never a root, so no binding can be built over a directory its
+//   holder chose.
 //                             DERIVES IT: it is the realization the door itself runs, and the one a
 //                             claim or instrument uses over its own temp root. Since 2026-09-27 the
 //                             placed host's writers reach the placed store only through the door
@@ -51,7 +54,7 @@ import gunbc.fabric.fabric_storage_file_store {
 type FabricStorageSlotMember { member: NonEmptyStr }
 
 type FabricStorageBinding
-  = FabricStorageLocalFiles { root: FabricStorageFileRoot }
+  = FabricStorageLocalFiles { operations: FabricStorageOperations }
   | FabricStorageDoorSocket { socket: NonEmptyStr, route_prefix: NonEmptyStr }
   | FabricStorageServed { endpoint: NonEmptyStr }
   | FabricStorageBindingUnplaced
@@ -137,7 +140,7 @@ fn fabric_storage_head(binding: FabricStorageBinding, name: NonEmptyStr) -> Fabr
   match binding {
     FabricStorageBindingUnplaced => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: d } }
-    FabricStorageLocalFiles { root: r } => fabric_storage_file_head(root: r, name: name)
+    FabricStorageLocalFiles { operations: ops } => fabric_storage_file_head(root: ops, name: name)
     FabricStorageDoorSocket { socket: k, route_prefix: route } =>
       match door_post(socket: k, route_prefix: route, operation: "head", request: name as String) {
         ServedFault { fault: f } => FabricHeadReadRefused { fault: f }
@@ -155,7 +158,7 @@ fn fabric_storage_put(binding: FabricStorageBinding, object: FabricObject) -> Fa
   match binding {
     FabricStorageBindingUnplaced => FabricPutRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricPutRefused { fault: FabricStoreUnreachable { detail: d } }
-    FabricStorageLocalFiles { root: r } => fabric_storage_file_put(root: r, object: object)
+    FabricStorageLocalFiles { operations: ops } => fabric_storage_file_put(root: ops, object: object)
     FabricStorageDoorSocket { socket: k, route_prefix: route } =>
       match door_post(socket: k, route_prefix: route, operation: "put", request: fabric_object_preimage(object: object) as String) {
         ServedFault { fault: f } => FabricPutRefused { fault: f }
@@ -173,7 +176,7 @@ fn fabric_storage_advance(binding: FabricStorageBinding, name: NonEmptyStr, expe
   match binding {
     FabricStorageBindingUnplaced => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: d } }
-    FabricStorageLocalFiles { root: r } => fabric_storage_file_advance(root: r, name: name, expected: expected, target: target)
+    FabricStorageLocalFiles { operations: ops } => fabric_storage_file_advance(root: ops, name: name, expected: expected, target: target)
     FabricStorageDoorSocket { socket: k, route_prefix: route } =>
       match door_post(socket: k, route_prefix: route, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
         ServedFault { fault: f } => FabricHeadAdvanceRefused { fault: f }
@@ -191,7 +194,7 @@ fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, boun
   match binding {
     FabricStorageBindingUnplaced => FabricClosureRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricClosureRefused { fault: FabricStoreUnreachable { detail: d } }
-    FabricStorageLocalFiles { root: r } => fabric_storage_file_closure(root: r, name: name, bound: bound)
+    FabricStorageLocalFiles { operations: ops } => fabric_storage_file_closure(root: ops, name: name, bound: bound)
     FabricStorageDoorSocket { socket: k, route_prefix: route } =>
       match door_post(socket: k, route_prefix: route, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
         ServedFault { fault: f } => FabricClosureRefused { fault: f }
@@ -214,7 +217,7 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
   match binding {
     FabricStorageBindingUnplaced => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: d } }
-    FabricStorageLocalFiles { root: _ } => FabricIdentityUnproxied
+    FabricStorageLocalFiles { operations: _ } => FabricIdentityUnproxied
     FabricStorageDoorSocket { socket: k, route_prefix: route } =>
       match door_post(socket: k, route_prefix: route, operation: "identity", request: "") {
         ServedFault { fault: f } => FabricIdentityReadRefused { fault: f }

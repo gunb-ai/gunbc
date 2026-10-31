@@ -11,7 +11,9 @@ import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire 
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
+import gunbc.fabric.fabric_storage_file_store {
+  FabricStoreStanding, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_store_declared_root,
+}
 import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
   fabric_seat_acquire, seat_acquisition_wire,
@@ -81,8 +83,17 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // the functions that do the arithmetic. The root is a field and field reads are not module-private, so a holder CAN
 // read it (declared residual: gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module);
 // what is sealed is that a consumer cannot be handed a subject over a root the declaration did not derive.
+// THE SUBJECT CARRIES THE BUSINESS KEY, NOT A ROOT. It holds the host's dashboard instance (the one the
+// host-to-instance authority resolved, or the isolated one a witness is working in) and which of the
+// host's pools it draws from. WHERE the ledger lives is no longer a field: it is derived by the ONE
+// generic store mint (gunbc.fabric.fabric_storage_file_store fabric_store_open) from this instance and
+// this module's declared chain, so the subject and the store cannot disagree about the root and a holder
+// cannot read a root out of it to run the file store by hand. Field reads are still not module-private
+// (declared residual: gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module);
+// what is sealed is that a consumer cannot be handed a subject over an instance the declaration did not
+// resolve, nor a ledger store around a directory its holder chose.
 type ComputeCapacitySubject sole_constructor {
-  root: NonEmptyStr
+  instance: HostDashboardInstance
   partition: PartitionId
 }
 
@@ -122,14 +133,17 @@ fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
   owned_directory_path(t: compute_root_directory(instance: instance)) as String as NonEmptyStr
 }
 
-// THE ONE DECLARATION OF THE CAPACITY LEDGER'S LOCATION: the member under the host's compute root. The ledger root
-// (compute_capacity_root) derives from it and nothing else spells it.
-type ComputeCapacityLedgerDeclaration { member: NonEmptyStr }
-
-data compute_capacity_slots: ComputeCapacityLedgerDeclaration = ComputeCapacityLedgerDeclaration { member: "capacity" as NonEmptyStr }
+// THE ONE DECLARATION OF THE CAPACITY LEDGER'S LOCATION: the member chain under the host instance's root
+// that the ledger sits on -- compute's own declared member, then this ledger's. It is DATA in the shape
+// the ONE generic store mint reads (List<NonEmptyStr>), so the capacity ledger is not a special case of
+// the fabric family: it is an instance of the same rule, obtained from the same mint, with no mint copy
+// and no second record. The provisioning row for the compute directory (compute_root_directory, and the
+// census rows that ask for it) still derives from compute_root, which spells compute's own member; the
+// ledger's chain adds this module's member and nothing else.
+data compute_capacity_slots: List<NonEmptyStr> = ["compute", "capacity"] as List<NonEmptyStr>
 
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
-  join([compute_root(instance: host_instance) as String, "/", compute_capacity_slots.member as String], "") as NonEmptyStr
+  fabric_store_declared_root(members: compute_capacity_slots, root: host_instance.instance_root) as String as NonEmptyStr
 }
 
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
@@ -193,7 +207,7 @@ fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool
 fn host_capacity_subject_in(requesting: HostDashboardInstance, host_instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeCapacityLedger {
   ComputeCapacityLedger {
     subject: ComputeCapacitySubject {
-      root: compute_capacity_root(host_instance: host_instance),
+      instance: host_instance,
       partition: host_capacity_pool_partition(pool: pool, host: requesting.host_identity),
     },
     appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
@@ -204,12 +218,20 @@ fn host_capacity_subject_in(requesting: HostDashboardInstance, host_instance: Ho
 // The mint is total, so it has no refusal arm; the unresolved-host refusal belongs to the resolution above.
 type ComputeCapacityLedger { subject: ComputeCapacitySubject, appropriation: Kibibyte }
 
-fn compute_capacity_store(subject: ComputeCapacitySubject) -> FabricStorageBinding {
-  FabricStorageLocalFiles { root: fabric_storage_file_root(root: subject.root) }
-}
+// THE LEDGER'S STORE, FROM THE ONE MINT: this module's chain row and the instance the subject was minted
+// for -- never a root read off the subject and never a directory the caller picked. The mint lists the
+// declared root and stands up the two areas (the prepare this module used to do by hand through
+// fabric_storage_file_root_ensure, which is deleted), so the store is either standing with its cause or
+// refused with its cause: no caller projects the refusal away.
+type ComputeCapacityStoreStanding
+  = ComputeCapacityStoreReady { store: FabricStorageBinding }
+  | ComputeCapacityStoreUnready { area: String, detail: String }
 
-fn compute_capacity_store_ensure(subject: ComputeCapacitySubject) -> FabricStorageRootStanding {
-  fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: subject.root))
+fn compute_capacity_store(subject: ComputeCapacitySubject) -> ComputeCapacityStoreStanding {
+  match fabric_store_open(members: compute_capacity_slots, instance: subject.instance, entry_mode: none) {
+    FabricStoreUnready { area: a, detail: d } => ComputeCapacityStoreUnready { area: a, detail: d }
+    FabricStoreReady { store: ops } => ComputeCapacityStoreReady { store: FabricStorageLocalFiles { operations: ops } }
+  }
 }
 
 // ── WHAT THE HOST HAS, READ RATHER THAN SPELLED ────────────────────────────────────────────────
@@ -414,12 +436,12 @@ fn compute_reserve_against(
   } else if kibibyte_count(k: available) < kibibyte_count(k: request) {
     ComputeHostBelowFloor { requested: request, available: available }
   } else {
-    match compute_capacity_store_ensure(subject: subject) {
-      FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
-      FabricStorageRootReady =>
+    match compute_capacity_store(subject: subject) {
+      ComputeCapacityStoreUnready { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+      ComputeCapacityStoreReady { store: store } =>
         match now_epoch_seconds() {
           Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-          Present { value: now } => compute_seat(subject: subject, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
+          Present { value: now } => compute_seat(subject: subject, store: store, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
         }
     }
   }
@@ -430,8 +452,7 @@ fn compute_reserve_against(
 // an operator looking for a busy host while srv1 had 400 GiB free (2026-09-21). The marker is read
 // from the authority that writes it (product.capacity.pool_events pool_full_wire), never re-spelled
 // here, and anything else is a ledger refusal with its text carried through.
-fn compute_seat(subject: ComputeCapacitySubject, request: Kibibyte, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, ceiling: Kibibyte) -> ComputeReservation {
-  let store = compute_capacity_store(subject: subject)
+fn compute_seat(subject: ComputeCapacitySubject, store: FabricStorageBinding, request: Kibibyte, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, ceiling: Kibibyte) -> ComputeReservation {
   match fabric_seat_acquire(
     store: store,
     partition: subject.partition,
@@ -580,8 +601,12 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject, appropriation: 
       match now_epoch_seconds() {
         Absent => ComputeCapacityStandingUnread { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>
-          match fabric_seat_observe(
-            store: compute_capacity_store(subject: subject),
+          match compute_capacity_store(subject: subject) {
+            ComputeCapacityStoreUnready { area: a, detail: d } =>
+              ComputeCapacityStandingUnread { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+            ComputeCapacityStoreReady { store: ledger } =>
+              match fabric_seat_observe(
+                store: ledger,
             partition: subject.partition,
             root: compute_memory_root_pool(subject: subject, ceiling: appropriation),
             at: now,
@@ -604,7 +629,8 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject, appropriation: 
                 observed_total: total,
               }
             SeatStandingUnobserved { step: s, reason: why } => ComputeCapacityStandingUnread { detail: join(["the capacity ledger could not be read at ", s, ": ", why], "") }
-            SeatStandingStoreRefused { cause: _ } => ComputeCapacityStandingUnread { detail: "the capacity ledger refused the read" }
+              SeatStandingStoreRefused { cause: _ } => ComputeCapacityStandingUnread { detail: "the capacity ledger refused the read" }
+            }
           }
       }
   }

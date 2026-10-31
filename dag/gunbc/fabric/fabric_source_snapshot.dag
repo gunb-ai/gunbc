@@ -105,7 +105,7 @@ import std.fabric_storage {
   fabric_storage_fault_wire,
 }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStorageFileRoot,
+  FabricStorageOperations,
   fabric_storage_file_get,
   fabric_storage_file_put,
 }
@@ -398,7 +398,7 @@ fn snapshot_capture_refuse(acc: SnapshotCaptureAcc, cause: SnapshotCaptureRefusa
 // node's children, for the same reason -- a reachable hole is the state a closure walk exists to
 // refuse, and publishing one is how it gets created.
 fn snapshot_store_inclusion(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   acc: SnapshotCaptureAcc,
   inclusion: SnapshotInclusion,
   content: NonEmptyStr,
@@ -445,7 +445,7 @@ fn snapshot_store_inclusion(
 // root is a requester defect, and storing its content first would leave the object in the store
 // with nothing referring to it -- harmless to the store and misleading to anyone reading it.
 fn snapshot_capture_step(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   composition: SourceComposition,
   acc: SnapshotCaptureAcc,
   inclusion: SnapshotInclusion,
@@ -495,7 +495,7 @@ fn snapshot_capture_step(
 // this time at the root, where a materialization would find it and refuse one entry at a time
 // instead of refusing the request.
 fn capture_source_snapshot(
-  root: FabricStorageFileRoot,
+  root: FabricStorageOperations,
   composition: SourceComposition,
   inclusions: List<SnapshotInclusion>,
 ) -> SnapshotCapture {
@@ -1159,7 +1159,7 @@ fn snapshot_materialize_entry_content(
 }
 
 fn snapshot_materialize_entry_links(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1200,7 +1200,7 @@ fn snapshot_materialize_entry_links(
 // data. The count is checked before either link is taken, so the optional arms below cannot be
 // reached by a short list and are not a second, silent membership rule.
 fn snapshot_materialize_entry(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1245,7 +1245,7 @@ fn snapshot_materialize_entry(
 }
 
 fn snapshot_materialize_step(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   destination: NonEmptyStr,
   composition: SourceComposition,
   acc: SnapshotMaterializeAcc,
@@ -1308,7 +1308,7 @@ fn snapshot_materialize_step(
 // bytes on its disk and a refusal in its log; on this ordering nothing has been created at all when
 // that refusal fires.
 fn materialize_source_snapshot(
-  store: FabricStorageFileRoot,
+  store: FabricStorageOperations,
   manifest: FabricObjectRef,
   workspace: ProviderWorkspace,
   expected: SourceComposition,
