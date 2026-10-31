@@ -463,9 +463,8 @@ test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() ->
 }
 
 // A BARE-ATOM ARM PATTERN IS A PATTERN ATOM LIKE A FIELD'S, AND BINDS ITS ARM BY THE SAME RULE.
-// `other => other` is the catch-all binder the ambient-name census (gunbc test
-// //gunbc/instruments:ambient-name-census) reported unbound at both occurrences, pattern and body,
-// at gunbc.instruments.ambient_name_census_reading: v2.compiler.lexical_scope
+// `other => other` is the catch-all binder the since-retired ambient-name census reported unbound
+// at both occurrences, pattern and body, in v2.compiler.lexical_scope
 // pattern_binder_candidates took candidates only from a construct's field atoms, so a pattern with no
 // construct tag offered none and the atom resolved as a plain reference. The outer `other` is
 // TEST-MARKED for the reason (1) above states: with the arm binding it the module assembles, and
