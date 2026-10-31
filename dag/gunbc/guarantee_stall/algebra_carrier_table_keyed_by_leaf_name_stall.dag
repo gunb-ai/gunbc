@@ -1,0 +1,24 @@
+module gunbc.guarantee_stall.algebra_carrier_table_keyed_by_leaf_name_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Q1e: std.algebra algebra_carriers names each carrier by leaf name, so the v1 arithmetic fold
+// (v1.compiler.types carrier_in_algebra_table, carrier_defines_field) asks whether a carrier defines an operator
+// by leaf name; a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat only by the declaration-compared
+// operands and injection rows that feed the fold.
+data algebra_carrier_table_keyed_by_leaf_name_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.algebra algebra_carriers lookups keyed by a carrier's leaf name rather than its resolved declaration",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: Cons {
+      head: "v1.compiler.types carrier_in_algebra_table and carrier_defines_field",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "AlgebraCarrier carries the carrier's DeclarationRef and the arithmetic fold compares it with declaration_ref_eq, so two carriers sharing a leaf name are distinct carriers")
+}
