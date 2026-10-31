@@ -5,7 +5,8 @@ module test.claim.roadmap.roadmap_belt_recapture_wet_witness
 // the candidate against that write's generation. A planted capture of the worker commit is
 // required for the mint to proceed; a clean checkout of a different commit refuses.
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worktree_path_for_instance }
 import std.logic { Bool }
 import std.algebra { string_contains }
 import std.types { String, FilePath, NonEmptyStr, List }
@@ -80,11 +81,7 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
     node_id: recapture_node as RoadmapNodeId,
     attempt_key: recapture_attempt,
   )
-  let state = dispatch_attempt_state_path_for_instance(
-    instance: instance,
-    node_id: recapture_node as RoadmapNodeId,
-    attempt_key: recapture_attempt,
-  )
+  let state = attempt_state_directory_text(instance: instance, node_id: recapture_node as RoadmapNodeId, attempt_key: recapture_attempt, directory: AttemptDirectoryRoot)
   let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
   let _st = shell.Mkdir.Parents(path: state as FilePath)
