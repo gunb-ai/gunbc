@@ -1,0 +1,133 @@
+module test.claim.harness_events_lost_update_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.logic { Bool }
+import std.types { String, List, Int }
+import std.types { FilePath }
+
+import gunbc.harness.harness_cli { harness_seat_wait_announce, harness_default_wire_shape, harness_default_max_tokens, harness_request_deadline }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, ReasoningOff }
+import gunbc.harness.harness_wire { harness_context_budget_for }
+import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import gunbc.harness.harness_turn {
+  harness_run_turn, harness_event_type_only, HarnessTurnConfig, BackendAdmittedBySeat, CompletesOnProviderStop, harness_event_placement_waiting, harness_events_prior, HarnessEventsPriorRead, HarnessEventsPriorUnreadable, harness_events_append, HarnessEventsWritten, HarnessEventsUnwritable,
+}
+
+// THE LOST-UPDATE CLAIM for the attempt events file (gunbc.recurring_failure_mode
+// attempt_events_file_lost_update). It runs the REAL routes against a real temp file: the cli's wait
+// announcer (harness_seat_wait_announce, the half of harness_seat_wait_announce_and_sleep that writes)
+// and the turn's seed read (harness_events_prior, which harness_run_turn prepends to turn.started).
+// The cli wait loop returns its binding before harness_run_turn is called (harness_cli worker/reviewer
+// entries), so the writers are sequential and the read is the only crossing. Effects: shell.Mktemp,
+// Filesystem reads/writes, shell.Remove.RecursiveForce; local-repo wet lane.
+
+fn fresh_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_events_lost_update.XXXXXX").path
+}
+
+fn file_lines(path: String) -> String {
+  match harness_events_prior(path: path) {
+    HarnessEventsPriorRead { events: e } => join(e, "|")
+    HarnessEventsPriorUnreadable { detail: d } => join(["unreadable: ", d], "")
+  }
+}
+
+fn wait_line(n: Int) -> String {
+  harness_event_placement_waiting(wait: n, wait_cap: 1440, reason: join(["d", to_string(value: n)], ""))
+}
+
+fn announced(w: String?) -> Bool {
+  match w {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// RED before the fix: wait 2 overwrote wait 1, leaving one line. Every earlier wait line survives in order.
+test fn every_earlier_wait_line_survives_in_order() -> Bool {
+  let dir = fresh_dir()
+  let path = join([dir, "/events.jsonl"], "")
+  let w1 = harness_seat_wait_announce(wait: 1, detail: "d1", events_path: path)
+  let w2 = harness_seat_wait_announce(wait: 2, detail: "d2", events_path: path)
+  let w3 = harness_seat_wait_announce(wait: 3, detail: "d3", events_path: path)
+  let body = file_lines(path: path)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  announced(w: w1) && announced(w: w2) && announced(w: w3) && removed.success &&
+    body == join([
+      wait_line(n: 1), wait_line(n: 2), wait_line(n: 3)], "|")
+}
+
+// RED before the fix: turn.started replaced the waits. The turn's seed (prior ++ started) keeps them, wait 1 first.
+test fn the_turn_seed_keeps_the_wait_lines_before_turn_started() -> Bool {
+  let dir = fresh_dir()
+  let path = join([dir, "/events.jsonl"], "")
+  let w1 = harness_seat_wait_announce(wait: 1, detail: "d1", events_path: path)
+  let w2 = harness_seat_wait_announce(wait: 2, detail: "d2", events_path: path)
+  let started = harness_events_append(path: path, lines: ["{\"type\":\"turn.started\"}"])
+  let body = file_lines(path: path)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  announced(w: w1) && announced(w: w2) && removed.success && (match started { HarnessEventsWritten => true HarnessEventsUnwritable { detail: _ } => false }) &&
+    body == join([
+      wait_line(n: 1), wait_line(n: 2), "{\"type\":\"turn.started\"}"], "|")
+}
+
+// Lawful single-writer control: one wait, one line; an absent file is an empty seed, not a refusal.
+test fn a_single_writer_control_writes_one_line_and_absent_is_an_empty_seed() -> Bool {
+  let dir = fresh_dir()
+  let path = join([dir, "/events.jsonl"], "")
+  let before = file_lines(path: path)
+  let w1 = harness_seat_wait_announce(wait: 1, detail: "d1", events_path: path)
+  let body = file_lines(path: path)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  before == "" && announced(w: w1) && removed.success && body == wait_line(n: 1)
+}
+
+// An unreadable events path (a directory) is a refusal, never an empty seed, and nothing is written over it.
+test fn an_unreadable_events_path_refuses_and_is_not_projected_to_empty() -> Bool {
+  let dir = fresh_dir()
+  let refused = match harness_events_prior(path: dir) {
+    HarnessEventsPriorUnreadable { detail: _ } => true
+    HarnessEventsPriorRead { events: _ } => false
+  }
+  let announce = harness_seat_wait_announce(wait: 1, detail: "d1", events_path: dir)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  refused && !announced(w: announce) && removed.success
+}
+
+// THE REAL ROUTE (DESIGN 3 pairing obligation): harness_run_turn itself, against a backend that
+// refuses the connection (127.0.0.1:1; no stub backend exists in the corpus, so the turn ends in a
+// typed provider failure after turn.started is written). Two waits are announced first, as the cli
+// loop does; the run must leave wait 1, wait 2, turn.started in that order. Deleting the
+// harness_events_prior call in harness_run_turn makes turn.started line 1 and this claim red.
+test fn harness_run_turn_seeds_turn_started_onto_the_prior_wait_lines() -> Bool {
+  let dir = fresh_dir()
+  let path = join([dir, "/events.jsonl"], "")
+  let w1 = harness_seat_wait_announce(wait: 1, detail: "d1", events_path: path)
+  let w2 = harness_seat_wait_announce(wait: 2, detail: "d2", events_path: path)
+  let outcome = harness_run_turn(
+    config: HarnessTurnConfig {
+      backend_url: "http://127.0.0.1:1/v1",
+      model: "wet-model",
+      max_tokens: harness_default_max_tokens,
+      serving_unit: DeepseekV4FlashOnVllm,
+      reasoning_mode: ReasoningOff,
+      wire_shape: harness_default_wire_shape,
+      system_prompt: "wet",
+      alignment_chain_fingerprint: "",
+      request_scratch_path: join([dir, "/request.json"], "") as FilePath,
+      events_path: path as FilePath,
+      context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),
+      request_deadline: harness_request_deadline,
+      environment: HarnessToolEnvironment { working_directory: dir as FilePath, timeout_program: "/usr/bin/timeout" as FilePath, duration_limit_seconds: 5 },
+      completion: CompletesOnProviderStop,
+      backend_access: BackendAdmittedBySeat,
+    },
+    prompt: "wet",
+    step_budget: 1,
+  )
+  let body = file_lines(path: path)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  announced(w: w1) && announced(w: w2) && removed.success &&
+    starts_with(s: body, prefix: join([wait_line(n: 1), wait_line(n: 2), harness_event_type_only(event_type: "turn.started")], "|"))
+}
