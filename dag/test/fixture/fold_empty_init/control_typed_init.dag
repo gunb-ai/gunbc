@@ -1,0 +1,9 @@
+module test.fixture.fold_empty_init.control_typed_init
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.algebra { concat, filter, fold, length }
+
+fn distinct_count(values: List<String>) -> Int {
+  let seed: List<String> = []
+  length(fold(values, init: seed, f: (acc, value) => if length(filter(acc, item => item == value)) > 0 { acc } else { concat(acc, [value]) }))
+}
