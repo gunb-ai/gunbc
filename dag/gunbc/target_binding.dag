@@ -53,7 +53,6 @@ type TargetProducer
   | PrimitiveEgressCensusSeedProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
-  | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
@@ -95,7 +94,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     PrimitiveEgressCensusSeedProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
-    RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     NativeCensusVerbProducer { verb: _ } => optional_absent()

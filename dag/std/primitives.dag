@@ -738,9 +738,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "builtin_function_registry_keys",
     "compile_dag_primitive_call_edges",
     "compile_dag_operation_requires",
-    "source_root_ingest_module_identities",
-    "required_floor_nominal_subject_module_identities",
-    "entry_closure_module_identities",
   ]
 }
 

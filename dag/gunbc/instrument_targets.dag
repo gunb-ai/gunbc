@@ -226,7 +226,7 @@ fn v2_native_cli_label() -> Label {
 }
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
-// reader of these entries -- the required-lane resolution census, and the seed's native lane runner
+// reader of these entries -- the seed's native lane runner
 // whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
@@ -573,16 +573,6 @@ fn primitive_egress_census_seed_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
 }
 
-// THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
-// one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
-// The unreached population, by identity, is the printed product; the exit says whether it is
-// empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
-// and let every required lane report SUCCESS" measured rather than warned about, after
-// gunbc.fleet.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
-// classifies is read from gunbc.witness.compiler_gate_workflow, the authority that emits witnesses.yml.
-// `gunbc test //gunbc/instruments:required-lane-resolution-census`.
-fn required_lane_resolution_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
 }
 
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
@@ -781,9 +771,6 @@ fn primitive_egress_census_seed_target() -> BuildTarget {
   instrument_test_target(label: primitive_egress_census_seed_label())
 }
 
-fn required_lane_resolution_census_target() -> BuildTarget {
-  instrument_test_target(label: required_lane_resolution_census_label())
-}
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
@@ -1280,9 +1267,6 @@ fn primitive_egress_census_seed_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
 }
 
-fn required_lane_resolution_census_binding() -> TargetBinding {
-  TargetBinding { target: required_lane_resolution_census_label() producer: RequiredLaneResolutionCensusProducer {} }
-}
 
 fn bare_reference_channel_outcome_binding() -> TargetBinding {
   TargetBinding { target: bare_reference_channel_outcome_label() producer: BareReferenceChannelOutcomeProducer {} }
@@ -1352,7 +1336,7 @@ fn instrument_targets() -> List<Label> {
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
-    required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
+    bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
@@ -1375,7 +1359,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
-    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
+    bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),

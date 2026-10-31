@@ -13,7 +13,7 @@ data cli_wire_program_producer_seed_growth_justification: SeedGrowthJustificatio
     }
   ],
 
-  reason: "The one producer arm for a wet CliWireResponse program (gunbc.target_binding CliWireProgramProducer { entry, function }). NativeClaimProgramProducer emit+runs a NativeClaimDriver whose denominator is Filesystem only (std.compiler_entry native_claim_route_denominator); a fold that reaches WitnessBin.Run cannot be that driver, and a string-match inside NativeClaimProgram is one name with two meanings (DESIGN section 3). This arm is generic over entry and function: the next such instrument is a binding row. The host part is only dispatch into the existing run_cli_wire_census runner (already enrolled by gunbc.required_lane_resolution_census_seed_growth). First consumer: //gunbc/instruments:compute-run-unit-cold.",
+  reason: "The one producer arm for a wet CliWireResponse program (gunbc.target_binding CliWireProgramProducer { entry, function }). NativeClaimProgramProducer emit+runs a NativeClaimDriver whose denominator is Filesystem only (std.compiler_entry native_claim_route_denominator); a fold that reaches WitnessBin.Run cannot be that driver, and a string-match inside NativeClaimProgram is one name with two meanings (DESIGN section 3). This arm is generic over entry and function: the next such instrument is a binding row. The host part is only dispatch into the existing run_cli_wire_census runner. First consumer: //gunbc/instruments:compute-run-unit-cold.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
