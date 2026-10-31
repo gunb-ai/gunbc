@@ -10,8 +10,6 @@ import v2.compiler.resolution_provenance { reference_site_scope_path }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.std.compilers.lexing { Token }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional, parse_qualified_name_segments_from_capture, qualified_name_from_module_node }
-import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
-import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_at }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Conj, TypeNode, Node, content_hash, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
@@ -131,7 +129,6 @@ type RehomeRefusal
   | RehomeSignatureDiffers
   | RehomeTargetUnresolved { qualified_name: String }
   | RehomeTargetAmbiguous { qualified_name: String }
-  | RehomeTargetFileMismatch { qualified_name: String, path: String, candidates: String }
   | RehomeAliasUnsupported
   | RehomeExtentMismatch
   | RehomeNoImportAnchor
@@ -153,7 +150,6 @@ fn rehome_refusal_text(r: RehomeRefusal) -> String {
     RehomeSignatureDiffers => "rehome-signature-differs"
     RehomeTargetUnresolved { qualified_name: q } => "rehome-target-unresolved " + q
     RehomeTargetAmbiguous { qualified_name: q } => "rehome-target-ambiguous " + q
-    RehomeTargetFileMismatch { qualified_name: q, path: p, candidates: c } => "rehome-target-file-mismatch " + q + " want=" + p + " candidates=" + c
     RehomeAliasUnsupported => "rehome-alias-unsupported"
     RehomeExtentMismatch => "rehome-extent-mismatch"
     RehomeNoImportAnchor => "rehome-no-import-anchor"
@@ -205,34 +201,16 @@ type RehomeFactLookup
   = RehomeFactFound { fact: DeclFact }
   | RehomeFactRefused { reason: RehomeRefusal }
 
-// THE DECLARATION AT <home>.<name>, BY ITS FILE. v2.std.decl_index keys a declaration by its module path with a leading
-// `v2.` removed (the seed's decl_logical_qualified_name), so v2.std.integer.Int and std.integer.Int share the key
-// std.integer.Int and a keyed read returns both. The home's file is derived by the one name-to-path rule
-// (v2.compiler.source_authority module_file over v2.cli.repository_layout), and exactly one candidate must come from it.
-// INTERIM, both halves (review 83179): the `v2.` stripping below repeats the seed's key rule, and the file filter works
-// around it. TRIGGER: when decl_index keys by the module's own name (adhoc-0f4309c5-074), delete BOTH, and this becomes a
-// plain keyed read of <home>.<name>.
+// THE DECLARATION AT <home>.<name>: a plain keyed read. v2.std.decl_index keys a declaration by its module's own
+// qualified name, v2. included (#14584), so exactly one row answers a declared home; none is unresolved and several is
+// ambiguous, each refused typed.
 fn rehome_sole_fact(home: String, name: String) -> RehomeFactLookup {
   let qualified_name = home + "." + name
-  match module_file(layout: repository_storage_layout(), name: home) {
-    ModuleNameUnderivable { name: _, cause: _ } => RehomeFactRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
-    ModuleFileDerived { file: file } => {
-      let path = repository_path_of_module_file(file: file)
-      let key = if substring(s: home, start: 0, end: 3) == "v2." { substring(s: home, start: 3, end: string_length(s: home)) + "." + name } else { qualified_name }
-      let facts = decl_facts_at(pool_roots: rehome_pool_roots(), qualified_name: key)
-      match rehome_facts_in(facts: facts, path: path) {
-        Empty =>
-          if is_empty(xs: facts) { RehomeFactRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } } }
-          else { RehomeFactRefused { reason: RehomeTargetFileMismatch { qualified_name: qualified_name, path: path, candidates: roster_join(xs: list_map(xs: facts, f: fn(f) { f.rel_path }), sep: ",") } } }
-        Cons { head: f, tail: Empty } => RehomeFactFound { fact: f }
-        _ => RehomeFactRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
-      }
-    }
+  match decl_facts_at(pool_roots: rehome_pool_roots(), qualified_names: [qualified_name], type_names: []) {
+    Empty => RehomeFactRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
+    Cons { head: f, tail: Empty } => RehomeFactFound { fact: f }
+    _ => RehomeFactRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
   }
-}
-
-fn rehome_facts_in(facts: List<DeclFact>, path: String) -> List<DeclFact> {
-  fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.rel_path == path { list_snoc_item(xs: acc, item: f) } else { acc } })
 }
 
 // SAME KIND FROM decl_index, SAME CONTRACT FROM THE DECLARATIONS THEMSELVES (side chat on #14553). decl_index's node is a
