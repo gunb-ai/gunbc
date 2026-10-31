@@ -264,7 +264,9 @@ fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, 
 
 fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
 
-  Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
+  // ceiling without a Nat subtraction (a Nat difference is an Int, std.coercion select_arithmetic_carrier)
+  let scaled = m.count * num
+  Measure { count: if den == 0 { scaled } else { if (scaled / den) * den == scaled { scaled / den } else { (scaled / den) + 1 } } }
 }
 
 fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
