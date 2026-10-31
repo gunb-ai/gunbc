@@ -1,4 +1,5 @@
 module v2.lens.synthesis
+import v2.std.node { NodeOccurrence }
 
 import v2.lens.common.construction_justification {
   ConstructionJustification,
@@ -56,7 +57,7 @@ fn decision_tree_declared_bound(n: Node) -> DeclaredRelationBound {
     technique: DecisionTree,
     lower_bound: sized_complexity(
       class: SizedLinearithmicClass,
-      variables: single_complexity_variable(size_var: SizeVariable { source: n })
+      variables: single_complexity_variable(size_var: SizeVariable { source: NodeOccurrence { node: n } })
     ),
     relation_locus: node_locus(node: n)
   }
@@ -67,7 +68,7 @@ fn information_theoretic_declared_bound(n: Node) -> DeclaredRelationBound {
     technique: InformationTheoretic,
     lower_bound: sized_complexity(
       class: SizedLinearClass,
-      variables: single_complexity_variable(size_var: SizeVariable { source: n })
+      variables: single_complexity_variable(size_var: SizeVariable { source: NodeOccurrence { node: n } })
     ),
     relation_locus: node_locus(node: n)
   }

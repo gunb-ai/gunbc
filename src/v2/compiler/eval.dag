@@ -454,7 +454,7 @@ fn locus_cache_digest(at: Locus) -> Hash {
     NodeLocus { anchor: a } =>
       combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
-        b: content_hash(n: a.at)
+        b: content_hash(n: a.at.node)
       )
     SourcePortLocus { anchor: a, file: f, extent: e } =>
       combine_hash(

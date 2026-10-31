@@ -52,7 +52,7 @@ test fn kti_non_generic_call_carries_no_instances() -> Bool {
         Present { value: call } =>
           match inferred.facts.lookup(call) {
             Absent => false
-            Present { value: facts } => facts.type_instances == Empty
+            Present { value: facts } => facts.type_instances == []
           }
       }
   }

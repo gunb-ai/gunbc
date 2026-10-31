@@ -303,7 +303,7 @@ fn dr_head_atom(v: NativeModuleResolveVerdict) -> String {
     Present { value: d } =>
       match d.head.at {
         NodeLocus { anchor: a } =>
-          match node_atom_identity_optional(node: a.at) {
+          match node_atom_identity_optional(node: a.at.node) {
             Present { value: id } => if id == ^dr_body_nowhere { "dr_body_nowhere" } else { "other-atom" }
             Absent => "not-an-atom"
           }

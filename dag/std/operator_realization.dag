@@ -52,6 +52,64 @@ type OperandDeclaration {
   provenance: TypeDeclarationProvenance
 }
 
+// THE DERIVED EQUALITY PLAN: what `==` compares, computed once by declaration identity where the
+// checker's equality admission already walks the operand's members, and carried on the typed
+// ExprBinOp so every reader (the interpreter, the emitter) executes it and none re-derives it or
+// consults a type name. A declaration whose `==` is not derived member-wise names its function
+// instead (v2.std.node: a bare Node compares as a value, a NodeOccurrence as the same occurrence),
+// and a composite reaching one is compared member by member down to that routed leaf. An operand
+// whose walk reaches no routed declaration carries no plan: the target's own structural equality is
+// the whole answer, as before.
+//
+// The steps are the least the walk needs: a member compared by the target's equality, a member
+// routed to a declared function, a member compared by another declaration's plan (by reference,
+// so recursive data plans finitely), an optional compared by presence then content, a free-monoid
+// sequence compared element by element in order, and a finitely supported function (Map) compared
+// on the same keys with each value by its step. Keys, and the elements of a finite power set, are
+// compared by the target (a residual the census rows bound: gunbc.rung_drop
+// derived_equality_residual_field_equality). BY CONSTRUCTION every EqualityThroughPlan in a plan names
+// a declaration the same plan carries, and every step below a plan's root reaches a routed step:
+// the checker rewrites pruned references to EqualityByTarget before it stamps the plan, so a reader
+// has no 'missing declaration' or 'empty container' case to answer.
+type EqualityStep
+  = EqualityByTarget
+  | EqualityRouted { function: DeclarationRef }
+  | EqualityThroughPlan { declaration: String }
+  | EqualityPresence { inner: EqualityStep }
+  | EqualityElements { element: EqualityStep }
+  | EqualityMapValues { value: EqualityStep }
+
+type EqualityPlanField {
+  field: String
+  step: EqualityStep
+}
+
+type EqualityPlanArm {
+  arm: String
+  fields: List<EqualityPlanField>
+}
+
+// A product has one arm, named by the empty string; a coproduct has one per variant, and two values
+// in different variants differ. A plan is keyed by the declaration's identity as the checker keys
+// it (its declaring file and declared name: v1.compiler.type_head_exposure
+// type_declaration_identity_key), which is what EqualityThroughPlan names; an EqualityThroughPlan
+// whose declaration has no plan in the same EqualityPlan compares by the target.
+// `reference` is the same declaration as a DeclarationRef, for a reader that must name the
+// declaration's realization (the emitter's eq fn signature); absent when the checker could not read
+// it, and a reader that needs it then refuses.
+type DeclarationEqualityPlan {
+  declaration: String
+  reference: DeclarationRef?
+  generic: Bool
+  arms: List<EqualityPlanArm>
+}
+
+type EqualityPlan {
+  root: EqualityStep
+  declarations: List<DeclarationEqualityPlan>
+}
+
+
 type OperandRealization
   = HostNumericOperand
   | HostRealizedOperand { reason: HostRealizationReason }

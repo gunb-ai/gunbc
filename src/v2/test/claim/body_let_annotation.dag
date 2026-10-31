@@ -174,9 +174,9 @@ test fn bla_type_parameter_in_value_position_refuses_located() -> Bool {
       (diagnostics_fatal_reason(d: d) == ^resolve_reason_type_parameter_in_value_position)
         && match diagnostics_fatal(d: d).at {
           NodeLocus { anchor: a } =>
-            bla_atom_in(n: a.at, id: ^T)
-              && !bla_atom_in(n: a.at, id: ^dag_token_kw_let)
-              && !bla_atom_in(n: a.at, id: ^dag_token_eq)
+            bla_atom_in(n: a.at.node, id: ^T)
+              && !bla_atom_in(n: a.at.node, id: ^dag_token_kw_let)
+              && !bla_atom_in(n: a.at.node, id: ^dag_token_eq)
           _ => false
         }
   }
@@ -247,7 +247,7 @@ test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool {
           && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
           && match diagnostics_fatal(d: d).at {
             NodeLocus { anchor: a } =>
-              !bla_has_computation(n: a.at) && !bla_atom_in(n: a.at, id: ^y)
+              !bla_has_computation(n: a.at.node) && !bla_atom_in(n: a.at.node, id: ^y)
             _ => false
           }
     }
@@ -664,7 +664,7 @@ fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(held, d) {
     held || ((d.reason == ^infer_grounding_not_derived) && match d.at {
       NodeLocus { anchor: a } =>
-        match bla_atom_identity(n: a.at) {
+        match bla_atom_identity(n: a.at.node) {
           Present { value: id } => (id == ^dag_token_caret) || (id == ^bla_sym)
           Absent => false
         }

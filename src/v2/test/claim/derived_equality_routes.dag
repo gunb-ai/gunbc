@@ -1,0 +1,38 @@
+module v2.test.claim.derived_equality_routes
+
+import v2.std.node { RecordConstructBody, arrow_body_admits_eval_entry }
+import test.fixture.derived_equality_routes {
+  deq_value_member_occurrence_only, deq_occurrence_member_occurrence_only, deq_value_member_structure_only,
+  deq_occurrence_member_structure_only, deq_occurrence_member_same, deq_synthetic_same_structure,
+  deq_synthetic_different_structure, deq_composite_value_differs, deq_composite_occurrence_differs,
+  deq_boxed_value_occurrence_only, deq_boxed_occurrence_occurrence_only, deq_shared_value_occurrence_only, deq_shared_value_structure_only
+}
+
+// THE INTERPRETED ARM of the derived-equality fixture (test.fixture.derived_equality_routes); the emitted
+// arm is //gunbc/instruments:derived-equality-routes, which asserts the same answers case for case (one
+// test here per label case, nine of each).
+
+test fn value_member_ignores_a_differing_occurrence() -> Bool { deq_value_member_occurrence_only() }
+test fn occurrence_member_distinguishes_a_differing_occurrence() -> Bool { !deq_occurrence_member_occurrence_only() }
+test fn value_member_distinguishes_a_differing_structure() -> Bool { !deq_value_member_structure_only() }
+test fn occurrence_member_distinguishes_a_differing_structure() -> Bool { !deq_occurrence_member_structure_only() }
+test fn occurrence_member_equates_the_same_occurrence() -> Bool { deq_occurrence_member_same() }
+test fn synthetic_same_structure_is_the_same_occurrence() -> Bool { deq_synthetic_same_structure() }
+test fn synthetic_different_structure_is_not_the_same_occurrence() -> Bool { !deq_synthetic_different_structure() }
+test fn composite_value_member_ignores_a_differing_occurrence() -> Bool { deq_composite_value_differs() }
+test fn composite_occurrence_member_distinguishes_a_differing_occurrence() -> Bool { !deq_composite_occurrence_differs() }
+
+test fn boxed_value_member_ignores_a_differing_occurrence() -> Bool { deq_boxed_value_occurrence_only() }
+test fn boxed_occurrence_member_distinguishes_a_differing_occurrence() -> Bool { !deq_boxed_occurrence_occurrence_only() }
+test fn shared_value_member_ignores_a_differing_occurrence() -> Bool { deq_shared_value_occurrence_only() }
+test fn shared_value_member_distinguishes_a_differing_structure() -> Bool { !deq_shared_value_structure_only() }
+
+// THE v2 EVAL FRONTIER, GUARDED (gunbc.rung_drop native_equality_operand_judgment). v2 eval computes no
+// equality plan; its == projects both values to a Node and compares structure. That cannot silently
+// answer an occurrence question today only because v2 eval constructs no record value (a record-construct
+// body is refused eval entry), so no NodeOccurrence-reaching value reaches its equality. This control goes
+// red the day record construction becomes evaluable, which is the trigger for the v2 checker to compute
+// the equality plan and v2 eval to read it.
+test fn v2_eval_constructs_no_record_value_frontier_holds() -> Bool {
+  !arrow_body_admits_eval_entry(form: RecordConstructBody)
+}

@@ -631,6 +631,62 @@ pub struct CompileCleanDiagnosticCensus {
     pub raw_diagnostics: usize,
     pub classes: Vec<RawDiagnosticClassObservation>,
     pub unlisted_import_rows: Vec<UnlistedImportCensusRow>,
+    /// The identity-grain population of `gunbc.rung_drop derived_equality_residual_field_equality`:
+    /// one row per `EqualityInstantiationBlindGenericSite` / `CollectionKeyReachesEqualityRoute`
+    /// diagnostic, in the declaration and at the locus the checker recorded.
+    pub routed_equality_residual_rows: Vec<RoutedEqualityResidualRow>,
+}
+
+/// One residual-equality census row: the class, where it sits, the declaration it sits in
+/// ("<module> <declaration>"), and the type the checker named (the generic operand's type variable or
+/// the collection key type).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RoutedEqualityResidualRow {
+    pub class_name: &'static str,
+    pub file: String,
+    pub position: i64,
+    pub declaration: String,
+    pub subject_type: String,
+}
+
+fn routed_equality_residual_rows_from_resolved(
+    result: &v1_compiler_compile::ResolvedPipelineResult,
+) -> Vec<RoutedEqualityResidualRow> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let mut rows = Vec::new();
+    for d in result.diagnostics.iter() {
+        let (class_name, declaration, subject_type) = match d.diagnostic.as_ref() {
+            CompilerDiagnostic::EqualityInstantiationBlindGenericSite {
+                operand_type,
+                declaration,
+                ..
+            } => (
+                "EqualityInstantiationBlindGenericSite",
+                declaration.clone(),
+                operand_type.clone(),
+            ),
+            CompilerDiagnostic::CollectionKeyReachesEqualityRoute {
+                key_type,
+                declaration,
+                ..
+            } => (
+                "CollectionKeyReachesEqualityRoute",
+                declaration.clone(),
+                key_type.clone(),
+            ),
+            _ => continue,
+        };
+        rows.push(RoutedEqualityResidualRow {
+            class_name,
+            file: diagnostic_decl_file_for_census(d),
+            position: diagnostic_to_span(d.diagnostic.clone()).start,
+            declaration,
+            subject_type,
+        });
+    }
+    rows.sort();
+    rows.dedup();
+    rows
 }
 
 /// The census's typed refusal causes, one per way it can fail to be the authority it claims.
@@ -966,6 +1022,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
         EqualityOnInadmissibleType { type_name: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
+        EqualityInstantiationBlindGenericSite { operand_type: s(), declaration: s(), span: no_span() },
+        CollectionKeyReachesEqualityRoute { key_type: s(), declaration: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
             refusal: Rc::new(crate::std_occurrence_identity::OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: no_span() }),
@@ -1342,6 +1400,7 @@ pub fn compile_clean_diagnostic_census(
         raw_diagnostics,
         classes,
         unlisted_import_rows,
+        routed_equality_residual_rows: routed_equality_residual_rows_from_resolved(&result),
     })
 }
 
@@ -1447,6 +1506,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => {
+            "EqualityInstantiationBlindGenericSite"
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => {
+            "CollectionKeyReachesEqualityRoute"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
@@ -1575,6 +1640,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { declaration, .. } => {
+            declaration.clone()
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { declaration, .. } => {
+            declaration.clone()
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -1653,6 +1724,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         // `Absent` is the honest reading.
         CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
@@ -1666,6 +1738,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => None,
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { .. } => None,
         CompilerDiagnostic::EmittedSymbolCollision { .. } => None,
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => None,
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => None,
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,

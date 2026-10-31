@@ -1,0 +1,84 @@
+module gunbc.equality_route_table_retention
+
+import std.types { Bool, List, String }
+
+// WHERE THE DERIVED-EQUALITY ROUTING TABLE LIVES, and every fact that must hold while it lives in the seed.
+//
+// The table (v1.compiler.infer equality_route_declarations) pairs a routed declaration identity with the
+// function that answers == for it, and says whether a bare value of that carrier may be compared at the
+// operand ROOT. The only consumer that reads it is this checker's own folds, so it is held in
+// src/v1/04_infer.dag -- DESIGN section 3, "Minimization holds only if each fact lives in exactly one
+// place", and section 3c on a declaration with no consumer. It is therefore a SEED-RETAINED copy of a fact
+// whose eventual home is v2.std.node beside the carriers it routes, and section 7 asks that a retention be
+// "a declared row with reason and migration trigger, never a silent escape hatch". The comment in the seed
+// points here; the facts are THIS row, and the executing route is
+// test.claim.equality_route_table_retention_witness, which reads the two files this row names against this
+// row and goes red when the row stops describing them, or when a second copy of the table reappears.
+//
+// THE MOVE, when it happens, is ONE change: the table lands in v2.std.node beside Node / Edge /
+// NodeOccurrence and the copy here is deleted, so the table is never in both trees. What blocks the move is
+// named on this row (blocker_rung_drop), whose own control is named on that row.
+//
+// WHY THE ROOT STANDING IS CARRIED HERE AND NOT ONLY THE FUNCTION: a top-level operand's type node carries
+// no resolved declaration, so its identity is keyed by the USE-SITE file and the identity test alone misses
+// a bare root operand; the root-refused names are therefore read from the same rows (see the annotation
+// above v1.compiler.infer equality_root_refused_leaf_names). A retention row that carried only functions
+// would describe part of the table it claims to describe, so the standing is carried per carrier.
+
+type EqualityRouteTableRetention {
+  // The file holding the one table, and the declaration inside it.
+  table_file: String
+  table_declaration: String
+  // The token that opens one row of the table. It opens a ROW and not the type declaration beside it, so
+  // counting it counts rows; a row is one line in the seed, and the claim requires a carrier, its function
+  // and its root standing to sit on the same such line rather than merely to appear somewhere.
+  row_marker: String
+  // The seed folds that read the table -- the consumers that make it non-dangling (section 3c). Checked as
+  // substrings of the table file, so a fold that stops reading the table goes red here.
+  reader_folds: List<String>
+  // Each row of the table: the file it declares against, the carrier it routes, the function answering ==,
+  // and whether a bare value may be compared at the operand ROOT. Same order in all four lists.
+  routed_carrier_files: List<String>
+  routed_carrier_names: List<String>
+  routing_functions: List<String>
+  routing_admitted_at_root: List<Bool>
+  // Why the table sits in the seed rather than beside its carriers.
+  reason: String
+  // What moves it, and where it moves to.
+  migration_trigger: String
+  migration_destination: String
+  // The phrase in the seed comment that commits the move to one change rather than two copies.
+  one_change_promise: String
+  // The file a second copy must NOT reappear in, and the declaration name such a copy would carry.
+  forbidden_copy_file: String
+  forbidden_copy_declaration: String
+  // The rung drop that keeps it here, so a reader of either row finds the other.
+  blocker_rung_drop: String
+}
+
+data equality_route_table_retention: EqualityRouteTableRetention = EqualityRouteTableRetention {
+  table_file: "src/v1/04_infer.dag",
+  table_declaration: "data equality_route_declarations",
+  row_marker: "EqualityRouteDeclaration { decl_file:",
+  reader_folds: [
+    "fn equality_route_for",
+    "data equality_root_refused_leaf_names",
+    "fn equality_operand_walk",
+    "fn equality_resolved_declaration_walk",
+  ],
+  routed_carrier_files: ["src/v2/std/node.dag", "src/v2/std/node.dag", "src/v2/std/node.dag"],
+  routed_carrier_names: ["Edge", "Node", "NodeOccurrence"],
+  routing_functions: [
+    "node_edge_equal_ignoring_provenance",
+    "node_equal_ignoring_provenance",
+    "node_occurrence_eq",
+  ],
+  routing_admitted_at_root: [false, false, true],
+  reason: "The only consumer that reads the table is the seed's own equality check; a second copy in v2.std.node with no reader would be a fork, and a table with no consumer at all would be dangling",
+  migration_trigger: "the v2 checker computes the equality plan",
+  migration_destination: "v2.std.node",
+  one_change_promise: "never in both trees",
+  forbidden_copy_file: "src/v2/std/node.dag",
+  forbidden_copy_declaration: "data equality_routes",
+  blocker_rung_drop: "gunbc.rung_drop native_equality_operand_judgment",
+}
