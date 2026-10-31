@@ -120,6 +120,7 @@ test fn the_move_plan_is_noop_apply_or_refused_by_the_listings() -> Bool {
   let p = "attempt-identity-a-n1\nattempt-identity-a-n2\nother"
   let noop = match move_plan(row: row, parent_listing: "other\nx", member_listing: "") { MoveNoop => true, MoveApply { entries: _ } => false, MoveRefused { collision: _ } => false }
   let apply = match move_plan(row: row, parent_listing: p, member_listing: "b-n1.1") { MoveNoop => false, MoveApply { entries } => length(xs: entries) == 2, MoveRefused { collision: _ } => false }
-  let refused = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.1") { MoveNoop => false, MoveApply { entries: _ } => false, MoveRefused { collision } => collision == "attempt-identity-a-n2" }
-  noop && apply && refused
+  let refused = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.2") { MoveNoop => false, MoveApply { entries: _ } => false, MoveRefused { collision } => collision == "attempt-identity-a-n2" }
+  let converges = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.1") { MoveNoop => false, MoveApply { entries } => length(xs: entries) == 2 && entries.any(fn(e) { e.slot_present }), MoveRefused { collision: _ } => false }
+  noop && apply && refused && converges
 }
