@@ -24,6 +24,12 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
+  operator_host_94c81d,
+  operator_host_mtjade1,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
 }
 import gunbc.host_names.gen_z { host_name_first_parts, gen_z_last_parts }
 
@@ -156,6 +162,14 @@ fn hostname_allocation_admission(
 // opaque (gunbc.fleet.fleet_host_identity), so nothing about provider, architecture or role is read off a
 // spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names.gen_z), with the entropy
 // recorded as the receipt of the draw.
+//
+// THE THIRD DRAWN ROW (operator, 2026-10-16, session royal-seal-46) is the ASRock Altra
+// ALTRAD8UD-1L2T-6 (opaque identity host-94c81d). The operator chose the Gen Z scheme for it, so the
+// name was DRAWN by draw_human_name over gunbc.host_names.gen_z: entropy 709187867323 indexes
+// host_name_first_parts to "owen", which no existing host answers to, so the shortest form (FirstOnly)
+// is allocated. The entropy is the recorded receipt of the draw;
+// test.claim.hostname_allocation_witness re-runs the allocator over it and reds if "owen" is not what
+// it yields.
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv1,
@@ -212,6 +226,59 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv16,
     name: LegacyHostname { label: "srv16" as DnsLabel },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_94c81d,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "owen" as DnsLabel },
+      draw: HumanNameDraw { entropy: 709187867323 },
+    },
+  },
+  // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
+  // gunbc.plans.fleet_naming_reach_access. srv9-srv12 keep their identity slot as a LEGACY spelling and
+  // mtjade1 keeps its historical one: those spellings are how the operator has always addressed them, and
+  // withdrawing them to make a row look drawn would have replaced a recorded fact with a prettier one.
+  // Each `draw.entropy` is the ticket the allocator indexes the naming corpora with, and the recorded
+  // `name` is exactly what `draw_human_name` yields for that ticket against the rows allocated before it --
+  // the property dag/test/claim/fleet_naming_witness.dag re-draws for EVERY drawn row instead of trusting
+  // this comment. The ticket is the draw proper: the first untaken of the three forms it indexes, so a
+  // drawn member carries ONE label and not three spellings (the plan's P2 wording). The other spellings a
+  // name admits stay what they always were -- selector conveniences of `allocation_selector_forms`,
+  // resolvable only while they pick out exactly one host.
+  HostnameAllocation {
+    fleet_slot: operator_host_mtjade1,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "eric" as DnsLabel },
+      draw: HumanNameDraw { entropy: 282938336220 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv9,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "francis" as DnsLabel },
+      draw: HumanNameDraw { entropy: 507956931964 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv10,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "emerson" as DnsLabel },
+      draw: HumanNameDraw { entropy: 970743951946 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv11,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "mil" as DnsLabel },
+      draw: HumanNameDraw { entropy: 718614163883 },
+    },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv12,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "bastien" as DnsLabel },
+      draw: HumanNameDraw { entropy: 307940512393 },
+    },
   },
 ]
 

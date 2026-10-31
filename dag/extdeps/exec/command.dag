@@ -91,6 +91,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.exec.command", decl_name: "operation_row_argv_command"),
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
@@ -153,6 +154,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_metadata_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_regular_files_sha256_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_children_named_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_entry_at_path_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
@@ -216,6 +218,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_overwrite_path_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_fsync_into_staging_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_file_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_with_mode_command"),
@@ -223,6 +227,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_span_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_hex_file_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
@@ -235,11 +240,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
+    // getent shadow <login>: the same read-only identity-database lookup as its sibling above, on a
+    // different database, admitted for the same reason -- it names a database the utility resolves itself and
+    // neither a path nor an account. Its caller is the boot medium reader probe, which reads whether the
+    // reader account's password field is ACTUALLY locked instead of inferring that from `useradd --system`.
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_shadow_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_links_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
@@ -286,6 +297,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_symbolic_link_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
+    // `test -r <path>`: the same utility, the same shape of argument, the opposite question of its -w
+    // sibling above -- READABLE rather than writable. Admitted for the same reason the sibling is: it names
+    // no privilege, no account and no destination, only a path and an operand POSIX defines.
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_readable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
@@ -355,6 +370,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_clock_ticks_command"),
     decl_ref(module_path: "extdeps.posix.getconf", decl_name: "getconf_online_processors_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_of_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_user_record_command"),
+    decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_entries_command"),
+    decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_listing_command"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),

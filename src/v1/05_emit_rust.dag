@@ -271,13 +271,13 @@ import v1.compiler.emit {
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
   child_from_key,
-  BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
+  BoundOperation, RestBound, ShellBound, UnboundOperation, FileBound, BindingRefused,
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent, shell_emission_refusal_fact, shell_result_channel_key,
   shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy,
-  bind_operation_transport, transport_binding_refusal_fact,
+  bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal,
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
@@ -450,7 +450,12 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   }
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
+  // The keyed algebra's own spelling (FinitelySupportedFunction<K, V>) is not a container-alias
+  // spelling, so is_container_type alone sent a concrete application to the record renderer before the
+  // keyed arm below could lower it (Rc<FinitelySupportedFunction<String, AlgebraProfile>> beside the
+  // HashMap its callers read; E0308 at std.computation type_iteration_dimension). Ask the one
+  // predicate the keyed arm asks.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -1640,38 +1645,58 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       }
       render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
       }
-      ClosedAliasHasParams => {
-    let base = match rust_seed_host_container_base(name: base_name) {
-      Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
-    }
-    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
-    let args = n.children |> map(arg =>
-      if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      }
-    ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
-      }
-      ClosedAliasBindingAbsent => {
-    let base = match rust_seed_host_container_base(name: base_name) {
-      Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
-    }
-    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
-    let args = n.children |> map(arg =>
-      if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      }
-    ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
-      }
+      ClosedAliasHasParams => render_rust_applied_nonpeeling_type(n: n, base_name: base_name, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      ClosedAliasBindingAbsent => render_rust_applied_nonpeeling_type(n: n, base_name: base_name, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     }
     }
+  }
+}
+
+// THE APPLIED-TYPE ARMS THAT SPELL base<key, value>, IN ONE PLACE. render_rust_applied_type's
+// closed-alias verdict fork has three arms; ClosedAliasPeelZeroParam renders a bare name (no
+// arguments to key), while ClosedAliasHasParams and ClosedAliasBindingAbsent render the SAME
+// base<args> shape and so carry the SAME keyed decision -- one answer, not two (DESIGN 6b).
+// WHY THE PREDICATE BELONGS HERE. This renderer is the terminal applied-type arm of two paths
+// that reach a corpus fn's DECLARED RETURN TYPE and its closure-parameter annotations:
+//   fn signature: emit_inferred's concat(rust_items().return_arrow, ...) -> render_rust_fn_sig_type
+//     -> render_rust_fn_sig_type_applied_binding -> render_rust_type_with_applied_binding
+//     -> render_rust_applied_type_shared -> render_rust_applied_type -> here
+//   lambda parameter: render_rust_type -> render_rust_applied_via_emit_info
+//     -> render_rust_applied_type_shared -> render_rust_applied_type -> here
+// The file's sibling applied-type renderers -- render_rust_type_without_applied_binding,
+// render_rust_decl_type, rust_alias_rhs_applied_container_or_base -- each ask
+// node_is_keyed_collection before spelling base<key, value> and lower the host shape through
+// emit_keyed_container_type. These two arms asked nothing and spelled base<args> unconditionally,
+// so a retyped std.algebra fn's declared return type emitted Rc<FinitelySupportedFunction<K, V>>
+// beside the Rc<HashMap<K, V>> its callers pass to v1_rt::map_get / rc_map_insert /
+// sorted_map_keys (the E0308/E0282 class once std.algebra spells the keyed carrier as its own
+// FinitelySupportedFunction<K, V>; that retype is gunb-ai/gunbc#14876, this arm's consumer). Same
+// predicate, same lowering, same fallback_base shape as the sibling -- no new mechanism. On a corpus
+// that never spells the keyed algebra as an applied declared type the arm answers false and the
+// output is unchanged.
+fn render_rust_applied_nonpeeling_type(n: Node, base_name: String, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let base = match rust_seed_host_container_base(name: base_name) {
+    Present { value: host } => host
+    Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
+  }
+  let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
+  let args = n.children |> map(arg =>
+    if peel {
+      render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+    } else {
+      render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+    }
+  )
+  if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    match args |> first {
+      Present { value: k } => match args |> skip(1) |> first {
+        Present { value: v } => emit_keyed_container_type(container_name: base_name, key_type: k, val_type: v, fallback_base: base, target: Rust)
+        Absent => concat(base, "<", args |> join(separator: ", "), ">")
+      }
+      Absent => concat(base, "<", args |> join(separator: ", "), ">")
+    }
+  } else {
+    concat(base, "<", args |> join(separator: ", "), ">")
   }
 }
 
@@ -18239,7 +18264,7 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
     ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
-    LocalBound => emit_local_call(op_name: op_name)
+    UnboundOperation => emit_unbound_operation_refusal(op_name: op_name, target: Rust)
     BindingRefused { cause: cz } =>
       emit_error_expr(
         message: concat("transport binding refused for operation '", op_name, "': ", transport_binding_refusal_fact(cause: cz)),
@@ -19355,11 +19380,6 @@ fn emit_file_return(result_fields: List<FileResultField>) -> String {
   if n == 0 { "Ok(())" }
   else if n == 1 { concat("Ok(", field_exprs |> join(separator: ", "), ")") }
   else { concat("Ok((", field_exprs |> join(separator: ", "), "))") }
-}
-
-fn emit_local_call(op_name: String) -> String {
-  concat("// Local binding -- direct function call\n",
-    "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
 // A RESOURCE WITH CAPABILITIES RENDERS AS AN #[async_trait] TRAIT, so the crate that carries one
@@ -21224,7 +21244,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_module_inference, native_census_infer_type_contribution, native_census_infer_binding_lines,", "\n",
-      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module,", "\n",
+      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_infer_first_refusal, native_census_cause_groups_add_infer_module,", "\n",
       "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,", "\n",
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
@@ -21764,7 +21784,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \}", "\n",
       "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_resolution_census), one line each, in", "\n",
       "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.", "\n",
-      "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() \{", "\n",
+      "        for line in native_census_infer_binding_lines(context.positions.clone(), entry.clone(), step.outcome.clone()).iter() \{", "\n",
       "            println!(\"\{\}\", line);", "\n",
       "        \}", "\n",
       "        if scope.is_none() \{", "\n",
@@ -21778,6 +21798,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"outcome\": outcome_label,", "\n",
       "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
       "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
+      "            \"first_refusal\": native_census_infer_first_refusal(context.positions.clone(), entry.clone(), step.outcome.clone()),", "\n",
       "        \}));", "\n",
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",

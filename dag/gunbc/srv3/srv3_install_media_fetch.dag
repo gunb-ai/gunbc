@@ -4,10 +4,11 @@ import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   UbuntuInstallMediaMirrorHost,
   UbuntuInstallMediaMirrorRow,
-  ubuntu_install_media_install_path,
   ubuntu_install_media_mirror_rows,
   ubuntu_install_media_mirror_url,
 }
+import gunbc.provisioning.install_media_store { install_media_install_path_on_tree }
+import gunbc.host_state_root { host_state_tree }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
 }
@@ -39,7 +40,8 @@ data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Terminal {
   reason: "srv3_install_media_fetch() routes through host_effect_apply to install_media_fetch_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_install_path(
+data srv3_ubuntu_install_media_install_path: NonEmptyStr = install_media_install_path_on_tree(
+  tree: host_state_tree(),
   artifact: srv3_ubuntu_install_media_artifact,
 )
 
@@ -86,7 +88,7 @@ fn classify_install_media_fetch(
   observation: InstallMediaPresenceObservation,
   artifact: UbuntuInstallMediaArtifactRow,
 ) -> InstallMediaFetchVerdict {
-  let install_path = ubuntu_install_media_install_path(artifact: artifact)
+  let install_path = install_media_install_path_on_tree(tree: host_state_tree(), artifact: artifact)
   match observation {
     InstallMediaAbsent =>
       FetchRequired {
