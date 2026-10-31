@@ -259,7 +259,7 @@ fn owned(
     running: running,
     loading: loading,
     outbid: outbid,
-    loading_age: second(count: age),
+    loading_age_at_least: Present { value: second(count: age) },
   }
 }
 
@@ -275,6 +275,39 @@ test fn outbid_and_a_two_hour_loading_card_are_dead() -> Bool {
     && !flex_card_dead(card: owned(id: "d", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
 }
 
+// AN UNREAD LOADING AGE IS NOT A DEAD CARD. The age is not on the Vast wire; it is an observation the pass
+// carries between passes, and when that carry is missing or unreadable the age is Absent. A pass that
+// cannot say how long a card has been loading must not destroy it -- the cut needs a read number, not the
+// absence of one. The outbid arm is unaffected: that is a fact of the market, and an outbid card with an
+// unread age is still dead.
+test fn an_unread_loading_age_is_never_dead_by_the_loading_cut() -> Bool {
+  let unaged = FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex,
+    id: "unaged",
+    vram: gib(n: 48),
+    rate: usd_hour(n: 600000),
+    held: true,
+    running: false,
+    loading: true,
+    outbid: false,
+    loading_age_at_least: none,
+  }
+  let outbid_unaged = FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex,
+    id: "outbid-unaged",
+    vram: gib(n: 48),
+    rate: usd_hour(n: 600000),
+    held: true,
+    running: false,
+    loading: true,
+    outbid: true,
+    loading_age_at_least: none,
+  }
+  !flex_card_dead(card: unaged)
+    && flex_card_dead(card: outbid_unaged)
+    && (flex_cleanup_dead(cards: [unaged], ours: flex_owner_label_gunbc_flex) |> length) == 0
+}
+
 test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
   let foreign_dead = FlexOwnedCard {
     owner: "ctrl-bidder" as FlexOwnerLabel,
@@ -285,7 +318,7 @@ test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
     running: false,
     loading: false,
     outbid: true,
-    loading_age: second(count: 0),
+    loading_age_at_least: Present { value: second(count: 0) },
   }
   let actions = flex_cleanup_dead(
     cards: [

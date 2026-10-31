@@ -9,7 +9,7 @@ import gunbc.design_ruling { design_rulings }
 import std.decimal { ExactDecimal }
 import std.measure {
   MoneyRate, MoneyPerHour, MoneyAmountMicro,   money_amount_micro, money_amount_micro_count,
-  second, hardware_thread_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
+  second, second_count, hardware_thread_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
 }
 import extdeps.currency.currency { Usd, Eur, currency_code_eq }
 import extdeps.accounting.budget { Appropriation }
@@ -65,6 +65,11 @@ import product.fabric.flex_vast_shadow {
   FlexWriteBlockedRateUnconverted, FlexWriteBlockedCurrencyMismatch,
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
   FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable,
+  FlexLoadingSighting, flex_cards_from_roster, flex_loading_sightings_after,
+  FlexRosterCardsBuilt, FlexRosterCardsNeedsExhaustedRoster, FlexRosterCardUnread,
+  FlexLoadingSightings, FlexSightingsKnown, FlexSightingsUnread, flex_loading_age,
+  FlexSightingsBasis, FlexSightingsBaselineComplete, FlexSightingsBaselineIncomplete, FlexSightingsCarried,
+  FlexRosterCardStatusUnread, FlexRosterCardRateUnconverted, FlexRosterCardVramUnread,
   flex_search_offers_inhabitance_frontier, flex_trial_fleet_rate_cap_authority,
   flex_record_pass,
 }
@@ -1108,4 +1113,227 @@ test fn a_multi_gpu_machine_is_not_a_one_card_rental() -> Bool {
   member_entry(e: flex_offer_in_shadow_field(offer: one, host: host_of(one), search_type: vast_ai_search_type_bid))
     && !member_entry(e: flex_offer_in_shadow_field(offer: two, host: host_of(two), search_type: vast_ai_search_type_bid))
     && (match flex_vast_offer_query(recipe: flex_serving_recipe) { Present { value: q } => q.num_gpus == 1  Absent => false })
+}
+
+// ---- THE CARDS THE LABELLED ROSTER BUILDS (product.fabric.flex_vast_shadow flex_cards_from_roster).
+// Before this slice the pass ran with cards: [] forever, so the dead-card fold had nothing to fold and
+// the pass could not destroy a card it had itself rented. These tests are the ROSTER side; the destroy
+// side is test.claim.fabric.flex_vast_loop_witness, which feeds these cards to the pass.
+fn inst_state(id: Int, label: String?, status: String?, dollars: Int, ram_mb: Int) -> VastAiInstance {
+  VastAiInstance {
+    id: id,
+    machine_id: id + 1000,
+    actual_status: status,
+    gpu_name: "RTX PRO 6000",
+    gpu_ram: ram_mb,
+    num_gpus: 1,
+    image_uuid: qwen_image(),
+    is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: dollars, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: dollars, fraction_digits: 0 },
+    label: label,
+  }
+}
+
+fn our_running_row(id: Int) -> VastAiInstance {
+  inst_state(
+    id: id,
+    label: Present { value: flex_owner_label_gunbc_flex as String },
+    status: Present { value: "running" },
+    dollars: 1,
+    ram_mb: 98304,
+  )
+}
+
+fn our_loading_row(id: Int) -> VastAiInstance {
+  inst_state(
+    id: id,
+    label: Present { value: flex_owner_label_gunbc_flex as String },
+    status: Present { value: "loading" },
+    dollars: 1,
+    ram_mb: 98304,
+  )
+}
+
+test fn a_running_row_we_label_becomes_a_running_card_we_hold() -> Bool {
+  let roster = exhausted([our_running_row(id: 57968351)])
+  match flex_cards_from_roster(
+    ours: flex_owner_label_gunbc_flex,
+    roster: roster,
+    sightings: FlexSightingsKnown { sightings: [] },
+    now: 1761638400000,
+  ) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 1
+        && length(unread) == 0
+        && any(cards, c =>
+          c.running
+            && !c.loading
+            && c.held
+            && !c.outbid
+            && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false }
+            && byte_size_count(b: c.vram) == 98304 * 1048576
+        )
+    _ => false
+  }
+}
+
+// A row we do not label is not a card we hold: the pass must never build a card it has no authority to
+// destroy. Unlabelled and labelled-by-someone-else are both out.
+test fn a_row_we_do_not_label_is_never_a_card_the_pass_holds() -> Bool {
+  let roster = exhausted([
+    inst_state(id: 1, label: none, status: Present { value: "running" }, dollars: 1, ram_mb: 98304),
+    inst_state(id: 2, label: Present { value: "someone-else" }, status: Present { value: "running" }, dollars: 1, ram_mb: 98304),
+  ])
+  match flex_cards_from_roster(ours: flex_owner_label_gunbc_flex, roster: roster, sightings: FlexSightingsKnown { sightings: [] }, now: 1761638400000) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } => length(cards) == 0 && length(unread) == 0
+    _ => false
+  }
+}
+
+// THE VENDOR'S STATUS SET IS NOT CLOSED. A word this pass has not read, and a null, are reported unread
+// and left out of the card list -- never read as not-running. This is what stops a card in a state the
+// lane has not seen from being counted dead by the loading cut. "interrupted" is the word Vast's own
+// examples use for an interruptible contract that has been taken back, and this pass still does not read
+// it: reading it would let a guess destroy a card.
+test fn a_status_word_this_pass_has_not_read_is_reported_unread_and_never_becomes_a_card() -> Bool {
+  let roster = exhausted([
+    inst_state(id: 3, label: Present { value: flex_owner_label_gunbc_flex as String }, status: Present { value: "interrupted" }, dollars: 1, ram_mb: 98304),
+    inst_state(id: 4, label: Present { value: flex_owner_label_gunbc_flex as String }, status: none, dollars: 1, ram_mb: 98304),
+  ])
+  match flex_cards_from_roster(ours: flex_owner_label_gunbc_flex, roster: roster, sightings: FlexSightingsKnown { sightings: [] }, now: 1761638400000) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 0 && length(unread) == 2
+        && any(unread, u => u.id == 3 && match u.cause { FlexRosterCardStatusUnread { raw: Present { value: "interrupted" } } => true  _ => false })
+        && any(unread, u => u.id == 4 && match u.cause { FlexRosterCardStatusUnread { raw: none } => true  _ => false })
+    _ => false
+  }
+}
+
+// LOADING AGE IS NOT ON THE WIRE. GET /api/v1/instances/ has no time field, so the age comes from the
+// pass's own carry: a sighting an earlier pass left. No sighting means age 0 -- a first sighting is a
+// first sighting, and the cut is 120 min, so one pass of lag cannot destroy a card inside its envelope.
+test fn a_loading_card_ages_from_the_sighting_an_earlier_pass_left_and_from_nothing_otherwise() -> Bool {
+  let now = 1761638400000
+  let roster = exhausted([our_loading_row(id: 5), our_loading_row(id: 6)])
+  match flex_cards_from_roster(
+    ours: flex_owner_label_gunbc_flex,
+    roster: roster,
+    sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: now - 7200000 }] },
+    now: now,
+  ) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 2
+        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 7200  Absent => false })
+        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false })
+    _ => false
+  }
+}
+
+// A row that cannot be priced is REFUSED, not priced at zero: a zero rate would make the card look like
+// the cheapest thing on the market and the pass would keep it forever on the strength of a bad read.
+test fn a_row_that_cannot_be_priced_or_sized_is_refused_rather_than_priced_at_zero() -> Bool {
+  let roster = exhausted([
+    inst_state(id: 7, label: Present { value: flex_owner_label_gunbc_flex as String }, status: Present { value: "running" }, dollars: -1, ram_mb: 98304),
+    inst_state(id: 8, label: Present { value: flex_owner_label_gunbc_flex as String }, status: Present { value: "running" }, dollars: 1, ram_mb: -1),
+  ])
+  match flex_cards_from_roster(ours: flex_owner_label_gunbc_flex, roster: roster, sightings: FlexSightingsKnown { sightings: [] }, now: 1761638400000) {
+    FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+      length(cards) == 0 && length(unread) == 2
+        && any(unread, u => u.id == 7 && match u.cause { FlexRosterCardRateUnconverted => true  _ => false })
+        && any(unread, u => u.id == 8 && match u.cause { FlexRosterCardVramUnread => true  _ => false })
+    _ => false
+  }
+}
+
+// THE BOUND IS UNREAD WHEN THE CARRY IS UNREAD, NOT ZERO. The carry file is durable state in a build
+// directory: a cargo clean, a fresh worktree or a different runner loses it. In that state every loading
+// card's bound is Absent, so the loading cut cannot fire at all -- the pass keeps a card it cannot age
+// rather than restarting its clock and pretending it just started. Inside a KNOWN set -- which only a
+// COMPLETE baseline is -- an id with no sighting is a bound of AT LEAST 0: loading began at some instant
+// after the previous pass finished its complete walk, which is a lower bound and not an age, and an
+// underestimate only ever delays the cut.
+test fn an_unread_carry_leaves_every_loading_bound_unread_and_a_known_one_leaves_at_least_zero() -> Bool {
+  let now = 1761638400000
+  match flex_loading_age(
+    sightings: FlexSightingsUnread { reason: "the carry file could not be read" as NonEmptyStr },
+    instance_id: 5,
+    now: now,
+  ) {
+    Present { value: _ } => false
+    Absent =>
+      match flex_loading_age(
+        sightings: FlexSightingsKnown { sightings: [] },
+        instance_id: 5,
+        now: now,
+      ) {
+        Present { value: a } =>
+          second_count(s: a) == 0
+            && match flex_loading_age(
+              sightings: FlexSightingsKnown { sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: now - 7200000 }] },
+              instance_id: 5,
+              now: now,
+            ) {
+              Present { value: aged } => second_count(s: aged) == 7200
+              Absent => false
+            }
+        Absent => false
+      }
+  }
+}
+
+// A PARTIAL WALK BUILDS NOTHING, the same rule the cap reads: a partial roster under-counts what we hold.
+test fn a_partial_roster_builds_no_cards() -> Bool {
+  let partial = FlexInstancesPartial {
+    next_token: Present { value: "tok" },
+    observed: [our_running_row(id: 9)],
+    total: 2,
+  }
+  match flex_cards_from_roster(ours: flex_owner_label_gunbc_flex, roster: partial, sightings: FlexSightingsKnown { sightings: [] }, now: 1761638400000) {
+    FlexRosterCardsNeedsExhaustedRoster => true
+    _ => false
+  }
+}
+
+// THE CARRY THE NEXT PASS READS. A loading id already sighted keeps its FIRST sighting (age accrues from
+// the first time we saw it, not from the last); a loading id never seen is sighted now; a row that is no
+// longer loading drops out, so a card that came up running cannot be aged by an old sighting.
+test fn the_sightings_a_pass_leaves_keep_the_first_time_a_card_was_seen_loading() -> Bool {
+  let now = 1761638400000
+  let roster = exhausted([our_loading_row(id: 10), our_loading_row(id: 11), our_running_row(id: 12)])
+  let carried = flex_loading_sightings_after(
+    ours: flex_owner_label_gunbc_flex,
+    roster: roster,
+    prior: [
+      FlexLoadingSighting { instance_id: 10, first_seen_ms: now - 3600000 },
+      FlexLoadingSighting { instance_id: 12, first_seen_ms: now - 7200000 },
+    ],
+    now: now,
+  )
+  match carried.basis {
+    FlexSightingsBaselineComplete =>
+      length(carried.sightings) == 2
+        && any(carried.sightings, x => x.instance_id == 10 && x.first_seen_ms == now - 3600000)
+        && any(carried.sightings, x => x.instance_id == 11 && x.first_seen_ms == now)
+    FlexSightingsBaselineIncomplete => false
+  }
+}
+
+// A pass that could not finish its walk marks the baseline INCOMPLETE and keeps the prior sightings
+// unchanged: an age built on a partial walk is an age built on a roster that under-counts what we hold,
+// and the next pass reads that basis as UNREAD rather than as a bound of zero.
+test fn a_partial_roster_marks_the_baseline_incomplete_and_keeps_the_prior_sightings() -> Bool {
+  let now = 1761638400000
+  let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [our_loading_row(id: 13)], total: 2 }
+  let carried = flex_loading_sightings_after(
+    ours: flex_owner_label_gunbc_flex,
+    roster: partial,
+    prior: [FlexLoadingSighting { instance_id: 10, first_seen_ms: now - 3600000 }],
+    now: now,
+  )
+  match carried.basis {
+    FlexSightingsBaselineIncomplete =>
+      length(carried.sightings) == 1 && length(filter(carried.sightings, x => x.instance_id == 10)) == 1
+    FlexSightingsBaselineComplete => false
+  }
 }
