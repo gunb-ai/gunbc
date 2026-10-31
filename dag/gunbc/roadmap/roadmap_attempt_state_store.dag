@@ -105,6 +105,74 @@ type AttemptStateMember
   | AttemptSupervisorLog
   | AttemptSupervisorVerdict
 
+// THE GENERIC WRITE'S CLOSED ACCEPTANCE SET. The nine attempt-log members (the four `*Events` streams, the
+// four `*Log` stdout streams and the `attempt-wire` in-place record) are NOT in this set: they are reached only
+// through gunbc.durable_append_log_store -- the owning store mints each member's writer window through
+// append_log_store_mint and the sandboxed worker appends under that window -- so the generic single-shot
+// attempt_state_write can never write them. `attempt_state_write` takes THIS type, not AttemptStateMember; a
+// hostile or careless caller passing a log member is refused at compile time by the type checker, and the
+// members stay importable through AttemptStateMember for their read-only external-consumer path producers.
+// The census gunbc.durable_append_log_store.append_log_census_slots is the single authority for that split.
+type AttemptStatePlainMember
+  = AttemptKeyRecord
+  | AttemptProcessFingerprint
+  | AttemptContinuationTurn
+  | AttemptAlignmentBinding
+  | AttemptEnvironmentAdmission
+  | AttemptLaunchIdentity
+  | AttemptSpawnOrigin
+  | AttemptVerificationRecord
+  | AttemptSpawnFailure
+  | AttemptRequestBindingFile
+  | AttemptCommitOutcomeLast
+  | AttemptOracleIdentity
+  | AttemptOracleRevision
+  | AttemptOraclePinRefused
+  | AttemptValidationReceipt
+  | AttemptWorkerRequestScratch
+  | AttemptPublicationReceipt { head_sha: String }
+  | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
+  | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
+  | AttemptVerificationSelection { head_sha: String }
+  | AttemptReviewVerdict { head_sha: String, criterion_key: String }
+  | AttemptReviewRequestScratch { criterion_key: String }
+  | AttemptAuditVerdict { head_sha: String }
+  | AttemptAuditRequestScratch
+  | AttemptSupervisorRequestScratch
+  | AttemptSupervisorVerdict
+
+// A plain member is a member; the reverse does not hold, which is the point of the split.
+fn attempt_state_plain_to_member(member: AttemptStatePlainMember) -> AttemptStateMember {
+  match member {
+    AttemptKeyRecord => AttemptKeyRecord
+    AttemptProcessFingerprint => AttemptProcessFingerprint
+    AttemptContinuationTurn => AttemptContinuationTurn
+    AttemptAlignmentBinding => AttemptAlignmentBinding
+    AttemptEnvironmentAdmission => AttemptEnvironmentAdmission
+    AttemptLaunchIdentity => AttemptLaunchIdentity
+    AttemptSpawnOrigin => AttemptSpawnOrigin
+    AttemptVerificationRecord => AttemptVerificationRecord
+    AttemptSpawnFailure => AttemptSpawnFailure
+    AttemptRequestBindingFile => AttemptRequestBindingFile
+    AttemptCommitOutcomeLast => AttemptCommitOutcomeLast
+    AttemptOracleIdentity => AttemptOracleIdentity
+    AttemptOracleRevision => AttemptOracleRevision
+    AttemptOraclePinRefused => AttemptOraclePinRefused
+    AttemptValidationReceipt => AttemptValidationReceipt
+    AttemptWorkerRequestScratch => AttemptWorkerRequestScratch
+    AttemptPublicationReceipt { head_sha: h } => AttemptPublicationReceipt { head_sha: h }
+    AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => AttemptVerificationReceipt { head_sha: h, window_identity_hex: w }
+    AttemptDiffWindow { head_sha: h, window_identity_hex: w } => AttemptDiffWindow { head_sha: h, window_identity_hex: w }
+    AttemptVerificationSelection { head_sha: h } => AttemptVerificationSelection { head_sha: h }
+    AttemptReviewVerdict { head_sha: h, criterion_key: c } => AttemptReviewVerdict { head_sha: h, criterion_key: c }
+    AttemptReviewRequestScratch { criterion_key: c } => AttemptReviewRequestScratch { criterion_key: c }
+    AttemptAuditVerdict { head_sha: h } => AttemptAuditVerdict { head_sha: h }
+    AttemptAuditRequestScratch => AttemptAuditRequestScratch
+    AttemptSupervisorRequestScratch => AttemptSupervisorRequestScratch
+    AttemptSupervisorVerdict => AttemptSupervisorVerdict
+  }
+}
+
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
@@ -274,8 +342,8 @@ fn attempt_state_read(store: AttemptState, member: AttemptStateMember) -> Filesy
   filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
 }
 
-fn attempt_state_write(store: AttemptState, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
-  let path = attempt_state_member_path(store: store, member: member)
+fn attempt_state_write(store: AttemptState, member: AttemptStatePlainMember, content: String) -> FilesystemWriteOutcome {
+  let path = attempt_state_member_path(store: store, member: attempt_state_plain_to_member(member))
   let write = Filesystem.Write(path: path, content: content)
   filesystem_write_outcome(path: path, success: write.success, error: write.error)
 }
@@ -351,10 +419,10 @@ fn attempt_state_read_current(instance: HostDashboardInstance, node: String, mem
   }
 }
 
-fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
+fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStatePlainMember, content: String) -> FilesystemWriteOutcome {
   match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
     AttemptStateUnready { detail } =>
-      FilesystemWriteRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: member), error: detail }
+      FilesystemWriteRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: attempt_state_plain_to_member(member)), error: detail }
     AttemptStateReady { store } => attempt_state_write(store: store, member: member, content: content)
   }
 }
