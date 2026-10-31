@@ -3605,7 +3605,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
-  ], right: roster_requires_scope_controls(prepared: prepared, lex: lex))
+  ], right: list_append(left: roster_requires_scope_controls(prepared: prepared, lex: lex), right: roster_catch_all_controls(prepared: prepared, lex: lex)))
 }
 
 // ROWS DECLARING RosterRowScope. The row under test is read from production by key, never copied, so the controls move with the row.
@@ -3642,6 +3642,54 @@ fn roster_scope_expect_any_refusal(name: String, outcome: RosterOutcome) -> Stri
     RosterRefused { reason: _ } => ""
     other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/scope.dag", outcome: other)
   }
+}
+
+// THE CATCH-ALL CONTROLS. The row under test is built here (call = binder, key = "catchall:<Type>", home = the declaring module);
+// the type is read from the REAL declaration by roster_owner_tags, so the controls move with extdeps.uri and std.optional.
+fn roster_catch_all_row(binder: String, type_name: String, home: String) -> List<RosterHeadRow> {
+  [RosterHeadRow { call: binder, key: "catchall:" + type_name, import_name: type_name, home: qualified_name_from_dotted_string(dotted: home), labels: [], head: ExpandCatchAll { binder: binder }, scope: RequiresOccurrences }]
+}
+
+fn roster_catch_all_outcome_of(rows: List<RosterHeadRow>, home: String, type_name: String, binder: String, keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/catchall.dag", text: text, prepared: prepared, lex: lex, candidates: rows, closures: roster_control_closures(), gates: [RosterSiteGate { home: home, row_key: "catchall:" + type_name, call: binder, keys: keys, path: "control/catchall.dag", starts: line_starts(text: text) }])
+}
+
+fn roster_catch_all_expect_text(name: String, text: String, keys: List<String>, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_applied(before: text, outcome: roster_catch_all_outcome_of(rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", binder: "other", keys: keys, text: text, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+  }
+}
+
+fn roster_catch_all_expect_reason(name: String, rows: List<RosterHeadRow>, home: String, type_name: String, text: String, keys: List<String>, want_prefix: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_catch_all_outcome_of(rows: rows, home: home, type_name: type_name, binder: "other", keys: keys, text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      if starts_with(s: roster_refusal_text(reason: r), prefix: want_prefix) { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/catchall.dag", outcome: other)
+  }
+}
+
+fn roster_catch_all_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let head = "module c.catchall\n\nimport extdeps.uri { UriScheme, Http, Https }\n\nfn f(s: UriScheme) -> UriScheme {\n  match s {\n"
+  let tail = "  }\n}\n"
+  let src = head + "    Http => Http\n    Https => Https\n    other => other\n" + tail
+  let expanded = head + "    Http => Http\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
+  let key = ["control/catchall.dag:9:5"]
+  let leak_src = head + "    Http => other\n    Https => Https\n    other => other\n" + tail
+  let leak_after = head + "    Http => other\n    Https => Https\n    Tftp => Tftp\n    File => File\n    Ftp => Ftp\n    Javascript => Javascript\n    Data => Data\n    Vbscript => Vbscript\n    Mailto => Mailto\n" + tail
+  let not_last = head + "    Http => Http\n    other => other\n    Https => Https\n" + tail
+  let stale = head + "    Http => Http\n    Bogus => Bogus\n    other => other\n" + tail
+  let shadow = head + "    Http => Http\n    Https => Https\n    other => { let other = Http\n other }\n" + tail
+  let optional_src = "module c.catchall\n\nimport std.optional { Optional, Absent }\n\nfn f(o: Optional<Int>) -> Optional<Int> {\n  match o {\n    Absent => Absent\n    other => other\n  }\n}\n"
+  [
+    roster_control_verdict(name: "catch-all-expands-to-the-declared-remainder", fail: roster_catch_all_expect_text(name: "catch-all-expands-to-the-declared-remainder", text: src, keys: key, after: expanded, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-binder-does-not-leak-to-an-earlier-arm", fail: roster_catch_all_expect_text(name: "catch-all-binder-does-not-leak-to-an-earlier-arm", text: leak_src, keys: key, after: leak_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-not-last-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-not-last-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: not_last, keys: ["control/catchall.dag:8:5"], want_prefix: "catch-all-not-last", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-stale-earlier-tag-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-stale-earlier-tag-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: stale, keys: key, want_prefix: "catch-all-remainder-stale", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-inner-rebinding-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-inner-rebinding-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: shadow, keys: key, want_prefix: "binder-occurrence-unparsed", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-payload-remainder-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-payload-remainder-refuses", rows: roster_catch_all_row(binder: "other", type_name: "Optional", home: "std.optional"), home: "std.optional", type_name: "Optional", text: optional_src, keys: ["control/catchall.dag:9:5"], want_prefix: "catch-all-remainder-not-nullary", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-key-off-the-pattern-atom-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-key-off-the-pattern-atom-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: src, keys: ["control/catchall.dag:9:14"], want_prefix: "binder-occurrence-unparsed", prepared: prepared, lex: lex))
+  ]
 }
 
 fn roster_requires_scope_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
