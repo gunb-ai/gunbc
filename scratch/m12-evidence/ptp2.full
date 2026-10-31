@@ -1,0 +1,60 @@
+memory-cgroup-bind: not requested
+[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms=35884 wall_ms=35885 rss_growth_bytes=3242422272 source_files=165 bare_eligible=13 provenance=built-by-preparation scope=entry-closure-union entries=1 entries_refused=0 pool_files=9747
+claim_batch: 1 entry group(s), 6 witness(es) total
+[floor-phase] phase=module-index state=completed wall_ms=155 modules=7850
+[floor-phase] phase=declarer-discovery state=completed wall_ms=207 declarers=18
+[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms=674
+[floor-phase] phase=declarer-closure state=completed wall_ms=8 sources=25
+◐ started compile.frontend
+✓ compile.frontend done in 192ms
+✓ compile.normalize done in 17ms
+✓ compile.reconcile done in 370ms
+✓ compile.analyses done in 13ms
+[floor-phase] phase=closure-strict-resolve state=completed wall_ms=597 sources=25
+◷ post-mock-precompute-rss — 9.6 GiB
+◷ post-mock-precompute-children-max-rss — 9.3 GiB
+claim_batch: whole-tree published mock corpus — 92 operation key(s)
+claim_batch: resolving src/v2/test/claim/match_arm_binder_frame.dag once (6 witness(es))
+✓ typecheck v2.std.compilers.target_model done in 46 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 3 seconds
+✓ typecheck v2.compiler.resolve done in 3 seconds
+✓ typecheck v2.compiler.infer done in 4 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+[resolve] src/v2/test/claim/match_arm_binder_frame.dag: 91367ms  (165 modules, 8497 resolved items in closure)
+◷ post-first-entry-resolve-rss — 10.4 GiB
+claim_batch: resolved src/v2/test/claim/match_arm_binder_frame.dag; running 6 witness(es)
+[floor-shared-fill] claim=mabx_1_nullary_accepts marginal_cpu_ms=607 fill_cpu_ms=13341 measured_cpu_ms=13949 marginal_wall_ms=13951 fill_wall_ms=0 measured_wall_ms=13951 marginal_eval_steps=267961 fill_eval_steps=6209995 measured_eval_steps=6477956 provenance=filled-shared-artifact triggered_by=mabx_1_nullary_accepts
+[floor-reach-probe] claim=mabx_1_nullary_accepts fill_cpu_ms=13341 reach=surface_unarmed dispatches=1986932              last_builtin=mab_outcome_accepts
+PASS mabx_1_nullary_accepts
+[witness] mabx_1_nullary_accepts: cpu=607ms wall=13951ms eval_steps=267961 subject=dd7628a3179bd3c1 eval_self=0.000ms
+PASS mabx_2_nullary_has_atom_A
+[witness] mabx_2_nullary_has_atom_A: cpu=646ms wall=646ms eval_steps=268235 subject=21a0b85c4fca5532 eval_self=0.000ms
+FAIL mabx_3_fresh_accepts
+[witness] mabx_3_fresh_accepts: cpu=608ms wall=608ms eval_steps=256983 subject=552becbc956e16b2 eval_self=0.000ms
+FAIL mabx_4_fresh_has_atom_other
+[witness] mabx_4_fresh_has_atom_other: cpu=618ms wall=618ms eval_steps=256984 subject=b1e8343143a7de68 eval_self=0.000ms
+PASS mabx_5_body_reads_accepts
+[witness] mabx_5_body_reads_accepts: cpu=646ms wall=646ms eval_steps=271586 subject=aed3c6c258f28fbe eval_self=0.000ms
+PASS mabx_6_body_reads_has_atom_other
+[witness] mabx_6_body_reads_has_atom_other: cpu=645ms wall=645ms eval_steps=272048 subject=bd601ab0fb88462c eval_self=0.000ms
+[resolve-summary] mode=Hermetic; 1 resolve(s) in 91367ms wall; 6 witness(es) in 17114ms wall
+[resolve-split] load=323.9ms parse=4123.7ms resolve=172.5ms normalize=540.7ms typecheck=81092.1ms parent_envs=1.9ms reconcile_assembly=52.1ms ownership=876.4ms
+[assembly-split] schedule=4695.2ms probe=0.1ms graph=41.0ms symbol_index=1125.5ms variant_base=56.5ms root_symbol_index=139.2ms root_variant_base=1788.0ms environment=208.7ms diagnostics=7.1ms registry=5.4ms services=242.5ms rewire_type_env=1319.4ms rewire_func_env=147.6ms emit_info=0.0ms other=52.1ms rewire_total_observation=1467.0ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":97064887323,"spans":2,"nested_spans":0,"exclusive":{"load":323893756,"parse":4123744660,"resolve_modules":172543196,"normalize":540658918,"typecheck_compute":81092139347,"parent_envs":1877047,"assembly_schedule":4695241908,"assembly_probe":66000,"assembly_graph":41003429,"assembly_symbol_index":1125487239,"pool_parse":0,"assembly_variant_base":56518354,"assembly_root_symbol_index":139236132,"assembly_root_variant_base":1788005032,"assembly_environment":208731794,"assembly_diagnostics":7095559,"assembly_registry":5357910,"assembly_services":242539424,"assembly_rewire_type_env":1319426074,"assembly_rewire_func_env":147603137,"assembly_emit_info":0,"reconcile_assembly":52116606,"ownership":876442457},"out_of_span":{"pool_parse":6719356332},"sum_exclusive_nanos":96959727979,"remainder_nanos":105159344,"inclusive":{"load_reference_scan":{"nanos":0,"contained_in":"load"},"load_import_closure":{"nanos":23527811,"contained_in":"load"},"load_bare_reference_closure":{"nanos":27284786264,"contained_in":"load"},"load_pool_reference_closure":{"nanos":23571410,"contained_in":"load"},"load_bare_edge_index":{"nanos":20556252160,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":8336446,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":27276448538,"contained_in":"load_bare_reference_closure"},"edge_index_ref_half":{"nanos":5047718977,"contained_in":"load_bare_edge_index"},"edge_index_bare_half":{"nanos":194640,"contained_in":"load_bare_edge_index"},"edge_index_closure_expand":{"nanos":34008863,"contained_in":"edge_index_ref_half"},"edge_index_tree_census":{"nanos":15238328238,"contained_in":"edge_index_bare_half"},"edge_index_tree_census_miss_nanos":{"nanos":8875325962,"contained_in":"edge_index_tree_census"},"edge_index_bare_candidates":{"nanos":10263663,"contained_in":"edge_index_bare_half"},"edge_index_bare_name_universe":{"nanos":53720,"contained_in":"edge_index_bare_half"},"edge_index_bare_resolve_loop":{"nanos":275040925,"contained_in":"edge_index_bare_half"},"edge_index_publish":{"nanos":3566780,"contained_in":"load_bare_edge_index"}},"edge_index_construction":{"builds":1,"source_files":187,"bare_eligible":15,"closure_expand_calls":1265,"tree_census_calls":30,"tree_census_misses":2},"pool_parse":{"builds":1,"modules":9747},"load_reference_scan_volume":{"bytes":0,"calls":0,"fixpoint_rounds":3},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"src/v2/test/claim/match_arm_binder_frame.dag","spans":1,"nanos":91366715454,"exclusive":{"load":6320,"parse":3700533394,"resolve_modules":146904254,"normalize":470548089,"typecheck_compute":78047450226,"parent_envs":1501446,"reconcile_assembly":35180992,"ownership":815877602}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":5698171869,"exclusive":{"load":323887436,"parse":423211266,"resolve_modules":25638942,"normalize":70110829,"typecheck_compute":3044689121,"parent_envs":375601,"reconcile_assembly":16935614,"ownership":60564855}}],"observations":{"witness_entry_resolve_wall_nanos":91367000000,"witness_eval_wall_nanos":17114000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+◷ per-shard-peak-rss — 10.9 GiB
+◷ children-max-rss — 9.3 GiB
+[process-partition] total_ms=273027 pre_run_ms=0 args_ms=29 index_build_ms=120011 edge_index_warm_ms=35897 output_policy_ms=5718 roster_ms=0 published_mock_precompute_ms=1710 entries_ms=109657 reporting_ms=2 entries_resolve_ms=91367 entries_witness_ms=17114
+[pre-entry] phase=source_root_walk_and_read ms=193 scale=tree
+[pre-entry] phase=pool_source_tokenize ms=95226 scale=tree
+[pre-entry] phase=pool_source_newline_index ms=6530 scale=tree
+[pre-entry] phase=pool_heads_parse ms=16271 scale=tree
+[pre-entry] phase=module_path_index_build ms=1714 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=586 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=16 scale=tree
+[pre-entry] phase=pool_census_parse ms=6719 scale=tree
+[pre-entry] phase=closure_name_census_build ms=15233 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=273 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=4690 scale=closure
+[process-partition-exit] run_returned_ms=273027 main_end_ms=273027
+==DONE

@@ -1,0 +1,92 @@
+memory-cgroup-bind: not requested
+[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms=39092 wall_ms=39099 rss_growth_bytes=3245989888 source_files=250 bare_eligible=14 provenance=built-by-preparation scope=entry-closure-union entries=1 entries_refused=0 pool_files=9747
+claim_batch: 1 entry group(s), 21 witness(es) total
+[floor-phase] phase=module-index state=completed wall_ms=151 modules=7850
+[floor-phase] phase=declarer-discovery state=completed wall_ms=218 declarers=18
+[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms=674
+[floor-phase] phase=declarer-closure state=completed wall_ms=8 sources=25
+◐ started compile.frontend
+✓ compile.frontend done in 197ms
+✓ compile.normalize done in 17ms
+✓ compile.reconcile done in 395ms
+✓ compile.analyses done in 14ms
+[floor-phase] phase=closure-strict-resolve state=completed wall_ms=629 sources=25
+◷ post-mock-precompute-rss — 9.6 GiB
+◷ post-mock-precompute-children-max-rss — 9.3 GiB
+claim_batch: whole-tree published mock corpus — 92 operation key(s)
+claim_batch: resolving src/v2/test/claim/name_resolve/kind_aware_binding.dag once (21 witness(es))
+✓ typecheck v2.std.compilers.target_model done in 52 seconds
+✓ typecheck v2.std.compilers.semantic_decl_emission done in 3 minutes
+✓ typecheck v2.compiler.body_lowering_fold done in 3 seconds
+✓ typecheck v2.compiler.resolve done in 3 seconds
+✓ typecheck v2.compiler.infer done in 4 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck v2.compiler.source_root_eval done in 6 seconds
+[resolve] src/v2/test/claim/name_resolve/kind_aware_binding.dag: 335840ms  (250 modules, 11803 resolved items in closure)
+◷ post-first-entry-resolve-rss — 11.0 GiB
+claim_batch: resolved src/v2/test/claim/name_resolve/kind_aware_binding.dag; running 21 witness(es)
+[floor-shared-fill] claim=type_role_optional_resolves_beside_a_same_spelling_variant marginal_cpu_ms=20250 fill_cpu_ms=14152 measured_cpu_ms=34403 marginal_wall_ms=34404 fill_wall_ms=0 measured_wall_ms=34404 marginal_eval_steps=8158128 fill_eval_steps=6209995 measured_eval_steps=14368123 provenance=filled-shared-artifact triggered_by=type_role_optional_resolves_beside_a_same_spelling_variant
+[floor-reach-probe] claim=type_role_optional_resolves_beside_a_same_spelling_variant fill_cpu_ms=14152 reach=surface_unarmed dispatches=3156924              last_builtin=kab_accepted
+PASS type_role_optional_resolves_beside_a_same_spelling_variant
+[witness] type_role_optional_resolves_beside_a_same_spelling_variant: cpu=20250ms wall=34404ms eval_steps=8158128 subject=ae160339238a5ff6 eval_self=0.000ms
+PASS value_role_optional_binds_the_variant_beside_the_type
+[witness] value_role_optional_binds_the_variant_beside_the_type: cpu=19688ms wall=19708ms eval_steps=8157866 subject=6b0f16f488f30fe9 eval_self=0.000ms
+PASS a_variant_optional_in_type_position_is_a_category_mismatch
+[witness] a_variant_optional_in_type_position_is_a_category_mismatch: cpu=19236ms wall=19236ms eval_steps=8157856 subject=6f8f85b377c8a021 eval_self=0.000ms
+PASS two_type_optionals_remain_ambiguous_in_type_position
+[witness] two_type_optionals_remain_ambiguous_in_type_position: cpu=19174ms wall=19191ms eval_steps=8157917 subject=21e6db48d8c8e1d3 eval_self=0.000ms
+PASS a_data_value_resolves_in_value_position
+[witness] a_data_value_resolves_in_value_position: cpu=19196ms wall=19211ms eval_steps=8157822 subject=f7ab29da8f237449 eval_self=0.000ms
+PASS a_data_value_in_type_position_is_a_category_mismatch
+[witness] a_data_value_in_type_position_is_a_category_mismatch: cpu=19291ms wall=19298ms eval_steps=8157876 subject=e2e2dbf2a28e0c6a eval_self=0.000ms
+PASS an_imported_fn_and_data_value_from_the_same_module_resolve
+[witness] an_imported_fn_and_data_value_from_the_same_module_resolve: cpu=19500ms wall=19504ms eval_steps=8157842 subject=5323c04ad06ff25b eval_self=0.000ms
+PASS an_alias_typed_formal_resolves_and_its_body_x_binds
+[witness] an_alias_typed_formal_resolves_and_its_body_x_binds: cpu=19825ms wall=19829ms eval_steps=8157880 subject=7a94ca13e9aa7128 eval_self=0.000ms
+PASS an_alias_in_return_position_still_resolves
+[witness] an_alias_in_return_position_still_resolves: cpu=19903ms wall=19911ms eval_steps=8157846 subject=7c2f123fc04d7645 eval_self=0.000ms
+PASS a_qualified_type_optional_resolves_beside_a_same_spelling_variant
+[witness] a_qualified_type_optional_resolves_beside_a_same_spelling_variant: cpu=19241ms wall=19252ms eval_steps=8157822 subject=de6a66938a092814 eval_self=0.000ms
+PASS a_qualified_variant_optional_binds_beside_the_type
+[witness] a_qualified_variant_optional_binds_beside_the_type: cpu=19174ms wall=19192ms eval_steps=8157854 subject=30e7cca0cdd06649 eval_self=0.000ms
+PASS a_listed_record_type_binds_beside_a_whole_module_import
+[witness] a_listed_record_type_binds_beside_a_whole_module_import: cpu=19685ms wall=19689ms eval_steps=8157854 subject=541765693b3f3ffd eval_self=0.000ms
+PASS a_record_construct_tag_resolves
+[witness] a_record_construct_tag_resolves: cpu=19950ms wall=19963ms eval_steps=8157872 subject=e264b1ded3e252b4 eval_self=0.000ms
+PASS a_record_field_type_optional_resolves_beside_a_same_spelling_variant
+[witness] a_record_field_type_optional_resolves_beside_a_same_spelling_variant: cpu=20084ms wall=20102ms eval_steps=8157816 subject=c43ebc4596a93096 eval_self=0.000ms
+PASS an_alias_rhs_optional_resolves_beside_a_same_spelling_variant
+[witness] an_alias_rhs_optional_resolves_beside_a_same_spelling_variant: cpu=20281ms wall=20290ms eval_steps=8157864 subject=68e6b91ccc06e881 eval_self=0.000ms
+PASS a_variant_payload_optional_resolves_beside_a_same_spelling_variant
+[witness] a_variant_payload_optional_resolves_beside_a_same_spelling_variant: cpu=20327ms wall=20333ms eval_steps=8157836 subject=55bc2463ba92fd03 eval_self=0.000ms
+PASS an_unshadowed_qualified_record_constructor_admits
+[witness] an_unshadowed_qualified_record_constructor_admits: cpu=19686ms wall=19695ms eval_steps=8157816 subject=9f235fb40c8c45ca eval_self=0.000ms
+PASS a_shadowing_frame_binder_does_not_bind_the_global_record_constructor
+[witness] a_shadowing_frame_binder_does_not_bind_the_global_record_constructor: cpu=20013ms wall=20023ms eval_steps=8157872 subject=797eb0f101fd7c86 eval_self=0.000ms
+PASS a_root_bound_value_head_keeps_its_projection_reading_on_a_construct_tag
+[witness] a_root_bound_value_head_keeps_its_projection_reading_on_a_construct_tag: cpu=20101ms wall=20109ms eval_steps=8157876 subject=55eb34550fa28c29 eval_self=0.000ms
+PASS an_imported_refinement_binds_in_type_position
+[witness] an_imported_refinement_binds_in_type_position: cpu=19728ms wall=19729ms eval_steps=8157874 subject=a2f863f235a07439 eval_self=0.000ms
+PASS an_imported_refinement_in_value_position_is_a_category_mismatch
+[witness] an_imported_refinement_in_value_position_is_a_category_mismatch: cpu=20038ms wall=20051ms eval_steps=8157926 subject=736e54275b0ce004 eval_self=0.000ms
+[resolve-summary] mode=Hermetic; 1 resolve(s) in 335840ms wall; 21 witness(es) in 428720ms wall
+[resolve-split] load=186.3ms parse=5900.2ms resolve=274.9ms normalize=792.8ms typecheck=318703.3ms parent_envs=2.9ms reconcile_assembly=75.7ms ownership=1391.2ms
+[assembly-split] schedule=7045.1ms probe=0.2ms graph=57.7ms symbol_index=1679.8ms variant_base=86.6ms root_symbol_index=188.1ms root_variant_base=1884.9ms environment=310.2ms diagnostics=10.4ms registry=7.5ms services=455.8ms rewire_type_env=2169.0ms rewire_func_env=289.7ms emit_info=0.0ms other=75.7ms rewire_total_observation=2458.7ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":341657063659,"spans":2,"nested_spans":0,"exclusive":{"load":186317914,"parse":5900202861,"resolve_modules":274911503,"normalize":792811965,"typecheck_compute":318703265900,"parent_envs":2889215,"assembly_schedule":7045053357,"assembly_probe":213081,"assembly_graph":57712769,"assembly_symbol_index":1679826629,"pool_parse":0,"assembly_variant_base":86570178,"assembly_root_symbol_index":188148202,"assembly_root_variant_base":1884856051,"assembly_environment":310176377,"assembly_diagnostics":10442818,"assembly_registry":7452723,"assembly_services":455796419,"assembly_rewire_type_env":2168991358,"assembly_rewire_func_env":289665758,"assembly_emit_info":0,"reconcile_assembly":75706199,"ownership":1391182631},"out_of_span":{"pool_parse":7117585578},"sum_exclusive_nanos":341512193908,"remainder_nanos":144869751,"inclusive":{"load_reference_scan":{"nanos":0,"contained_in":"load"},"load_import_closure":{"nanos":25274626,"contained_in":"load"},"load_bare_reference_closure":{"nanos":30181366842,"contained_in":"load"},"load_pool_reference_closure":{"nanos":15416088,"contained_in":"load"},"load_bare_edge_index":{"nanos":23053698046,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":8959091,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":30172406751,"contained_in":"load_bare_reference_closure"},"edge_index_ref_half":{"nanos":7243019443,"contained_in":"load_bare_edge_index"},"edge_index_bare_half":{"nanos":178921,"contained_in":"load_bare_edge_index"},"edge_index_closure_expand":{"nanos":64440419,"contained_in":"edge_index_ref_half"},"edge_index_tree_census":{"nanos":15524254191,"contained_in":"edge_index_bare_half"},"edge_index_tree_census_miss_nanos":{"nanos":9059959117,"contained_in":"edge_index_tree_census"},"edge_index_bare_candidates":{"nanos":11112425,"contained_in":"edge_index_bare_half"},"edge_index_bare_name_universe":{"nanos":49600,"contained_in":"edge_index_bare_half"},"edge_index_bare_resolve_loop":{"nanos":278449568,"contained_in":"edge_index_bare_half"},"edge_index_publish":{"nanos":3262221,"contained_in":"load_bare_edge_index"}},"edge_index_construction":{"builds":1,"source_files":262,"bare_eligible":15,"closure_expand_calls":1944,"tree_census_calls":30,"tree_census_misses":2},"pool_parse":{"builds":1,"modules":9747},"load_reference_scan_volume":{"bytes":0,"calls":0,"fixpoint_rounds":3},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Reconciled","residual_nanos":0,"tolerance_nanos":0},"span_nanos_by_entry":[{"entry":"src/v2/test/claim/name_resolve/kind_aware_binding.dag","spans":1,"nanos":335839409776,"exclusive":{"load":7160,"parse":5444644876,"resolve_modules":248378390,"normalize":719234341,"typecheck_compute":315484889436,"parent_envs":2531855,"reconcile_assembly":58690941,"ownership":1331602248}},{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":5817653883,"exclusive":{"load":186310754,"parse":455557985,"resolve_modules":26533113,"normalize":73577624,"typecheck_compute":3218376464,"parent_envs":357360,"reconcile_assembly":17015258,"ownership":59580383}}],"observations":{"witness_entry_resolve_wall_nanos":335840000000,"witness_eval_wall_nanos":428720000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+◷ per-shard-peak-rss — 12.9 GiB
+◷ children-max-rss — 9.3 GiB
+[process-partition] total_ms=962920 pre_run_ms=0 args_ms=33 index_build_ms=120507 edge_index_warm_ms=39112 output_policy_ms=5837 roster_ms=0 published_mock_precompute_ms=1746 entries_ms=794441 reporting_ms=1240 entries_resolve_ms=335840 entries_witness_ms=428720
+[pre-entry] phase=source_root_walk_and_read ms=204 scale=tree
+[pre-entry] phase=pool_source_tokenize ms=94970 scale=tree
+[pre-entry] phase=pool_source_newline_index ms=6433 scale=tree
+[pre-entry] phase=pool_heads_parse ms=17119 scale=tree
+[pre-entry] phase=module_path_index_build ms=1697 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=589 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=16 scale=tree
+[pre-entry] phase=pool_census_parse ms=7117 scale=tree
+[pre-entry] phase=closure_name_census_build ms=15519 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=276 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=7032 scale=closure
+[process-partition-exit] run_returned_ms=962920 main_end_ms=962920
