@@ -3,8 +3,8 @@ module gunbc.sort_by_migration_frontier
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 
-// THE sort_by -> list_sort_by_key MIGRATION'S DECLARED FRONTIER (#15426): the four src/v2/std/node.dag sites are generator
-// output; these six N7-closure sites are not yet migrated. Sweeping them exceeds the generator's 16G envelope on
+// THE sort_by -> list_sort_by_key MIGRATION'S DECLARED FRONTIER (#15426): the five src/v2/std/node.dag occurrences (four sites; one line holds two) are generator
+// output; these five N7-closure occurrences are not yet migrated. Sweeping them exceeds the generator's 16G envelope on
 // infer.dag (pass sort_by/symbol, keys 4361:15 4362:16, was killed EXIT=137 at 1h41m), and the cap is not raised.
 // Rows sort_by/symbol and sort_by/string exist in roster_import_sweep; sort_by/int and the string/int order KeepHeads are added with the sites.
 data sort_by_migration_frontier_rows: List<FrontierRow> = [
