@@ -1040,7 +1040,7 @@ fn router_dev_underivable_retention(rows: List<RouterDevUpstream>) -> String? {
     match acc {
       Present { value: v } => Present { value: v }
       Absent => match u.retention {
-        RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))) }
+        RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))  }
         NoRetention => Absent
         RetentionAdmitted { conversations: _ } => Absent
         RetentionFrontier { why: _ } => Absent
