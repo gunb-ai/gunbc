@@ -8,7 +8,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject }
-import extdeps.docker.cli_service { DockerCli }
+import extdeps.docker.cli_service { DockerCli, SignalHangup }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
@@ -307,14 +307,25 @@ fn dev_refusal() -> String {
 }
 
 // Four upstreams: a (HTTP), b (HTTPS, pinned), c (cap 0) and d (HTTPS, certificate outside the bundle).
-fn dev_upstreams_json() -> String {
-  "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4},"
+// a carries an effort dialect (xhigh becomes high, none drops thinking), so the in-place body rewrite runs.
+fn dev_upstreams_json() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "1", extra: "")) }
+
+// THE SAME FILE WITH f1 LOWERED TO CAP 0, loaded by a reload while f1 still holds a binding: the one way a
+// session can be bound to a row whose cap is 0. max_model_len 4321 is the reload's readback mark.
+fn dev_upstreams_json_f1_cap_0() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4321")) }
+
+fn dev_f1_row(cap: String, extra: String) -> String {
+  "\{\"name\":\"f1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"kf\",\"model\":\"m-f\",\"cap\":" + cap + extra + ",\"cache_locality\":\"engine_local\",\"in_service\":true},"
+}
+
+fn dev_upstreams_json_with(f1: String) -> String {
+  "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4,\"effort_effects\":[\{\"client\":\"xhigh\",\"to\":\"high\"},\{\"client\":\"none\",\"drop_thinking\":true}]},"
     + "\{\"name\":\"b\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19443,\"sni\":\"fakeb\",\"key\":\"kb\",\"model\":\"m-b\",\"cap\":4},"
     + "\{\"name\":\"c\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kc\",\"model\":\"m-c\",\"cap\":0},"
     + "\{\"name\":\"d\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19444,\"sni\":\"fakeb\",\"key\":\"kd\",\"model\":\"m-d\",\"cap\":4},"
     + "\{\"name\":\"e1\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19445,\"sni\":\"fakeb\",\"key\":\"ke1\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
     + "\{\"name\":\"e2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19106,\"key\":\"ke2\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
-    + "\{\"name\":\"f1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"kf\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
+    + f1
     + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
     + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":false}]"
 }
@@ -328,6 +339,19 @@ fn dev_get(key: String, path: String) -> String {
 }
 
 fn model_body(model: String) -> String { concat(concat("\{\"model\":\"", model), "\"\}") }
+
+// A body whose bytes an engine's prompt depends on: spaced, with objects whose key order is not sorted,
+// and the model between them. Any re-serialization changes these bytes; a splice changes one literal.
+fn order_body(model: String, kwargs: String) -> String {
+  "\{\"tools\": [\{\"type\": \"function\", \"function\": \{\"name\": \"t\", \"parameters\": \{\"zeta\": 1, \"alpha\": 2, \"mid\": 3}}}], \"model\": \"" + model + "\", \"chat_template_kwargs\": \{" + kwargs + "}, \"stream\": false}"
+}
+
+// Reads /v1/models until it carries the mark, at most n more times: a reload is asynchronous to the
+// signal that asks for it, so the turn after it waits for the reloaded worker to answer.
+fn await_models(mark: String, n: Int) -> String {
+  let r = dev_get(key: "ck-falsifier", path: "/v1/models")
+  if contains(s: r, p: mark) || n <= 0 { r } else { await_models(mark: mark, n: n - 1) }
+}
 
 fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
 
@@ -560,6 +584,22 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
   let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
+  // BYTES IN, BYTES OUT (2026-10-30: a re-encode on the alias rewrite reordered every object, so no two
+  // turns of one h11 conversation shared a prompt prefix). Session z is bound to a, so each turn lands on
+  // a and the echo shows the bytes a received. The control sends a's own model id and nothing to rewrite.
+  let bytes_control = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "m-a", kwargs: "\"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_rewritten = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_dropped = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"none\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let two_sites = dev_request(key: "ck-falsifier", session: "dup-1", body: "\{\"model\": \"flash-next\", \"metadata\": \{\"model\": \"flash-next\"}}", path: "/v1/chat/completions")
+  // A ROW LOWERED TO CAP 0 UNDER A LIVE BINDING. cap-1 is bound to f1; the reload keeps the state
+  // dictionary (bindings and counters) and loads f1 at cap 0. The bound turn must be refused at the cap
+  // like any full engine-local row, and nothing it did may move f1's active count.
+  let w8 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", content: dev_upstreams_json_f1_cap_0())
+  let lowered = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_models = await_models(mark: "4321", n: 20)
+  let cap_0_bound = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let cap_0_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
   let removed = remove_all()
@@ -632,6 +672,19 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_a_body_above_the_buffer_is_read_from_its_file", held: contains(s: dev_large, p: "\n400 exit=0") && contains(s: dev_large, p: "model required"), observed: dev_large),
     case_of(identity: "dev_stats_tally_each_status_and_upstream", held: contains(s: dev_stats, p: "\"status:401\":1") && contains(s: dev_stats, p: "\"status:429\":2") && contains(s: dev_stats, p: "\"status:502\":2") && contains(s: dev_stats, p: "\"upstream:a:200\":4") && contains(s: dev_stats, p: "\"active:a\":0"), observed: dev_stats),
     case_of(identity: "dev_red_stats_need_a_client_key", held: contains(s: dev_stats_no_key, p: "\n401 exit=0"), observed: dev_stats_no_key),
+    case_of(identity: "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten", held: contains(s: bytes_control, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"zeta\": 1"))) && contains(s: bytes_control, p: "\n200 exit=0"), observed: one_line(s: bytes_control)),
+    // The alias and the effort are rewritten by splicing two literals: every other byte, spacing and key
+    // order included, is the client's. A re-encode drops the spacing and reorders the objects.
+    case_of(identity: "dev_alias_and_effort_rewrites_splice_the_client_bytes", held: contains(s: bytes_rewritten, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"reasoning_effort\": \"high\", \"zeta\": 1"))) && contains(s: bytes_rewritten, p: "\n200 exit=0"), observed: one_line(s: bytes_rewritten)),
+    case_of(identity: "dev_effort_drop_splices_enable_thinking_in_place", held: contains(s: bytes_dropped, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"enable_thinking\": false, \"zeta\": 1"))) && contains(s: bytes_dropped, p: "\n200 exit=0"), observed: one_line(s: bytes_dropped)),
+    // A body with two unescaped model literals has no single site to splice: it is refused before any
+    // reservation, never re-encoded and never proxied.
+    case_of(identity: "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded", held: contains(s: two_sites, p: "\n400 exit=0") && contains(s: two_sites, p: "single unescaped literal") && !contains(s: two_sites, p: "upstream="), observed: one_line(s: two_sites)),
+    case_of(identity: "dev_reload_loads_f1_at_cap_0", held: w8.success && lowered.exit_code == 0 && reloaded.exit_code == 0 && contains(s: reloaded_models, p: "4321"), observed: one_line(s: reloaded_models)),
+    // A cap is the ceiling for every non-overflow row, 0 included: the bound turn is refused at the cap
+    // and is not counted, so f1's active count stays 0. Read as an uncapped sentinel, the turn was served
+    // without a reservation and released one in the log phase, leaving active:f1 at -1.
+    case_of(identity: "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted", held: contains(s: cap_0_bound, p: "\n429 exit=0") && contains(s: cap_0_bound, p: "at its active-turn cap") && !contains(s: cap_0_bound, p: "upstream=") && contains(s: cap_0_stats, p: "\"active:f1\":0") && !contains(s: cap_0_stats, p: "\"upstream:f1:429\""), observed: concat(one_line(s: cap_0_bound), one_line(s: cap_0_stats))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -690,6 +743,12 @@ fn falsifier_expected_identities() -> List<String> {
     "the_meter_tallies_owned_turns_and_never_invents_tokens",
     "comparison_pricing_arrives_as_cited_rows",
     "dev_red_stats_need_a_client_key",
+    "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten",
+    "dev_alias_and_effort_rewrites_splice_the_client_bytes",
+    "dev_effort_drop_splices_enable_thinking_in_place",
+    "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded",
+    "dev_reload_loads_f1_at_cap_0",
+    "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted",
     "world_is_removed",
   ]
 }

@@ -239,32 +239,69 @@ fn router_dev_access_lines() -> List<String> {
     "  if u.in_service ~= false and (body.model == ROUTER_ALIAS or body.model == u.model) then candidates[u.name] = u end",
     "end",
     "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
+    // THE FORWARDED BODY IS THE CLIENT'S BYTES. The engines render the request in received order (Strata
+    // prints tools with tojson(sort_keys=False) at the start of the prompt), so any re-serialization moves
+    // the first prompt tokens and no prefix is reusable. A re-encode through a Lua table reorders every
+    // object; on 2026-10-30 that made consecutive turns of one h11 conversation differ at byte 5 and reuse 0
+    // tokens. So a rewrite is a splice of ONE string literal in place: it applies only when the literal
+    // occurs exactly once outside a string, and the spliced body must decode to the intended values. A body
+    // that cannot be spliced is refused, never re-encoded -- a re-encode is the silent cost this replaces.
+    "local function lit(x) return (x:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0')) end",
+    "local function splice(s, key, from, replacement, whole)",
+    "  if from:find('[\"\\\\%c]') then return nil end",
+    "  local pat = '\"' .. lit(key) .. '\"%s*:%s*()\"' .. lit(from) .. '\"()'",
+    "  local at, va, vb, n, init = nil, nil, nil, 0, 1",
+    "  while true do",
+    "    local a, b, p, q = s:find(pat, init)",
+    "    if not a then break end",
+    "    if a == 1 or s:sub(a - 1, a - 1) ~= '\\\\' then n = n + 1 at, va, vb = a, p, q end",
+    "    init = b + 1",
+    "  end",
+    "  if n ~= 1 then return nil end",
+    "  if whole then return s:sub(1, at - 1) .. replacement .. s:sub(vb) end",
+    "  return s:sub(1, va - 1) .. replacement .. s:sub(vb)",
+    "end",
+    // The dashboard sends the effort inside chat_template_kwargs, which is where vLLM and Strata read
+    // it; a name the target model does not implement is a 400 from that engine, so the row's dialect is
+    // applied at the same place the engine would read it. An unmapped name is left alone and the engine
+    // answers for itself -- the router never invents a value it was not told to send.
+    "local kw = body.chat_template_kwargs",
+    "local asked = (type(kw) == 'table' and type(kw.reasoning_effort) == 'string') and kw.reasoning_effort or nil",
+    // The bytes to forward to one upstream, and the effort it will apply; nil when no in-place splice holds.
+    // Computed BEFORE any reservation or binding, so a refused body leaves no counter or binding behind.
+    "local function forwarded(pick)",
+    "  local out, effort = raw, nil",
+    "  if body.model == ROUTER_ALIAS then out = splice(out, 'model', ROUTER_ALIAS, cjson.encode(pick.model), false) end",
+    "  local eff = asked and (ROUTER_EFFORT[pick.model] or \{})[asked] or nil",
+    "  if out and eff ~= nil then",
+    "    if eff.drop_thinking then out, effort = splice(out, 'reasoning_effort', asked, '\"enable_thinking\": false', true), 'off'",
+    "    else out, effort = splice(out, 'reasoning_effort', asked, cjson.encode(eff.to), false), eff.to end",
+    "  end",
+    "  if not out then return nil end",
+    "  if out == raw then return out, effort end",
+    "  local chk = cjson.decode(out)",
+    "  if type(chk) ~= 'table' or chk.model ~= ((body.model == ROUTER_ALIAS) and pick.model or body.model) then return nil end",
+    "  if eff ~= nil then",
+    "    local ck = chk.chat_template_kwargs",
+    "    if type(ck) ~= 'table' then return nil end",
+    "    if eff.drop_thinking and (ck.reasoning_effort ~= nil or ck.enable_thinking ~= false) then return nil end",
+    "    if not eff.drop_thinking and ck.reasoning_effort ~= eff.to then return nil end",
+    "  end",
+    "  return out, effort",
+    "end",
+    "local function unspliceable() return refuse(400, 'invalid_request_error', 'the router rewrites the model and reasoning_effort in place, and this body has no single unescaped literal to rewrite') end",
     // serve() completes routing for one turn: it is the ONE place a binding is recorded and an
     // upstream is selected, so a turn that kept its bound engine and a freshly picked turn cannot drift.
-    "local function serve(pick, session)",
-    "  ngx.ctx.counted = pick.name",
+    // It is reached only after begin_turn reserved the turn, which is where the turn is counted.
+    "local function serve(pick, session, out, effort)",
     "  ngx.ctx.route = pick",
     "  state:set('seen:' .. session, ngx.now(), " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     "  ngx.req.set_header('X-Pool-Session', session)",
     "  ngx.req.set_header('X-Session-Id', session)",
     "  if pick.path_prefix and pick.path_prefix ~= '' then ngx.req.set_uri(pick.path_prefix .. ngx.var.uri, false) end",
     "  state:set('session:' .. session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
-    // The dashboard sends the effort inside chat_template_kwargs, which is where vLLM and Strata read
-    // it; a name the target model does not implement is a 400 from that engine, so the row's dialect is
-    // applied at the same place the engine would read it. An unmapped name is left alone and the engine
-    // answers for itself -- the router never invents a value it was not told to send.
-    "  local kw = body.chat_template_kwargs",
-    "  local asked = (type(kw) == 'table' and type(kw.reasoning_effort) == 'string') and kw.reasoning_effort or nil",
-    "  local eff = asked and (ROUTER_EFFORT[pick.model] or \{})[asked] or nil",
-    "  local changed = body.model == ROUTER_ALIAS",
-    "  if body.model == ROUTER_ALIAS then body.model = pick.model end",
-    "  if eff ~= nil then",
-    "    if eff.drop_thinking then kw.reasoning_effort = nil kw.enable_thinking = false",
-    "    else kw.reasoning_effort = eff.to end",
-    "    ngx.ctx.effort = kw.reasoning_effort or 'off'",
-    "    changed = true",
-    "  end",
-    "  if changed then ngx.req.set_body_data(cjson.encode(body)) end",
+    "  if effort ~= nil then ngx.ctx.effort = effort end",
+    "  if out ~= raw then ngx.req.set_body_data(out) end",
     "  ngx.var.up = pick.host .. ':' .. tostring(pick.port)",
     "  ngx.var.up_scheme = pick.scheme",
     "  ngx.var.up_key = pick.key or ''",
@@ -292,32 +329,34 @@ fn router_dev_access_lines() -> List<String> {
     // rented pool, which has no router-visible locality) stays soft: the engine dedupes prompts itself,
     // and the uncapped overflow must soak load once owned capacity is gone.
     "local function hard_locality(u) return u.cache_locality == 'engine_local' end",
+    // begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set: the log
+    // phase releases exactly what was reserved here. A cap is the active-turn ceiling of a non-overflow row,
+    // 0 included (no turns); there is no uncapped sentinel. An overflow row is admitted without a ceiling
+    // and still counted, so its active figure stays true.
     "local function begin_turn(u)",
-    "  local n = state:incr('active:' .. u.name, 1, 0)",
+    "  state:incr('active:' .. u.name, 1, 0)",
     "  if not u.overflow and active(u) > u.cap then",
     "    state:incr('active:' .. u.name, -1, 0)",
     "    return false",
     "  end",
-    "  local _ = n",
+    "  ngx.ctx.counted = u.name",
     "  return true",
     "end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
     // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
     // loop. Falling through would migrate the very session this rule exists to keep in place, and would do
-    // it at the worst moment -- capacity just taken by another turn. begin_turn is the one capacity
-    // reservation, shared with the pick path; when it refuses, the answer is 429 + Retry-After so the
-    // client retries the SAME engine rather than paying a 50-115k context re-read on another one.
-    // A soft (shared-cache) bound session keeps the old behaviour: it tries to reserve, and when the
-    // engine is full it falls through to the pick below, because its prefix cache is the engine's own to
-    // dedupe. A cap of 0 is the uncapped sentinel the pick loop already treats as unlimited.
-    "  local hard = hard_locality(bound) and not bound.overflow",
-    "  if hard and bound.cap ~= 0 and not begin_turn(bound) then",
+    // it at the worst moment -- capacity just taken by another turn. When begin_turn refuses, the answer is
+    // 429 + Retry-After so the client retries the SAME engine rather than paying a 50-115k context re-read
+    // on another one. A soft (shared-cache) bound session falls through to the pick below when its engine
+    // is full, because its prefix cache is the engine's own to dedupe.
+    "  local out, effort = forwarded(bound)",
+    "  if not out then return unspliceable() end",
+    "  if begin_turn(bound) then return serve(bound, session, out, effort) end",
+    "  if hard_locality(bound) and not bound.overflow then",
     "    ngx.header['Retry-After'] = '2'",
     "    return refuse(429, 'rate_limit_error', 'bound engine-local upstream is at its active-turn cap')",
     "  end",
-    "  if hard then return serve(bound, session) end",
-    "  if begin_turn(bound) then return serve(bound, session) end",
     "end",
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
@@ -329,11 +368,13 @@ fn router_dev_access_lines() -> List<String> {
     "  end",
     "end",
     "if not pick then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
+    "local out, effort = forwarded(pick)",
+    "if not out then return unspliceable() end",
     "if not begin_turn(pick) then",
     "  ngx.header['Retry-After'] = '2'",
     "  return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap')",
     "end",
-    "return serve(pick, session)",
+    "return serve(pick, session, out, effort)",
   ]
 }
 
