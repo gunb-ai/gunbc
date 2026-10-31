@@ -1029,7 +1029,7 @@ test fn a_refused_member_is_refused_the_same_at_two_paths() -> Bool {
 // value alone, so a verdict that located every member, or none, is told apart.
 test fn a_data_decl_missing_its_value_reports_the_line_and_column_of_the_equals_sign() -> Bool {
   let verdict = member_parse_text(content: "module v2.test.subject\n\ndata x: Int =\n")
-  string_contains(verdict, "DataValueMissingAfterEq") && string_contains(verdict, "@3:13")
+  string_contains(verdict, "parse_data_value_missing_after_eq") && string_contains(verdict, "@3:13")
 }
 
 test fn the_same_data_decl_with_its_value_parses_and_reports_no_position() -> Bool {
