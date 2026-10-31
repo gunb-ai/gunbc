@@ -104,11 +104,6 @@ import gunbc.machine_intake.bmc_secure {
   observation_with_controller_clock, apply_with_diverged_controller_clock, controller_clock_reading_same,
   admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
   GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
-  bmc_secure_phase_noop, BmcSecurePhaseConverged, BmcSecurePhaseRefused, PhaseNotHeld, PhaseReadingUnobserved,
-  inspect_bmc_secure_state, BmcSecureStateInspected, BmcSecureStateUnobserved,
-  conjunction_over_observation, BmcSecured, BmcSecureRefused,
-  AccountStateForOtherManagedReference, AccountRetentionNotGoalBound, AccountDeviationNeedsUngroundedOperation,
-  AccountReadingPrecedesReadFloor, AccountStateConjunctionRefused,
 }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
@@ -2078,22 +2073,26 @@ fn foreign_leg_for_run(run: ConvergenceRunId, began: EpochMs, finished: EpochMs)
 
 // THE SEQUENCE FOR THE CAPTURED UNIT: srv13's own -- the controller the committed 403 and the committed
 // post-rotation Manager read are of.
-fn forced_sequence_for_the_captured_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence? {
+fn forced_sequence_for_the_captured_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence? {
   srv13_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
 }
 
 // THE SEQUENCE FOR ANOTHER CONTROLLER: the same producers at srv4's address. Internally consistent -- forced
 // state, route standing, approval, plan, application and readback all name that controller -- which is what
 // makes the matching-foreign-controller RED a join test rather than a mismatch test.
-fn forced_sequence_for_the_foreign_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence? {
+fn forced_sequence_for_the_foreign_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence? {
   srv4_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
 }
 
 // BmcSecure's inputs for the forced path: the run's goal, and the AUTHENTICATED read the sequence produced
 // after the write -- not a hand-built "secured" reading.
-fn forced_bmc_inputs(readback: BmcAccountStateObservation) -> BmcSecureInputs {
+// The goal the forced write realizes is the goal the run converges BmcSecure under: the readback was taken
+// under it (plan_bmc_account_action's goal, generation 2 of the managed reference), and the assessment
+// refuses any other. Passing the pre-write goal here would be a second, disagreeing source for which
+// generation this controller is managed at.
+fn forced_bmc_inputs(goal: BmcSecureGoal, readback: BmcAccountStateObservation) -> BmcSecureInputs {
   BmcSecureInputs {
-    goal: goal_v1(),
+    goal: goal,
     reading: readback,
     grant: none,
     capability: none,
@@ -2212,7 +2211,7 @@ test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs:
         world: srv13_post_world(),
         transition: leg.sequence.transition,
         write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+        bmc: forced_bmc_inputs(goal: leg.sequence.goal, readback: leg.sequence.post_read),
       ) {
         ArrivalRunFolded { verdict: v } =>
           match v {
@@ -2271,7 +2270,7 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
             world: prior_life_minimal_dry_world(),
             transition: leg.sequence.transition,
             write: leg.sequence.transition.leg.write,
-            bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+            bmc: forced_bmc_inputs(goal: leg.sequence.goal, readback: leg.sequence.post_read),
           ) {
             // srv13's write folded under mtjade1's run: the controller join refuses. A non-forcing build never
             // reaches the row at all -- there is no forced state to carry it.
@@ -2313,7 +2312,7 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
             world: srv13_post_world(),
             transition: leg.sequence.transition,
             write: foreign.sequence.transition.leg.write,
-            bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+            bmc: forced_bmc_inputs(goal: leg.sequence.goal, readback: leg.sequence.post_read),
           ) {
             ArrivalForcedRowNotAdmitted { key: _ } => true
             _ => false
@@ -2345,7 +2344,7 @@ test fn w_a_matching_forced_pair_from_another_run_cannot_take_the_row() -> Bool 
         world: srv13_post_world(),
         transition: foreign.sequence.transition,
         write: foreign.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: foreign.sequence.post_read),
+        bmc: forced_bmc_inputs(goal: foreign.sequence.goal, readback: foreign.sequence.post_read),
       ) {
         ArrivalForcedRowNotAdmitted { key: _ } => true
         _ => false
@@ -2375,7 +2374,7 @@ test fn w_a_matching_forced_pair_for_another_controller_cannot_take_the_row() ->
         world: srv13_post_world(),
         transition: foreign.sequence.transition,
         write: foreign.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: foreign.sequence.post_read),
+        bmc: forced_bmc_inputs(goal: foreign.sequence.goal, readback: foreign.sequence.post_read),
       ) {
         ArrivalForcedRowNotAdmitted { key: _ } => true
         _ => false
@@ -2408,7 +2407,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
         world: srv13_empty_post_world(),
         transition: leg.sequence.transition,
         write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+        bmc: forced_bmc_inputs(goal: leg.sequence.goal, readback: leg.sequence.post_read),
       ) {
         ArrivalRunFolded { verdict: v } =>
           match v {
@@ -2456,6 +2455,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
         transition: leg.sequence.transition,
         write: leg.sequence.transition.leg.write,
         bmc: forced_bmc_inputs(
+          goal: leg.sequence.goal,
           readback: srv13_read_at_build(subject: leg.subject, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.03.00" as NonEmptyStr)),
         ),
       ) {
@@ -2480,252 +2480,21 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
   }
 }
 
-// ── TEMPORARY DIAGNOSTICS (deleted before the final evidence run) ─────────────────────────────
-test fn diag_access_establishes() -> Bool uses fs: std.resources.Filesystem {
-  match srv13_access_of_run(run: run_a) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-test fn diag_identity_establishes() -> Bool uses fs: std.resources.Filesystem {
-  match srv13_access_of_run(run: run_a) {
-    Absent => false
-    Present { value: access } =>
-      match identity_bind_provisional(
-        key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: srv13_key),
-        access: access,
-        inputs: srv13_identity_bind_inputs(),
-      ) {
-        StepEstablished { receipt: IdentityBindReceipt { receipt: bound } } =>
-          match srv13_intake_for_run(run: run_a) {
-            Absent => false
-            Present { value: expected } => bound.subject == expected
-          }
-        _ => false
-      }
-  }
-}
-
-test fn diag_leg_produces() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
 
 
 
-test fn diag_positive_fold_converges() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match forced_fold(
-        run: run_a,
-        subject: srv13_key,
-        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
-        read: read_srv13_current_manager_read(),
-        bind: srv13_identity_bind_inputs(),
-        world: srv13_post_world(),
-        transition: leg.sequence.transition,
-        write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-      ) {
-        ArrivalRunFolded { verdict: v } => match v { RunConverged { run: _ } => true  _ => false }
-        _ => false
-      }
-  }
-}
 
-test fn diag_positive_run_incomplete_at_prior_life() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match forced_fold(
-        run: run_a,
-        subject: srv13_key,
-        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
-        read: read_srv13_current_manager_read(),
-        bind: srv13_identity_bind_inputs(),
-        world: srv13_post_world(),
-        transition: leg.sequence.transition,
-        write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-      ) {
-        ArrivalRunFolded { verdict: v } => match v {
-          RunIncomplete { ledger: _, at: at } => declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
-          _ => false
-        }
-        _ => false
-      }
-  }
-}
 
-test fn diag_positive_run_stopped_at_bmc_secure() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match forced_fold(
-        run: run_a,
-        subject: srv13_key,
-        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
-        read: read_srv13_current_manager_read(),
-        bind: srv13_identity_bind_inputs(),
-        world: srv13_post_world(),
-        transition: leg.sequence.transition,
-        write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-      ) {
-        ArrivalRunFolded { verdict: v } => match v {
-          RunStopped { ledger: _, at: at } => declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
-          _ => false
-        }
-        _ => false
-      }
-  }
-}
 
-test fn diag_positive_converged_bmc_noop() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match forced_fold(
-        run: run_a,
-        subject: srv13_key,
-        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
-        read: read_srv13_current_manager_read(),
-        bind: srv13_identity_bind_inputs(),
-        world: srv13_post_world(),
-        transition: leg.sequence.transition,
-        write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-      ) {
-        ArrivalRunFolded { verdict: v } => match v {
-          RunConverged { run: r } => match r.ledger.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
-            Present { value: s } => bmc_secure_noop_established(s: s)
-            Absent => false
-          }
-          _ => false
-        }
-        _ => false
-      }
-  }
-}
 
-test fn diag_positive_converged_prior_life_carries_inference() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match forced_fold(
-        run: run_a,
-        subject: srv13_key,
-        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
-        read: read_srv13_current_manager_read(),
-        bind: srv13_identity_bind_inputs(),
-        world: srv13_post_world(),
-        transition: leg.sequence.transition,
-        write: leg.sequence.transition.leg.write,
-        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
-      ) {
-        ArrivalRunFolded { verdict: v } => match v {
-          RunConverged { run: r } => match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
-            Present { value: s } => prior_life_established_carries_the_rows_inference(s: s)
-            Absent => false
-          }
-          _ => false
-        }
-        _ => false
-      }
-  }
-}
 
-test fn diag_non_forcing_credential_refused() -> Bool {
-  match admit_published_credential_change_forced(
-    reading: controller_reading(
-      endpoint: lab_endpoint,
-      attempt: "attempt-1" as AttemptIdentity,
-      board: mt_collins_board_authority,
-      login: "admin" as NonEmptyStr,
-      status: 401,
-      body: "{\"error\":{\"code\":\"Base.1.16.0.GeneralError\",\"message\":\"unauthorized\"}}" as NonEmptyStr,
-      capture: srv13_capture,
-      firmware: ForcedChangeBuildUnreadable,
-    ),
-  ) {
-    ForcedChangeAdmitted { state: _ } => false
-    ForcedChangeRefused { cause: _ } => true
-  }
-}
+
+
 
 // ── TEMPORARY DIAGNOSTICS (deleted before the final evidence run) ─────────────────────────────
 
-test fn diag_assess_refused_other_managed_reference() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
-        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } =>
-          match a { GoalAssessmentRefused { cause: AccountStateForOtherManagedReference { goal: _, observed: _ } } => true  _ => false }
-        BmcSecureStateUnobserved { cause: _ } => false
-      }
-  }
-}
 
-test fn diag_assess_refused_retention_not_goal_bound() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
-        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } =>
-          match a { GoalAssessmentRefused { cause: AccountRetentionNotGoalBound { retained: _, goal: _ } } => true  _ => false }
-        BmcSecureStateUnobserved { cause: _ } => false
-      }
-  }
-}
 
-test fn diag_assess_refused_needs_ungrounded() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
-        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } =>
-          match a { GoalAssessmentRefused { cause: AccountDeviationNeedsUngroundedOperation { cause: _, operation: _ } } => true  _ => false }
-        BmcSecureStateUnobserved { cause: _ } => false
-      }
-  }
-}
 
-test fn diag_assess_refused_precedes_read_floor() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
-        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } =>
-          match a { GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: _ } } => true  _ => false }
-        BmcSecureStateUnobserved { cause: _ } => false
-      }
-  }
-}
 
-test fn diag_assess_refused_conjunction_refused() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match inspect_bmc_secure_state(subject: leg.subject, goal: goal_v1(), reading: leg.sequence.post_read) {
-        BmcSecureStateInspected { observed: _, assessment: a, decision: _ } =>
-          match a { GoalAssessmentRefused { cause: AccountStateConjunctionRefused { cause: _ } } => true  _ => false }
-        BmcSecureStateUnobserved { cause: _ } => false
-      }
-  }
-}
 
-test fn diag_conjunction_secured() -> Bool uses fs: std.resources.Filesystem {
-  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
-    Absent => false
-    Present { value: leg } =>
-      match conjunction_over_observation(goal: goal_v1(), observed: leg.sequence.post_read) {
-        BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => true
-        BmcSecureRefused { cause: _ } => false
-      }
-  }
-}
