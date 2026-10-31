@@ -62,9 +62,9 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
-  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else,
+  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else_from_stmts,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_with_redir, bash_build_with_redir_to_file, bash_build_negation,
-  bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
+  bash_build_subshell_from_stmts, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
 import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
@@ -3630,7 +3630,7 @@ fn bappend(line: Node, path: Node) -> Node {
 
 fn bset(name: String, value: String) -> Node { bash_build_assign(name: name, value: bl(text: value)) }
 fn bif_else(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
-  bash_build_if_else(cond: cond, then_body: bash_build_stmt_list_from_nodes(stmts: then_stmts), else_body: bash_build_stmt_list_from_nodes(stmts: else_stmts))
+  bash_build_if_else_from_stmts(cond: cond, then_stmts: then_stmts, else_stmts: else_stmts)
 }
 fn bhold(script_var: String, label: String, record: Node) -> Node {
   bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
