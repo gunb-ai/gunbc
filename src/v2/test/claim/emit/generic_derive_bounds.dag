@@ -9,7 +9,7 @@ import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode, Instantiation, NotADeclaration }
 import v2.std.compilers.target_model { target_carrier_free_monoid_node }
-import v2.std.text { String, string_contains }
+import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
 
