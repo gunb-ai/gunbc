@@ -12776,11 +12776,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        // The field is judged by the one relation at its declared-type position. An unbound owner
-        // type variable is the generic formal the relation names UndecidableGenericFormal, and an
-        // optional carrier on either side (a Present payload, none) is UndecidableOptionalCarrier:
-        // both stay admitted here exactly as the replaced chain admitted them, so a field neither
-        // refuses nor starts reporting an undecided verdict; every other verdict is the relation's.
+        // The field is judged by the one relation at its declared-type position; every verdict,
+        // Undecidable included, is projected by declared_type_obligation_diags.
         let obligation = DeclaredTypeObligation {
           position: PositionRecordLiteralField,
           subject: fi_name,
@@ -12788,12 +12785,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           produced: got_node,
           span: ar_typed.span
         }
-        match declared_type_inhabitance(obligation: obligation, scope: scope) {
-          Inhabits => []
-          InhabitanceUndecidable { reason: UndecidableGenericFormal } => []
-          InhabitanceUndecidable { reason: UndecidableOptionalCarrier } => []
-          _ => declared_type_obligation_diags(obligation: obligation, scope: scope)
-        }
+        declared_type_obligation_diags(obligation: obligation, scope: scope)
       Absent => []
     }
     let present_payload_diags = match present_payload_declared_from_optional(type_name: tn_str, field_name: fi_name, expected: expected, scope: scope) {
