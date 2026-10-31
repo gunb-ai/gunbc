@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.the_ambient_first_evaluates_to_a_bare_value_under_an_optional_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data the_ambient_first_evaluates_to_a_bare_value_under_an_optional_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_ambient_first_evaluates_to_a_bare_value_under_an_optional_type" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of the interpreter evaluating the ambient first through the declared Optional carrier, so that its runtime value inhabits its declared type" } },
+
+  receipts: [
+    "INVALID STATE: the ambient `first` is typed Optional<T> at resolve and typecheck, but the seed interpreter evaluates it to the BARE element (`3`) on a non-empty list and to `null` on an empty one, while the declared Optional (std.optional Present / Absent) is a coproduct. One declared type, two runtime representations, and `==` between them is undecidable.",
+
+    "SPECIMEN, 2026-10-31 (jolly-cat-271, gunbc#15447 witness test.claim.list_ambient_heads_agree_witness; seed built from main 8368208f944c plus the #15447 branch, sha256 92b65129fd79c9b2487804de2900dab6f8afda1cb1fa915070208a82eb52d165). A printed probe, first([3,1]) and first([]) through `to_string`: `3` and `null`. The same two values passed through a function typed `Optional<Int>` and matched: `Present(3)` and `Absent`, so a pattern match on Present/Absent reads a bare value and a null as the declared variants. `list_head(xs: ordered) == first(ordered)` refuses with CrossRepresentationEquality (`coproduct Variant Present vs native Int(3)`), and `v == first(ordered)` with a required v refuses at resolve ('==' compares an optional value with a required one). Probe: ~/p15447b/dag/first_probe.dag on srv1, preserved at branch scratch/n7-readahead.",
+
+    "HARM: a program comparing, hashing, serializing or printing the result of `first` observes a value the type system says it cannot hold. The two readings (match: Present(3); raw: 3) disagree with the declared type, so a rename of `first` to its modeled realization (std.algebra list_head, a total Optional) changes observable behavior at every call site that does anything other than match. It is silent unless a witness happens to compare the two representations, which is how it was found. First's 5 corpus sites (source_annotation, node_query x4) are therefore NOT a sweepable G1 rename.",
+
+    "RUNG FOUND AT: silent wrongness, below the ladder (DESIGN section 5): the typecheck accepts a program whose evaluation falls outside the declared type, and nothing refuses it. Ceiling: structurally guaranteed (one representation per declared type), a decidable class once the home of `first` is ruled (collection_first_shape's contract versus list_head).",
+
+    "NEXT TRIGGER: the interpreter evaluates ambient first through the declared Optional carrier.",
+
+    "DISCRIMINATING RED, the printed probe: scratch/n7-readahead/first_probe.dag at commit d474d0f567a838e250294e5d9f36d3d121eea5a5 (branch scratch/n7-readahead), run under the seed above with `--function first_nonempty_raw | first_empty_raw | first_nonempty_matched | first_empty_matched`. Observed: `3`, `null`, `Present(3)`, `Absent`. It goes green when the raw readings print the declared Optional (`Present(3)` / `Absent`) and `list_head(xs: l) == first(l)` is true instead of refusing CrossRepresentationEquality."
+  ],
+
+  evidence: [],
+}
