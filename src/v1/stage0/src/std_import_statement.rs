@@ -76,11 +76,32 @@ pub enum ParsedImportStatements {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "LexicalToken: Clone + serde::Serialize",
+    deserialize = "LexicalToken: Clone + serde::Deserialize<'de>"
+))]
 pub struct ParsedImportObservation<LexicalToken: Clone> {
     pub tokens: Rc<Vec<LexicalToken>>,
     pub imports: Rc<ParsedImportStatements>,
     pub _phantom: std::marker::PhantomData<LexicalToken>,
+}
+
+impl<LexicalToken: Clone + std::fmt::Debug> std::fmt::Debug
+    for ParsedImportObservation<LexicalToken>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParsedImportObservation")
+            .field("tokens", &self.tokens)
+            .field("imports", &self.imports)
+            .finish()
+    }
+}
+
+impl<LexicalToken: Clone + PartialEq> PartialEq for ParsedImportObservation<LexicalToken> {
+    fn eq(&self, other: &Self) -> bool {
+        self.tokens == other.tokens && self.imports == other.imports
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
