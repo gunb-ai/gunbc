@@ -21,6 +21,8 @@ import std.types { EpochMs }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps {
   cap_dropin_content,
+  control_shadow_residue_paths,
+  runner_slot_cap_properties,
   CapMember,
   derived_runner_slot_cap_members,
   cap_raise_standing,
@@ -326,7 +328,153 @@ fn runner_host_slot_role_withheld(deploy: RunnerHostDeploy, slot: RunnerSlotIden
   }
 }
 
-fn runner_host_slot_role_files(host: HostIdentity) -> List<RunnerHostFileDesired> {
+// ── Every managed drop-in loads its own keys ─────────────────────────────────────────────────────
+
+fn runner_host_path_is_unit_dropin(path: String) -> Bool { ends_with(s: path_parent(path: path), suffix: ".service.d") }
+
+fn runner_host_path_is_template_dropin(path: String) -> Bool { string_contains(s: path_parent(path: path), pattern: "@.service.d") }
+
+// THE GUARD ON A MANAGED DROP-IN: the loaded drop-ins of the host's desired units are read, and the file is
+// refused if a loaded drop-in that does not sort before it sets one of its keys (read_dropin_override_over).
+// A template drop-in exempts the converge's own INSTANCE drop-ins, whose purpose is to override it for one
+// unit; whether they sort after it is a claim over the managed population, not a runtime finding. A file
+// that is not a unit drop-in is not guarded.
+fn runner_host_dropin_guard_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, file: FleetHostFileDesired, managed: List<FleetHostFileDesired>) -> DropinOverrideReading? {
+  let path = file.path as String
+  if !runner_host_path_is_unit_dropin(path: path) { none } else {
+    let exempt = if runner_host_path_is_template_dropin(path: path) {
+      map(filter(managed, m => runner_host_path_is_unit_dropin(path: m.path as String) && !runner_host_path_is_template_dropin(path: m.path as String)), m => m.path as NonEmptyStr)
+    } else { [] }
+    Present { value: read_dropin_override_over(subject: subject, context: context, units: subject.desired_units, written: [file], exempt: exempt) }
+  }
+}
+
+// A REFUSED GUARD IS A REFUSED PLAN: the file is not written or left as settled, so the run does not
+// reload or actuate on a drop-in whose keys would not load.
+fn runner_host_file_result_guarded(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, file: FleetHostFileDesired, managed: List<FleetHostFileDesired>) -> FleetHostFileResult {
+  let planned = plan_fleet_host_file(subject: fleet_subject_of(s: subject), context: context, file: file)
+  let guarded = match runner_host_dropin_guard_over(subject: subject, context: context, file: file, managed: managed) {
+    Absent => planned
+    Present { value: DropinsNoLaterSetter } => planned
+    Present { value: DropinsLaterSetter { files: fs } } =>
+      FleetHostFilePlanned { file: planned.file, observation: planned.observation, action: HostFileActionRefused { reason: concat("a loaded drop-in that sorts at or after this one sets a key it sets, so its value would not load: ", join(map(non_empty_to_list(xs: fs), x => x as String), " ")) } }
+    Present { value: DropinsUnread { cause: c } } =>
+      FleetHostFilePlanned { file: planned.file, observation: planned.observation, action: HostFileActionRefused { reason: concat("whether a later-sorting drop-in overrides this one could not be read: ", c) } }
+  }
+  fleet_host_file_result_of_planned(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, planned: guarded)
+}
+
+// ── A renamed managed drop-in retires its old name ───────────────────────────────────────────────
+
+// THE ROLE DROP-IN'S SUPERSEDED NAME (gunbc.runner.runner_unit_file
+// runner_unit_slot_role_superseded_dropin_file_name) is a file this converge placed and now removes, so a host
+// never keeps a second copy of a role that loses to the template. Absent is the converged state; present is
+// removed as root and read again, and only a re-read that finds it gone settles. The observation and the
+// removal are the retired-path rule the unit residue uses (retired_path_standing_over,
+// retired_file_removal_leg). It is not a RetiredHostResidue row because that shape retires a UNIT -- it stops
+// and disables it -- and the unit here is the live deploy slot whose old drop-in alone is retired.
+// DISSOLUTION: srv1 is the only host that ever carried the old name; once a converge of every host with a
+// deploy slot reads it absent, runner_unit_slot_role_superseded_dropin_file_name and this step are deleted.
+type SupersededDropinResult
+  = SupersededDropinAbsent { path: String }
+  | SupersededDropinRemoved { path: String }
+  | SupersededDropinPresentObserved { path: String }
+  | SupersededDropinRefused { path: String, reason: String }
+
+fn runner_host_superseded_dropin_paths(host: HostIdentity) -> List<String> {
+  map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => runner_unit_slot_role_superseded_dropin_path(slot: s) as String)
+}
+
+// THE SET-PROPERTY SHADOWS OF THE CAPS THIS CONVERGE OWNS retire by the same rule. `systemctl set-property`
+// on a runner unit (the root-era caps of 2026-08-11) leaves 50-<Property>.conf under the unit's .d in
+// /etc/systemd/system.control or /run/systemd/system.control, and those directories outrank the
+// template's cap drop-ins, so a shadow of a cap property is a second writer of that cap. This converge is
+// the runner-unit drop-ins' one writer, so it removes exactly those files for its desired units and the
+// properties its cap members set (gunbc.host.host_axis_caps control_shadow_residue_paths,
+// runner_slot_cap_properties) -- never the unit's other drop-ins, which `systemctl revert` would take
+// (gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names).
+fn runner_host_control_shadow_paths(subject: RunnerHostFileSubject) -> List<String> {
+  flat_map(subject.desired_units, u => map(control_shadow_residue_paths(unit: u, properties: runner_slot_cap_properties()), p => p as String))
+}
+
+// A SHADOW IS REMOVED ONLY OVER SETTLED CAPS. Removing a set-property shadow exposes the template's cap
+// drop-ins; while the cap phase has not settled them (reload_barred), that could raise a slot's effective
+// caps to bytes nobody admitted, so an apply refuses the path instead of removing it, and an observe-only
+// run reads it as usual.
+fn retire_control_shadow_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, caps_settled: Bool, path: String) -> SupersededDropinResult {
+  match mode {
+    FleetHostFilesObserveOnly => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+    FleetHostFilesApply =>
+      if caps_settled {
+        retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+      } else {
+        SupersededDropinRefused { path: path, reason: "not removed: the slot memory-cap phase has not settled the template cap drop-ins, so removing a set-property shadow could expose unadmitted caps" }
+      }
+  }
+}
+
+fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, path: String) -> SupersededDropinResult {
+  match retired_path_standing_over(subject: subject, context: context, path: path) {
+    HostFilePathAbsent => SupersededDropinAbsent { path: path }
+    HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: c }
+    HostFilePathPresent =>
+      match mode {
+        FleetHostFilesObserveOnly => SupersededDropinPresentObserved { path: path }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: why } => SupersededDropinRefused { path: path, reason: concat("administrator privilege refused: ", why) }
+            AdministratorPrivilegeAvailable =>
+              match retire_leg(subject: subject, context: context, step: retired_file_removal_leg(path: path).step, argv: retired_file_removal_leg(path: path).argv) {
+                Present { value: why } => SupersededDropinRefused { path: path, reason: why }
+                Absent =>
+                  match retired_path_standing_over(subject: subject, context: context, path: path) {
+                    HostFilePathAbsent => SupersededDropinRemoved { path: path }
+                    HostFilePathPresent => SupersededDropinRefused { path: path, reason: "still present after removal" }
+                    HostFilePathUnreadable { cause: c } => SupersededDropinRefused { path: path, reason: concat("unread after removal: ", c) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn superseded_dropin_settled(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinAbsent { path: _ } => true
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinPresentObserved { path: _ } => false
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_observed(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinAbsent { path: _ } => true
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinPresentObserved { path: _ } => true
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_removed(r: SupersededDropinResult) -> Bool {
+  match r {
+    SupersededDropinRemoved { path: _ } => true
+    SupersededDropinAbsent { path: _ } => false
+    SupersededDropinPresentObserved { path: _ } => false
+    SupersededDropinRefused { path: _, reason: _ } => false
+  }
+}
+
+fn superseded_dropin_line(r: SupersededDropinResult) -> String {
+  match r {
+    SupersededDropinAbsent { path: p } => join(["retired-dropin path=", p, " absent"], "")
+    SupersededDropinRemoved { path: p } => join(["retired-dropin path=", p, " removed-and-read-back"], "")
+    SupersededDropinPresentObserved { path: p } => join(["retired-dropin path=", p, " PRESENT (observe-only)"], "")
+    SupersededDropinRefused { path: p, reason: r } => join(["retired-dropin path=", p, " REFUSED ", r], "")
+  }
+}
+
+fn runner_host_slot_role_files(host: HostIdentity) -> List<FleetHostFileDesired> {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployFound { deploy: d } =>
       list_flat_map(
@@ -1291,7 +1439,8 @@ fn run_runner_host_leg(subject: RunnerHostFileSubject, context: FleetSshExecutio
 fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<RunnerHostFileDesired>, residue: RetiredHostResidue) -> List<RunnerHostRemoteLeg> {
   let population = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: [])
   concat(
-    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }],
+    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }]
+      + list_flat_map(runner_host_control_shadow_paths(subject: subject), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]),
     concat(
       list_flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
@@ -2552,8 +2701,12 @@ fn run_runner_host_files(
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
-  let unit_results = map(unit_files, f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
-  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results) }
+  let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
+  let superseded = concat(
+    map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p)),
+    map(runner_host_control_shadow_paths(subject: subject), p => retire_control_shadow_over(subject: subject, context: context, mode: mode, privilege: privilege, caps_settled: !reload_barred, path: p)),
+  )
+  let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) }
   let admission = match mode {
     RunnerHostFilesObserveOnly => ActuationAdmitted
     RunnerHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)

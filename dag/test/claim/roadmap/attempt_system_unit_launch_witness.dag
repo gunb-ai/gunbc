@@ -40,7 +40,6 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path, deployment_belt_exit_drain_service_unit_name }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
@@ -228,10 +227,35 @@ test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
 }
 
 // THE DEPLOY RUNS THE DRAIN UNITS (review 80299). The unit fold is the shape; whether a deploy installs it is a
-// fact of the apply the real producer emits (apply_intent_from_effects over the instance's spec, a full
-// install), so these claims read that apply. The grant once sat on an emit_artifact_upsert arm no apply
-// reaches while the fold's own claim stayed green. Each instance's apply installs its own grant and never
-// the other instance's: a lab apply never touches production's privilege surface.
+// fact of the apply plan the real producer emits (deploy_apply_plan_legs over the instance's spec, a full
+// install), so these claims read the typed legs of that plan. Each instance's apply installs its own drain and
+// never the other instance's: a lab apply never touches production's privilege surface.
+fn full_install_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  match deploy_apply_plan_legs(
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    source_root: "/src",
+    oidc_now: tracker_web_test_console_readback_observed_at_epoch,
+  ) {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+fn leg_command_words(c: ArgvCommand) -> String {
+  join(c.arguments, " ")
+}
+
+fn leg_text(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegInstallFile { step: st, command: c, payload: p } => join([st, " ", leg_command_words(c: c), "\n", p], "")
+    ApplyLegCommand { step: st, command: c } => join([st, " ", leg_command_words(c: c)], "")
+    ApplyLegRetract { step: st, leg: RetractRemoveForce { paths: ps } } => join([st, " ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
+    ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: _ } => join([deploy_apply_leg_step(leg: leg), " ", l.base], "")
+    _ => deploy_apply_leg_step(leg: leg)
+  }
+}
+
 fn full_install_apply_text(spec: DeploymentSpec) -> String {
   join(map(
     apply_intent_from_effects(

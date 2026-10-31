@@ -59,10 +59,9 @@ import gunbc.fleet.fleet_show_effective_read {
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.systemctl_set_property { systemctl_set_property_local }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services }
-import gunbc.host.host_axis_caps { control_shadow_unit, control_shadow_revert_script, control_shadow_revert_script_matches_extdeps_argv }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
+  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control residue removal belong to gunbc.runner.runner_host_file_converge (the runner-unit drop-ins' one writer) — this convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or remove system.control files on the operator principal (operator privilege hold 2026-08-13). srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
 }
 
 // Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
@@ -80,17 +79,9 @@ data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
 // set-property) is forbidden.
 
 // Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and
-// 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering
-// is author derived drop-ins from gunbc.runner.runner_slot_allocation THEN systemctl revert MemoryMax
-// MemoryHigh — modeled in gunbc.host.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc
-// converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises
-// effective caps to the superseded regime.
-
-data host_converge_slice1_cap_author_before_shadow_revert_enforced: Bool = true
-
-fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr) -> Bool {
-  control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: unit))
-}
+// 50-MemoryHigh.conf; those drop-ins shadow the runner-unit cap drop-ins until removed. Their removal is
+// gunbc.runner.runner_host_file_converge's (only those set-property files, after the derived drop-ins are
+// on disk), not this converge's on briansrls.
 
 // The probe unit is srv1 slot 1 DERIVED, not spelled. Same reason as every other site: the name
 // this row must equal is the one gunbc.host.host_converge writes drop-ins for.

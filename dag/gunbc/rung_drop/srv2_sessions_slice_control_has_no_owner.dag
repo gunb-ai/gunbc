@@ -1,0 +1,40 @@
+module gunbc.rung_drop.srv2_sessions_slice_control_has_no_owner
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-10-30 beside the change that removes the slice-control family from the live_deploy
+// instance apply (quick-newt-573's condition (a) on that plan). The runner-unit caps and the slice
+// control are host facts, and an instance apply carried them, so applying any srv1 instance reconverged
+// srv1's slices and runner units; its `systemctl revert` of the runner units took srv1-02's role drop-in
+// (gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names).
+//
+// WHAT IS LOST, stated precisely. Before the change, srv2's instance apply derived the slice-control
+// plan for srv2 (gunbc.host.host_converge slice_control_plan_for), which REFUSES there because srv2's
+// session reservation is unestablished, so every srv2 instance apply refused before any leg ran: the
+// state "srv2 runs instances while its sessions.slice control is unconverged" was blocked on the apply
+// path. After it, the instance apply carries no slice control and proceeds, and no owner converges
+// srv2's sessions.slice: the approval broker's dark install (gunbc.host.host_effect_realize
+// dark_slice_control_legs), the one remaining slice-control route, runs only on the broker's host.
+// Nothing about srv2's slices changes on disk; what is gone is the refusal.
+//
+// THE POPULATION IS ONE HOST'S ONE SLICE. srv1's slices keep their owner (the dark install), and no
+// other host is an instance host (desired_deployment_roster: srv1 twice, srv2 once).
+
+data srv2_sessions_slice_control_has_no_owner: RungDrop = RungDrop {
+  identity: "srv2_sessions_slice_control_has_no_owner" as NonEmptyStr,
+
+  subject: "srv2's sessions.slice control has no converging owner, and srv2's instance apply no longer refuses while that control is underivable",
+
+  declared: "2026-10-30",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "gunbc.live_deploy.apply_legs deploy_apply_slice_control_plan, deleted with the instance apply's slice-control family on 2026-10-30" },
+    population: Enumerated { members: FreeSemigroup { head: "srv2 sessions.slice control (MemoryMax, MemoryHigh, CPUQuota), the only member: srv2 is the one instance host whose slice control the deleted family refused and no remaining route converges", tail: [] } },
+    restoration_trigger: "THE CAPABILITY: a host-scoped owner converges sessions.slice control on srv2 once srv2's session reservation is established -- a route keyed on the host rather than on an instance or on the approval broker, that derives slice_control_plan_for(srv2), refuses while it is underivable, and otherwise removes the set-property residue of the properties it sets, reloads and sets them. SUFFICIENT FOR: a run of that owner on srv2 reading back sessions.slice's MemoryMax, MemoryHigh and CPUQuota at the derived values. Not retired by srv2's reservation becoming established alone (that only makes the plan derivable), nor by re-adding slice control to an instance apply (that restores the second writer this change removed).",
+  } }
+}

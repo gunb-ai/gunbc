@@ -31,7 +31,6 @@ data refusal_decided_after_a_mutation: RecurringFailureMode = RecurringFailureMo
     decl_ref(module_path: "gunbc.host.host_axis_caps", decl_name: "deploy_cap_upsert_staged_stmts"),
     decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "emit_release_member_effects"),
     decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "reconcile_shell_exec_observed"),
-    decl_ref(module_path: "gunbc.host.host_axis_caps", decl_name: "cap_converge_decision_over_targets"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_entry_drain_at"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_queued_sweep_at"),
   ],
