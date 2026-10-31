@@ -21,7 +21,7 @@ import gunbc.durable_cas_file_store {
 import gunbc.compute.attempt_lifecycle {
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
-  attempt_record_state, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  attempt_record_state, AttemptState,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
 import gunbc.roadmap.roadmap_session_attempt_slots_root {
@@ -209,8 +209,16 @@ fn attempt_slots_cutover_frontier_expiry(present_decls: List<DeclarationRef>) ->
 // whether to carry (DESIGN 5: every degradation is typed, located and countable). So the reading keeps
 // the three answers apart, and the count of them is a number the census reports rather than a state it
 // pretends not to have.
+//
+// THE STATE IS THE ATTEMPT'S OWN STATE, NOT A SPELLING OF IT. The census line is what the operator reads
+// before authorizing a carry, and the two things that decide that authorization are whether the old
+// root's slot is still Launching and what the current store holds beside it. Flattening AttemptState to
+// "reserved"/"launching"/"terminal" throws the terminal verdict and detail away -- the verdict is exactly
+// the part that says whether the attempt ended by refusal or by completion -- and puts free text where a
+// named sum already exists (DESIGN 2: a String leaf hiding named parts is anemic modeling). The spelling
+// belongs at a presentation edge; there is none here, so the sum is carried as itself.
 type AttemptSlotsSlotReading
-  = SlotRead { generation: Int, state: String, payload_bytes: String }
+  = SlotRead { generation: Int, state: AttemptState, payload_bytes: String }
   | SlotAbsent
   | SlotUnreadable { detail: String }
 
@@ -236,61 +244,121 @@ type AttemptSlotsCensusEntry sole_constructor {
 type AttemptSlotsCensusCounts sole_constructor {
   total: Int
   only_in_old: Int
+  only_in_target: Int
   in_both_identical: Int
   in_both_different: Int
   either_side_unreadable: Int
+  relation_undecided: Int
+  neither_side_holds_it: Int
 }
 
-fn census_either_side_unreadable(entry: AttemptSlotsCensusEntry) -> Bool {
+// ONE TOTAL CLASSIFICATION, AND IT IS THE ONLY CLASSIFIER. Every entry sits in exactly one bucket, and
+// that is a property of the SHAPE of the counting, not of four separate predicates agreeing with each
+// other: the fold below matches on this sum and bumps exactly one field per arm, so the buckets are
+// disjoint by construction and exhaustive because the match is total. The gap the four predicates left
+// is the one a reader finds last: a reference whose old-root slot vanished between the listing and the
+// read, while the current store holds one, sat in no bucket at all -- so total could exceed the sum of
+// the counts and nothing reported the difference. OnlyInTarget and NeitherSideHoldsIt are those cases,
+// named. RelationUndecided is unreachable for two readable slots (the relation is decided there by
+// construction) and is still an arm, because an arm that cannot be reached is a fact about the model and
+// an arm that is missing is a hole in it.
+type AttemptSlotsCensusClass
+  = ClassOnlyInOld
+  | ClassOnlyInTarget
+  | ClassBothIdentical
+  | ClassBothDifferent
+  | ClassEitherSideUnreadable
+  | ClassRelationUndecided
+  | ClassNeitherSideHoldsIt
+
+fn attempt_slots_census_class(entry: AttemptSlotsCensusEntry) -> AttemptSlotsCensusClass {
   match entry.source {
+    SlotUnreadable { detail: _ } => ClassEitherSideUnreadable
+    SlotAbsent =>
+      match entry.target {
+        SlotUnreadable { detail: _ } => ClassEitherSideUnreadable
+        SlotRead { generation: _, state: _, payload_bytes: _ } => ClassOnlyInTarget
+        SlotAbsent => ClassNeitherSideHoldsIt
+      }
     SlotRead { generation: _, state: _, payload_bytes: _ } =>
       match entry.target {
-        SlotRead { generation: _, state: _, payload_bytes: _ } => false
-        SlotAbsent => false
-        SlotUnreadable { detail: _ } => true
+        SlotUnreadable { detail: _ } => ClassEitherSideUnreadable
+        SlotAbsent => ClassOnlyInOld
+        SlotRead { generation: _, state: _, payload_bytes: _ } =>
+          match entry.payload_relation {
+            PayloadsIdentical => ClassBothIdentical
+            PayloadsDifferent => ClassBothDifferent
+            PayloadRelationUndecided { reason: _ } => ClassRelationUndecided
+          }
       }
-    SlotAbsent => false
-    SlotUnreadable { detail: _ } => true
-  }
-}
-
-fn census_only_in_old(entry: AttemptSlotsCensusEntry) -> Bool {
-  match entry.source {
-    SlotRead { generation: _, state: _, payload_bytes: _ } =>
-      match entry.target {
-        SlotAbsent => true
-        SlotRead { generation: _, state: _, payload_bytes: _ } => false
-        SlotUnreadable { detail: _ } => false
-      }
-    SlotAbsent => false
-    SlotUnreadable { detail: _ } => false
-  }
-}
-
-fn census_relation_identical(entry: AttemptSlotsCensusEntry) -> Bool {
-  match entry.payload_relation {
-    PayloadsIdentical => true
-    PayloadsDifferent => false
-    PayloadRelationUndecided { reason: _ } => false
-  }
-}
-
-fn census_relation_different(entry: AttemptSlotsCensusEntry) -> Bool {
-  match entry.payload_relation {
-    PayloadsIdentical => false
-    PayloadsDifferent => true
-    PayloadRelationUndecided { reason: _ } => false
   }
 }
 
 fn attempt_slots_census_counts(entries: List<AttemptSlotsCensusEntry>) -> AttemptSlotsCensusCounts {
-  AttemptSlotsCensusCounts {
-    total: length(entries),
-    only_in_old: length(filter(entries, e => census_only_in_old(entry: e))),
-    in_both_identical: length(filter(entries, e => census_relation_identical(entry: e))),
-    in_both_different: length(filter(entries, e => census_relation_different(entry: e))),
-    either_side_unreadable: length(filter(entries, e => census_either_side_unreadable(entry: e))),
-  }
+  fold(
+    map(entries, e => attempt_slots_census_class(entry: e)),
+    init: AttemptSlotsCensusCounts {
+      total: 0, only_in_old: 0, only_in_target: 0, in_both_identical: 0, in_both_different: 0,
+      either_side_unreadable: 0, relation_undecided: 0, neither_side_holds_it: 0,
+    },
+    f: fn(acc, cls) {
+      match cls {
+        ClassOnlyInOld => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old + 1, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassOnlyInTarget => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target + 1,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassBothIdentical => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical + 1, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassBothDifferent => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different + 1,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassEitherSideUnreadable => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable + 1, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassRelationUndecided => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided + 1,
+          neither_side_holds_it: acc.neither_side_holds_it,
+        }
+        ClassNeitherSideHoldsIt => AttemptSlotsCensusCounts {
+          total: acc.total + 1, only_in_old: acc.only_in_old, only_in_target: acc.only_in_target,
+          in_both_identical: acc.in_both_identical, in_both_different: acc.in_both_different,
+          either_side_unreadable: acc.either_side_unreadable, relation_undecided: acc.relation_undecided,
+          neither_side_holds_it: acc.neither_side_holds_it + 1,
+        }
+      }
+    },
+  )
+}
+
+// THE BUCKETS SUM TO THE TOTAL, BY CONSTRUCTION AND CHECKED AS A CLAIM. A census whose counts do not sum
+// to its total is a census with an uncounted category, which is exactly what DESIGN 5 forbids ("every
+// degradation is typed, located and countable"). The fold makes that impossible; the witness makes it
+// loud if someone reintroduces a predicate-shaped count.
+fn attempt_slots_census_buckets_sum_to_total(counts: AttemptSlotsCensusCounts) -> Bool {
+  counts.total
+    == (counts.only_in_old + counts.only_in_target + counts.in_both_identical
+        + counts.in_both_different + counts.either_side_unreadable + counts.relation_undecided
+        + counts.neither_side_holds_it)
 }
 
 // THE ROW AGAINST THE STORE IT IS HANDED. A row names an instance and an old root; the store is minted
@@ -319,14 +387,6 @@ type AttemptSlotsCensus
   | AttemptSlotsCensusDeclaredTwice { instance_id: NonEmptyStr, rows: List<ReplacedAttemptSlotsRoot> }
   | AttemptSlotsCensusRowRefused { refusal: AttemptSlotsRowRefusal }
   | AttemptSlotsCensusRefused { old_root: NonEmptyStr, detail: String }
-
-fn attempt_state_text(state: AttemptState) -> String {
-  match state {
-    AttemptReserved => "reserved"
-    AttemptLaunching => "launching"
-    AttemptTerminal { verdict: _, detail: _ } => "terminal"
-  }
-}
 
 // The payload bytes a slot holds, as the store wrote them. Read raw because a carry must not re-encode:
 // the target's own readers decode the bytes, and a carry that re-serialized would put a second payload
@@ -358,7 +418,7 @@ fn attempt_slot_reading(store: SlotStore, reference: NonEmptyStr) -> AttemptSlot
     AttemptSlotUnreadable { detail: d } => SlotUnreadable { detail: d }
     AttemptSlotHeld { record: rec, generation: g } =>
       match attempt_slot_payload_bytes(store: store, reference: reference) {
-        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_state_text(state: attempt_record_state(r: rec)), payload_bytes: b }
+        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_record_state(r: rec), payload_bytes: b }
         SlotPayloadAbsent => SlotUnreadable { detail: "the slot decoded as an attempt record but its bytes could not be read back" }
         SlotPayloadUnreadable { detail: d } => SlotUnreadable { detail: d }
       }
@@ -484,10 +544,18 @@ fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStore? {
   }
 }
 
-// THE CARRY, keyed on the reference AND the payload. The reference is the lease's identity, so it is the
-// key; the payload comparison is what stops a carry from overwriting a live seat when two attempts share
-// a reference (the srv1 census found exactly that shape: four attempts under both roots). A target that
-// already holds the same bytes is AlreadyCarried, which is what makes the step idempotent.
+// THE CARRY, keyed on the reference and decided by the ATTEMPT the two sides name.
+//
+// The reference is the lease's identity, so it is the key. What decides "already carried" versus "refuse"
+// is NOT whether the two sides' bytes agree. The pass this carry feeds ADVANCES the slot it carried: once
+// the settle pass terminates and releases an orphan, the current store's copy of that reference is terminal
+// while the old root's copy is still Launching, so the bytes differ BY CONSTRUCTION and a byte comparison
+// would report a refusal on every later run -- a frontier step that refuses forever reads as an unresolved
+// problem, and the operator would be told to decide something already decided. What must never be
+// overwritten is a seat held by a DIFFERENT attempt: one reference carrying two attempts is decided by the
+// operator, not by a carry. The attempt's own identity -- its node and attempt key, already in the decoded
+// record -- is the concept that answers that, so the comparison is made on it and the refusal quotes both
+// spellings.
 fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> AttemptSlotsCarry {
   match attempt_slots_row_check(target: target, moved: moved) {
     Present { value: refusal } => AttemptSlotsCarryRowRefused { refusal: refusal }
@@ -515,45 +583,48 @@ fn attempt_slots_carry_one(source: SlotStore, target: SlotStore, reference: NonE
   match attempt_slot_read(store: source, reference: reference) {
     AttemptSlotUnreadable { detail: d } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the old slot is not a readable attempt record: ", d], "") }
     AttemptSlotAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the old store listed the reference but its slot could not be read" }
-    AttemptSlotHeld { record: _, generation: source_generation } =>
-      match attempt_slot_payload_bytes(store: source, reference: reference) {
-        SlotPayloadUnreadable { detail: d } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the old slot decoded, but its bytes could not be read back: ", d], "") }
-        SlotPayloadAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the old slot decoded, but the store reports no bytes under it" }
-        SlotPayloadHeld { bytes: bytes } =>
-          match attempt_slot_payload_bytes(store: target, reference: reference) {
-            SlotPayloadHeld { bytes: held } =>
-              if held == bytes {
-                AttemptSlotsCarryAlreadyCarried { reference: reference }
-              } else {
-                AttemptSlotsCarryRefused {
-                  reference: reference,
-                  detail: "the current store already holds a DIFFERENT attempt under this reference; one reference with two attempts is decided by the operator, not by a carry",
-                }
-              }
-            SlotPayloadUnreadable { detail: d } =>
-              // The seat is occupied by bytes the CURRENT store cannot decode. The old code read that as
-              // "no slot here" and went on to try creating a slot beside it; overwriting undecodable
-              // bytes would destroy the only evidence of what occupies a live seat, so the carry refuses
-              // and names the unreadable instead.
-              AttemptSlotsCarryRefused { reference: reference, detail: join(["the current store holds bytes it cannot read under this reference; a carry does not overwrite an unreadable seat: ", d], "") }
-            SlotPayloadAbsent =>
+    AttemptSlotHeld { record: source_record, generation: source_generation } =>
+      match attempt_slot_read(store: target, reference: reference) {
+        // The current store already holds a slot under this reference. Same attempt -> the carry already
+        // happened, whatever state each side is in. Different attempt -> nothing here may choose between
+        // them, so the carry refuses and names both identities.
+        AttemptSlotHeld { record: target_record, generation: _ } =>
+          if target_record.identity == source_record.identity {
+            AttemptSlotsCarryAlreadyCarried { reference: reference }
+          } else {
+            AttemptSlotsCarryRefused {
+              reference: reference,
+              detail: join(["the current store holds a DIFFERENT attempt under this reference: it binds ", target_record.identity, " and the old root binds ", source_record.identity, "; one reference with two attempts is decided by the operator, not by a carry"], ""),
+            }
+          }
+        // The seat is occupied by bytes the CURRENT store cannot decode. Reading that as "no slot here" and
+        // going on to create a slot beside it would destroy the only evidence of what occupies a live seat,
+        // so the carry refuses and names the unreadable.
+        AttemptSlotUnreadable { detail: d } =>
+          AttemptSlotsCarryRefused { reference: reference, detail: join(["the current store holds bytes it cannot read under this reference; a carry does not overwrite an unreadable seat: ", d], "") }
+        AttemptSlotAbsent =>
+          match attempt_slot_payload_bytes(store: source, reference: reference) {
+            SlotPayloadUnreadable { detail: d } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the old slot decoded, but its bytes could not be read back: ", d], "") }
+            SlotPayloadAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the old slot decoded, but the store reports no bytes under it" }
+            SlotPayloadHeld { bytes: bytes } =>
               match admit_cas_attempt_for_derived_payload(key: reference, expected: ExpectSlotAbsent, proposed: bytes as NonEmptyStr) {
                 DerivedPayloadKeyNotSlotAddressable { key: k } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the reference is not slot-addressable: ", k as String], "") }
                 DerivedPayloadAdmitted { verified: v } =>
                   match slot_commit(store: target, publication: DefaultAccessCreateOnly, verified: v) {
                     CasCommitted { committed: c } => AttemptSlotsCarried { reference: reference, source_generation: cas_generation_count(g: source_generation), target_generation: cas_generation_count(g: c.generation) }
-                    CasPreconditionFailed { expected: _, observed: o } =>
-                      // Someone else wrote that reference between the read and the commit. The CAS is
-                      // what makes that a fact rather than a corruption; re-running the carry reports
-                      // AlreadyCarried when the bytes agree and Refused when they do not.
-                      match o {
-                        CasReadablePresent { version: v } =>
-                          if (v.value as String) == bytes {
+                    CasPreconditionFailed { expected: _, observed: _ } =>
+                      // Someone else wrote that reference between the read and the commit. The CAS is what
+                      // makes that a fact rather than a corruption, and the same identity rule decides it
+                      // that decides the read: same attempt means the carry has already happened.
+                      match attempt_slot_read(store: target, reference: reference) {
+                        AttemptSlotHeld { record: raced, generation: _ } =>
+                          if raced.identity == source_record.identity {
                             AttemptSlotsCarryAlreadyCarried { reference: reference }
                           } else {
                             AttemptSlotsCarryRefused { reference: reference, detail: "another attempt occupies this reference in the current store" }
                           }
-                        CasReadableAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the commit expected an absent slot and the store reports an absent slot; the write did not land" }
+                        AttemptSlotUnreadable { detail: d } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the write did not land, and the slot now under this reference cannot be read: ", d], "") }
+                        AttemptSlotAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the commit expected an absent slot and the store reports an absent slot; the write did not land" }
                       }
                     CasStoreRefused { cause: c } => AttemptSlotsCarryRefused { reference: reference, detail: attempt_slots_carry_refused_detail(cause: c) }
                   }
