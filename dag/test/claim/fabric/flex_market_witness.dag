@@ -263,10 +263,15 @@ fn owned(
   }
 }
 
-test fn outbid_and_ten_minute_loading_are_dead() -> Bool {
+// The boundary is the launch's first-boot envelope, not ten minutes: an args-mode card served at about 25
+// min and an ssh-mode card was still building at 56+ min, so 7199 s of loading is ALIVE and 7200 s (120
+// min) is dead. See flex_market's flex_stale_loading for why.
+test fn outbid_and_a_two_hour_loading_card_are_dead() -> Bool {
   flex_card_dead(card: owned(id: "a", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0))
-    && flex_card_dead(card: owned(id: "b", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
-    && !flex_card_dead(card: owned(id: "c", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 599))
+    && flex_card_dead(card: owned(id: "b", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 7200))
+    && !flex_card_dead(card: owned(id: "c", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 7199))
+    && !flex_card_dead(card: owned(id: "e", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
+    && !flex_card_dead(card: owned(id: "f", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 3360))
     && !flex_card_dead(card: owned(id: "d", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
 }
 
