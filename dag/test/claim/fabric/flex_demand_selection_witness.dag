@@ -23,10 +23,12 @@ import product.fabric.demand {
 }
 import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
 import product.fabric.flex_vast_shadow { flex_trial_policy }
+import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements }
 import gunbc.fleet.flex_pass_run {
   FlexDemandStanding, FlexDemandRead, FlexDemandUnread, FlexPassSelection, FlexSelectionUnreadDemand,
   FlexSelectionRequirementsUnread, FlexSelectionNotSeeking, FlexSelectionDemandRefused,
-  flex_pass_select, flex_demand_standing, flex_demand_word, flex_selection_wire,
+  flex_pass_select, flex_select_offers, flex_demand_standing, flex_demand_word, flex_selection_wire,
+  FlexSelectionNoOffer,
 }
 
 fn work_of(principal: NonEmptyStr, key: WorkKey) -> FabricIdentity<NonEmptyStr, WorkKey> {
@@ -209,6 +211,27 @@ test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool 
         _ => false
       }
     Absent => false
+  }
+}
+
+// 6. THE SELECTION ITSELF RUNS BY EXECUTION. Given requirements (supplied here from the fabric's own
+// fixture, not invented in this file) and no bindable candidates, the route reaches
+// product.fabric.selection select_supply and takes its NO-OFFER arm: considered=0 is that authority's
+// answer, not a string this entry could have written, because nothing else in the route can produce it.
+// Together with claim 2 this is the discriminating pair at ONE call site: the same route yields
+// requirements-unread when the CALLER has no requirements and no-admissible-offer when it does. If the
+// selection call were removed or short-circuited, one of these two arms would stop existing.
+test fn the_selection_route_runs_select_supply_and_reports_its_own_no_offer_arm() -> Bool {
+  let stop = flex_select_offers(
+    policy: flex_trial_policy,
+    screened: [],
+    requirements: fixture_requirements,
+    cap: money_amount_micro(count: 200000),
+  )
+  match stop {
+    FlexSelectionNoOffer { considered: n } =>
+      n == 0 && string_contains(s: flex_selection_wire(s: stop), pattern: "no-admissible-offer considered=0")
+    _ => false
   }
 }
 

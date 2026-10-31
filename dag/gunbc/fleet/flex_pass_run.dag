@@ -324,8 +324,12 @@ fn flex_pass_select(
             // recipe declares SERVING terms (a card shape, a disk requirement, an hourly quote), not the
             // fabric's ExecutionRequirements, and no adapter turns one into the other yet. That gap is
             // reported as what it is -- a typed stop naming the missing input -- rather than filled in
-            // with a shape invented at the call site. flex_select_offers below is the route the moment a
-            // caller supplies them, and the witness drives it with real requirements.
+            // with a shape invented at the call site. The route below (flex_select_offers) is therefore
+            // NOT reached from this arm in production today: it is reached, and executed, only where a
+            // caller supplies requirements -- test.claim.fabric.flex_demand_selection_witness does exactly
+            // that, with the fabric's own fixture requirements, and takes select_supply's own no-offer
+            // arm. The frontier row flex_select_supply_consumer_frontier carries the same distinction, so
+            // no reader can take the executed route for a live ranking.
             RequireNewAttempt { reuse: _ } => FlexSelectionRequirementsUnread {
               reason: "no adapter from the flex serving recipe to product.fabric.work ExecutionRequirements (producer owed: product.fabric.flex_vast_loop flex_demand_producer_frontier)" as NonEmptyStr,
             }
