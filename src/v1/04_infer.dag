@@ -1823,14 +1823,6 @@ fn bare_none_field_construction_diags(
   }
 }
 
-fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
-  let inner = match lookup_type_for(env: env, node: with_required_cardinality(n: ft)) {
-    Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: ft)
-  }
-  ft.return_cardinality == CardOptional && inner.connective == Disj
-}
-
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
   match type_name {
     Present { value: tn } =>
@@ -12866,9 +12858,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
               substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
             } else { declared_ft }
-            if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
-              Present { value: ft }
-            } else { none }
+            Present { value: ft }
           Absent => none
         }
     }
