@@ -1,0 +1,118 @@
+module v2.test.claim.compiler.infer_route_candidates_inhabitance_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.algebra { Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_refusal,
+  rcf_verdict,
+  rcf_read_in
+}
+
+// THE ROUTE CANDIDATES OF THE Q10 INSPECTION, AUTHORED AS REDs AND CONTROLS BEFORE ANY RUN.
+//
+// Each cell is a hypothesis from reading v2.compiler.infer, not a measurement: a RED that stays green on the
+// real path means its site is a different question (a REASON), not a fix. Cells named *_refuses_holds are the
+// REDs (expected red until the route is closed), *_is_accepted_holds the positive controls (expected green now
+// and after).
+//
+// SITE 6 (infer_declared_position_undecidable_reason): a generic function's declared return mentions the
+// function's own type parameter, so the declared-only pre-gate of infer_judge_declared_position answers
+// UndecidableGenericFormal for the WHOLE position before the pair judgment runs. The body's concrete sibling
+// (Int against String) is therefore never judged. Source reaches it: arrow_body_does_not_inhabit_declared_return.
+//
+// SITE 7 (infer_judge_generic_formal, the InferFormalShapeMismatch arm): the first-order matcher compares heads
+// by structural equality and refuses a produced type that is a nominal refinement of the formal's applied head,
+// where the non-generic path (declared_type_inhabitance) admits a refinement at its own base. The control is
+// the same pair at a non-generic formal.
+//
+// SITES 10b (infer_operation_result_signature) AND 12 (infer_bound_generator_agreement) carry no cell here: 10b
+// compares ordering_predicate_signature_node's domain with an answer that the ordered structure's own signature
+// supplies, one authority on both sides, so no author-written type reaches it and no RED is authorable; 12
+// compares two derivations of one variable (the generator fixed by an argument and the structure's), already
+// executed both ways by free_monoid_structure_bound fmb_fixed_element_disagreeing_with_the_generator_refuses
+// and fmb_bound_admits_kernel_text.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data qrc_types_source: String = "module std.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n\ntype Pair<A, B> = Mk { first: A, second: B }\n"
+data qrc_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+data qrc_site6_red_source: String = "module gunbc.qrc_site6_red\n\nimport std.types { Pair }\n\nfn qrc_wrong<K>(p: Pair<K, Int>) -> Pair<K, String> {\n  p\n}\n"
+data qrc_site6_control_source: String = "module gunbc.qrc_site6_control\n\nimport std.types { Pair }\n\nfn qrc_right<K>(p: Pair<K, Int>) -> Pair<K, Int> {\n  p\n}\n"
+
+fn qrc_refinement_probe(module_name: String, formal: String) -> String {
+  join(["module ", module_name, "\n\nimport std.types { Pair }\n\nfn qrc_positive(value: Pair<Int, Int>) -> Bool {\n  true\n}\n\ntype Tagged = Pair<Int, Int> where qrc_positive\n\nfn qrc_take<K>(p: ", formal, ") -> Int {\n  0\n}\n\nfn qrc_call(t: Tagged) -> Int {\n  qrc_take(p: t)\n}\n"], "")
+}
+
+data qrc_site7_generic_source: String = qrc_refinement_probe(module_name: "gunbc.qrc_site7_generic", formal: "Pair<K, Int>")
+data qrc_site7_closed_source: String = qrc_refinement_probe(module_name: "gunbc.qrc_site7_closed", formal: "Pair<Int, Int>")
+
+data qrc_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: qrc_algebra_source, id: ^qrc_algebra_read, unit: ^qrc_algebra_cu, path: "dag/std/algebra.dag"),
+  rcf_read_in(tree: DagTree, source: qrc_types_source, id: ^qrc_types_read, unit: ^qrc_types_cu, path: "dag/std/types.dag"),
+  rcf_read_in(tree: DagTree, source: qrc_site6_red_source, id: ^qrc_site6_red_read, unit: ^qrc_site6_red_cu, path: "dag/gunbc/qrc_site6_red.dag"),
+  rcf_read_in(tree: DagTree, source: qrc_site6_control_source, id: ^qrc_site6_control_read, unit: ^qrc_site6_control_cu, path: "dag/gunbc/qrc_site6_control.dag"),
+  rcf_read_in(tree: DagTree, source: qrc_site7_generic_source, id: ^qrc_site7_generic_read, unit: ^qrc_site7_generic_cu, path: "dag/gunbc/qrc_site7_generic.dag"),
+  rcf_read_in(tree: DagTree, source: qrc_site7_closed_source, id: ^qrc_site7_closed_read, unit: ^qrc_site7_closed_cu, path: "dag/gunbc/qrc_site7_closed.dag")
+]
+
+fn qrc_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match module_roots_from_source_root_ingest(ingest: qrc_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn qrc_refused_as(subject: String, reason: Symbol) -> Bool {
+  match rcf_refusal(resolved: qrc_resolve_subject(subject: subject), reason: reason) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn qrc_accepted(subject: String) -> Bool {
+  match rcf_verdict(resolved: qrc_resolve_subject(subject: subject)) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+test fn qrc_site6_a_concrete_sibling_beside_the_functions_own_variable_at_the_declared_return_refuses_holds() -> Bool {
+  qrc_refused_as(subject: "gunbc.qrc_site6_red", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+test fn qrc_site6_agreeing_siblings_beside_the_functions_own_variable_is_accepted_holds() -> Bool {
+  qrc_accepted(subject: "gunbc.qrc_site6_control")
+}
+
+test fn qrc_site7_a_refinement_of_the_formals_head_at_a_generic_formal_is_accepted_holds() -> Bool {
+  qrc_accepted(subject: "gunbc.qrc_site7_generic")
+}
+
+test fn qrc_site7_the_same_refinement_at_a_closed_formal_is_accepted_holds() -> Bool {
+  qrc_accepted(subject: "gunbc.qrc_site7_closed")
+}
