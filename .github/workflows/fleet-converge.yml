@@ -89,7 +89,7 @@ on:
         options: [printer-01, printer-02]
         type: choice
       printer_request:
-        description: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes."
+        description: "Printer operation JSON: operation (observe, converge, or hold-release-request); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes. hold-release-request files the operator card for a stale printer-start hold this root cannot observe; it releases nothing."
         required: false
         type: string
       agent_state_slot:
