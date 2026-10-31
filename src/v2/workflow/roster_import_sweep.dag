@@ -1940,6 +1940,85 @@ fn roster_pattern_authored_atoms(pattern: Node) -> List<String> {
   })
 }
 
+// THE CATCH-ALL PASS (ExpandCatchAll). One row = one located arm: the gate's key is the census locus of the arm's pattern atom
+// (path:line:col), joined to the parsed bare-atom arm whose pattern starts there. The scrutinee's type is the ROW's declared
+// type (`key` = "catchall:<Type>", `home` = its declaring module): the run does not infer it, it checks it -- every earlier arm of
+// the same match must name a variant of that type, or the site refuses RemainderStale. The remainder is the declared variants
+// minus the earlier arms' tags, in declaration order; the arm is replaced by one explicit arm per remainder tag, each with the
+// binder's pattern atom and every binder occurrence in the arm body spelled as that tag. Occurrences are PARSED SPANS: the arm
+// body's value-position sites of the binder spelling (resolution's own sites), required to equal the binder-spelled atoms of the
+// body, so a field label, a method spelling or an inner rebinding makes the arm refuse instead of being rewritten.
+type RosterByteSpan {
+  start: Int
+  end: Int
+}
+
+fn roster_text_between(text: String, start: Int, end: Int) -> Optional<String> {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: text))
+  let a = roster_scalar_boundary(octets: octets, byte: start)
+  let b = roster_scalar_boundary(octets: octets, byte: end)
+  if a < 0 || b < a { Absent } else { Present { value: substring(s: text, start: a, end: b) } }
+}
+
+// All match arms of a parse, as their captured sequences (any pattern shape).
+fn roster_all_arm_caps(parse_root: Node) -> List<Node> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if id == ^dag_surface_match_arm {
+          match parse_production_captured_child_optional(node: n) {
+            Present { value: cap } => list_snoc_item(xs: acc, item: cap)
+            Absent => acc
+          }
+        } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+fn roster_cap_range(cap: Node, spans: SpanIndex) -> RosterByteSpan {
+  match roster_node_byte_range(node: cap, spans: spans) {
+    Present { value: r } => RosterByteSpan { start: r.start, end: r.end }
+    Absent => RosterByteSpan { start: 0 - 1, end: 0 - 1 }
+  }
+}
+
+// The smallest arm range that strictly contains `arm` (its parent arm), or Absent for an outermost arm.
+fn roster_enclosing_arm(arm: RosterByteSpan, ranges: List<RosterByteSpan>) -> Optional<RosterByteSpan> {
+  fold_list(xs: ranges, empty: Absent, cons: fn(best, r) {
+    if r.start <= arm.start && arm.end <= r.end && !(r.start == arm.start && r.end == arm.end) {
+      match best {
+        Present { value: b } => if r.end - r.start < b.end - b.start { Present { value: r } } else { best }
+        Absent => Present { value: r }
+      }
+    } else { best }
+  })
+}
+
+fn roster_same_span(a: Optional<RosterByteSpan>, b: Optional<RosterByteSpan>) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x.start == y.start && x.end == y.end
+      }
+  }
+}
+
+// The arms sharing `arm`'s parent arm: the arms of ONE match and, conservatively, of adjacent matches in one parent arm (a
+// wider set can only turn a site into a refusal, never into an edit).
+fn roster_sibling_ranges(arm: RosterByteSpan, ranges: List<RosterByteSpan>) -> List<RosterByteSpan> {
+  let parent = roster_enclosing_arm(arm: arm, ranges: ranges)
+  fold_list(xs: ranges, empty: [], cons: fn(acc, r) {
+    if roster_same_span(a: roster_enclosing_arm(arm: r, ranges: ranges), b: parent) { list_snoc_item(xs: acc, item: r) } else { acc }
+  })
+}
+
 // THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. The pipe sites of the parse are indexed ONCE
 // here (the fold's shared value): a head's pipe read is a map lookup, never a subtree walk.
 fn roster_rows_label_plan(sides: List<RosterHomeSide>, 
