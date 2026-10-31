@@ -205,7 +205,7 @@ data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unb
 // adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
-    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), effect_pair_census_label(),
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
