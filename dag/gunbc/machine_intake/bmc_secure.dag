@@ -1908,7 +1908,7 @@ fn dry_apply_bmc_redfish_password_write(
   new_password: String,
 ) -> BmcRedfishPasswordWriteDryStep
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "apply_planned_account_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_completed_patch_writes_the_credential_and_clears_the_forced_flag"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_failed_patch_changes_nothing_and_mints_no_receipt"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_forced_change_applies_once_and_the_second_run_is_a_noop"),
@@ -3262,6 +3262,42 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
 // THE WRITES, IN THE SECRET ORDER. Each write's bytes come from a fetch that resolved to exactly that
 // write's generation; a fetch of any other version writes nothing, and the application records the
 // write as not completed rather than writing a different credential.
+// THE OUTCOME of applying one planned account write to the dry world: the world as the transport left it, and
+// whether that write completed. Shared by the managed write and a separate published write so the plan applies
+// a write by its OWN request (one dispatch, §6b), not by which slot it sits in.
+type AccountWriteDryOutcome {
+  world: BmcWorld
+  completed: Bool
+}
+
+// Apply one PlannedAccountWrite by dispatching on its own request. It resolves that write's own generation
+// through dry_fetch_resolves (a write whose generation the fetch does not resolve changes nothing and completes
+// nothing), then routes to the transport the request names: IPMI Set User Password, the Redfish Password PATCH,
+// or -- for a privilege-limit row, which is not a credential write at all -- completed:false, leaving the world
+// unchanged. A Redfish PATCH that the world refuses leaves the world exactly as it was and completes nothing;
+// the post-read, not this apply, decides whether the account is secured.
+fn apply_planned_account_write(
+  world: BmcWorld,
+  fetch: SecretCredentialFetch,
+  write: PlannedAccountWrite,
+) -> AccountWriteDryOutcome {
+  match dry_fetch_resolves(fetch: fetch, write: write) {
+    Absent => AccountWriteDryOutcome { world: world, completed: false }
+    Present { value: pw } =>
+      match write.request {
+        IpmiSetUserPassword { user: _ } => {
+          let step = bmc_ipmi_set_user_password(world: world, user: write.user, password: pw)
+          AccountWriteDryOutcome { world: step.world, completed: step.completed }
+        }
+        RedfishAccountPasswordWrite { account: name, transport_operation: _, action_shape: _ } => {
+          let step = dry_apply_bmc_redfish_password_write(world: world, account: name, new_password: pw)
+          AccountWriteDryOutcome { world: bmc_redfish_change_step_world(step: step.step), completed: bmc_redfish_password_write_completed(step: step) }
+        }
+        IpmiSetUserPrivilegeLimit { access: _ } => AccountWriteDryOutcome { world: world, completed: false }
+      }
+  }
+}
+
 fn dry_apply_bmc_account_plan(
   world: BmcWorld,
   plan: BmcAccountActionPlan,
@@ -3277,19 +3313,14 @@ fn dry_apply_bmc_account_plan(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
-  // A Redfish account-password write and an IPMI Set User Password land in the dry world the same way: the
-  // world keeps one password per user, which is the shared-store premise a derived retirement cites.
-  let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
-    Absent => BmcIpmiSetUserPasswordStep { world: world, completed: false }
-    Present { value: pw } => bmc_ipmi_set_user_password(world: world, user: plan.managed_write.user, password: pw)
-  }
+  // One dispatch (§6b): an account write lands by its OWN request, whether it was planned as the managed or
+  // the separate published write. apply_planned_account_write resolves that write's own generation and calls
+  // the transport that matches the request (IPMI Set User Password, the Redfish Password PATCH, or -- for a
+  // privilege-limit row that is not a credential write at all -- completes nothing).
+  let managed_step = apply_planned_account_write(world: world, fetch: managed_fetch, write: plan.managed_write)
   let published_step = match plan.published_write {
-    PublishedIsTheManagedWrite => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: managed_step.completed }
-    PublishedWrittenSeparately { write: w } =>
-      match dry_fetch_resolves(fetch: published_fetch, write: w) {
-        Absent => BmcIpmiSetUserPasswordStep { world: managed_step.world, completed: false }
-        Present { value: pw } => bmc_ipmi_set_user_password(world: managed_step.world, user: w.user, password: pw)
-      }
+    PublishedIsTheManagedWrite => AccountWriteDryOutcome { world: managed_step.world, completed: managed_step.completed }
+    PublishedWrittenSeparately { write: w } => apply_planned_account_write(world: managed_step.world, fetch: published_fetch, write: w)
   }
   let channel_steps = fold(plan.channel_writes, init: BmcChannelWritesDryStep { world: published_step.world, completed: true }, f: (acc, w) =>
     match w.request {
@@ -3297,19 +3328,12 @@ fn dry_apply_bmc_account_plan(
         let step = bmc_ipmi_set_user_access(world: acc.world, access: x)
         BmcChannelWritesDryStep { world: step.world, completed: acc.completed && step.completed }
       }
+      // A credential write is NOT a channel operation: the managed and published writes carry it and are
+      // applied once by apply_planned_account_write. In the channel fold it completes nothing -- this mirrors
+      // the IPMI Set User Password arm beside it (one dispatch, not two, §6b). Channel requests only ever come
+      // from channel_close_request, an IpmiSetUserPrivilegeLimit, so neither credential arm is a live path here.
       IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
-      // THE REDFISH Password PATCH ARM (decision C). Its new password is the managed generation, resolved
-      // through the same fetch that authorizes the managed IPMI write -- the shared-store premise means the one
-      // root credential moves once, whether it lands over IPMI or Redfish. A refused PATCH (world unchanged)
-      // completes nothing; the post-read, not here, decides the account is secured.
-      RedfishAccountPasswordWrite { account: name, transport_operation: _, action_shape: _ } =>
-        match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
-          Absent => BmcChannelWritesDryStep { world: acc.world, completed: false }
-          Present { value: pw } => {
-            let step = dry_apply_bmc_redfish_password_write(world: acc.world, account: name, new_password: pw)
-            BmcChannelWritesDryStep { world: bmc_redfish_change_step_world(step: step.step), completed: acc.completed && bmc_redfish_password_write_completed(step: step) }
-          }
-        }
+      RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
     })
   let request_text = join(
     concat(

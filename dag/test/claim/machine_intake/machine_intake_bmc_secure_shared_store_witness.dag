@@ -27,7 +27,7 @@ import std.scoped_authorization { AttemptIdentity }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
-import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_with_redfish_accounts, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.machine_intake.bmc_credential_policy { RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
@@ -111,7 +111,15 @@ fn census() -> IpmiControllerChannelCensus {
 }
 
 fn world_root(password: String) -> BmcWorld {
-  bmc_with_ipmi_user_access(world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 1, password: password }]), rows: census().user_access)
+  // The 03.22.00 build shares root's ONE password across its surfaces: the Redfish ManagerAccount root and the
+  // IPMI root user hold the same credential (BmcRedfishCredentialSharesIpmi reads it from the IPMI table, never a
+  // copy). The plan runs over the cited Redfish route, so the write is the Redfish Password PATCH -- which moves
+  // that one shared credential. A Redfish account the surface does not serve would make the PATCH find nothing to
+  // write, so the world that the Redfish route writes MUST serve it.
+  bmc_with_redfish_accounts(
+    world: bmc_with_ipmi_user_access(world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 1, password: password }]), rows: census().user_access),
+    accounts: [BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: root_user }, role: AccountRoleAdministrator, enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }],
+  )
 }
 
 fn derive_over(served: List<CredentialSurface>) -> DryPublishedReading {
