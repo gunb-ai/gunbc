@@ -24,3 +24,6 @@ Each cell is a function passed to a parameter declared as a function type, pair 
 - C (return, sound): declared fn(Int)->W, offered fn(Int)->N. Expected accepted.
 - D (return, unsound): declared fn(Int)->N, offered fn(Int)->W. Expected refused.
 The A/B and C/D pairs are mirror images: a symmetric relation gives the same verdict to both members of a pair, so any pair with equal verdicts discriminates direction-blindness; unequal verdicts show a directional bug. Expected classes are stated beside each cell; the measured column is empty until run.
+
+## 5. Status of the cells
+No .dag file accompanies this note: the placeholder was removed because a file that cannot run is a decoration (DESIGN section 4b). Authoring executable cells needs a declared N->W conversion; I did not establish that NonEmptyStr->String is a declared route (std/coercion.dag has ConversionPlan machinery, but I found no row naming that pair), so the pair above is an example, to be replaced by a pair whose route is read from the conversion rows first.

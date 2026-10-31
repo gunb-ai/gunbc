@@ -1,7 +1,0 @@
-module test.claim.callable_param_variance_differential_witness
-
-import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_exit }
-
-// Cells A..D are sources; a pair with equal verdicts is direction-blind. Unrun: classes are expectations.
-data variance_cells: String = "A sound param: declared fn(N)->Int offered fn(W)->Int expect accept; B unsound param: declared fn(W)->Int offered fn(N)->Int expect refuse; C sound return: declared fn(Int)->W offered fn(Int)->N expect accept; D unsound return: declared fn(Int)->N offered fn(Int)->W expect refuse; C1 control same types expect accept"
