@@ -120,7 +120,7 @@ data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOper
   ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.UpdateIndexCacheInfo", reason: operation_argv_reason_env_assignment },
   ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.WriteTreeFromIndex", reason: operation_argv_reason_env_assignment },
   ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CheckoutIndexToPrefix", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.PushRefInRepo", reason: operation_argv_reason_env_assignment },
+  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.PushRefInRepo", reason: operation_argv_reason_catalog },
   ArgvClassifiedOperation { operation: "dag/extdeps/llm/codex_app_server.dag codex_app_server.Cli.GenerateJsonSchema", reason: operation_argv_reason_interp_path },
   ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgv", reason: operation_argv_reason_caller_program },
   ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgvStdin", reason: operation_argv_reason_caller_program },

@@ -7,7 +7,7 @@ import extdeps.exec.command { ArgvCommand, argv_command, shell_quote, env_prefix
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.env_binding { EnvBinding, EnvSet }
-import extdeps.tools.env { env_bindings_argv }
+import extdeps.tools.env { env_bindings_argv, env_path_resolved_program }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
 
@@ -221,7 +221,7 @@ fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
 // this path depends on and the environment that sets it are one row, not two.
 fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
   concat(
-    ["env"],
+    [env_path_resolved_program().invocation as String],
     env_bindings_argv(bindings: git_isolated_home_env_bindings(home: home)),
   )
 }
@@ -241,10 +241,19 @@ fn git_isolated_home_env_bindings(home: FilePath) -> List<EnvBinding> {
   )
 }
 
+// The transport owns ONE program word. Only its later argv entries splice lists.
+// Keep the complete argv projection for callers that execute a whole command.
+fn git_push_ref_in_repo_arguments(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
+  concat(
+    env_bindings_argv(bindings: git_isolated_home_env_bindings(home: home)),
+    git_argv_of_args(args: ["-C", repo as String, "push", "--quiet", remote, refspec]),
+  )
+}
+
 fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
   concat(
-    git_isolated_home_env_argv(home: home),
-    git_argv_of_args(args: ["-C", repo as String, "push", "--quiet", remote, refspec]),
+    [env_path_resolved_program().invocation as String],
+    git_push_ref_in_repo_arguments(repo: repo, remote: remote, refspec: refspec, home: home),
   )
 }
 
@@ -2278,7 +2287,7 @@ service git.Core {
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: [git_push_ref_in_repo_argv(repo: repo, remote: remote, refspec: refspec, home: home)] }
+    transport shell { argv: [env_path_resolved_program().invocation, git_push_ref_in_repo_arguments(repo: repo, remote: remote, refspec: refspec, home: home)] }
   }
   operation PushRefWithLeaseInRepo {
     requires opaque

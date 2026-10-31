@@ -1,7 +1,8 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
+import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length }
+import extdeps.git { git_push_ref_in_repo_argv, git_push_ref_in_repo_arguments }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
@@ -685,6 +686,8 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "git_push_program_is_one_word_and_operands_keep_boundaries",
+  "git_push_arguments_exclude_the_outer_program",
   "nat_as_int_inclusion_is_the_operand",
   "nat_as_int_inclusion_seconds_per_day",
   "nat_as_int_inclusion_utc_text",
@@ -899,7 +902,35 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// Importing the real Git module emits its PushRefInRepo transport too. Before the
+// program/arguments split, rustc rejects Command::new(List<String>), so these
+// observations cannot exist. No push is performed by this native control.
+fn git_push_argv_cases() -> List<NativeEmissionCase> {
+  let args = git_push_ref_in_repo_arguments(
+    repo: "/tmp/repo with spaces" as FilePath, remote: "remote with spaces",
+    refspec: "refs/heads/source:refs/heads/destination", home: "/tmp/private home" as FilePath,
+  )
+  let words = git_push_ref_in_repo_argv(
+    repo: "/tmp/repo with spaces" as FilePath, remote: "remote with spaces",
+    refspec: "refs/heads/source:refs/heads/destination", home: "/tmp/private home" as FilePath,
+  )
+  [
+    NativeEmissionCase {
+      identity: "git_push_program_is_one_word_and_operands_keep_boundaries",
+      held: words == ["env", "HOME=/tmp/private home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "git", "-C", "/tmp/repo with spaces", "push", "--quiet", "remote with spaces", "refs/heads/source:refs/heads/destination"],
+    },
+    NativeEmissionCase {
+      identity: "git_push_arguments_exclude_the_outer_program",
+      held: args == ["HOME=/tmp/private home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "git", "-C", "/tmp/repo with spaces", "push", "--quiet", "remote with spaces", "refs/heads/source:refs/heads/destination"],
+    },
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
+  concat(git_push_argv_cases(), native_emission_existing_cases())
+}
+
+fn native_emission_existing_cases() -> List<NativeEmissionCase> {
   concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases()))
 }
 
