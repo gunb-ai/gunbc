@@ -32,7 +32,7 @@ fn installed_and_observed_controller_units_are_identical_control() -> Bool {
 }
 
 fn workspace_install_plan() -> List<MicrovmControllerInstallStep> {
-  match microvm_controller_install_staging(revision: workspace_install_revision()) {
+  match microvm_controller_install_staging(revision: workspace_install_revision(), checkout_root: "/fixture/checkout") {
     MicrovmControllerInstallReady { steps: steps } => steps
     MicrovmControllerInstallRefused { reason: _ } => []
   }

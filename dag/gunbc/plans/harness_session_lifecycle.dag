@@ -3,98 +3,21 @@ module gunbc.plans.harness_session_lifecycle
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import gunbc.plans.md_helpers { p }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn harness_session_lifecycle_body() -> List<MarkdownBlock> {
   [
-    quote(blocks: [
-      p(text: "**Status: design authority for a dispatched worker's session; operator decisions of 2026-10-11 recorded in section 5.** It supersedes ONE part of the deleted `docs/plans/harness-work-lifecycle.md` (deleted in fa44b981025, 2026-10-10): the realization of the alignment cadence as a process restart, and the continuation turns built on it. It does not restore that document: its other standing sections -- resource policy, delivery structure, the conservation laws, the belt and frontend rulings -- are not carried here, so the roadmap rows `factory` and `harness-recursive-alignment` and the code annotations that cite the deleted path still name an absent authority, and are a separate repair. The alignment ladder's intent (owner direction 2026-09-21) and durable obligations over replaceable processes (owner ruling 2026-09-21) are the parts this plan keeps."),
-      p(text: "**Operator rulings, 2026-10-11.** (1) The round boundary is a supervision cadence and is transparent to the worker: most of the time the worker never knows it happened. (2) Terminology: a turn is one model reply; a round is the larger stretch of turns. (3) Everything is event-driven; the belt is being retired, so nothing here is assigned to it."),
-      p(text: "**Evidence.** The srv1 lab bring-up of 2026-10-10/11, findings ledger F61, F64, F65, F68, F71, F72, F73, F74 and F75, and the census of the current lifecycle taken the same day (section 4)."),
-    ]),
-
-    h2(text: "1. Terminology"),
-    ul(items: [
-      li(text: "**Turn**: one model reply -- one provider request, its response, and the execution of the tool calls it names. The current code calls this a round (`round.usage`, `harness_post_round`)."),
-      li(text: "**Round**: the stretch of turns between two supervision observations; 40 turns by default (`gunbc.harness.harness_throughput` `harness_round_budget_steps`). The current code calls this a turn (`harness_run_turn`, `continuation_turn_cap`, the `continuation-turn` file)."),
-      li(text: "**Session**: the one conversation an attempt runs. Its transcript is a durable fact; the process running it is replaceable."),
-      li(text: "**Attempt**: one dispatch of a node -- one worktree, one branch, one session."),
-    ]),
-    p(text: "The code is renamed with the code each slice changes (S4), so no intermediate state carries both meanings in one place."),
-
-    h2(text: "2. What the restart realization did"),
-    ul(items: [
-      li(text: "At the end of every 40-turn stretch the harness exited 3, the worker's unit stopped and its process group was killed, and the belt spawned a NEW attempt: a new worktree, a new branch from the old one, a fresh conversation. Uncommitted work was lost (F61) until a carry was added; background test runs were killed mid-run (F74); compute reservations their clients held were orphaned in a two-slot pool (F75); commands and labels the worker had learned were relearned every stretch."),
-      li(text: "The worker was told about the boundary after every turn (`gunbc.harness.harness_guidance` `RoundsRemaining`, `RoundsEndInAlignmentCheck`) and planned around it -- yielding with a plan to resume that no successor could carry out."),
-      li(text: "Past `continuation_turn_cap` = 3 every stretch convened a supervisor session (20 to 30 minutes). Its Nominal could not change the budget or the next brief (F65), it certified a diff by reading rather than executing (F71), and its retained unit blocked the next dispatch (F72). Five laps on two lineages produced no hand-in."),
-      li(text: "The belt cannot distinguish a checkpoint from a spent budget: both fold to `ProviderBudgetSpent` in `gunbc.roadmap.roadmap_provider_events` `provider_execution_fold_event`."),
-      li(text: "The ladder's cadence machinery is written and unwired: `gunbc.roadmap.roadmap_alignment` `AlignmentCadenceState` (always empty), `alignment_next_interval`, `AlignmentVerdict`, and `gunbc.roadmap.roadmap_checkpoint_plan` reach only tests."),
-    ]),
-
-    h2(text: "3. Requirements"),
-    p(text: "The intent: one worker keeps its context and keeps working until it hands in a candidate, needs a decision, or is stopped; supervision happens at useful boundaries; hand-in starts the acceptance and revision loop."),
-    ol(items: [
-      li(text: "**Transparent rounds.** A round boundary does not end, restart or inform the worker. Its conversation and worktree continue, and an ordinary supervision boundary does not kill the processes it started. The per-turn countdown notice is deleted."),
-      li(text: "**Supervision is a synchronous, invisible pause.** At each round boundary, after the current response has been handled and before the next model request, the harness persists a supervision observation (the round's turns, the diff, the receipts produced), which is the event the alignment check is triggered by, and waits for its verdict. Nothing is appended while it waits, so the worker cannot tell the pause happened. The verdict maps to exactly one action: aligned, the next turn is sent unchanged; misaligned, an actionable steer is appended to the same conversation first; extremely misaligned, the supervisor is convened and the pause lasts until its decision; catastrophically misaligned, stop. Alignment is a bounded invocation over the task, the recent work, the diff and the available results, not a long-running agent; the supervisor is convened only when alignment needs a broader decision. A check whose answer cannot change the next turn is not run."),
-      li(text: "**Hand-in puts the session into awaiting acceptance.** The submission file is the hand-in event. It names the submitted candidate, and the worker does not mutate that candidate while checks and review run; it makes no model calls while it waits. The event triggers the acceptance and review route for that candidate (decision 2). A requested change makes the same session runnable again, delivered as a steer (decision 3); a revised hand-in names a new candidate; acceptance results qualify the candidate they actually checked. The session ends when the candidate reaches the existing delivery handoff, on an explicit stop, or on an unrecoverable fault. A process exit is never the authority for whether the assignment is finished."),
-      li(text: "**The per-command bound stays.** `harness_default_duration_limit_seconds` returns control to the worker when a command hangs; a worker that wants to wait backgrounds the command and polls."),
-      li(text: "**The work allowance is renewable.** An exhausted allowance is an alignment event, not an ending: the check renews it and the same session continues, or it stops the session (decision 4). Resource and authorization limits stay with their existing authorities."),
-      li(text: "**Context growth is handled inside the session** by the existing compaction, which a longer session will exercise for the first time."),
-      li(text: "**Recovery resumes only from a validated state.** The transcript is evidence, not yet a checkpoint: today a tool's result becomes durable only in the NEXT request, and a failed wire-request write can still report a prepared round, so the latest request file may predate effects that already happened. A replacement process may resume a session only from a state whose last response has recorded results for every tool call it named, or named none. A response whose tool effects were interrupted leaves the session recovery-needed until their outcome is established. A fresh conversation is never substituted for a lost one, and the last request is never blindly resent."),
-      li(text: "**One unit per attempt**, collected on any exit with the exit record as its evidence (F68), and no held resource outlives its owner (`gunbc.plans.convergence_coverage_program` cc-guaranteed-cleanup). Relaunching a unit within one attempt requires exit records keyed by the invocation they ended: `gunbc.roadmap.roadmap_attempt_exit_spool` records an invocation id but its lookup matches node, attempt and role, and refuses more than one exit."),
-      li(text: "**Verdicts are executable; claims are executed.** A supervisor's verdict is one of the actions above, never advice the route cannot carry (F65). A supervisor's judgement that work looks correct is not verification; verification is its own obligation, triggered by hand-in (F71)."),
-    ]),
-
-    h2(text: "4. What changes (census, 2026-10-11)"),
-    p(text: "The restart machinery is deleted in the same slice as the consumer that stops needing it (S1): leaving it for later keeps a second lifecycle behavior alive."),
-    h3(text: "Deleted in S1: exists only for restart-per-stretch"),
-    ul(items: [
-      li(text: "Harness: `harness_turn_checkpoint_due`, `harness_event_alignment_checkpoint_due`, `TurnAlignmentCheckpointDue` and its exit-3 arm in `harness_turn_exit`, `RoundsEndInAlignmentCheck` and the per-turn `RoundsRemaining` notice."),
-      li(text: "Events: `HarnessAlignmentCheckpointDue` and its fold arm."),
-      li(text: "Continuation lane (`gunbc.roadmap.roadmap_attempt_continuation`): `ContinueFromAttempt`, `continuation_turn_cap`, `ContinuationTurnRead`, `continuation_continue_next_turn`, `continuation_brief_prefix` and the stretch arms of `continuation_from_capture`."),
-      li(text: "Spawn: `belt_continuation_carry`, `belt_attempt_state_initialize_after_carry`, `belt_origin_predecessor_key`, the continuation branch of `attempt_origin_base_ref`, `dispatch_continuation_alignment_preamble`; the `continuation-turn` file and the cross-attempt half of the alignment-binding gate."),
-      li(text: "Supervisor plumbing keyed on the stretch: `AttemptSupervisorRole` turn, `MeteredSupervisor` turn, the `-tN` unit names."),
-    ]),
-    h3(text: "Reshaped"),
-    ul(items: [
-      li(text: "The turn loop: the 40-turn count becomes the cadence of the synchronous alignment pause, not a terminal."),
-      li(text: "Alignment: the existing `gunbc.roadmap.roadmap_alignment` verdict representation is reused if adequate; no adaptive cadence or escalation scoring in the first version."),
-      li(text: "The supervisor is convened by the alignment check, observes the paused session, and has no stretch cap."),
-      li(text: "The submission gate: hand-in moves the session to awaiting acceptance instead of ending the worker."),
-    ]),
-    h3(text: "Kept"),
-    ul(items: [
-      li(text: "Per-command and per-request bounds; compaction; seat bind and release; the exit record and unit lifecycle; the verification, review, audit and publication obligations, triggered by events; `FreshFromBase`."),
-    ]),
-
-    h2(text: "5. Decisions (operator, 2026-10-11)"),
-    ol(items: [
-      li(text: "**The worker pauses, synchronously, while a round's alignment check runs**, and in most cases is unaware of the pause (requirement 2)."),
-      li(text: "**A package-wide acceptance check is triggered by hand-in.** The worker hands in when its node's own oracle holds; the wider check runs as the verification the hand-in event triggers, which has no turn bound. Every obligation is event-driven; none waits on a periodic pass."),
-      li(text: "**Review- and audit-requested changes continue the same session**, with the review delivered as a steer."),
-      li(text: "**Budget renewal is an alignment and supervision decision** (requirement 5)."),
-    ]),
-
-    h2(text: "6. Slices"),
-    p(text: "Each slice is proven on the srv1 lab by a live task, with no operator hand step. The first milestone ends at an accepted development result; recovery follows where an observed failure requires it."),
-    ol(items: [
-      li(text: "**S1 Synchronous boundary, and the restart lane deleted with it.** The harness no longer exits at a round boundary: it persists the supervision observation, waits for the alignment verdict, and applies it (continue unchanged, append a steer, wait for the supervisor, or stop). The countdown notice and every symbol listed as deleted in section 4 go in the same change. Control: a background job started in one round is read back in the next; an aligned transcript carries no boundary text; a misaligned fixture produces a steer the worker receives."),
-      li(text: "**S2 The hand-in loop.** Hand-in moves the session to awaiting acceptance and triggers verification (including any package-wide acceptance) and review for the named candidate as events; a requested change makes the same session runnable again with the review as a steer; acceptance reaches the existing delivery handoff and ends the session. The waiting process stays alive and makes no model calls, so this slice needs no resume. Control: the completion bar in section 7."),
-      li(text: "**S3 Recovery where an observed failure requires it.** Resume from a validated state only (requirement 7); exit records keyed by invocation; an interrupted effect leaves the session recovery-needed. Qualified by an induced kill and a lab deploy across a live session."),
-      li(text: "**S4 Terminology**, accompanying the code each slice changes; a separate rename pass over metering and the page does not delay working behavior."),
-    ]),
-
-    h2(text: "7. Completion bar for the first milestone"),
-    p(text: "One real development task that, on the srv1 lab and without operator repair:"),
-    ol(items: [
-      li(text: "crosses a supervision boundary without losing its conversation, worktree or running test;"),
-      li(text: "continues silently after an aligned verdict;"),
-      li(text: "receives one deliberate, useful steer in the same conversation;"),
-      li(text: "hands in a candidate, which triggers the real acceptance and review route;"),
-      li(text: "receives a requested change, revises in the same session, and reaches an accepted deliverable."),
-    ]),
-    p(text: "RED for the design: a session whose ordinary round boundary kills a running background process, or whose transcript contains boundary text while its rounds were aligned, or which is resumed from a state with an unrecorded tool effect."),
+    p(text: "Goal: one durable conversation per dispatched attempt, continuing through supervision and revision until delivery, explicit stop or unrecoverable fault. Operator rulings 2026-10-11: turn=model reply/request/response/tools; round=stretch between supervision observations; boundaries are transparent; obligations are event-driven, never assigned to the retiring belt. This replaces only restart/continuation realization from harness-work-lifecycle (deleted fa44b981025), not its absent resource/delivery/conservation/frontend authority. factory/harness-recursive-alignment citations remain a separate repair."),
+    p(text: "Evidence: srv1 2026-10-10/11 findings F61/F64/F65/F68/F71/F72/F73/F74/F75. Restart-per-stretch lost uncommitted work, killed jobs, orphaned scarce reservations and relearned context; countdowns distorted behavior. Capped continuation supervisors could neither change budget/brief nor verify by execution, and retained units blocked dispatch. provider_execution_fold_event conflated checkpoint/budget exhaustion; AlignmentCadenceState/checkpoint planning remained test-only. These are historical causes, not current state claims."),
+    p(text: "Terminology: session is durable transcript, process replaceable; attempt owns one worktree/branch/session. Existing harness_round_budget_steps supplies cadence (recorded default 40 turns). Rename old round/turn inversions with each affected slice; do not keep two meanings locally."),
+    p(text: "At a round boundary, after handling the response and before another request, persist supervision observation (turns, diff, receipts) and synchronously await a bounded alignment verdict. Append nothing while waiting. Exactly one action: aligned→unchanged next turn; misaligned→actionable steer in the same conversation; extremely misaligned→supervisor decision while paused; catastrophic→stop. No restart, countdown or killed background process. Run no check whose answer cannot affect the next turn; broader supervision only when needed."),
+    p(text: "Hand-in is the submission-file event naming an immutable candidate. Worker makes no calls/mutations while awaiting acceptance. Trigger real verification, package-wide acceptance and review immediately, without a turn cap or periodic pass. The worker hands in when its node oracle holds; supervisor judgment is not verification. Review/audit changes become a steer to the same session; revised hand-in names a new candidate and results qualify only the candidate checked. Acceptance reaches existing delivery handoff. Process exit never establishes completed work."),
+    p(text: "Keep command/request bounds, compaction, seat bind/release, exit/unit lifecycle, FreshFromBase and event-triggered review/audit/publication. A hung command returns control at harness_default_duration_limit_seconds; background/poll for longer waits. Allowance exhaustion triggers alignment renewal or stop, not a new session; resource/authorization authorities remain independent."),
+    p(text: "Recovery requires durable results for every tool call in the last response, or no tools. Current last-request storage can precede completed effects and failed writes can report preparation; never blindly replay it or substitute a fresh conversation. Interrupted effects leave recovery-needed until outcomes are established. One unit per attempt is collected on every exit using evidence; resources cannot outlive owners (convergence_coverage_program cc-guaranteed-cleanup). Relaunch needs invocation-keyed exit lookup: roadmap_attempt_exit_spool’s recorded invocation must distinguish exits instead of node/attempt/role ambiguity."),
+    p(text: "S1 deletes restart machinery in the same change: harness_turn_checkpoint_due/harness_event_alignment_checkpoint_due/TurnAlignmentCheckpointDue and exit-3; RoundsEndInAlignmentCheck/RoundsRemaining; HarnessAlignmentCheckpointDue/fold; ContinueFromAttempt, continuation_turn_cap/ContinuationTurnRead/continuation_continue_next_turn/continuation_brief_prefix and stretch arms; belt_continuation_carry/belt_attempt_state_initialize_after_carry/belt_origin_predecessor_key, attempt_origin_base_ref continuation branch, dispatch_continuation_alignment_preamble, continuation-turn file and cross-attempt alignment binding; stretch-keyed AttemptSupervisorRole/MeteredSupervisor and -tN units. Reuse roadmap_alignment verdicts if adequate; no first-version adaptive cadence/escalation scoring."),
+    p(text: "S2 implements the live waiting/hand-in/review loop without resume. S3 adds validated recovery only for observed failures, proven by induced kill and deploy across a live session. S4 renames terminology alongside behavior, not as a delaying global pass."),
+    p(text: "First milestone: one real srv1 lab development task, no operator repair, crosses a round with conversation/worktree/test intact; aligned continuation leaves no boundary text; deliberate useful steer arrives; hand-in executes acceptance/review; requested revision continues the same session to acceptance. Red controls: killed background work at ordinary boundary, aligned boundary text, or resume with unrecorded tool effects. Each slice needs live evidence; retirement requires S1–S4 at their owning modules."),
   ]
 }
 

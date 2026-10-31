@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.an_unprefixed_affirmative_verdict_falls_to_the_unknown_bucket
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data an_unprefixed_affirmative_verdict_falls_to_the_unknown_bucket: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unprefixed_affirmative_verdict_falls_to_the_unknown_bucket" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**an unprefixed affirmative verdict falls to the unknown bucket** (a verdict classifier that recognizes a positive only by an exact literal token, and sends every non-matching form to an 'unknown' default, silently discards a real affirmative; and because that 'unknown' is then read downstream as the ABSENCE of a verdict, the discarded approval is indistinguishable from a reviewer who said nothing.",
+
+    "SPECIMEN, this finding's own origin (2026-10-29). On PR #15336 the api-reviewer's stdout parser (verdict_source=stdout_artifact) recorded review 87592 at head da398f9de with verdict=unknown, although the artifact opened '**APPROVE** I found no blocking problems.' The classifier keys on the literal 'Verdict:' prefix: the sibling review 87485 on head 9f99081bb, whose artifact read 'Verdict: APPROVE.', parsed verdict=approve. Same provider, same model, same diff -- the only difference was whether the affirmative carried the token. Consequence: that head's approval tally read 0/1 (distinct_approval_providers empty) and a merge the reviewer had approved was blocked on an approval that had actually been given.",
+
+    "THE CONFLATION IS THE DEFECT, NOT THE MISS: 'unknown' collapses two different states -- no verdict parsed versus no approval given -- so a positive that took an unmodeled spelling reads exactly like an absent verdict. The reviewer's intent (approve) existed and was correct; the classifier's closed token set, not the review, decided the verdict. This is the mirror of absence_classifier_default_bucket: there the ACCEPTED bucket is defined by absence and swallows the unmodeled rejection; here the DEFAULT (unknown) bucket is treated as absence-of-approval and swallows the unmodeled acceptance.",
+
+    "THE OBVIOUS REPAIR IS AN ENUMERATION CHASE: widening the classifier to accept more affirmative spellings (bold '**APPROVE**', 'VERDICT: approve', a legacy 'No blocking concerns' line, ...) turns a fixed token into an ever-growing allowlist over one model's free prose, and the next unmodeled phrasing falls to unknown again; it also never fixes the request_changes side, which fails the same way toward a missing verdict.",
+
+    "THE RUNG TO CLIMB: the reviewer emits a single machine-readable verdict field and the classifier reads THAT, refusing loudly when it is absent rather than defaulting to a value that reads as no-approval -- free prose is never the authority for the machine-verdict. NEXT TRIGGER: any consumer that derives an approve/decline tally from artifact text. DISCRIMINATING PROBE: a review artifact whose affirmative is phrased without the canonical token must still tally as an approval, and a genuinely absent verdict must be a loud refusal, never 'unknown'.",
+
+    "NOT OWNED BY THE LANE THAT FOUND IT, recorded because that boundary is the reusable part. Surfaced from PR #15336's review flow, whose only relation to the api-reviewer is being reviewed by it; repairing the reviewer's verdict parser from a workflow-budget PR is the scope widening a review would rightly refuse, and the row is the mechanism DESIGN provides so the finding survives without being taken. Mitigation available today: a reviewer that wants its verdict counted emits the canonical token -- which is exactly what re-reviewing the same head did (review 87796 emitted 'Verdict: APPROVE.' and tallied approve).",
+  ],
+
+  evidence: [],
+}

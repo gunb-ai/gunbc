@@ -1,6 +1,6 @@
 module product.printed_chassis.printable_assembly
 
-import std.types { Int, String, List }
+import std.types { Int, String, List, NonEmptyStr }
 import std.measure { micrometer_count, millimeter_count }
 import std.affine_space { Point3, signed_frame_component_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
@@ -18,7 +18,8 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 
 // WHAT IS BEING PRINTED IS SELECTED, NOT HARD-WIRED. The print path (CAD check, plate preparation,
 // prepared-output identity) was written against one assembly and reached it by calling that
-// assembly's producer at every site. Each selectable assembly is one arm here; the selection that
+// assembly's producer at every site. Each selectable assembly is one arm here (a cassette assembly is a
+// named arm, a duct assembly is a catalogued card joined to a shape); the selection that
 // maps an arm to its parts lives in printable_assembly_selection, so this module stays importable
 // by the roots themselves.
 //
@@ -26,30 +27,48 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // cassette_review all_parts). It was already a distinct selection -- a different part set from the
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
-// The four A16 axial roots are the two card mounts, each as a full duct and as a fit ring; the blower
-// root is the radial-blower duct on the plug mount.
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing | A16BlowerDuct
+// The duct roots are one SHAPE on one CATALOGUED CARD. The six shapes are these: the two card mounts (plug,
+// sleeve), each as a full duct and as a fit ring; the radial-blower duct; and the flat-on-end blower duct.
+// Flat-on-end is its own kind and not a mode of the blower duct, because its geometry differs in kind: that
+// one is a socket the blower drops into beside the plug end, this one carries the housing on an open shoulder
+// behind the end with a channel turned back into the window. Two shapes, two attempts, two names to point at
+// at the printer (product.printed_chassis.card_cooling_route PlaneOnEnd, admitted 2026-10-26 on the
+// operator's declared conservative bounds -- gunbc.design_ruling
+// a16_rear_clearance_and_sides_are_operator_declared_bounds).
+//
+// The CARD half of a duct root is not a kind: it is the catalogued card's own id, and the wire spelling is
+// "<card id>-<kind>" -- the spelling the A16 roots already had, which is what extdeps.gpu.passive_card_row
+// CardRow id says a printed part for a card is named by. So a card added to
+// product.printed_chassis.duct_card_catalog duct_cards brings its own six roots with it, and no new arm,
+// spelling or selection site is written anywhere.
+type DuctRootKind = PlugDuct | SleeveDuct | PlugFitRing | SleeveFitRing | BlowerDuct | BlowerFlatOnEndDuct
 
-data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct]
+data duct_root_kinds: List<DuctRootKind> = [PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct]
+
+fn duct_root_kind_suffix(kind: DuctRootKind) -> String {
+  match kind {
+    PlugDuct => "plug-duct"
+    SleeveDuct => "sleeve-duct"
+    PlugFitRing => "plug-fit-ring"
+    SleeveFitRing => "sleeve-fit-ring"
+    BlowerDuct => "blower-duct"
+    BlowerFlatOnEndDuct => "blower-flat-on-end-duct"
+  }
+}
+
+// A ROOT IS AN IDENTITY, NOT A GEOMETRY: a duct root names a catalogued card and a shape and carries no
+// dimension; the geometry that reads a card is reached only through product.printed_chassis.
+// printable_assembly_selection. That module also ENUMERATES the duct roots, from the roster -- they cannot be
+// enumerated here, because this module is the one the card-reading geometry imports, so the roster is not
+// reachable from it (printable_assembly_selection duct_card_root, printed_assembly_roots).
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | DuctCardRoot { card: NonEmptyStr, kind: DuctRootKind }
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
     ResidentialCassette => "residential-cassette"
     CassetteRackReview => "cassette-rack-review"
-    A16PlugDuct => "a16-plug-duct"
-    A16SleeveDuct => "a16-sleeve-duct"
-    A16PlugFitRing => "a16-plug-fit-ring"
-    A16SleeveFitRing => "a16-sleeve-fit-ring"
-    A16BlowerDuct => "a16-blower-duct"
+    DuctCardRoot { card: card, kind: kind } => join([card as String, "-", duct_root_kind_suffix(kind: kind)], "")
   }
-}
-
-fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
-  fold(printed_assembly_roots, init: none, f: (acc, r) =>
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if printed_assembly_root_wire(root: r) == s { Present { value: r } } else { none }
-    })
 }
 
 // THE PRINTING PROJECTION OF A SELECTED ASSEMBLY: only what the CAD check and preparation consume.

@@ -1,0 +1,130 @@
+module extdeps.gpu.nvidia_a2
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { bandwidth, watt, gibibyte, gibibyte_to_byte_size, micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ConfigurableBoardPower, GpuComputeCapability, PcieAddInBoard, cuda_gpus_page_authority }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen4, PcieLink }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, CitedToAuthority }
+import extdeps.gpu.passive_card_row {
+  CardRow, FromCitedFigure, NeedsReading, CardLength, LengthFromBracketFace, AirflowBidirectional,
+}
+import extdeps.standards.pcie_cem { CemLowProfile, CemLowProfileBracket, CemFullHeightBracket }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA A2 product page, specifications table, read 2026-10-28: 16GB GDDR6 at 200GB/s, PCIe Gen4 x8,
+// "1-slot, low-profile PCIe", "Max thermal design power (TDP) 40–60W (configurable)" with no default, and
+// "Inside the NVIDIA Ampere Architecture". No core count and no thermal solution are stated. Compute
+// capability 8.6 is the CUDA GPUs page's ("NVIDIA A2"). The driver lists "NVIDIA A2" as device 25b6,
+// subsystem 10de:157e -- the A16's device id with another subsystem, so the device id alone does not
+// tell the two boards apart and the driver-listed name does.
+
+data a2_product_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/data-center/products/a2/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: a2_product_page_authority,
+  further_citations: [a2_product_brief_authority]
+}
+
+data nvidia_a2_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "A2",
+  microarchitecture: "Ampere",
+  execution_lane_count: none,
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 200000000000) },
+  boost_clock: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 8, minor: 6 } },
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_catalog", field_name: "memory"), authority: a2_product_page_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_catalog", field_name: "memory_bandwidth"), authority: a2_product_page_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_catalog", field_name: "microarchitecture"), authority: a2_product_page_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_catalog", field_name: "compute_capability"), authority: cuda_gpus_page_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_a2_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "A2",
+  gpu: nvidia_a2_catalog,
+  gpu_count: 1,
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+  board_power: Present { value: ConfigurableBoardPower { default: none, minimum: watt(count: 40), maximum: watt(count: 60), named_points: [] } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "25b6" as PciDeviceId },
+  driver_listed_name: Present { value: "NVIDIA A2" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_board_facts", field_name: "attachment"), authority: a2_product_page_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_board_facts", field_name: "board_power"), authority: a2_product_page_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a2", decl_name: "nvidia_a2_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_a2_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_a2_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_a2_board_catalogs: List<GpuBoardAdmission> = [nvidia_a2_board_catalog]
+
+// ═══ THE CARD'S MECHANICAL ROW (extdeps.gpu.passive_card_row CardRow) ═══
+//
+// The product page above states 40-60 W configurable with no default; the brief below is the finer
+// document and states the default (60 W), which is the figure a duct is sized for.
+// NVIDIA A2 Tensor Core GPU, product brief PB-10727-001_v02 (March 18, 2022), fetched 2026-10-29 from
+// NVIDIA's own server (the A2 product page links it), sha256
+// 17c7938109972cde09dc673a70e3e064555d848d4b241bece791a2138a688b78. The 2026-10-26 probe missed it
+// because it tried a different path. v02's change history touches only Secure Boot, the root of trust
+// and the environmental table; the figures below are unchanged from v01 (a distributor copy of v01,
+// sha256 9c80fef97fcf0595c50488391ba2f0cbb31aab2d8bfadfebc138ca9c0cfcb2d5, reads the same). Read from
+// the text layer and from Figures 3 and 4 rendered:
+//   Overview: "a half-height (low profile), half-length, single slot card ... a 60 W maximum power
+//     limit ... a passively cooled card ... that requires system airflow".
+//   Table 1: total board power 60 W default, 60 W maximum, 40 W minimum; thermal solution Passive;
+//     mechanical form factor HHHL-SS; physical x8 PCIe lanes. Full-height and half-height brackets are
+//     both listed by weight.
+//   Airflow Direction Support: a bidirectional heat sink, left-to-right or right-to-left. No CFM.
+//   Figure 3 (full-height bracket) and Figure 4 (low-profile bracket): height 68.90; length (167.64),
+//     a reference dimension, from the bracket's inner mounting face; "nominal dimensions are shown".
+//   The brief has no power-connector section, Table 1 lists no auxiliary input, and neither figure
+//     draws one: the card is powered from the slot.
+data a2_product_brief_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.nvidia.com/content/dam/en-zz/solutions/data-center/a2/pdf/a2-product-brief.pdf" }
+}
+
+data a2_brief_standing: CitedFigureStanding = CitedToAuthority { authority: a2_product_brief_authority }
+
+data a2_card_row: CardRow = CardRow {
+  id: "a2",
+  product: "NVIDIA A2 (PG179 SKU 220)",
+  height_class: FromCitedFigure { value: CemLowProfile, standing: a2_brief_standing },
+  slot_count: FromCitedFigure { value: 1, standing: a2_brief_standing },
+  length: FromCitedFigure { value: CardLength { length: micrometer(count: 167640), reference: LengthFromBracketFace }, standing: a2_brief_standing },
+  height: FromCitedFigure { value: micrometer(count: 68900), standing: a2_brief_standing },
+  brackets: FromCitedFigure { value: [CemLowProfileBracket, CemFullHeightBracket], standing: a2_brief_standing },
+  auxiliary_power: FromCitedFigure { value: [], standing: a2_brief_standing },
+  board_power: FromCitedFigure { value: watt(count: 60), standing: a2_brief_standing },
+  required_airflow: NeedsReading { read_obligation: "NVIDIA document, not read by this repository: the A2's required airflow. PB-10727-001_v02 states only that the card requires system airflow; read the figure (CFM or m3/h, with its inlet temperature and static pressure) from NVIDIA's System Design Guide for Enterprise GPU Products (DG-07562-001) or a later A2 document, and convert to ml/s. A smaller TDP is not assumed to mean less air: a smaller heatsink can need more airflow per watt." },
+  airflow_direction: FromCitedFigure { value: AirflowBidirectional, standing: a2_brief_standing },
+  sources: [
+    "NVIDIA A2 Tensor Core GPU product brief PB-10727-001_v02 (March 18, 2022), www.nvidia.com/content/dam/en-zz/solutions/data-center/a2/pdf/a2-product-brief.pdf, sha256 17c7938109972cde09dc673a70e3e064555d848d4b241bece791a2138a688b78, read 2026-10-29: Overview, Table 1, Airflow Direction Support, Figures 3 and 4",
+  ],
+}

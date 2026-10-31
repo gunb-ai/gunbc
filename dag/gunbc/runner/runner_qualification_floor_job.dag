@@ -142,3 +142,10 @@ fn qualification_floor_job(revision_input: DispatchInput, if_condition: String, 
     permissions: none,
   }
 }
+
+// THE DRIVER STEP'S CONTRACT WITH THE WORKFLOW, HERE FOR THE SAME REASON AS THE FLOOR'S: the fleet-converge model emits
+// the qualification_attempt step, and the driver (gunbc.runner.runner_qualification_attempt_run) reads the model through
+// gunbc.runner.runner_qualification_dispatch, so the step's names cannot live in the driver without an import cycle.
+data qualification_attempt_subject_env_name: NonEmptyStr = "QUALIFICATION_SUBJECT_HOST"
+
+data qualification_attempt_artifact_glob: String = "artifacts/qualification-attempt-*"
