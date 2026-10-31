@@ -1,6 +1,7 @@
 module v2.test.claim.module_acquisition
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
+import std.algebra { string_contains }
 import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
@@ -989,7 +990,7 @@ fn member_parse_at(file: ModuleFileRef, content: String) -> String {
         content: content
       ) {
         MemberParses => "parses"
-        MemberParseRefused { cause: cause } => concat("refused:", cause)
+        MemberParseRefused { cause: cause, at: at } => concat("refused:", cause, "@", at)
       }
   }
 }
@@ -1022,6 +1023,18 @@ test fn a_refused_member_is_refused_the_same_at_two_paths() -> Bool {
   parse_at_two_paths_agree(content: malformed)
     && (member_parse_text(content: malformed) != "parses")
     && (member_parse_text(content: malformed) != "grammar-unprepared")
+}
+
+// THE REFUSAL CARRIES ITS POSITION. `data x: Int =` with no value is DataValueMissingAfterEq, located at the `=`
+// token the expectation follows: line 3, byte column 13 of the text below. The clean control differs by the
+// value alone, so a verdict that located every member, or none, is told apart.
+test fn a_data_decl_missing_its_value_reports_the_line_and_column_of_the_equals_sign() -> Bool {
+  let verdict = member_parse_text(content: "module v2.test.subject\n\ndata x: Int =\n")
+  string_contains(verdict, "DataValueMissingAfterEq") && string_contains(verdict, "@3:13")
+}
+
+test fn the_same_data_decl_with_its_value_parses_and_reports_no_position() -> Bool {
+  member_parse_text(content: "module v2.test.subject\n\ndata x: Int = 1\n") == "parses"
 }
 
 fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {

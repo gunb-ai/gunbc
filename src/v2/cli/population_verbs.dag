@@ -428,7 +428,7 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         _ =>
           match acquisition_parse(env: env, file: member.file, content: member.content) {
             MemberParses => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
-            MemberParseRefused { cause: cause } => population_parse_refused(tally: counted, key: key, cause: cause)
+            MemberParseRefused { cause: cause, at: _ } => population_parse_refused(tally: counted, key: key, cause: cause)
           }
       }
     }
