@@ -1,7 +1,7 @@
 module std.durable_append_log
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_add }
 import std.measure { ByteSize, measure_add }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set {
@@ -73,7 +73,6 @@ fn append_log_expectation(head: AppendLogHead) -> AppendExpectation {
 // terminator.
 type AppendStreamObservation {
   complete_records: List<String>
-  record_count: Nat
   settled_bytes: ByteSize
   tail_bytes: ByteSize
 }
@@ -101,8 +100,17 @@ type AppendLogReadback
   | AppendLogStandingUnobserved { cause: NonEmptyStr }
   | AppendLogUnreadable { cause: CasUnreadableSlot }
 
+// THE RECORD COUNT IS DERIVED, never carried beside the records: a second count could disagree with the list
+// and position the next append over a record that already exists.
+fn append_record_count(records: List<String>) -> Nat {
+  match records {
+    Empty {} => 0
+    Cons { head: _, tail: rest } => nat_add(a: 1, b: append_record_count(records: rest))
+  }
+}
+
 fn append_stream_head(observed: AppendStreamObservation) -> AppendLogHead {
-  AppendLogHead { record_count: observed.record_count, byte_length: observed.settled_bytes }
+  AppendLogHead { record_count: append_record_count(records: observed.complete_records), byte_length: observed.settled_bytes }
 }
 
 fn append_stream_readback(observed: AppendStreamObservation, standing: AppendWriterStanding) -> AppendLogReadback {
