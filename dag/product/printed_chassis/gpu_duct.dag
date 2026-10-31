@@ -7,6 +7,7 @@ import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_
 import std.euclidean_geometry { Axis3Z }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
 import extdeps.gpu.passive_card_row { CardRow, row_field_value }
+import extdeps.standards.pcie_cem { cem_slot_envelope }
 import extdeps.fans.types {
   FanMountingPattern, RadialBlowerEnvelope, fan_sound_pressure_at,
   FanSoundPressurePublished, FanSoundPressureNotPublishedAtSpeed, FanSoundPressureUnderdetermined,
@@ -394,19 +395,41 @@ type BlowerDuctDesign {
   slot_pitch: Micrometer
 }
 
-data a16_blower_duct_design: BlowerDuctDesign = BlowerDuctDesign {
-  blower: delta_bfb1012m_envelope,
-  // The outlet edge is the one Delta's DIMENSIONS DRAWING cites (extdeps.fans.delta delta_bfb1012m_outlet,
-  // standing CitedToAuthority), read off the row, not chosen here.
-  outlet_edge: Present { value: delta_bfb1012m_outlet.edge },
-  socket_clearance: micrometer(count: 500),
-  socket_depth: micrometer(count: 10000),
-  // The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
-  // reaching it through the open socket, with room to spare.
-  screw_tool_clearance_radius: micrometer(count: 3500),
-  card_count: 1,
-  slot_pitch: micrometer(count: 40640),
+// THE BLOWER DESIGN IS THE FAN ROW, THE SOCKET ALLOWANCES, AND THE CARD'S SLOT PITCH. Only the pitch is a
+// card fact: it is the CEM slot width times the row's slot count (extdeps.standards.pcie_cem
+// cem_slot_envelope), so a card whose row has not stated its slot count has no blower design and the refusal
+// names that reading (duct_card_catalog duct_card_unread_reason).
+fn blower_duct_design(slot_pitch: Micrometer) -> BlowerDuctDesign {
+  BlowerDuctDesign {
+    blower: delta_bfb1012m_envelope,
+    // The outlet edge is the one Delta's DIMENSIONS DRAWING cites (extdeps.fans.delta delta_bfb1012m_outlet,
+    // standing CitedToAuthority), read off the row, not chosen here.
+    outlet_edge: Present { value: delta_bfb1012m_outlet.edge },
+    socket_clearance: micrometer(count: 500),
+    socket_depth: micrometer(count: 10000),
+    // The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
+    // reaching it through the open socket, with room to spare.
+    screw_tool_clearance_radius: micrometer(count: 3500),
+    card_count: 1,
+    slot_pitch: slot_pitch,
+  }
 }
+
+fn card_slot_pitch(row: CardRow) -> Micrometer? {
+  match row_field_value(field: row.slot_count) {
+    Present { value: n } => Present { value: cem_slot_envelope(slot_count: n).value }
+    Absent => Absent
+  }
+}
+
+fn blower_duct_design_of(row: CardRow) -> BlowerDuctDesign? {
+  match card_slot_pitch(row: row) { Present { value: p } => Present { value: blower_duct_design(slot_pitch: p) } Absent => Absent }
+}
+
+// The A16 instance, kept for the A16-only route reports (product.printed_chassis.card_cooling_route).
+// test.claim.duct_card_catalog_witness pins that it equals blower_duct_design_of over the A16 row, so the
+// 40.64 mm here and the one the selection derives cannot drift apart.
+data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: micrometer(count: 40640))
 
 fn larger_um(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }

@@ -362,6 +362,7 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.c_host_store_seal",
     "test.fixture.attempt_identity_seal",
     "test.fixture.belt_store_seal",
+    "test.fixture.c_printing_store_seal",
     "test.fixture.cross_module_alias_handler",
     "test.fixture.cross_shard_seam",
     "test.fixture.decl_fact_value_projection",
