@@ -114,9 +114,9 @@ import gunbc.host.host_effect_realize { host_effect_apply_gated, live_deploy_pre
 import gunbc.ci.ci_deploy_access { deploy_access_read_principal_effect, deploy_access_principal_line }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_now }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_on_the_slot }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted, srv1_deploy_slot }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_selected_workflow, DeploySlotReading, deploy_slot_host_reading_line }
 import gunbc.fleet.org_actions_inspection { read_org_runner_groups, org_actions_organization }
@@ -1085,21 +1085,23 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
 // gunbc.plans.srv1_deploy_principal_split D1, D5). Run 39284886844 and run 40704727549 died at the first
 // `sudo -n dd` because no job-user grant names it, and granting it would make the job user
-// root-equivalent. So the install is admitted three ways before any mutating leg runs, and every
-// elevated leg runs as the fleet administrator over its SSH edge (HostEffectElevationRoute):
-//   1. AUTHORITY: the job reads back that it runs as the deploy slot's user, and its own srv1
-//      root-mutation approval, re-read and authorized here, covers every scope the install exercises
-//      (gunbc.fleet.srv1_root_mutation_approval_run srv1_root_mutation_inherited_grant over
-//      microvm_controller_install_root_scopes);
-//   2. PRINCIPAL: the administrator edge's context is prepared from the run, or nothing runs;
-//   3. TENANCY: over that edge and the org's groups, read now, srv1's deploy route may switch
-//      (gunbc.runner.runner_slot_job_role srv1_deploy_route_switch_admitted over
-//      microvm_controller_install_deploy_slot_reading) -- the deploy group admits only fleet-converge at
-//      main, no other slot runs as the deploy slot's user, and no other slot's user reaches its tree,
-//      so the administrator's key in this job's agent is reachable by no other job. The edge's legs
-//      before this are reads.
+// root-equivalent. So the install is admitted three ways, and every elevated leg runs as the fleet
+// administrator over its SSH edge (HostEffectElevationRoute):
+//   1. TENANCY, in its own step before the job loads any key (microvm_controller_install_admission_wet):
+//      the job runs as the deploy slot's user, and srv1's deploy route may switch
+//      (gunbc.runner.runner_slot_job_role srv1_deploy_route_switch_admitted) over a reading taken then
+//      -- the deploy group as the org lists it admits only fleet-converge at main, and, read on the slot
+//      itself, no other slot runs as the deploy slot's user and no other slot's user reaches its tree.
+//      Only then does the next step load the administrator's key, into an agent no other job reaches.
+//      The reading is taken without the key because it is what decides whether the key may be loaded:
+//      read over the edge, it would rest on the credential whose exposure it rules out;
+//   2. AUTHORITY: the job's own srv1 root-mutation approval, re-read and authorized here, covers every
+//      scope the install exercises (gunbc.fleet.srv1_root_mutation_approval_run
+//      srv1_root_mutation_inherited_grant over microvm_controller_install_root_scopes);
+//   3. PRINCIPAL: the administrator edge's context is prepared from the run, or nothing runs.
 // The job is routed onto the deploy slot (gunbc.fleet.fleet_converge_workflow
-// fleet_converge_administrator_edge_runner_spec), but routing is not admission: the reading is.
+// fleet_converge_administrator_edge_runner_spec), but routing is not admission: the reading is, and
+// the job's step order (admission, then the key, then this install) is what makes it precede the key.
 // There is no fallback to the job user's sudo: a refusal at any of the three is the job's verdict.
 //
 // THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the plan ran; what this asks
@@ -1112,19 +1114,35 @@ data microvm_controller_install_attempt_raw: String = "microvm-controller-instal
 fn microvm_controller_install_wet() -> ProcessExit
   uses net: std.resources.Network
 {
+  match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
+    Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
+    Srv1InheritedGrantAdmitted { grant: _ } =>
+      match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+        DesiredApplyRefused { reason } => exit_failure(reason: reason)
+        DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
+      }
+  }
+}
+
+// THE TENANCY ADMISSION, its own step, run before the step that loads the fleet key. It holds no key
+// and writes nothing: it reads the job's own user, the deploy group as the org lists it (the roster
+// reader's read-only token, minted by this step's prelude), and the deploy slot's host half on the
+// slot. It succeeds only on the deploy slot's sole tenancy; any other reading fails the step, so no
+// later step of the job runs and the key is never loaded.
+fn microvm_controller_install_admission_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
   match microvm_controller_install_job_user() {
-    Absent => exit_failure(reason: "microvm_controller_install: the job's effective user could not be read, so the deploy slot's tenancy is not confirmed; nothing ran")
+    Absent => exit_failure(reason: "microvm_controller_install admission: the job's effective user could not be read, so the deploy slot's tenancy is not confirmed; no key was loaded")
     Present { value: u } =>
       if (u as String) != (deploy_slot_job_user as String) {
-        exit_failure(reason: join(["microvm_controller_install: the job runs as ", u as String, ", not the deploy slot's ", deploy_slot_job_user as String, "; the administrator edge is opened only from the deploy slot; nothing ran"], ""))
+        exit_failure(reason: join(["microvm_controller_install admission: the job runs as ", u as String, ", not the deploy slot's ", deploy_slot_job_user as String, "; the administrator's key is loaded only on the deploy slot; no key was loaded"], ""))
       } else {
-        match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
-          Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
-          Srv1InheritedGrantAdmitted { grant: _ } =>
-            match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
-              DesiredApplyRefused { reason } => exit_failure(reason: reason)
-              DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
-            }
+        let reading = microvm_controller_install_deploy_slot_reading()
+        if srv1_deploy_route_switch_admitted(reading: reading) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: concat("microvm_controller_install admission: srv1's deploy route is not admitted (gunbc.ci.deploy_route_requirement srv1_deploy_route_requirement): the reading is not the deploy slot's sole tenancy, so the administrator's key is not loaded and nothing runs: ", microvm_controller_install_reading_text(reading: reading)))
         }
       }
   }
@@ -1145,11 +1163,10 @@ fn microvm_controller_install_job_user() -> NonEmptyStr? {
   }
 }
 
-// THE TENANCY, READ NOW, before any leg: the deploy group as the org lists it (the roster reader's
-// read-only token, minted by this step's prelude), and the deploy slot's host half over the edge this
-// job just opened. The edge's first legs are these reads, which write nothing; no mutating leg runs
-// unless the reading is the deploy slot's sole tenancy.
-fn microvm_controller_install_deploy_slot_reading(context: FleetSshExecutionContext) -> DeploySlotReading
+// THE TENANCY, READ WITHOUT THE KEY: the deploy group as the org lists it, and the deploy slot's host
+// half read on the slot by this job (gunbc.runner.runner_host_file_converge
+// observe_deploy_slot_host_reading_on_the_slot). Both are reads; neither needs the administrator edge.
+fn microvm_controller_install_deploy_slot_reading() -> DeploySlotReading
   uses net: std.resources.Network
 {
   DeploySlotReading {
@@ -1158,7 +1175,7 @@ fn microvm_controller_install_deploy_slot_reading(context: FleetSshExecutionCont
       selected_workflow: deploy_slot_selected_workflow(),
       listed: read_org_runner_groups(organization: org_actions_organization),
     ),
-    host: observe_deploy_slot_host_reading_now(slot: srv1_deploy_slot(), context: context),
+    host: observe_deploy_slot_host_reading_on_the_slot(slot: srv1_deploy_slot()),
   }
 }
 
@@ -1172,37 +1189,29 @@ fn microvm_controller_install_reading_text(reading: DeploySlotReading) -> String
   ], "")
 }
 
-fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit
-  uses net: std.resources.Network
-{
+fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
   match administrator_ssh_target(host: operator_host_srv1) {
     SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: concat("microvm_controller_install: the administrator edge has no target: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
     SshTargetResolved { target: target } =>
       match prepare_fleet_ssh_agent_context(attempt_raw: microvm_controller_install_attempt_raw) {
         FleetSshContextRefused { cause: c } => exit_failure(reason: concat("microvm_controller_install: the administrator edge refused before any leg: ", c))
-        FleetSshContextReady { context: context, receipt: _ } => {
-          let reading = microvm_controller_install_deploy_slot_reading(context: context)
-          if !srv1_deploy_route_switch_admitted(reading: reading) {
-            exit_failure(reason: concat("microvm_controller_install: srv1's deploy route is not admitted (gunbc.ci.deploy_route_requirement srv1_deploy_route_requirement): the in-job reading is not the deploy slot's sole tenancy, so no mutating leg runs over the administrator edge; nothing was written: ", microvm_controller_install_reading_text(reading: reading)))
-          } else {
-            match observe_candidate_release() {
-              CandidateUnobservable { cause: why } => exit_failure(reason: candidate_unobservable_detail(cause: why))
-              CandidateObserved { candidate: candidate } => {
-                let mutation = host_effect_apply(
-                  target: HostOs { node: spec.target.host },
-                  effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh { target: target, context: context } },
-                  evidence: host_effect_identity_evidence,
-                  transport: LocalShell,
-                )
-                if !reconciliation_converged(r: mutation) {
-                  live_deploy_reconciliation_exit(r: mutation)
-                } else {
-                  microvm_controller_install_readback_exit(candidate: candidate)
-                }
+        FleetSshContextReady { context: context, receipt: _ } =>
+          match observe_candidate_release() {
+            CandidateUnobservable { cause: why } => exit_failure(reason: candidate_unobservable_detail(cause: why))
+            CandidateObserved { candidate: candidate } => {
+              let mutation = host_effect_apply(
+                target: HostOs { node: spec.target.host },
+                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh { target: target, context: context } },
+                evidence: host_effect_identity_evidence,
+                transport: LocalShell,
+              )
+              if !reconciliation_converged(r: mutation) {
+                live_deploy_reconciliation_exit(r: mutation)
+              } else {
+                microvm_controller_install_readback_exit(candidate: candidate)
               }
             }
           }
-        }
       }
   }
 }

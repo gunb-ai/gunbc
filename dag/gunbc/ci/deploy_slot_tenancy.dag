@@ -61,7 +61,7 @@ fn deploy_slot_selected_workflow() -> NonEmptyStr {
 // answer is that the JIT registration is refused for a group that no longer exists, so the slot fails to
 // register visibly; that is inferred from the API taking a group id, not yet observed. What retires this
 // row is a read of the slot's group from the org's runner groups at render time; the in-job read
-// (gunbc.live_deploy.apply microvm_controller_install_wet) happens after the drop-in is rendered, so it
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet) happens after the drop-in is rendered, so it
 // cannot.
 type RunnerGroupEnsureReceipt {
   run_id: NonEmptyStr

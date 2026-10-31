@@ -167,9 +167,9 @@ fn deploy_slot_account_operation() -> ExecutorPrivilegedOperation {
 }
 
 // WHETHER srv1's DEPLOY ROUTE MAY SWITCH, over a reading the caller took: the microVM controller
-// install takes it in-job, after the administrator edge is open and before any leg runs
-// (gunbc.live_deploy.apply microvm_controller_install_wet), so the switch is admitted on what the host
-// and the org hold at that instant, not on a row.
+// install takes it in-job, in its own step before the job loads the fleet key
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet), so the switch is admitted on what
+// the host and the org hold at that instant, not on a row.
 fn srv1_deploy_route_switch_admitted(reading: DeploySlotReading) -> Bool {
   deploy_route_switch_admitted(
     r: srv1_deploy_route_requirement,

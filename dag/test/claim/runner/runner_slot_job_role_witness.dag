@@ -32,7 +32,7 @@ import gunbc.executor_privileged_operation { executor_privileged_operations_sudo
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_content, deploy_slot_privileged_operations }
 import gunbc.fleet.fleet_posix_accounts { fleet_principal_intent, FleetAccountDeployJob, FleetAccountCiRunner, FleetPrincipalIntent }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_host_pinned_runner_spec, fleet_converge_microvm_controller_install_job, fleet_converge_microvm_controller_install_step, fleet_converge_dashboard_deploy_job }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_host_pinned_runner_spec, fleet_converge_microvm_controller_install_job, fleet_converge_microvm_controller_install_admission_step, fleet_converge_dashboard_deploy_job }
 import extdeps.github.actions { RunsOnExpression, RunnerSpec, Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.auth.access_token_source { workload_identity_token_env }
@@ -283,16 +283,16 @@ test fn witness_only_the_administrator_edge_job_selects_the_deploy_slot() -> Boo
     && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
 }
 
-// THE INSTALL STEP CAN MINT THE TOKEN ITS TENANCY READ NEEDS. The step runs the roster reader's mint,
-// down-scoped to organization_self_hosted_runners read, and that mint reads the app key with the job's
-// workload-identity token, so the step's environment must carry it. The RED is the step as it stood
-// before this route: no environment, so the mint would read an empty bearer and the install would
-// refuse every run at its admission.
-fn install_step_run_and_wif_env(st: Step) -> Bool {
+// THE ADMISSION STEP CAN MINT THE TOKEN ITS TENANCY READ NEEDS. The step runs the roster reader's
+// mint, down-scoped to organization_self_hosted_runners read, and that mint reads the app key with the
+// job's workload-identity token, so the step's environment must carry it. The RED is a step with no
+// environment: the mint would read an empty bearer and the admission would refuse every run.
+fn admission_step_run_and_wif_env(st: Step) -> Bool {
   match st {
     RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       string_contains(s: r, pattern: "\"organization_self_hosted_runners\": \"read\"")
         && string_contains(s: r, pattern: "export GUNBC_ORG_ADMIN_TOKEN")
+        && string_contains(s: r, pattern: "--function microvm_controller_install_admission_wet")
         && match e {
           Present { value: kvs } => any(kvs, x => x.key == workload_identity_token_env as String
             && match x.value { YamlString { value: v } => v == "${{ steps.wif_auth.outputs.access_token }}" _ => false })
@@ -302,8 +302,61 @@ fn install_step_run_and_wif_env(st: Step) -> Bool {
   }
 }
 
-test fn witness_the_install_step_mints_a_read_only_roster_token_with_its_workload_identity() -> Bool {
-  install_step_run_and_wif_env(st: fleet_converge_microvm_controller_install_step())
+test fn witness_the_admission_step_mints_a_read_only_roster_token_with_its_workload_identity() -> Bool {
+  admission_step_run_and_wif_env(st: fleet_converge_microvm_controller_install_admission_step())
+}
+
+fn job_step_id(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    UsesStep { name: _, id: Present { value: i }, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    _ => ""
+  }
+}
+
+fn job_step_name(st: Step) -> String {
+  match st {
+    RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    UsesStep { name: Present { value: n }, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    _ => ""
+  }
+}
+
+fn job_step_if(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
+    _ => ""
+  }
+}
+
+// THE KEY IS LOADED ONLY AFTER THE TENANCY IS ADMITTED, read off the emitted job: WIF auth, then the
+// admission, then the operator's approval, then the key, then the install. A key or install step seen
+// before the admission leaves the fold sticky at -1. No step after the admission may run on its
+// failure: a status function (always, failure, cancelled) in a later step's condition would run it past
+// a refused admission, so any such condition fails the claim.
+test fn witness_the_fleet_key_is_loaded_only_after_the_tenancy_admission() -> Bool {
+  let j = fleet_converge_microvm_controller_install_job()
+  let reached = fold(j.steps, init: 0, f: fn(at, st) {
+    let id = job_step_id(st: st)
+    if at < 0 { at }
+    else if id == "wif_auth" { if at == 0 { 1 } else { at } }
+    else if id == "microvm_controller_install_admission" { if at == 1 { 2 } else { 0 - 1 } }
+    else if id == "srv1_root_mutation_approval" { if at == 2 { 3 } else { 0 - 1 } }
+    else if string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run") { if at == 3 { 4 } else { 0 - 1 } }
+    else if id == "microvm_controller_install" { if at == 4 { 5 } else { 0 - 1 } }
+    else { at }
+  })
+  let after_admission = fold(j.steps, init: [], f: fn(acc, st) {
+    if count(acc) > 0 || job_step_id(st: st) == "microvm_controller_install_admission" { concat(acc, [st]) } else { acc }
+  })
+  let key_and_install = filter(after_admission, st =>
+    job_step_id(st: st) == "microvm_controller_install" || string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run"))
+  reached == 5
+    && count(key_and_install) == 2
+    && !any(key_and_install, st => string_contains(s: job_step_if(st: st), pattern: "always()")
+      || string_contains(s: job_step_if(st: st), pattern: "failure()")
+      || string_contains(s: job_step_if(st: st), pattern: "cancelled()"))
 }
 
 fn id_of(x: RunnerGroupEnsureReceipt) -> Int {

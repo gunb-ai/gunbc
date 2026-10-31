@@ -1383,6 +1383,11 @@ data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunSt
   function: "microvm_controller_install_wet",
 }
 
+data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "microvm_controller_install_admission_wet",
+}
+
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
   function: "rlm_launch_deployment_receipt_wet",
@@ -1575,6 +1580,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
     gunbc_ci_microvm_controller_install_target,
+    gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1653,17 +1659,27 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
   )
 }
 
-// THE INSTALL'S TENANCY READ NEEDS THE ORG'S RUNNER GROUPS (gunbc.live_deploy.apply
-// microvm_controller_install_wet reads the deploy group back before any root write), so the step mints
-// the roster reader's installation token, down-scoped at the mint to organization_self_hosted_runners
-// read: the job reads the groups and can change none of them. The mint reads the app key with the
-// job's workload-identity token, which the step's environment carries.
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
+  gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_microvm_controller_install_target.entry,
     function: gunbc_ci_microvm_controller_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// THE INSTALL'S TENANCY ADMISSION READS THE ORG'S RUNNER GROUPS (gunbc.live_deploy.apply
+// microvm_controller_install_admission_wet), so its step mints the roster reader's installation token,
+// down-scoped at the mint to organization_self_hosted_runners read: the job reads the groups and can
+// change none of them. The mint reads the app key with the job's workload-identity token, which the
+// step's environment carries. The step holds no fleet key: it runs before the step that loads one.
+fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_install_admission_target.entry,
+    function: gunbc_ci_microvm_controller_install_admission_target.function,
     claim_run: false,
     receipt_rel: none
   )
