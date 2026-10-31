@@ -1901,6 +1901,46 @@ fn roster_primary_heads(parse_root: Node, call: String) -> List<Node> {
   })
 }
 
+// Every match arm whose WHOLE pattern is one bare atom spelled `binder`: the arm's capture (pattern, `=>`, body). The pattern
+// production is peeled through its captured child until an atom or a non-atom is reached, so a constructor pattern
+// (`T { f: a }`) or a payload-bearing one never reads as a bare atom. Whether the atom binds or names a nullary tag is
+// resolution's fact, decided by the occurrence's census locus (OnlyOccurrences), never here.
+fn roster_bare_atom_arms(parse_root: Node, binder: String) -> List<Node> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if id == ^dag_surface_match_arm {
+          match parse_production_captured_child_optional(node: n) {
+            Present { value: cap } =>
+              match find_named_child(root: cap, name: ^grammar_sequence_left_node_projection) {
+                Accepted { value: left, diagnostics: _ } =>
+                  match roster_peel_to_atom(node: left) {
+                    Present { value: sym } => if symbol_lexeme(sym: sym) == binder { list_snoc_item(xs: acc, item: cap) } else { acc }
+                    Absent => acc
+                  }
+                Rejected { diagnostics: _ } => acc
+              }
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn roster_peel_to_atom(node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => Present { value: sym }
+    Absent =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: inner } => roster_peel_to_atom(node: inner)
+        Absent => Absent
+      }
+  }
+}
+
 // THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. The pipe sites of the parse are indexed ONCE
 // here (the fold's shared value): a head's pipe read is a map lookup, never a subtree walk.
 fn roster_rows_label_plan(sides: List<RosterHomeSide>, 
