@@ -19,7 +19,10 @@ fn userdel_remove_account_argv(account: NonEmptyStr) -> List<String> {
   [userdel_binary_path as String, account as String]
 }
 
-// userdel(8), EXIT STATUS: "6 specified user doesn't exist". The retirement reads it as a failure of
-// the roster, not as success: a member the run expected to remove and did not find is a host that
-// differs from the roster, and the run says so rather than reporting a removal it did not perform.
+// userdel(8), EXIT STATUS: "6 specified user doesn't exist". gunbc.fleet.approval_ntfy_retirement
+// declares it on its account-removal leg (NtfyRetireLeg.subject_absent) and reads that exit as a
+// DIVERGENCE FROM THE ROSTER, never as success: a member the run was approved to remove and did not
+// find is a host that differs from the roster, and the run refuses with the divergence named rather
+// than reporting a removal it did not perform -- or calling an absence it never caused a retirement.
+// The retirement's PROOF of absence is still its own later read (getent passwd), not this exit code.
 data userdel_user_not_found_exit: Int = 6

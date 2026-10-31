@@ -8,7 +8,8 @@ module test.claim.approval_ntfy_retirement_witness
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.scoped_authorization { first_uncovered_scope, AuthorizationScope }
 import std.effect_grant { Write }
-import std.optional { Absent }
+import std.optional { Absent, Present }
+import std.list { first_where }
 import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_members, ntfy_retire_legs, ntfy_retire_receipt_text,
   ntfy_retire_receipt_is_clean, ntfy_retire_unit_is_absent, ntfy_retire_account_is_absent,
@@ -22,8 +23,11 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_binary_path, ntfy_retire_unit_path,
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
+  ntfy_retire_leg_answers_subject_absent, ntfy_retire_subject_absent_reason,
+  NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
 }
 import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.shadow.account_deletion { userdel_user_not_found_exit }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
   srv1_root_removal_scope_at,
@@ -107,6 +111,59 @@ test fn the_recursive_flag_travels_with_the_target() -> Bool {
   all(ntfy_retire_removals, r =>
     any(ntfy_retire_legs, leg => any(leg.argv, w => w == r.target)
       && (r.recursive == any(leg.argv, w => w == "-rf"))))
+}
+
+// ── A leg that finds its subject already gone ────────────────────────────────────────────────────
+// userdel(8) exits 6 for "specified user doesn't exist". The retirement declares that answer on its
+// account-removal leg and reads it as a DIVERGENCE FROM THE ROSTER -- the roster the run was approved
+// against lists the account as installed, so a host answering otherwise has been changed by something
+// outside this corpus. It is never success: an absence the run did not cause is not a retirement. And
+// no other leg gets to guess one -- a leg that declares no such answer reads NO exit that way, because
+// "which code would have meant missing" is exactly the plausible default DESIGN.md 5 refuses.
+
+fn witness_leg_declares_subject_absent(leg: NtfyRetireLeg) -> Bool {
+  match leg.subject_absent {
+    NoSubjectAbsentAnswer => false
+    SubjectAbsentExit { exit_code: _ } => true
+  }
+}
+
+fn witness_declared_subject_absent_exit(leg: NtfyRetireLeg) -> Int {
+  match leg.subject_absent {
+    NoSubjectAbsentAnswer => -1
+    SubjectAbsentExit { exit_code: code } => code
+  }
+}
+
+test fn only_the_account_leg_declares_a_subject_absent_answer() -> Bool {
+  ntfy_retire_legs.all(leg => witness_leg_declares_subject_absent(leg: leg) == (leg.name == "account-remove"))
+    && ntfy_retire_legs.all(leg => leg.name != "account-remove"
+      || witness_declared_subject_absent_exit(leg: leg) == userdel_user_not_found_exit)
+    // Success is never read as "already gone": a leg that exits 0 is followed by the readback, which
+    // is the only thing in this run that proves absence.
+    && ntfy_retire_legs.all(leg => !ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: 0))
+}
+
+// RED: THE ACCOUNT IS NOT ON THE HOST. userdel's 6 must refuse, naming the divergence -- the leg, the
+// exit, and the roster it disagrees with -- and a DIFFERENT userdel failure (its generic exit 1) must
+// not be dressed up as that divergence. A removal leg that declares no answer (the binary) never reads
+// a 6 as one either.
+test fn red_a_userdel_that_found_no_account_refuses_as_a_roster_divergence() -> Bool {
+  match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "account-remove") {
+    Absent => false
+    Present { value: account_leg } =>
+      match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "binary-remove") {
+        Absent => false
+        Present { value: binary_leg } =>
+          ntfy_retire_leg_answers_subject_absent(leg: account_leg, exit_code: userdel_user_not_found_exit)
+            && !ntfy_retire_leg_answers_subject_absent(leg: account_leg, exit_code: 1)
+            && !ntfy_retire_leg_answers_subject_absent(leg: account_leg, exit_code: 2)
+            && !ntfy_retire_leg_answers_subject_absent(leg: binary_leg, exit_code: userdel_user_not_found_exit)
+            && string_contains(s: ntfy_retire_subject_absent_reason(leg: account_leg, exit_code: userdel_user_not_found_exit), pattern: "account-remove")
+            && string_contains(s: ntfy_retire_subject_absent_reason(leg: account_leg, exit_code: userdel_user_not_found_exit), pattern: "6")
+            && string_contains(s: ntfy_retire_subject_absent_reason(leg: account_leg, exit_code: userdel_user_not_found_exit), pattern: "roster")
+      }
+  }
 }
 
 // ── The readback verdicts ──────────────────────────────────────────────────────────────────────
@@ -259,8 +316,19 @@ test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
 test fn the_elevation_control_proves_the_channel_before_any_absence_is_claimed() -> Bool {
   ntfy_retire_elevation_control_argv == ["test", "-d", "/"]
     && ntfy_retire_elevation_control_is_proven(exit_code: 0)
-    && !ntfy_retire_elevation_control_is_proven(exit_code: 1)
+}
+
+// RED: THE ELEVATION CONTROL FAILS, SO NOTHING IS PROVEN. sudo -n refusing exits 1 -- the same code
+// a path probe exits when the path really is gone -- and a transport or shell error exits 2 or more.
+// Either way the run must refuse rather than read absences, and the control must never be pointed at
+// a roster path: a control that asks about something that might legitimately be missing proves
+// nothing, and a control built from the roster would quietly become a third read of the members.
+test fn red_an_elevation_control_that_did_not_succeed_proves_no_channel() -> Bool {
+  !ntfy_retire_elevation_control_is_proven(exit_code: 1)
     && !ntfy_retire_elevation_control_is_proven(exit_code: 2)
+    && !ntfy_retire_elevation_control_is_proven(exit_code: 127)
+    && !any(ntfy_retire_roster_paths, p => any(ntfy_retire_elevation_control_argv, w => w == (p as String)))
+    && !any(ntfy_retire_members, m => any(ntfy_retire_elevation_control_argv, w => w == (m as String)))
 }
 
 // THE FRONT DOOR. tailscale's own status is the account of what it serves: a route on the retired

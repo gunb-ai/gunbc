@@ -59,7 +59,7 @@ import extdeps.systemd.systemctl {
   systemctl_stop_argv, systemctl_disable_now_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv,
 }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv, coreutils_rm_force_recursive_argv }
-import extdeps.shadow.account_deletion { userdel_remove_account_argv }
+import extdeps.shadow.account_deletion { userdel_remove_account_argv, userdel_user_not_found_exit }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, tailscale_serve_off_argv,
   tailscale_serve_status_json_argv, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
@@ -209,18 +209,31 @@ fn ntfy_retire_front_door_off_argv() -> List<String> {
 type NtfyRetireLeg {
   name: String
   argv: List<String>
+  // The exit code this leg's tool returns when the thing it was told to remove is NOT on the host at
+  // all. Most tools have no such answer -- systemctl stops a unit that is not running without
+  // complaint, `rm -f` and `tailscale serve --https=8443 off` report nothing -- so they declare
+  // NoSubjectAbsentAnswer and any non-zero exit is a plain failure. userdel(8) is the one leg that
+  // answers "that user does not exist" (exit 6), and that answer is a DIVERGENCE, not a success: the
+  // roster this retirement was approved against lists the account as installed, so a host that says
+  // otherwise has been changed by something outside this corpus. The leg refuses, and refuses with the
+  // divergence named, rather than reporting a removal it did not perform or swallowing it as success.
+  subject_absent: NtfyRetireSubjectAbsentAnswer
 }
 
+type NtfyRetireSubjectAbsentAnswer
+  = NoSubjectAbsentAnswer
+  | SubjectAbsentExit { exit_code: Int }
+
 data ntfy_retire_legs: List<NtfyRetireLeg> = [
-  NtfyRetireLeg { name: "unit-stop", argv: ntfy_retire_stop_unit_argv() },
-  NtfyRetireLeg { name: "unit-disable", argv: ntfy_retire_disable_unit_argv() },
-  NtfyRetireLeg { name: "unit-file-remove", argv: ntfy_retire_remove_unit_file_argv() },
-  NtfyRetireLeg { name: "daemon-reload", argv: ntfy_retire_daemon_reload_argv() },
-  NtfyRetireLeg { name: "account-remove", argv: ntfy_retire_remove_account_argv() },
-  NtfyRetireLeg { name: "config-dir-remove", argv: ntfy_retire_remove_config_dir_argv() },
-  NtfyRetireLeg { name: "state-root-remove", argv: ntfy_retire_remove_state_root_argv() },
-  NtfyRetireLeg { name: "binary-remove", argv: ntfy_retire_remove_binary_argv() },
-  NtfyRetireLeg { name: "front-door-off", argv: ntfy_retire_front_door_off_argv() },
+  NtfyRetireLeg { name: "unit-stop", argv: ntfy_retire_stop_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-disable", argv: ntfy_retire_disable_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-file-remove", argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "daemon-reload", argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "account-remove", argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
+  NtfyRetireLeg { name: "config-dir-remove", argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "state-root-remove", argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "binary-remove", argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "front-door-off", argv: ntfy_retire_front_door_off_argv(), subject_absent: NoSubjectAbsentAnswer },
 ]
 
 // ── The readback ───────────────────────────────────────────────────────────────────────────────
@@ -535,7 +548,7 @@ fn ntfy_retire_leg_step(target: SshTarget, context: FleetSshExecutionContext, in
   match list_at_optional(xs: ntfy_retire_legs, index: index) {
     Absent => ExitSuccess
     Present { value: leg } =>
-      match ntfy_retire_elevated_exec(target: target, context: context, command: leg.argv, step: leg.name) {
+      match ntfy_retire_elevated_exec(target: target, context: context, leg: leg) {
         ExitSuccess => ntfy_retire_leg_step(target: target, context: context, index: index + 1)
         other => other
       }
@@ -550,21 +563,45 @@ fn ntfy_retire_elevated_argv(command: List<String>) -> List<String> {
 fn ntfy_retire_elevated_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
-  command: List<String>,
-  step: String,
+  leg: NtfyRetireLeg,
 ) -> ProcessExit
   uses net: std.resources.Network
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ntfy_retire_elevated_argv(command: command)) {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ntfy_retire_elevated_argv(command: leg.argv)) {
     TypedArgvExecRefused { reason: why } =>
-      exit_failure(reason: concat("approval ntfy retirement: ", concat(step, concat(" refused: ", why))))
+      exit_failure(reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" refused: ", why))))
     TypedArgvExecConverged { result: r } =>
       if r.success {
         ExitSuccess
+      } else if ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: r.exit_code) {
+        exit_failure(reason: ntfy_retire_subject_absent_reason(leg: leg, exit_code: r.exit_code))
       } else {
-        exit_failure(reason: concat("approval ntfy retirement: ", concat(step, concat(" exited ", to_string(r.exit_code)))))
+        exit_failure(reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" exited ", to_string(r.exit_code)))))
       }
   }
+}
+
+// Does this exit code mean "the subject was not on the host"? Only for a leg that declares such an
+// answer, and only at the exact code. A leg that declares none never reads ANY exit that way -- a
+// missing answer is not a licence to guess which exit would have meant it.
+fn ntfy_retire_leg_answers_subject_absent(leg: NtfyRetireLeg, exit_code: Int) -> Bool {
+  match leg.subject_absent {
+    NoSubjectAbsentAnswer => false
+    SubjectAbsentExit { exit_code: expected } => exit_code == expected
+  }
+}
+
+fn ntfy_retire_subject_absent_reason(leg: NtfyRetireLeg, exit_code: Int) -> String {
+  concat(
+    "approval ntfy retirement: ",
+    concat(
+      leg.name,
+      concat(
+        " found its subject already gone (exit ",
+        concat(to_string(exit_code), "): the host does not match the roster this retirement was approved against, so the run refuses rather than reporting a removal it did not perform"),
+      ),
+    ),
+  )
 }
 
 // THE READBACK, one probe per roster member, printed as the receipt. A member found still present
