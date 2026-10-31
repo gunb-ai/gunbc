@@ -482,6 +482,25 @@ fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: St
 // dead pane when the write fails. Create-only mkdir is `host_spool_create_only_command`: the spool must
 // already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
 fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
+  // A NAME THE WRITER NEVER EXPANDED IS NOT AN ENTRY. This mkdir route takes the entry name as TEXT
+  // (the belt's vendor-pane route, a replay, a hand call), and a name still carrying the stop-hook
+  // variable spelling is the writer's defect, not an exit fact: only the service manager substitutes
+  // those variables, so no modeled writer may mint one and none may write one. srv1 2026-10-28
+  // 06:17:02Z is exactly that artifact -- attempt-exit-spool/refused/debt-exclusion-frontier-
+  // excludes-nothing+6ea61c671002a6d4+worker+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+
+  // ${EXIT_STATUS}, mode 0755 owned by briansrls (not gunbc-worker), written outside the unit's
+  // ExecStopPost by a path that carried the hook's dollar sign protected from the manager's own
+  // expansion. Refusing it here is what makes that entry unwritable through any modeled route; the
+  // reader arm (AttemptExitRecordWriterUnsubstituted) is what refuses to read one that already exists.
+  let unexpanded = attempt_exit_entry_unexpanded_variables(entry_name: entry_name)
+  if !unexpanded.is_empty() {
+    AttemptExitRecordPutFailed {
+      reason: join(
+        ["the entry name carries service-manager variables that were never substituted (", join(unexpanded, ", "), "); a stop hook whose substitution did not run is a writer defect, not an exit record"],
+        "",
+      ),
+    }
+  } else {
   let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
   let command = host_spool_create_only_command(path: path)
   let ran = shell.Exec.RunArgv(
@@ -495,11 +514,24 @@ fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String)
       reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
     }
   }
+  }
 }
 
 fn attempt_exit_record_put_vendor_pane_death(instance_root: String, node_id: String, attempt_key: String, death: VendorPaneDeath) -> AttemptExitRecordPut {
   match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
     AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } =>
+      // The spool holds only names the writer never expanded. Writing the real record here IS the
+      // repair: a decodable record outranks a malformed sibling in attempt_exit_record_matching, so the
+      // subject becomes answerable and the broken name stops being read as anything about the attempt.
+      match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {
+        Absent =>
+          AttemptExitRecordPutFailed {
+            reason: "vendor pane signal is not a standard Linux signal name",
+          }
+        Present { value: entry_name } =>
+          attempt_exit_record_put_mkdir_name(instance_root: instance_root, entry_name: entry_name)
+      }
     AttemptExitRecordUnreadable { reason } => AttemptExitRecordPutFailed { reason: reason }
     AttemptExitRecordNone =>
       match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {
