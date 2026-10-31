@@ -649,6 +649,11 @@ pub struct RoutedEqualityResidualRow {
     pub subject_type: String,
 }
 
+// Census classifier for gunbc.rung_drop.derived_equality_residual_field_equality: it turns the seed
+// checker's two routed-equality advisories into the drop's population rows (DESIGN 6: name the
+// instrument, never transcribe its output). Hand-written seed Rust, and it is temporary by
+// gunbc.equality_route_table_retention: when the v2 checker computes the equality plan, this
+// classification moves to v2 with the plan and this copy is deleted in the same motion.
 fn routed_equality_residual_rows_from_resolved(
     result: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> Vec<RoutedEqualityResidualRow> {

@@ -188,21 +188,62 @@ test fn collection_key_census_row_is_present_and_the_program_stays_accepted() ->
     && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
-// THE POPULATION IS A BOUND, NOT A SUBSET (manager ruling msg_7f0d6824, blocker 1). The declared walk
-// alone reports 0 for a module whose only routed key type is inferred, so the drop row's subject --
-// EVERY emitted use -- would have outrun its population. It must not be able to.
-test fn inferred_collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
-  eq_admitted(source: collection_key_inferred_census_row_source)
-    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+// WHAT THIS POPULATION COVERS, measured, and what it does NOT (manager ruling msg_bcfda74b, option A).
+// The declared walk (fields, variant payloads, parameters, the return, a data row's type) sees a keyed
+// container only where the author spelled its type. The body arm this change adds walks the TYPED body, so
+// a keyed container standing in a BODY position is censused wherever the checker knows its key type:
+//   * an ANNOTATED local -- `let m: Map<Node, Int> = map_insert(...)`. Its type node carries the
+//     instantiated arguments (executed probe at this fixture: `Map/FinitelySupportedFunction|FF|Node;Int;`),
+//     the key is judged (`KEY:Node|PLAN`), and the row is reported. This position is NEWLY VISITED: the
+//     declared walk alone reports 0 for the same module, so without this arm the drop row's subject -- every
+//     emitted use -- would outrun its population.
+data collection_key_annotated_local_census_row_source: String = "module eq_probe_collection_key_annotated\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nimport v2.std.node { Node }\nfn has_node(n: Node) -> Bool {\n  let m: Map<Node, Int> = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
+
+test fn annotated_local_collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_annotated_local_census_row_source)
+    && eq_class_count(source: collection_key_annotated_local_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
-// CONTROL: an ordinary value key is not the residual. Same shape, Int key, so the inferred walk must
-// report nothing -- it counts by the same walker, not by "any Map in a body".
-data collection_key_inferred_control_source: String = "module eq_probe_collection_key_inferred_ctl\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nfn has_one(n: Int) -> Bool {\n  let m = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
+// CONTROL: an ordinary value key is not the residual. The same annotated shape with an Int key, so the body
+// arm reports nothing -- it counts by the walker's plan judgment, not by "any Map in a body".
+data collection_key_annotated_local_control_source: String = "module eq_probe_collection_key_annotated_ctl\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nfn has_one(n: Int) -> Bool {\n  let m: Map<Int, Int> = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
 
-test fn inferred_collection_key_census_control_reports_nothing() -> Bool {
-  eq_admitted(source: collection_key_inferred_control_source)
-    && eq_class_count(source: collection_key_inferred_control_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+test fn annotated_local_collection_key_census_control_reports_nothing() -> Bool {
+  eq_admitted(source: collection_key_annotated_local_control_source)
+    && eq_class_count(source: collection_key_annotated_local_control_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+}
+
+// THE GAP, PINNED (manager ruling msg_bcfda74b): the SAME call, no annotation. Its type node carries the
+// declaration's FORMALS instead of the instantiation -- executed probe at this very fixture:
+// `Map/FinitelySupportedFunction|FF|K;V;`, `KEY:K|NOPLAN` -- because no per-call type-argument substitution
+// exists in the tree: the property the emitter's legacy readers consult for applied arguments,
+// `__applied_type_args`, has no writer anywhere (src/v1/05_emit_rust.dag:405 states that in those readers'
+// own comment). So the walk judges the type variable K, gets no plan, reports nothing and refuses nothing.
+// This is a MISSING CAPABILITY, not a lowered rung, and it is enrolled at
+// gunbc.recurring_failure_mode.field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter,
+// whose trigger capability is exactly the channel this arm already reads first -- the arm starts reporting
+// the day the inference lane writes it, with no change here. This RED is what keeps the drop row's
+// population honest about the gap: it pins that a call-inferred keyed container is OUTSIDE the census, so a
+// membership use on it that goes through derived equality is UNCOVERED by the count, and says so.
+test fn call_inferred_collection_key_reports_no_route_row() -> Bool {
+  eq_admitted(source: collection_key_inferred_census_row_source)
+    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
+}
+
+// THE NAME READING'S LIMIT, KEPT HONEST. The body arm reads a container's name off the node where the
+// author never wrote one -- the same leaf-SPELLING rung as
+// gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose next rung
+// is declaration-keyed; it is not identity-keyed. A reader that named every unnamed node would census
+// anything at all, so this RED pins what the walk must NOT do: an unkeyed container reports nothing even
+// when its element reaches a routed declaration. Measured at this fixture the arm DOES see the container
+// and its element (`List/FreeMonoid|NP|Node`) and declines because FreeMonoid carries no keyed profile --
+// correct, since a List's equality is element-wise and never a key. Green here means "0 rows at this
+// fixture", not "the census is complete".
+data collection_key_inferred_unkeyed_source: String = "module eq_probe_key_inferred_list\nimport std.types { list_length }\nimport v2.std.node { Node }\nfn has_node(n: Node) -> Bool {\n  let l = [n]\n  list_length(items: l) > 0\n}\n"
+
+test fn inferred_unkeyed_container_reports_no_route_row() -> Bool {
+  eq_admitted(source: collection_key_inferred_unkeyed_source)
+    && eq_class_count(source: collection_key_inferred_unkeyed_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
 }
 
 // ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived

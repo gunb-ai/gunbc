@@ -19,6 +19,14 @@ import std.types { Bool, List, String }
 // NodeOccurrence and the copy here is deleted, so the table is never in both trees. What blocks the move is
 // named on this row (blocker_rung_drop), whose own control is named on that row.
 //
+// WHAT TRAVELS WITH THE TABLE, IN THE SAME ONE CHANGE: the census classifier that turns this drop's two
+// advisory diagnostics into its population -- src/v1/stage0/src/cli_run/compile_clean.rs,
+// routed_equality_residual_rows_from_resolved and RoutedEqualityResidualRow (hand-written seed Rust, +56
+// lines on this PR, no generated banner). It exists only to measure the population of
+// gunbc.rung_drop.derived_equality_residual_field_equality for the v2 equality cutover; when the trigger
+// below closes and the v2 checker computes the equality plan, the classification moves to v2 with the plan
+// and this copy is deleted in the same motion, so the classification never lives in both trees.
+//
 // WHY THE ROOT STANDING IS CARRIED HERE AND NOT ONLY THE FUNCTION: a top-level operand's type node carries
 // no resolved declaration, so its identity is keyed by the USE-SITE file and the identity test alone misses
 // a bare root operand; the root-refused names are therefore read from the same rows (see the annotation

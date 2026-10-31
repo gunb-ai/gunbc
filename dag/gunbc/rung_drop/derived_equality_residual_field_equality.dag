@@ -23,9 +23,20 @@ import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 // //gunbc/instruments:compile-clean-diagnostic-census compiles the whole-tree closure and prints them as
 // its ROUTED_EQUALITY_RESIDUAL TSV, so this row restates no member. The key census covers BOTH sides of
 // the type's appearance: the DECLARED positions (v1.compiler.infer equality_item_collection_key_rows --
-// fields, parameters, return, annotation) and the INFERRED ones (equality_body_collection_key_rows, which
-// walks the typed body and feeds every settled type through the same walker, so a Map/Set key that exists
-// only in an inferred local is counted too). Neither side is a hand-kept list, and the population is the
+// fields, parameters, return, annotation) and the BODY positions (equality_body_collection_key_rows, which
+// walks the TYPED body and feeds every settled type through the same walker, so a Map/Set key that appears
+// only inside a function body is counted -- measured: an annotated local `let m: Map<Node, Int> = ...`
+// yields a row where the declared walk alone yields none).
+// WHERE THE COUNT IS PROVABLY INCOMPLETE (measured, gunbc#15175): a container BOUND TO A GENERIC CALL with
+// no annotation (`let m = map_insert(m: empty_map(), key: n, value: 1)`) keeps the declaration's FORMALS on
+// its type node -- the checker has no per-call type-argument substitution -- so its key is a type variable,
+// no plan is found, and NEITHER census side reports it. A membership use on such a container is therefore
+// outside this row's count. That is a missing capability, not a lowering of this drop: it is enrolled at
+// gunbc.recurring_failure_mode.field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter,
+// whose trigger capability is the representation change that closes it, and pinned by the claim controls
+// call_inferred_collection_key_reports_no_route_row (0 rows) and
+// annotated_local_collection_key_census_row_is_present_and_the_program_stays_accepted (>= 1 row).
+// Neither side is a hand-kept list, and the population is the
 // bound this row's subject states -- every emitted use, not only at checked == sites. Both census rows are
 // advisory and dissolve with this drop. The leading-edge measurement that motivated the drop (16 E0369
 // derived-PartialEq sites in v2-emitted-policy-unit-2 with the derive stripped) is recorded on the

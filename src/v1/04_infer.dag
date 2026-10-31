@@ -43,7 +43,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, No
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
-  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
+  authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property, find_property_string, has_child_named, build_newline_index,
   expr_literal_int_optional, expr_literal_string_optional, expr_is_any_literal, record_lit_expr_optional, record_lit_named_field_value_optional,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
@@ -4178,26 +4178,92 @@ fn equality_census_declaration(scope: InferScope) -> String {
 // every finite-support container application in an item's declared types (fields, variant payloads,
 // parameters, the return, a data row's type), so collection membership on it is censused where the
 // checker already decides what equality on that type means.
+// THE LEAF NAME OF A TYPE NODE, authored OR settled. The declared walk reads the leaf out of the
+// source text (`authored_name_at`), and for a node the author wrote that is the honest name. A node
+// INFERENCE produced carries no authored span, and `authored_name_at` answers "" for it, which is not a
+// container name at all. `authored_name_at` already falls back to `node.name` for a kernel span; this is
+// the same rule for the same reason: the node's own name is what the type IS, and the walker's own
+// container test (`peeled.name == "Optional"`) reads it the same way.
+// MEASURED, so this is not credited with a row it did not produce: adding this fallback to the inferred
+// arm changed the census count by nothing. The row was missing for the argument reason below, not here.
+fn equality_type_authored_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  if authored == "" { n.name } else { authored }
+}
+
+// The leaf spelling a container test needs. Two readings, both the seed's own:
+//  * an authored node answers with its source text;
+//  * a node INFERENCE produced has no authored span, so its own name is what the type IS -- the same
+//    fallback `authored_name_at` applies to a kernel span, and the same reading the walker's own
+//    `peeled.name == "Optional"` test uses.
+// Then the alias is resolved through the ONE reader `canonical_template_name` uses
+// (`container_template_algebra`), because the profile a container needs is carried by the ALGEBRA's
+// spelling row, not by the alias's: `std.types` declares `type Map<key, value> =
+// FinitelySupportedFunction<key, value>`, and `algebra_carriers()` rows the container algebra under
+// "FinitelySupportedFunction" with `Map` as an alias spelling whose `container_algebra_row` is absent.
+// A `Map<Node, Int>` therefore reaches the profile through "FinitelySupportedFunction"; measured, it reads
+// `Map/FinitelySupportedFunction|FF`.
+// RUNG HONESTY: this keys a container by its NAME -- the leaf-spelling rung of
+// gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose next
+// rung is declaration-keyed. It is not identity-keyed. Its limit is enrolled as a claim RED
+// (inferred_unkeyed_container_reports_no_route_row: a `[n]` binds to FreeMonoid, its element type IS
+// read (`List/FreeMonoid|NP|Node`), and the arm declines because the profile is not keyed -- correctly).
+fn equality_type_leaf_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let leaf = qualified_last_segment(name: equality_type_authored_name(n: n, source_indices: source_indices))
+  match container_template_algebra(name: leaf) {
+    Present { value: algebra } => algebra
+    Absent => leaf
+  }
+}
+
+// WHERE A TYPE'S ARGUMENTS LIVE, measured at the site this census needs.
+//  * An AUTHORED application (`fn f(m: Map<Node, Int>)`, or an annotated `let m: Map<Node, Int> = ...`)
+//    carries its type arguments as `children`: measured `Map/FinitelySupportedFunction|FF|Node;Int;`, and
+//    the key is judged (`KEY:Node|PLAN`) and reported.
+//  * A binder of a GENERIC CALL (`let m = map_insert(m: empty_map(), key: n, value: 1)`) carries the
+//    DECLARATION's FORMALS there instead: measured `Map/FinitelySupportedFunction|FF|K;V;`, so the walk
+//    judges the type variable K, gets no plan, and reports NOTHING (and refuses nothing). That is not
+//    this arm's choice: no per-call type-argument substitution exists in the tree today. The property the
+//    emitter's legacy readers consult for applied arguments, `__applied_type_args`, has NO writer
+//    anywhere -- src/v1/05_emit_rust.dag:405 says so in those readers' own comment. The missing
+//    capability is enrolled at
+//    gunbc.recurring_failure_mode.field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter,
+//    whose trigger capability is exactly "a generic application type node carries its authored type
+//    arguments against the declaration's parameter identity ... so every reader of a call result
+//    instantiates through that one relation"; that same channel is what the `Absent` branch below reads
+//    first, so the arm starts reporting the moment the inference lane writes it, with no change here.
+//    The current polarity is pinned by two claim REDs: call_inferred_collection_key_reports_no_route_row
+//    (0 rows for that binding) and annotated_local_collection_key_census_row_is_present... (1+ rows for
+//    the annotated twin of the same call).
+// Reading only `children` would be a second authority beside the emitter's readers, so the order here is
+// theirs: the property first (a no-op until the channel has a writer), `children` only as the fallback.
+fn equality_type_arg_children(n: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children
+    Absent => n.children
+  }
+}
+
 fn equality_collection_key_rows(t: Node, decl: String, scope: InferScope, fuel: Int) -> List<ErrorNode> {
   if fuel <= 0 { [] } else {
     let peeled = normalize_access_type_node(n: t)
-    let leaf = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
+    let leaf = equality_type_leaf_name(n: peeled, source_indices: scope.type_env.source_indices)
     let keyed = match equality_container_profile(leaf: leaf) {
       Present { value: FinitelySupportedFunctionProfile } => true
       Present { value: FinitePowerSetProfile } => true
       _ => false
     }
     let here = if keyed {
-      match peeled.children |> first {
+      match equality_type_arg_children(n: peeled, source_indices: scope.type_env.source_indices) |> first {
         Present { value: key } =>
           let kt = child_type_node(ch: key)
           if equality_plan_of_walk(w: equality_operand_walk(n: kt, scope: scope, visited: empty_map(), depth: 1, at_root: false)) != none {
-            [make_error_node(diagnostic: CollectionKeyReachesEqualityRoute { key_type: authored_name_at(source_indices: scope.type_env.source_indices, node: normalize_access_type_node(n: kt)), declaration: decl, span: peeled.span }, module_name: scope.module_name)]
+            [make_error_node(diagnostic: CollectionKeyReachesEqualityRoute { key_type: equality_type_authored_name(n: normalize_access_type_node(n: kt), source_indices: scope.type_env.source_indices), declaration: decl, span: peeled.span }, module_name: scope.module_name)]
           } else { [] }
         Absent => []
       }
     } else { [] }
-    fold(peeled.children, init: here, f: (acc, ch) => concat(acc, equality_collection_key_rows(t: child_type_node(ch: ch), decl: decl, scope: scope, fuel: fuel - 1)))
+    fold(equality_type_arg_children(n: peeled, source_indices: scope.type_env.source_indices), init: here, f: (acc, ch) => concat(acc, equality_collection_key_rows(t: child_type_node(ch: ch), decl: decl, scope: scope, fuel: fuel - 1)))
   }
 }
 
