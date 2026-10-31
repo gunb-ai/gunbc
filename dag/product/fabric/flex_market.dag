@@ -184,7 +184,19 @@ type FlexOwnedCard {
   running: Bool
   loading: Bool
   outbid: Bool
-  loading_age: Second
+  // A LOWER BOUND on how long this card has been loading, or UNREAD. The name says the direction, because
+  // the direction is the safety: every case that yields a number yields a bound, never an age. A card
+  // sighted loading at T was already loading then, so its true age is at least now-T; a card not sighted
+  // inside a baseline taken from a COMPLETE roster started after that walk, so all we may say is "at
+  // least 0". The cut below fires only when even the bound exceeds the launch envelope, so underestimating
+  // can only DELAY a destroy and can never cause one early.
+  //
+  // The age is not on the Vast wire at all (GET /api/v1/instances/ carries no time field), so it is an
+  // observation the pass carries between passes; when that carry is missing, unreadable, or was written
+  // from an incomplete walk, the bound is Absent -- NOT zero. A default of zero would assert "this card
+  // just started loading" on a pass that cannot know it, and the loading cut is the consumer that must not
+  // act on a default.
+  loading_age_at_least: Second?
 }
 
 type FlexMarketQuote
@@ -748,8 +760,18 @@ fn flex_rank_policy(currency: CurrencyCode) -> SelectionPolicy {
   }
 }
 
+// A card is dead when the host has taken it back out from under our bid, or when even the LOWER BOUND on
+// how long it has been loading passes the launch envelope (flex_stale_loading). An UNREAD bound never
+// dies by the loading cut: the age is not on the wire at all, and a pass that cannot say how long a card
+// has been loading must not destroy it on the strength of a default. The outbid arm is a fact of the
+// market -- read, or refused, never defaulted.
 fn flex_card_dead(card: FlexOwnedCard) -> Bool {
-  card.outbid || (card.loading && second_count(s: card.loading_age) >= second_count(s: flex_stale_loading))
+  card.outbid
+    || (card.loading
+      && match card.loading_age_at_least {
+        Absent => false
+        Present { value: age } => second_count(s: age) >= second_count(s: flex_stale_loading)
+      })
 }
 
 type FlexCapAssessment
