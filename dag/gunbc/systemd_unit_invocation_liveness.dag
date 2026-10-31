@@ -84,15 +84,8 @@ fn unit_invocation_observation(manager: SystemdManagerInstance, boot_id_text: St
   }
 }
 
-fn systemd_manager_same(a: SystemdManagerInstance, b: SystemdManagerInstance) -> Bool {
-  match a {
-    SystemManager => match b { SystemManager => true  UserManager { uid: _ } => false }
-    UserManager { uid: x } => match b { SystemManager => false  UserManager { uid: y } => x == y }
-  }
-}
-
 fn unit_run_differs(recorded: UnitRunIdentity, observed: UnitRunIdentity) -> String? {
-  if !systemd_manager_same(a: recorded.manager, b: observed.manager) { Present { value: "manager" } }
+  if systemd_manager_wire(manager: recorded.manager) != systemd_manager_wire(manager: observed.manager) { Present { value: "manager" } }
   else if (recorded.boot_id as String) != (observed.boot_id as String) { Present { value: "boot_id" } }
   else if (recorded.invocation_id as String) != (observed.invocation_id as String) { Present { value: "invocation_id" } }
   else { none }
