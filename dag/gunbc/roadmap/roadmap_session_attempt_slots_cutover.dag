@@ -1,6 +1,9 @@
 module gunbc.roadmap.roadmap_session_attempt_slots_cutover
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { bound_dissolution }
+import std.roster_frontier { FrontierRow, FrontierExpiryReport, fold_frontier_expiry, frontier_row_decl }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -55,54 +58,134 @@ import gunbc.roadmap.roadmap_session_attempt_slots_root {
 // at all: it is the live SessionAttemptSlotsStore, which only session_attempt_slots_store can mint
 // from the current declaration. A caller cannot choose where a carry lands; it can only ask the
 // declared row to be carried into the store the declaration authorizes.
+// WHAT A ROW CARRIES, AND WHAT IT DOES NOT. A row declares a move that already happened: the instance
+// whose root moved, the root its state was left under, and the change that moved it. It carries NO
+// MEASUREMENT and NO TARGET PATH. The counts an operator wants before a carry (how many references the
+// old root holds, how many are already in the target, how many differ) are the census's output, computed
+// from the store at the moment it is read; writing them into a row transcribes an instrument's reading
+// into a declaration and leaves a stale number no mechanism can see (DESIGN 4c; DESIGN 6: name the
+// instrument, never transcribe its output). The instrument is attempt_slots_census, and its counts land
+// in AttemptSlotsCensusCounts. The target is not a row's fact either: the store the pass reads is derived
+// from the live declaration, and attempt_slots_row_check is what refuses where a row and that store
+// disagree.
 type ReplacedAttemptSlotsRoot sole_constructor {
   instance_id: NonEmptyStr
   old_slots_root: NonEmptyStr
-  new_slots_root: NonEmptyStr
   moved_by: NonEmptyStr
-  why: String
 }
 
 // A ROW A CALLER DECLARES. The type is sealed so no one mints it with a bare record literal, and this
-// is the gate: the fields are named, and the carry still refuses a row whose new_slots_root is not the
-// root of the live store it is handed. A witness uses it to move a root inside its own directory; the
-// host's rows live in the data list below, beside the move that orphaned them.
-fn declare_replaced_attempt_slots_root(instance_id: NonEmptyStr, old_slots_root: NonEmptyStr, new_slots_root: NonEmptyStr, moved_by: NonEmptyStr, why: String) -> ReplacedAttemptSlotsRoot {
+// is the gate: the fields are named, and the carry still checks the row against the live store it is
+// handed -- the row names an instance, and the store answers for an instance and a root of its own.
+// A witness uses this gate to move a root inside its own directory; the host's rows live in the data
+// list below, beside the move that orphaned them.
+fn declare_replaced_attempt_slots_root(instance_id: NonEmptyStr, old_slots_root: NonEmptyStr, moved_by: NonEmptyStr) -> ReplacedAttemptSlotsRoot {
   ReplacedAttemptSlotsRoot {
     instance_id: instance_id,
     old_slots_root: old_slots_root,
-    new_slots_root: new_slots_root,
     moved_by: moved_by,
-    why: why,
   }
 }
 
-// THE ONE RECORD OF WHICH ROOTS MOVED AND LEFT STATE BEHIND. Both roots are spelled because the carry
-// checks the new one against the live store it was handed: if the declaration has moved again since
-// this row was written, the row is stale and the carry refuses rather than writing into a store nobody
-// declared this move into.
+// THE ONE RECORD OF WHICH INSTANCES' ROOTS MOVED AND LEFT STATE BEHIND. Only the OLD root is spelled.
+// The new root is not a fact this row may hold: the store the pass reads is derived from the live
+// declaration (roadmap_session_attempt_slots_root session_attempt_slots_store), and spelling its path
+// here would put a second, drift-prone copy of that path beside the declaration it must agree with.
+// What a row asserts is WHICH INSTANCE moved and where its state was left; the carry answers against
+// the live store it is handed, and refuses where the row and that store disagree.
 data replaced_attempt_slots_roots: List<ReplacedAttemptSlotsRoot> = [
   ReplacedAttemptSlotsRoot {
     instance_id: "codex-provider-feedback-v0" as NonEmptyStr,
     old_slots_root: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/session-attempts" as NonEmptyStr,
-    new_slots_root: "/opt/gunbc-lab/codex-provider-feedback-v0/attempt-state/session-attempts" as NonEmptyStr,
     moved_by: "gunb-ai/gunbc#14633 (WRE-1b lab re-root, 2026-10-24)" as NonEmptyStr,
-    why: "the re-root moved the instance root without carrying the live slot state; srv1 census 2026-10-30 found 31 attempts / 89 slot generations under the old root, 27 attempts present ONLY there (including the 2026-10-14 lease still charged on head session-memory-srv1.92), and 4 attempts present under both roots with different opened_at -- which is why the carry keys on the reference AND compares payloads rather than assuming a reference means one attempt",
   },
 ]
 
-fn replaced_attempt_slots_root_for(instance_id: NonEmptyStr) -> ReplacedAttemptSlotsRoot? {
+// THE LOOKUP, AND THE DEFECT IT REFUSES TO HIDE. One row per instance is the declaration's shape. Two
+// rows for one instance is a declaration defect -- the carry would have two old roots and no fact about
+// which one the move left behind -- and a lookup that answered "no row" for it would make that defect
+// indistinguishable from an instance that never moved, so a caller would carry nothing and report
+// nothing. The duplicate is therefore its own arm.
+type ReplacedAttemptSlotsRootLookup
+  = ReplacedAttemptSlotsRootFound { row: ReplacedAttemptSlotsRoot }
+  | ReplacedAttemptSlotsRootNoRow { instance_id: NonEmptyStr }
+  | ReplacedAttemptSlotsRootDeclaredTwice { instance_id: NonEmptyStr, rows: List<ReplacedAttemptSlotsRoot> }
+
+fn replaced_attempt_slots_root_for(instance_id: NonEmptyStr) -> ReplacedAttemptSlotsRootLookup {
   let rows = filter(replaced_attempt_slots_roots, r => r.instance_id == instance_id)
   if length(rows) == 1 {
     match rows.first() {
-      Present { value: row } => Present { value: row }
-      Absent => Absent
+      Present { value: row } => ReplacedAttemptSlotsRootFound { row: row }
+      Absent => ReplacedAttemptSlotsRootNoRow { instance_id: instance_id }
     }
+  } else if length(rows) == 0 {
+    ReplacedAttemptSlotsRootNoRow { instance_id: instance_id }
   } else {
-    // Two rows for one instance is a declaration defect, not a choice to make here: the carry would
-    // have two old roots and no fact about which one the move left behind.
-    Absent
+    ReplacedAttemptSlotsRootDeclaredTwice { instance_id: instance_id, rows: rows }
   }
+}
+
+// THE CONSUMER OF THE DECLARED ROWS, AND THE ROUTE THAT RUNS IT. These two entry points are what makes a
+// row in replaced_attempt_slots_roots live instead of a note: they take an INSTANCE ID and the live store,
+// read the declared row for that instance (refusing, typed, when there is none or when the declaration is
+// duplicated), and drive the census or the carry with the row they found. Nothing outside this module
+// chooses a root, and no caller passes a path.
+fn attempt_slots_census_for_instance(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore) -> AttemptSlotsCensus {
+  match replaced_attempt_slots_root_for(instance_id: instance_id) {
+    ReplacedAttemptSlotsRootFound { row: row } => attempt_slots_census(target: target, moved: row)
+    ReplacedAttemptSlotsRootNoRow { instance_id: i } => AttemptSlotsCensusNoDeclaredRow { instance_id: i }
+    ReplacedAttemptSlotsRootDeclaredTwice { instance_id: i, rows: rows } => AttemptSlotsCensusDeclaredTwice { instance_id: i, rows: rows }
+  }
+}
+
+fn attempt_slots_carry_for_instance(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore) -> AttemptSlotsCarry {
+  match replaced_attempt_slots_root_for(instance_id: instance_id) {
+    ReplacedAttemptSlotsRootFound { row: row } => AttemptSlotsCarryReported { report: attempt_slots_carry(target: target, moved: row) }
+    ReplacedAttemptSlotsRootNoRow { instance_id: i } => AttemptSlotsCarryNoDeclaredRow { instance_id: i }
+    ReplacedAttemptSlotsRootDeclaredTwice { instance_id: i, rows: rows } => AttemptSlotsCarryDeclaredTwice { instance_id: i, rows: rows }
+  }
+}
+
+// THE EXECUTING ROUTE, DECLARED WITH ITS TRIGGER RATHER THAN ASSUMED. A declared row that nothing runs is
+// a note, so DESIGN 3c asks for the consumer and the executing route, or a frontier naming the later
+// change that consumes it, with its trigger. Both are here, and they are different claims:
+//
+//   THE CONSUMER EXISTS NOW. attempt_slots_census_for_instance and attempt_slots_carry_for_instance read
+//   the declared row for an instance and drive the census or the carry with it; the srv1 row is read by
+//   that route. The witness exercises the same route over a row it declares for its own directory, and
+//   reads the srv1 row itself as data (its instance identity and its old root) without running anything
+//   against the host.
+//
+//   THE EXECUTING ROUTE ON THE HOST IS A NAMED LATER CHANGE. Running the carry mutates a host, and the
+//   brief holds it behind its own explicit operator authorization, which quick-newt-573 requests once the
+//   PRs land. The route it lands on is the one that already runs host-mutating steps for this instance --
+//   the belt actuator, which is also the production consumer of the settle pass
+//   (roadmap_belt_actuate:1543) -- so the frontier's trigger is that pass appearing there. Until it does
+//   the frontier reads Pending: the row is not dangling, it is ahead of its cut, and a mechanism can tell
+//   those apart, which is exactly what the fleet module's cut rows do for the same shape
+//   (fleet/runtime_identity_match.dag:985, fleet/agent_access_key_rotation.dag:105).
+fn attempt_slots_cutover_run_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "attempt_slots_cutover_pass")
+}
+
+// THE SEAM THE FRONTIER IS ABOUT: the entry point that exists today and reads the declared row. The
+// frontier's standing is read against BOTH refs -- seam present and run absent is Pending (ahead of its
+// cut), seam present and run present is FiredStillPresent (the later change has landed and the row still
+// has to be retired). A witness that passed only the run ref would read Pending for the wrong reason.
+fn attempt_slots_cutover_seam_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.roadmap.roadmap_session_attempt_slots_cutover", decl_name: "attempt_slots_carry_for_instance")
+}
+
+data attempt_slots_cutover_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: attempt_slots_cutover_seam_ref(),
+    reason: "the declared srv1 row is read by this entry point, and the carry it drives is the route that returns the 2026-10-14 lease's orphaned slot to the store the settle pass enumerates; the host run is gated on its own operator authorization, so the belt-actuator cutover pass that will call it is the named later change",
+    dissolution: bound_dissolution(ref: attempt_slots_cutover_run_ref()),
+  ),
+]
+
+fn attempt_slots_cutover_frontier_expiry(present_decls: List<DeclarationRef>) -> FrontierExpiryReport {
+  fold_frontier_expiry(rows: attempt_slots_cutover_frontier_rows, present_decls: present_decls)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -114,16 +197,121 @@ fn replaced_attempt_slots_root_for(instance_id: NonEmptyStr) -> ReplacedAttemptS
 // different attempt. The census answers, per old root: which references it holds, at what generation,
 // in what lifecycle state, and what the target holds for the same reference.
 // ---------------------------------------------------------------------------------------------
+// WHAT ONE SIDE OF ONE REFERENCE READS AS. A census line that answers "generation 0" for a slot it
+// could not read, or "absent" for a slot whose bytes are there but undecodable, hands the operator a
+// default where the honest answer is "I could not read this" -- and the operator is the one who decides
+// whether to carry (DESIGN 5: every degradation is typed, located and countable). So the reading keeps
+// the three answers apart, and the count of them is a number the census reports rather than a state it
+// pretends not to have.
+type AttemptSlotsSlotReading
+  = SlotRead { generation: Int, state: String, payload_bytes: String }
+  | SlotAbsent
+  | SlotUnreadable { detail: String }
+
+// HOW THE TWO SIDES' BYTES RELATE. Undecided is not a softer "false": it names which side could not be
+// read, so a census line never reads as "these two attempts differ" when the truth is "one of them is
+// unreadable".
+type AttemptSlotsPayloadRelation
+  = PayloadsIdentical
+  | PayloadsDifferent
+  | PayloadRelationUndecided { reason: NonEmptyStr }
+
 type AttemptSlotsCensusEntry sole_constructor {
   reference: NonEmptyStr
-  source_generation: Int
-  source_state: String
-  target_state: String
-  payloads_match: Bool
+  source: AttemptSlotsSlotReading
+  target: AttemptSlotsSlotReading
+  payload_relation: AttemptSlotsPayloadRelation
+}
+
+// THE COUNTS, AS DATA. The operator's question before a carry is a count question ("how much is only in
+// the old root?"), and DESIGN 4c puts a count in a typed carrier, not in prose beside the declaration.
+// These are computed from the entries the census just read, so they cannot go stale the way a number
+// written into a row does.
+type AttemptSlotsCensusCounts sole_constructor {
+  total: Int
+  only_in_old: Int
+  in_both_identical: Int
+  in_both_different: Int
+  either_side_unreadable: Int
+}
+
+fn census_either_side_unreadable(entry: AttemptSlotsCensusEntry) -> Bool {
+  match entry.source {
+    SlotRead { generation: _, state: _, payload_bytes: _ } =>
+      match entry.target {
+        SlotRead { generation: _, state: _, payload_bytes: _ } => false
+        SlotAbsent => false
+        SlotUnreadable { detail: _ } => true
+      }
+    SlotAbsent => false
+    SlotUnreadable { detail: _ } => true
+  }
+}
+
+fn census_only_in_old(entry: AttemptSlotsCensusEntry) -> Bool {
+  match entry.source {
+    SlotRead { generation: _, state: _, payload_bytes: _ } =>
+      match entry.target {
+        SlotAbsent => true
+        SlotRead { generation: _, state: _, payload_bytes: _ } => false
+        SlotUnreadable { detail: _ } => false
+      }
+    SlotAbsent => false
+    SlotUnreadable { detail: _ } => false
+  }
+}
+
+fn census_relation_identical(entry: AttemptSlotsCensusEntry) -> Bool {
+  match entry.payload_relation {
+    PayloadsIdentical => true
+    PayloadsDifferent => false
+    PayloadRelationUndecided { reason: _ } => false
+  }
+}
+
+fn census_relation_different(entry: AttemptSlotsCensusEntry) -> Bool {
+  match entry.payload_relation {
+    PayloadsIdentical => false
+    PayloadsDifferent => true
+    PayloadRelationUndecided { reason: _ } => false
+  }
+}
+
+fn attempt_slots_census_counts(entries: List<AttemptSlotsCensusEntry>) -> AttemptSlotsCensusCounts {
+  AttemptSlotsCensusCounts {
+    total: length(entries),
+    only_in_old: length(filter(entries, e => census_only_in_old(entry: e))),
+    in_both_identical: length(filter(entries, e => census_relation_identical(entry: e))),
+    in_both_different: length(filter(entries, e => census_relation_different(entry: e))),
+    either_side_unreadable: length(filter(entries, e => census_either_side_unreadable(entry: e))),
+  }
+}
+
+// THE ROW AGAINST THE STORE IT IS HANDED. A row names an instance and an old root; the store is minted
+// from the live declaration and answers for an instance and a root of its own. Two ways those can fail to
+// fit, and each is its own arm rather than a skip: the row belongs to a different instance than the store
+// (so carrying it would write another instance's orphans into this instance's seats), or the row's old
+// root IS the live root (the move it declares did not leave anything behind, and a census of a store
+// against itself would read as evidence).
+type AttemptSlotsRowRefusal
+  = AttemptSlotsRowNamesAnotherInstance { row_instance: NonEmptyStr, store_instance: NonEmptyStr }
+  | AttemptSlotsRowOldRootIsTheLiveRoot { root: NonEmptyStr }
+
+fn attempt_slots_row_check(target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> AttemptSlotsRowRefusal? {
+  if moved.instance_id != target.instance {
+    Present { value: AttemptSlotsRowNamesAnotherInstance { row_instance: moved.instance_id, store_instance: target.instance } }
+  } else if moved.old_slots_root == target.slots.root {
+    Present { value: AttemptSlotsRowOldRootIsTheLiveRoot { root: moved.old_slots_root } }
+  } else {
+    Absent
+  }
 }
 
 type AttemptSlotsCensus
-  = AttemptSlotsCensusOf { old_root: NonEmptyStr, entries: List<AttemptSlotsCensusEntry> }
+  = AttemptSlotsCensusOf { old_root: NonEmptyStr, entries: List<AttemptSlotsCensusEntry>, counts: AttemptSlotsCensusCounts }
+  | AttemptSlotsCensusNoDeclaredRow { instance_id: NonEmptyStr }
+  | AttemptSlotsCensusDeclaredTwice { instance_id: NonEmptyStr, rows: List<ReplacedAttemptSlotsRoot> }
+  | AttemptSlotsCensusRowRefused { refusal: AttemptSlotsRowRefusal }
   | AttemptSlotsCensusRefused { old_root: NonEmptyStr, detail: String }
 
 fn attempt_state_text(state: AttemptState) -> String {
@@ -136,60 +324,89 @@ fn attempt_state_text(state: AttemptState) -> String {
 
 // The payload bytes a slot holds, as the store wrote them. Read raw because a carry must not re-encode:
 // the target's own readers decode the bytes, and a carry that re-serialized would put a second payload
-// spelling in the corpus.
-fn attempt_slot_payload_bytes(store: SlotStore, reference: NonEmptyStr) -> String? {
+// spelling in the corpus. An UNREADABLE slot is its own arm: the old code answered it with Absent, the
+// same answer as "no slot here", and a carry built on that answer would try to CREATE a slot beside
+// bytes it could not read.
+type AttemptSlotPayloadBytes
+  = SlotPayloadHeld { bytes: String }
+  | SlotPayloadAbsent
+  | SlotPayloadUnreadable { detail: String }
+
+fn attempt_slot_payload_bytes(store: SlotStore, reference: NonEmptyStr) -> AttemptSlotPayloadBytes {
   match slot_observe(store: store, key: reference) {
-    CasObservedUnreadable { cause: c } => Absent
+    CasObservedUnreadable { cause: c } => SlotPayloadUnreadable { detail: cas_unreadable_slot_detail(cause: c) }
     CasObservedReadable { readable: r } =>
       match r {
-        CasReadableAbsent => Absent
-        CasReadablePresent { version: v } => Present { value: v.value as String }
+        CasReadableAbsent => SlotPayloadAbsent
+        CasReadablePresent { version: v } => SlotPayloadHeld { bytes: v.value as String }
       }
   }
 }
 
-fn attempt_slot_generation_of(store: SlotStore, reference: NonEmptyStr) -> Int {
-  match slot_observe(store: store, key: reference) {
-    CasObservedUnreadable { cause: _ } => 0
-    CasObservedReadable { readable: r } =>
-      match r {
-        CasReadableAbsent => 0
-        CasReadablePresent { version: v } => cas_generation_count(g: v.generation)
+// ONE READING OF ONE SIDE OF ONE REFERENCE: the decoded record's state and generation, and the bytes as
+// spelled. A slot that lists but does not decode, and a slot whose bytes cannot be read back, are both
+// Unreadable -- never generation 0, never absent.
+fn attempt_slot_reading(store: SlotStore, reference: NonEmptyStr) -> AttemptSlotsSlotReading {
+  match attempt_slot_read(store: store, reference: reference) {
+    AttemptSlotAbsent => SlotAbsent
+    AttemptSlotUnreadable { detail: d } => SlotUnreadable { detail: d }
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_slot_payload_bytes(store: store, reference: reference) {
+        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_state_text(state: attempt_record_state(r: rec)), payload_bytes: b }
+        SlotPayloadAbsent => SlotUnreadable { detail: "the slot decoded as an attempt record but its bytes could not be read back" }
+        SlotPayloadUnreadable { detail: d } => SlotUnreadable { detail: d }
       }
+  }
+}
+
+fn attempt_slots_payload_relation(source: AttemptSlotsSlotReading, target: AttemptSlotsSlotReading) -> AttemptSlotsPayloadRelation {
+  match source {
+    SlotRead { generation: _, state: _, payload_bytes: old_bytes } =>
+      match target {
+        SlotRead { generation: _, state: _, payload_bytes: new_bytes } =>
+          if old_bytes == new_bytes {
+            PayloadsIdentical
+          } else {
+            PayloadsDifferent
+          }
+        SlotAbsent => PayloadRelationUndecided { reason: "the current store holds no slot under this reference" as NonEmptyStr }
+        SlotUnreadable { detail: d } => PayloadRelationUndecided { reason: join(["the current store's slot could not be read: ", d], "") as NonEmptyStr }
+      }
+    SlotAbsent => PayloadRelationUndecided { reason: "the old store holds no slot under this reference" as NonEmptyStr }
+    SlotUnreadable { detail: d } => PayloadRelationUndecided { reason: join(["the old store's slot could not be read: ", d], "") as NonEmptyStr }
   }
 }
 
 fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> AttemptSlotsCensus {
-  match attempt_slots_source_store(moved: moved) {
-    Absent => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the old root's directory could not be listed; there is no store there to census" }
-    Present { value: source } =>
-      match attempt_slot_keys(store: source) {
-        AttemptSlotKeysRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
-        AttemptSlotKeysListed { keys: keys } =>
-          AttemptSlotsCensusOf {
-            old_root: moved.old_slots_root,
-            entries: map(keys, k => attempt_slots_census_entry(source: source, target: target.slots, reference: k)),
+  match attempt_slots_row_check(target: target, moved: moved) {
+    Present { value: refusal } => AttemptSlotsCensusRowRefused { refusal: refusal }
+    Absent =>
+      match attempt_slots_source_store(moved: moved) {
+        Absent => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the old root's directory could not be listed; there is no store there to census" }
+        Present { value: source } =>
+          match attempt_slot_keys(store: source) {
+            AttemptSlotKeysRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
+            AttemptSlotKeysListed { keys: keys } => {
+              let entries = map(keys, k => attempt_slots_census_entry(source: source, target: target.slots, reference: k))
+              AttemptSlotsCensusOf {
+                old_root: moved.old_slots_root,
+                entries: entries,
+                counts: attempt_slots_census_counts(entries: entries),
+              }
+            }
           }
       }
   }
 }
 
 fn attempt_slots_census_entry(source: SlotStore, target: SlotStore, reference: NonEmptyStr) -> AttemptSlotsCensusEntry {
-  let source_read = attempt_slot_read(store: source, reference: reference)
-  let target_read = attempt_slot_read(store: target, reference: reference)
+  let source_reading = attempt_slot_reading(store: source, reference: reference)
+  let target_reading = attempt_slot_reading(store: target, reference: reference)
   AttemptSlotsCensusEntry {
     reference: reference,
-    source_generation: attempt_slot_generation_of(store: source, reference: reference),
-    source_state: match source_read { AttemptSlotHeld { record: rec, generation: _ } => attempt_state_text(state: attempt_record_state(r: rec))  AttemptSlotAbsent => "absent"  AttemptSlotUnreadable { detail: _ } => "unreadable" },
-    target_state: match target_read { AttemptSlotHeld { record: rec, generation: _ } => attempt_state_text(state: attempt_record_state(r: rec))  AttemptSlotAbsent => "absent"  AttemptSlotUnreadable { detail: _ } => "unreadable" },
-    payloads_match: match attempt_slot_payload_bytes(store: source, reference: reference) {
-      Absent => false
-      Present { value: old_bytes } =>
-        match attempt_slot_payload_bytes(store: target, reference: reference) {
-          Absent => false
-          Present { value: new_bytes } => old_bytes == new_bytes
-        }
-    },
+    source: source_reading,
+    target: target_reading,
+    payload_relation: attempt_slots_payload_relation(source: source_reading, target: target_reading),
   }
 }
 
@@ -211,13 +428,31 @@ fn attempt_slots_census_entry(source: SlotStore, target: SlotStore, reference: N
 //     reference. Nothing here may decide which one wins; the operator does, and the census names it.
 //   * a target slot holding the SAME bytes -- not a failure: the carry already happened. This is the
 //     idempotence arm, and it is what a second run reports.
-//   * a record whose new_slots_root is not the root of the store it was handed -- the row is stale
-//     against the declaration, so the carry would write where the move did not go.
+//   * a target slot whose bytes the CURRENT store cannot decode -- the seat is occupied by something the
+//     live store itself cannot read. Overwriting it would destroy the only evidence of what is in a live
+//     seat; the old code read this as "absent" and tried to create a slot beside it.
+//   * a row naming an instance the handed store is not, or a row whose old root IS the live root -- the
+//     row and the live declaration disagree about which move happened, so the carry would write another
+//     instance's orphans, or census a store against itself. Both are AttemptSlotsRowRefusal arms, and
+//     they are refusals OF THE CARRY, not outcomes about a reference.
 // ---------------------------------------------------------------------------------------------
 type AttemptSlotsCarryOutcome
   = AttemptSlotsCarried { reference: NonEmptyStr, source_generation: Int, target_generation: Int }
   | AttemptSlotsCarryAlreadyCarried { reference: NonEmptyStr }
   | AttemptSlotsCarryRefused { reference: NonEmptyStr, detail: String }
+
+// A CARRY ANSWERS AT TWO LEVELS, AND THEY ARE NOT MIXED. The report's outcomes are per-reference facts
+// about seats that were carried, already carried, or refused. Everything above that level -- the row
+// names no instance, the row and the store disagree, the old root is not there to read -- is its own arm
+// on the carry itself. Stuffing a row-level refusal into a per-reference outcome (with an instance id in
+// the reference field) would make the two levels unreadable as the same shape.
+type AttemptSlotsCarry
+  = AttemptSlotsCarryReported { report: AttemptSlotsCarryReport }
+  | AttemptSlotsCarryNoDeclaredRow { instance_id: NonEmptyStr }
+  | AttemptSlotsCarryDeclaredTwice { instance_id: NonEmptyStr, rows: List<ReplacedAttemptSlotsRoot> }
+  | AttemptSlotsCarryRowRefused { refusal: AttemptSlotsRowRefusal }
+  | AttemptSlotsCarrySourceUnlistable { old_root: NonEmptyStr }
+  | AttemptSlotsCarryKeysRefused { old_root: NonEmptyStr, detail: String }
 
 type AttemptSlotsCarryReport sole_constructor {
   instance_id: NonEmptyStr
@@ -243,51 +478,30 @@ fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStore? {
   }
 }
 
-fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> AttemptSlotsCarryReport {
-  if (moved.new_slots_root as String) != (target.slots.root as String) {
-    AttemptSlotsCarryReport {
-      instance_id: moved.instance_id,
-      old_root: moved.old_slots_root,
-      new_root: moved.new_slots_root,
-      outcomes: [AttemptSlotsCarryRefused {
-        reference: moved.instance_id,
-        detail: "the declared move names a target root that is not the root of the store this carry was handed; the row and the live declaration disagree, and carrying into a store the move did not land in is refused",
-      }],
-    }
-  } else if (moved.old_slots_root as String) == (moved.new_slots_root as String) {
-    AttemptSlotsCarryReport {
-      instance_id: moved.instance_id,
-      old_root: moved.old_slots_root,
-      new_root: moved.new_slots_root,
-      outcomes: [AttemptSlotsCarryRefused { reference: moved.instance_id, detail: "the declared move names the same root on both sides; there is nothing to carry" }],
-    }
-  } else {
-    match attempt_slots_source_store(moved: moved) {
-      Absent =>
-        AttemptSlotsCarryReport {
-          instance_id: moved.instance_id,
-          old_root: moved.old_slots_root,
-          new_root: moved.new_slots_root,
-          outcomes: [AttemptSlotsCarryRefused { reference: moved.instance_id, detail: "the old root's directory could not be listed; there is no store there to carry" }],
-        }
-      Present { value: source } =>
-        match attempt_slot_keys(store: source) {
-          AttemptSlotKeysRefused { detail: d } =>
-            AttemptSlotsCarryReport {
-              instance_id: moved.instance_id,
-              old_root: moved.old_slots_root,
-              new_root: moved.new_slots_root,
-              outcomes: [AttemptSlotsCarryRefused { reference: moved.instance_id, detail: d }],
-            }
-          AttemptSlotKeysListed { keys: keys } =>
-            AttemptSlotsCarryReport {
-              instance_id: moved.instance_id,
-              old_root: moved.old_slots_root,
-              new_root: moved.new_slots_root,
-              outcomes: map(keys, k => attempt_slots_carry_one(source: source, target: target.slots, reference: k)),
-            }
-        }
-    }
+// THE CARRY, keyed on the reference AND the payload. The reference is the lease's identity, so it is the
+// key; the payload comparison is what stops a carry from overwriting a live seat when two attempts share
+// a reference (the srv1 census found exactly that shape: four attempts under both roots). A target that
+// already holds the same bytes is AlreadyCarried, which is what makes the step idempotent.
+fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> AttemptSlotsCarry {
+  match attempt_slots_row_check(target: target, moved: moved) {
+    Present { value: refusal } => AttemptSlotsCarryRowRefused { refusal: refusal }
+    Absent =>
+      match attempt_slots_source_store(moved: moved) {
+        Absent => AttemptSlotsCarrySourceUnlistable { old_root: moved.old_slots_root }
+        Present { value: source } =>
+          match attempt_slot_keys(store: source) {
+            AttemptSlotKeysRefused { detail: d } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: d }
+            AttemptSlotKeysListed { keys: keys } =>
+              AttemptSlotsCarryReported {
+                report: AttemptSlotsCarryReport {
+                  instance_id: moved.instance_id,
+                  old_root: moved.old_slots_root,
+                  new_root: target.slots.root,
+                  outcomes: map(keys, k => attempt_slots_carry_one(source: source, target: target.slots, reference: k)),
+                },
+              }
+          }
+      }
   }
 }
 
@@ -297,10 +511,11 @@ fn attempt_slots_carry_one(source: SlotStore, target: SlotStore, reference: NonE
     AttemptSlotAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the old store listed the reference but its slot could not be read" }
     AttemptSlotHeld { record: _, generation: source_generation } =>
       match attempt_slot_payload_bytes(store: source, reference: reference) {
-        Absent => AttemptSlotsCarryRefused { reference: reference, detail: "the old slot's bytes could not be read" }
-        Present { value: bytes } =>
+        SlotPayloadUnreadable { detail: d } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the old slot decoded, but its bytes could not be read back: ", d], "") }
+        SlotPayloadAbsent => AttemptSlotsCarryRefused { reference: reference, detail: "the old slot decoded, but the store reports no bytes under it" }
+        SlotPayloadHeld { bytes: bytes } =>
           match attempt_slot_payload_bytes(store: target, reference: reference) {
-            Present { value: held } =>
+            SlotPayloadHeld { bytes: held } =>
               if held == bytes {
                 AttemptSlotsCarryAlreadyCarried { reference: reference }
               } else {
@@ -309,7 +524,13 @@ fn attempt_slots_carry_one(source: SlotStore, target: SlotStore, reference: NonE
                   detail: "the current store already holds a DIFFERENT attempt under this reference; one reference with two attempts is decided by the operator, not by a carry",
                 }
               }
-            Absent =>
+            SlotPayloadUnreadable { detail: d } =>
+              // The seat is occupied by bytes the CURRENT store cannot decode. The old code read that as
+              // "no slot here" and went on to try creating a slot beside it; overwriting undecodable
+              // bytes would destroy the only evidence of what occupies a live seat, so the carry refuses
+              // and names the unreadable instead.
+              AttemptSlotsCarryRefused { reference: reference, detail: join(["the current store holds bytes it cannot read under this reference; a carry does not overwrite an unreadable seat: ", d], "") }
+            SlotPayloadAbsent =>
               match admit_cas_attempt_for_derived_payload(key: reference, expected: ExpectSlotAbsent, proposed: bytes as NonEmptyStr) {
                 DerivedPayloadKeyNotSlotAddressable { key: k } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the reference is not slot-addressable: ", k as String], "") }
                 DerivedPayloadAdmitted { verified: v } =>
