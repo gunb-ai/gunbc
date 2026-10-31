@@ -63,21 +63,25 @@ type AppendLogMinting
 
 // THE ONE MINT. Pure over the listing the owning store took; the legacy decision is a fold, and the claimants
 // and the mismatched entries are DERIVED here from that listing and the slot's own member name, never
-// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream slot
+// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream or in-place slot
 // is mismatched by any entry that is a generation file of its key (gunbc.durable_cas_file_store
 // cas_key_generation_of_name, the one recognizer of that framing); an entry equal to the member name is a claimant.
 fn append_log_entry_claims(slot: AppendLogSlot, entry: String) -> Bool {
   entry == (slot.member as String)
 }
 
+fn append_log_entry_is_generation_file(slot: AppendLogSlot, entry: String) -> Bool {
+  match cas_key_generation_of_name(key: slot.member, name: entry) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn append_log_entry_is_other_framing(slot: AppendLogSlot, entry: String) -> Bool {
   match slot.framing {
-    NewlineDelimitedStream => match cas_key_generation_of_name(key: slot.member, name: entry) {
-      Present { value: _ } => true
-      Absent => false
-    }
+    NewlineDelimitedStream => append_log_entry_is_generation_file(slot: slot, entry: entry)
+    InPlaceRecordFile => append_log_entry_is_generation_file(slot: slot, entry: entry)
     RecordPerGeneration => entry == (slot.member as String)
-    InPlaceRecordFile => entry == (slot.member as String)
   }
 }
 

@@ -271,3 +271,19 @@ test fn an_unseen_writer_exit_does_not_complete_the_window() -> Bool {
     _ => false
   }
 }
+
+// A healthy in-place member (its own file present in the parent) mints clean; only a generation file of its
+// key is another framing.
+fn wire_slot_verdict(listing: List<String>) -> AppendLogListingVerdict? {
+  match filter(append_log_census_slots(), sl => (sl.member as String) == "AttemptDirectoryWire") {
+    Cons { head: sl, tail: _ } => Present { value: append_log_listing_verdict(slot: sl, listing: Present { value: listing }) }
+    Empty {} => Absent
+  }
+}
+
+test fn an_in_place_member_with_its_own_file_present_mints_clean() -> Bool {
+  match wire_slot_verdict(listing: ["AttemptDirectoryWire"]) {
+    Present { value: ListingClean } => true
+    _ => false
+  }
+}
