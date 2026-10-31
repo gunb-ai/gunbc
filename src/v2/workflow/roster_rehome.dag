@@ -301,7 +301,10 @@ fn rehome_contract_in(home: String, name: String, root: Node, imported: List<Ali
       if !is_empty(xs: collected.unreadable_roots) {
         RehomeContractUnestablished { cause: "unreadable-reference-root " + home }
       } else {
-        RehomeContractRead { node: decl.declaration, identities: list_map(xs: rehome_sites_under(sites: collected.sites, name: name), f: fn(st) { rehome_site_identity(site: st, home: home, imported: imported, bindings: bindings) }) }
+        match rehome_identities(sites: rehome_sites_under(sites: collected.sites, name: name), home: home, imported: imported, bindings: bindings) {
+          RehomeIdentitiesRead { identities: ids } => RehomeContractRead { node: decl.declaration, identities: ids }
+          RehomeIdentityUndecided { spelled: sp, head: h } => RehomeContractUnestablished { cause: "undecided-reference " + rehome_head_text(head: h) + " " + sp + " in " + home + "." + name }
+        }
       }
     }
     Empty => RehomeContractUnestablished { cause: "no-root-declaration " + home + "." + name }
@@ -322,15 +325,31 @@ fn rehome_root_bindings_named(bindings: List<ModuleRootBinding>, name: String) -
   fold_list(xs: bindings, empty: [], cons: fn(acc, b) { if symbol_lexeme(sym: b.name) == name { list_snoc_item(xs: acc, item: b) } else { acc } })
 }
 
-fn rehome_site_identity(site: ScopedReferenceSite, home: String, imported: List<AliasBindingRow>, bindings: List<ModuleRootBinding>) -> String {
+// A REFERENCE'S IDENTITY IN A CONTRACT IS A DECLARATION, OR THE CONTRACT IS NOT ESTABLISHED (tidy-ant-251 side chat,
+// REQUEST_CHANGES at 2f7e616736ac). Equal uncertainty is not identity: two declarations with identical syntax and the
+// same unresolved name are not shown to be the same declaration, so an undecided, lexically unbound (ambient) or
+// root-value head with no declaration refuses here, typed, and is never compared as text. An ambient operation is
+// identified only through its authoritative declaration, i.e. an import. A frame-bound head is a reference to a binder
+// inside the declaration itself (a parameter, a let), whose position the normalized node digest already compares.
+type RehomeSiteIdentity
+  = RehomeSiteDeclared { identity: String }
+  | RehomeSiteFrameBinder { name: String }
+  | RehomeSiteUndecided { spelled: String, head: SiteHeadBinding }
+
+fn rehome_site_identity(site: ScopedReferenceSite, home: String, imported: List<AliasBindingRow>, bindings: List<ModuleRootBinding>) -> RehomeSiteIdentity {
   let spelled = roster_qn_text(qn: site.site.spelling)
   let via_import = fold_list(xs: imported, empty: "", cons: fn(acc, b) { if acc == "" && symbol_lexeme(sym: b.binding) == spelled { roster_qn_text(qn: b.target) } else { acc } })
   if via_import != "" {
-    via_import
+    RehomeSiteDeclared { identity: via_import }
   } else if !is_empty(xs: rehome_root_bindings_named(bindings: bindings, name: spelled)) {
-    home + "." + spelled
+    RehomeSiteDeclared { identity: home + "." + spelled }
   } else {
-    rehome_head_text(head: site.head) + ":" + spelled
+    match site.head {
+      HeadBoundInFrame => RehomeSiteFrameBinder { name: spelled }
+      HeadLexicallyUnbound => RehomeSiteUndecided { spelled: spelled, head: HeadLexicallyUnbound }
+      HeadBindingUndecided => RehomeSiteUndecided { spelled: spelled, head: HeadBindingUndecided }
+      HeadBoundAtRootValue => RehomeSiteUndecided { spelled: spelled, head: HeadBoundAtRootValue }
+    }
   }
 }
 
@@ -341,6 +360,25 @@ fn rehome_head_text(head: SiteHeadBinding) -> String {
     HeadBoundAtRootValue => "root"
     HeadBoundInFrame => "frame"
   }
+}
+
+// The contract's identity list, or the first reference whose declaration is not established.
+type RehomeIdentities
+  = RehomeIdentitiesRead { identities: List<String> }
+  | RehomeIdentityUndecided { spelled: String, head: SiteHeadBinding }
+
+fn rehome_identities(sites: List<ScopedReferenceSite>, home: String, imported: List<AliasBindingRow>, bindings: List<ModuleRootBinding>) -> RehomeIdentities {
+  fold_list(xs: sites, empty: RehomeIdentitiesRead { identities: [] }, cons: fn(acc, st) {
+    match acc {
+      RehomeIdentityUndecided { spelled: _, head: _ } => acc
+      RehomeIdentitiesRead { identities: ids } =>
+        match rehome_site_identity(site: st, home: home, imported: imported, bindings: bindings) {
+          RehomeSiteDeclared { identity: i } => RehomeIdentitiesRead { identities: list_snoc_item(xs: ids, item: i) }
+          RehomeSiteFrameBinder { name: n } => RehomeIdentitiesRead { identities: list_snoc_item(xs: ids, item: "frame-binder:" + n) }
+          RehomeSiteUndecided { spelled: sp, head: h } => RehomeIdentityUndecided { spelled: sp, head: h }
+        }
+    }
+  })
 }
 
 // A DECLARED REPRESENTATION ADMITS A SHAPE DIFFERENCE, NEVER A KIND DIFFERENCE (review 83176): the content_hash comparison
@@ -1129,11 +1167,28 @@ fn rehome_control_contracts(prepared: PreparedGrammar, lex: PreparedLexRules) ->
     a: "module c.a\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n",
     b: "module c.b\n\nimport c.y { Payload }\n\ntype Token {\n  value: Payload\n}\n", same: false)
     + rehome_contract_case(name: "fn-signature-differs", prepared: prepared, lex: lex,
-      a: "module c.a\n\nfn Token(x: Int) -> Int {\n  x\n}\n",
-      b: "module c.b\n\nfn Token(x: Bool) -> Bool {\n  x\n}\n", same: false)
+      a: "module c.a\n\nimport c.t { Int }\n\nfn Token(x: Int) -> Int {\n  x\n}\n",
+      b: "module c.b\n\nimport c.t { Bool }\n\nfn Token(x: Bool) -> Bool {\n  x\n}\n", same: false)
     + rehome_contract_case(name: "same-contract", prepared: prepared, lex: lex,
       a: "module c.a\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n",
       b: "module c.b\n\nimport c.x { Payload }\n\ntype Token {\n  value: Payload\n}\n", same: true)
+    // THE RED for the fail-open: the same UNRESOLVED name on both sides is equal uncertainty, not one declaration, so
+    // the pair refuses as unestablished; text equality of "undecided:Mystery" once admitted it as RehomePairSame.
+    + rehome_contract_refuses_case(name: "shared-unresolved-reference", prepared: prepared, lex: lex,
+      a: "module c.a\n\ntype Token {\n  value: Mystery\n}\n",
+      b: "module c.b\n\ntype Token {\n  value: Mystery\n}\n")
+    // ITS CONTROL: the same pair with the name resolved to one declaration is RehomePairSame.
+    + rehome_contract_case(name: "shared-declared-reference", prepared: prepared, lex: lex,
+      a: "module c.a\n\nimport c.m { Mystery }\n\ntype Token {\n  value: Mystery\n}\n",
+      b: "module c.b\n\nimport c.m { Mystery }\n\ntype Token {\n  value: Mystery\n}\n", same: true)
+}
+
+fn rehome_contract_refuses_case(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, a: String, b: String) -> String {
+  match rehome_contracts_verdict(a: rehome_contract_from_text(home: "c.a", name: "Token", path: "control/a.dag", text: a, prepared: prepared, lex: lex), b: rehome_contract_from_text(home: "c.b", name: "Token", path: "control/b.dag", text: b, prepared: prepared, lex: lex)) {
+    RehomePairSame => "CONTROL-FAIL rehome contract " + name + ": two declarations sharing an unresolved reference compared equal\n"
+    RehomePairRefused { reason: RehomeContractUnestablishedRefusal { cause: _ } } => ""
+    RehomePairRefused { reason: r } => "CONTROL-FAIL rehome contract " + name + ": refused for the wrong reason: " + rehome_refusal_text(r: r) + "\n"
+  }
 }
 
 fn rehome_contract_case(name: String, prepared: PreparedGrammar, lex: PreparedLexRules, a: String, b: String, same: Bool) -> String {
