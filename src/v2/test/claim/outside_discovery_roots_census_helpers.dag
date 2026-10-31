@@ -69,13 +69,15 @@ data subject_population_expected: List<String> = [
   "src/v1/tests/claim/type_declaration_occurrence_control_test.dag"
 ]
 
-// THE FILES THAT ARE NOT CLAIMS. Tracked `.dag` under the same subject that declare no test fn at all --
-// helper inventories the claim files beside them import. An extension-only rule called these findings; that
-// was a fabricated population, and these three paths are the RED for it.
+// THE FILES THAT ARE NOT CLAIMS, as SYNTHETIC fixture paths. Tracked `.dag` under the subject that declare no
+// `test fn` -- helper inventories the claim files beside them import -- once existed as real files; they have
+// since been deleted, so these paths are invented for the purpose and are never compared with the tree. They are
+// the RED for the extension-only rule that called such files findings, which was a fabricated population. The
+// route from the real producer is held by the live pairing, not by this list.
 data subject_helpers_declare_nothing: List<String> = [
-  "src/v1/tests/claim/generic_identity_census.dag",
-  "src/v1/tests/claim/interpolation_hole_census.dag",
-  "src/v1/tests/claim/shared_type_leaf_collision_census.dag"
+  "src/v1/tests/claim/fixture_generic_identity_helper_inventory.dag",
+  "src/v1/tests/claim/fixture_interpolation_hole_helper_inventory.dag",
+  "src/v1/tests/claim/fixture_shared_type_leaf_collision_helper_inventory.dag"
 ]
 
 // ...and the files OUTSIDE the subject whose text merely MENTIONS the phrase `test fn` in prose (measured:

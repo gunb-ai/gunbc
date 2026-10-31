@@ -169,10 +169,10 @@ data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 
 // TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
 //
-// The marker test is not decoration. Three files under the note's subject -- generic_identity_census,
-// interpolation_hole_census, shared_type_leaf_collision_census -- are tracked `.dag` that declare no `test fn`
-// at all: they are helper inventories the claim files beside them import. An extension-only test reported
-// them as uncovered claims, which is a fabricated finding: the census named paths whose claim population is
+// The marker test is not decoration. A tracked `.dag` under the note's subject that declares no `test fn`
+// at all (a helper inventory the claim files beside it import; three such files existed before they were
+// deleted, and the witness now supplies synthetic ones) would be reported by an extension-only test as an
+// uncovered claim, which is a fabricated finding: the census named paths whose claim population is
 // zero. So the marker answer is SUPPLIED, not read here -- this module is pure, and the live entry asks
 // `git grep -l`, the same rule the interpreter applies to a claim file's text.
 //

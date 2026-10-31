@@ -54,9 +54,6 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
     NativeCensusVerbProducer,
   SelfHostFrontierProducer,
-  GenericIdentityCensusProducer,
-  InterpolationHoleCensusProducer,
-  SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
@@ -649,45 +646,6 @@ fn effect_pair_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "effect-pair-census" } }
 }
 
-// THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
-// class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
-// v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
-// which generic-identity mark it carries. The standing is decided by the census's controls over
-// fixtures/generic_identity_census; the report beside it covers the v2.compiler.compile closure. It
-// states the populations it cannot reach in every run and never renders them as a count of none.
-// Run by name, on no lane: its consumers are the step-2 changes, each of which executes it at its
-// own head. `gunbc test //gunbc/instruments:generic-identity-census`.
-fn generic_identity_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
-}
-
-// THE XL-2 STEP-2 INSTRUMENT: the interpolation hole-type census. For every interpolation hole in
-// the dag and src/v2 corpus, the seed's own v1.tests.claim.interpolation_hole_census records the
-// hole's identity (file, line, declaration, ordinal), its expression shape and the type v1 infer gave
-// the hole expression itself, flags each typed non-String hole v1 stringifies implicitly (the
-// explicit-conversion population DESIGN section 4 makes a decision input), and reads each
-// transport-block hole against its operation's declared inputs (XL-2 ruling 4). It is the v1 ORACLE:
-// v2 does not yet lex a hole, and PR2b's v2 infer owes agreement with every row. Completeness is an
-// identity join on (file, hole start offset), both ways, so an unreached hole is a located
-// UNOBSERVED row and an unexpected one UNLEXED, never a smaller count. Run by name, on no lane: its consumers are the XL-2
-// conversion decision and PR2b. `gunbc test //gunbc/instruments:interpolation-hole-census`.
-fn interpolation_hole_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
-}
-
-// THE SHARED-TYPE LEAF-COLLISION CENSUS (gunbc.recurring_failure_mode
-// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). v1.tests.claim.shared_type_leaf_collision_census
-// joins type leaves whose declarers are both in one emitted closure and classifies independent
-// sharing (v1.compiler.emit_rust maybe_mark_shared_type per declaration). Different sharing is then
-// rustc-refused (break) or rustc-accepted (silent). The host walks SelfHostProducer and
-// V2NativeCliProducer through instrument_registry (entries from native_lane_runner, witnessed
-// against self_host_entry / v2_native_cli_entry) and every NativeClaimProgramProducer entry.
-// Standing is the fixture controls, not the live population.
-// `gunbc test //gunbc/instruments:shared-type-leaf-collision-census`.
-fn shared_type_leaf_collision_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }
-}
-
 // THE CARDINALITY REALIZATION STANDING (v2.test.claim.cardinality_realization_coverage). The host runs
 // the seed Rust emit over each specimen entry and the native v2 CLI over each specimen module, hands
 // typed outcome records to cardinality_realization_standing, and prints what it returns. Run by label
@@ -799,18 +757,6 @@ fn decl_ref_census_binding() -> TargetBinding {
 
 fn effect_pair_census_binding() -> TargetBinding {
   TargetBinding { target: effect_pair_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbEffectPair } }
-}
-
-fn generic_identity_census_binding() -> TargetBinding {
-  TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
-}
-
-fn interpolation_hole_census_binding() -> TargetBinding {
-  TargetBinding { target: interpolation_hole_census_label() producer: InterpolationHoleCensusProducer {} }
-}
-
-fn shared_type_leaf_collision_census_binding() -> TargetBinding {
-  TargetBinding { target: shared_type_leaf_collision_census_label() producer: SharedTypeLeafCollisionCensusProducer {} }
 }
 
 fn cardinality_realization_binding() -> TargetBinding {
@@ -1353,8 +1299,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
-    shared_type_leaf_collision_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
     credential_acquisition_systemd_rows_label(),
@@ -1376,8 +1321,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
-    shared_type_leaf_collision_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),

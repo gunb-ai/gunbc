@@ -111,7 +111,6 @@ pub use native_lane_runner::{
     NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     V2NativeCliHeld,
 };
-pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;

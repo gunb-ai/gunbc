@@ -58,9 +58,6 @@ type TargetProducer
   | SelfHostBehavioralEquivalenceProducer
   | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
   | SelfHostFrontierProducer
-  | GenericIdentityCensusProducer
-  | InterpolationHoleCensusProducer
-  | SharedTypeLeafCollisionCensusProducer
   | CardinalityRealizationProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
@@ -100,9 +97,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     NativeCensusVerbProducer { verb: _ } => optional_absent()
     SelfHostFrontierProducer {} => optional_absent()
-    GenericIdentityCensusProducer {} => optional_absent()
-    InterpolationHoleCensusProducer {} => optional_absent()
-    SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _, probe: _ } => optional_absent()
