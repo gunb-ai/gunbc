@@ -134,6 +134,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardEnsureGitSharedRepositoryPosture,
   DashboardMigrateGitWorkerSubtree,
   DashboardMoveAttemptStateEntries,
+  DashboardAssertLegacyWriterExcluded,
   dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
@@ -910,6 +911,16 @@ fn dashboard_apply_provision_op(
     // flat entry removed. Every outcome but CreateNewWritten is a refusal, and nothing is removed on one: no entry
     // is ever absent from the old place and unwritten in the new, and a rerun after any stop converges. The
     // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
+    // THE ACTIVATION GATE: the last step of the plan, before the new dispatcher is started (a declared operator
+    // act for this instance). It re-observes the exclusion and refuses if any declared unit is running or unmasked.
+    DashboardAssertLegacyWriterExcluded { fence: fence } => {
+      let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
+      if drift != "" {
+        dashboard_exec_refused(detail: join([drift, "; the new dispatcher must not be activated"], ""))
+      } else {
+        dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
+      }
+    }
     DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
       let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
       let member = join([parent, "/", row.member as String], "")
@@ -921,25 +932,28 @@ fn dashboard_apply_provision_op(
         member_before
       } else {
         match move_plan(row: row, parent_listing: before.stdout, member_listing: member_before.stdout) {
-          MoveNoop => dashboard_exec_ok(stdout: join(["no flat ", row.legacy_flat_prefix as String, "* entries remain in ", parent], ""))
+          MoveNoop => {
+            // The same observation on the already-moved route: a store with nothing left to move still proceeds
+            // only while every declared legacy writer is stopped and masked. An undeclared fence has no unit to
+            // observe and no entry to protect here (it refuses on MoveApply, where entries would be taken).
+            let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
+            if drift != "" {
+              dashboard_exec_refused(detail: join([drift, "; the move holds no entries but the writer exclusion must hold"], ""))
+            } else {
+              dashboard_exec_ok(stdout: join(["no flat ", row.legacy_flat_prefix as String, "* entries remain in ", parent], ""))
+            }
+          }
           MoveRefused { collision: c } =>
             dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, " under another name; nothing was moved"], ""))
           MoveApply { entries: entries } => {
             // THE LEGACY WRITER IS OBSERVED EXCLUDED before any entry is touched (legacy_writer_exclusion): the
             // unit's is-active and is-enabled are read through the same target the move runs on. Anything but
             // stopped AND masked, an unreadable unit, or an undeclared one refuses with nothing moved.
-            let excluded = match fence {
-              LegacyWriterUndeclared => LegacyWriterNotExcluded { reason: "no legacy dispatcher unit is declared for this instance (legacy_writer_fences); the old writer cannot be observed excluded" }
-              LegacyWriterUnits { systemctl: ctl, units: units } =>
-                legacy_writer_exclusion_all(exclusions: map(units, unit => {
-                  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
-                  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
-                  legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
-                }))
-            }
-            let moved = match excluded {
-              LegacyWriterNotExcluded { reason: why } => dashboard_exec_refused(detail: join([why, "; nothing was moved"], ""))
-              LegacyWriterExcluded => fold(
+            let excluded = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
+            let moved = if excluded != "" {
+              dashboard_exec_refused(detail: join([excluded, "; nothing was moved"], ""))
+            } else {
+              fold(
               entries,
               init: dashboard_exec_ok(stdout: ""),
               f: (acc, e) => {
@@ -948,6 +962,10 @@ fn dashboard_apply_provision_op(
                 if !acc.success {
                   acc
                 } else {
+                  // THE EXCLUSION IS RE-OBSERVED at every entry boundary (and again before each removal): a mask
+                  // lifted or a unit restarted mid-move stops the line here, typed, with the entries already
+                  // moved kept and a rerun converging.
+                  let drift_entry = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
                   let old = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", legacy])
                   // The transport trims trailing whitespace from stdout, so a row that carries the bytes themselves
                   // proves the read was faithful against the file's own size, and refuses otherwise: a carried
@@ -963,7 +981,9 @@ fn dashboard_apply_provision_op(
                       }
                     }
                   }
-                  if !old.success {
+                  if drift_entry != "" {
+                    dashboard_exec_refused(detail: join([drift_entry, "; the move stopped before ", legacy, "; entries already moved stay, a rerun converges"], ""))
+                  } else if !old.success {
                     dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be read: ", old.stderr], ""))
                   } else if !sized.success {
                     sized
@@ -1001,11 +1021,16 @@ fn dashboard_apply_provision_op(
                     if !placed.success {
                       placed
                     } else {
-                      let removed = dashboard_target_exec(instance: instance, program: "/bin/rm" as FilePath, args: ["--", legacy])
-                      if removed.success {
-                        dashboard_exec_ok(stdout: join([acc.stdout, e.legacy_name, ": ", placed.stdout, ", ", to_string(value: string_length(s: old.stdout)), " legacy bytes read back; "], ""))
+                      let drift_rm = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
+                      if drift_rm != "" {
+                        dashboard_exec_refused(detail: join([drift_rm, "; the slot ", slot, " is in place but the flat entry ", legacy, " was kept; a rerun finishes the removal"], ""))
                       } else {
-                        dashboard_exec_refused(detail: join(["the slot ", slot, " is in place but the flat entry ", legacy, " was not removed: ", removed.stderr, "; a rerun finishes the removal"], ""))
+                        let removed = dashboard_target_exec(instance: instance, program: "/bin/rm" as FilePath, args: ["--", legacy])
+                        if removed.success {
+                          dashboard_exec_ok(stdout: join([acc.stdout, e.legacy_name, ": ", placed.stdout, ", ", to_string(value: string_length(s: old.stdout)), " legacy bytes read back; "], ""))
+                        } else {
+                          dashboard_exec_refused(detail: join(["the slot ", slot, " is in place but the flat entry ", legacy, " was not removed: ", removed.stderr, "; a rerun finishes the removal"], ""))
+                        }
                       }
                     }
                   }
@@ -1013,8 +1038,11 @@ fn dashboard_apply_provision_op(
               },
             )
             }
+            let drift_end = if moved.success { dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true) } else { "" }
             if !moved.success {
               moved
+            } else if drift_end != "" {
+              dashboard_exec_refused(detail: join([drift_end, "; observed after the last entry was removed"], ""))
             } else {
               let after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
               let member_after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", member])
@@ -1035,6 +1063,30 @@ fn dashboard_apply_provision_op(
         }
       }
     }
+  }
+}
+
+// THE ONE OBSERVATION of the legacy writer's exclusion, shared by every boundary that depends on it: "" when every
+// declared unit is stopped (inactive/failed) AND masked, else the typed reason. An unreadable unit reads as not
+// stopped. undeclared_refuses is true where entries are being taken (nothing to observe is a refusal) and false
+// where a fence-less instance has no entry to protect (the Noop and activation routes).
+fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyWriterFence, undeclared_refuses: Bool) -> String {
+  match fence {
+    LegacyWriterUndeclared =>
+      if undeclared_refuses {
+        "no legacy dispatcher unit is declared for this instance (legacy_writer_fences); the old writer cannot be observed excluded"
+      } else {
+        ""
+      }
+    LegacyWriterUnits { systemctl: ctl, units: units } =>
+      match legacy_writer_exclusion_all(exclusions: map(units, unit => {
+        let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
+        let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
+        legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
+      })) {
+        LegacyWriterNotExcluded { reason: why } => why
+        LegacyWriterExcluded => ""
+      }
   }
 }
 
@@ -2354,6 +2406,7 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
+      DashboardAssertLegacyWriterExcluded { fence: _ } => false
     })
 }
 

@@ -14,7 +14,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
-  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries,
+  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries, DashboardAssertLegacyWriterExcluded,
 }
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
@@ -328,3 +328,74 @@ test fn a_noop_move_does_not_need_the_fence() -> Bool {
   shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success && move_with_fence(i: i, fence: LegacyWriterUndeclared).success
 }
 
+
+// A stand-in whose host CHANGES ITS MIND: the first `quiet_calls` is-active questions read inactive, every later one
+// reads active (the old unit restarted mid-cutover) while is-enabled keeps reading masked. The call count lives in a
+// file beside the stub, so the answer depends on when the move asks, not on which unit it asks about.
+fn flipping_fence(i: HostDashboardInstance, quiet_calls: Int) -> LegacyWriterFence {
+  let stub = join([parent_of(i: i), "/../fence-systemctl-flip-", to_string(value: quiet_calls)], "")
+  let count = join([stub, ".n"], "")
+  let body = join(["#!/bin/sh\nn=$(cat ", count, " 2>/dev/null || echo 0)\ncase \"$1\" in is-active) n=$((n+1)); echo $n > ", count, "; if [ $n -gt ", to_string(value: quiet_calls), " ]; then echo active; else echo inactive; fi; exit 3;; is-enabled) echo masked; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] }
+}
+
+// ARM 15, BROKEN: the exclusion is lifted MID-CUTOVER. The start check (call 1) and the first entry's boundary
+// (call 2) read stopped and masked; the check before that entry's removal (call 3) reads the unit running. The move
+// stops there, typed: the first entry's slot is written but NO flat entry was removed, every flat entry is still in
+// the parent, and the mint stays Unready. A rerun with the host restored converges (the slot is read back equal).
+test fn the_exclusion_lifted_mid_cutover_stops_the_line_before_any_flat_entry_is_removed() -> Bool {
+  let i = fresh_instance(tag: "midcut")
+  let ready = plant(i: i)
+  let stopped = move_with_fence(i: i, fence: flipping_fence(i: i, quiet_calls: 2))
+  let parent = Filesystem.List(path: parent_of(i: i)).entries
+  let kept = string_contains(s: parent, pattern: "attempt-identity-a-n1")
+    && string_contains(s: parent, pattern: "attempt-identity-a-n2")
+    && string_contains(s: parent, pattern: "attempt-identity-b-n7")
+  let unready = match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreReady { store: _ } => false
+    AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
+  }
+  let rerun = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !stopped.success && string_contains(s: stopped.stderr, pattern: "is not stopped")
+    && kept && unready
+    && rerun.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
+    && length(xs: split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")) == 3
+}
+
+// ARM 16, BROKEN: the MoveNoop route with a LIVE writer. Nothing is left to move, yet an already-moved store may
+// not proceed while a declared legacy unit is running or unmasked; stopped and masked proceeds.
+test fn a_noop_move_with_a_live_or_unmasked_writer_is_refused_and_with_an_excluded_one_proceeds() -> Bool {
+  let i = fresh_instance(tag: "noopfence")
+  let ready = shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
+  let held = move_with_fence(i: i, fence: excluded_fence(i: i))
+  ready
+    && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && held.success
+}
+
+fn gate_with(i: HostDashboardInstance, f: LegacyWriterFence) -> DashboardExecResult {
+  dashboard_apply_provision_op(
+    instance: i,
+    op: DashboardAssertLegacyWriterExcluded { fence: f },
+    temp_bundle: "/unused-bundle" as FilePath,
+    temp_verify_repo: "/unused-verify" as FilePath,
+  )
+}
+
+// ARM 17: THE ACTIVATION GATE (DashboardAssertLegacyWriterExcluded, last in the plan) refuses to let the new
+// dispatcher start while a declared legacy unit runs or is unmasked, and passes when they are excluded.
+test fn the_activation_gate_refuses_a_running_or_unmasked_writer_and_passes_an_excluded_one() -> Bool {
+  let i = fresh_instance(tag: "gate")
+  let running = gate_with(i: i, f: fence_stub(i: i, active: "active", enabled: "masked"))
+  let unmasked = gate_with(i: i, f: fence_stub(i: i, active: "inactive", enabled: "enabled"))
+  let held = gate_with(i: i, f: excluded_fence(i: i))
+  !running.success && string_contains(s: running.stderr, pattern: "must not be activated")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && held.success
+}

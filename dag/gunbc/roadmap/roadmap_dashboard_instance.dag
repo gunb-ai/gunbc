@@ -3232,6 +3232,8 @@ type DashboardInstanceProvisionOp
       // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
       fence: LegacyWriterFence,
     }
+  // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
+  | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3315,7 +3317,10 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
   concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
-    dashboard_instance_provider_verification_ops(instance: instance),
+    concat(
+      dashboard_instance_provider_verification_ops(instance: instance),
+      [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
+    ),
   )))))
 }
 
@@ -3433,6 +3438,12 @@ fn dashboard_instance_provision_op_row(
         kind: "migrate-git-worker-subtree" as NonEmptyStr,
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
+      }
+    DashboardAssertLegacyWriterExcluded { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-legacy-writer-excluded" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
       }
     DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
       DashboardInstanceProvisionPlanRow {
