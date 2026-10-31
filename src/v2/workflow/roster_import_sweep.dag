@@ -973,34 +973,67 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
       let closures = roster_home_closures(root: held.root, scope: scope)
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
       let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
-      fold_list(
+      // ALL-OR-NOTHING (tidy-ant-251, 2026-10-31): every path is planned (read, swept, spliced) before any is written;
+      // one refusal anywhere reports and writes nothing, so a refused file never leaves another file's import without its rename.
+      let plans = fold_list(
         xs: split(s: paths_csv, delimiter: ","),
-        empty: "",
-        cons: fn(acc, path) { acc + roster_apply_path(sides: sides, companions: companions, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures) }
+        empty: [],
+        cons: fn(acc, path) { list_append(acc, roster_plan_path(sides: sides, companions: companions, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures)) }
       )
+      let refusals = fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_refusal_rows(plan: plan) })
+      if refusals == "" {
+        fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_commit(held: held, plan: plan) })
+      } else {
+        refusals
+      }
     }
   }
 }
 
-fn roster_apply_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
+type RosterPlan
+  = RosterPlanNoop
+  | RosterPlanRefused { row: String }
+  | RosterPlanWrite { path: String, before: String, outcome: RosterOutcome }
+
+fn roster_plan_refusal_rows(plan: RosterPlan) -> String {
+  match plan {
+    RosterPlanNoop => ""
+    RosterPlanRefused { row: row } => row
+    RosterPlanWrite { path: _, before: _, outcome: _ } => ""
+  }
+}
+
+fn roster_plan_commit(held: RosterHeldLock, plan: RosterPlan) -> String {
+  match plan {
+    RosterPlanNoop => ""
+    RosterPlanRefused { row: _ } => ""
+    RosterPlanWrite { path: path, before: before, outcome: outcome } => roster_apply_edit(held: held, path: path, before: before, outcome: outcome)
+  }
+}
+
+fn roster_plan_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> RosterPlan {
   if !roster_path_admitted(path: path) {
-    roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
+    RosterPlanRefused { row: roster_refuse_row(path: path, reason: RefusalPathOutsideRoot) }
   } else {
     let read = Filesystem.Read(path: held.root + "/" + path)
     if read.success {
       match roster_sweep_text_scoped(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures) {
-        RosterClean => ""
-        RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
-        RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
-        RosterLabelEdits { edits: edits } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterLabelEdits { edits: edits })
-        RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls })
+        RosterClean => RosterPlanNoop
+        RosterRefused { reason: reason } => RosterPlanRefused { row: roster_refuse_row(path: path, reason: reason) }
+        RosterEdit { start: a, end: b, text: t, own_line: o } => roster_plan_splice(path: path, before: read.content, outcome: RosterEdit { start: a, end: b, text: t, own_line: o })
+        RosterLabelEdits { edits: e } => roster_plan_splice(path: path, before: read.content, outcome: RosterLabelEdits { edits: e })
+        RosterEditWithLabels { start: a, end: b, text: t, own_line: o, labels: l } => roster_plan_splice(path: path, before: read.content, outcome: RosterEditWithLabels { start: a, end: b, text: t, own_line: o, labels: l })
       }
     } else {
-      roster_refuse_row(path: path, reason: RefusalUnreadable)
+      RosterPlanRefused { row: roster_refuse_row(path: path, reason: RefusalUnreadable) }
     }
+  }
+}
+
+fn roster_plan_splice(path: String, before: String, outcome: RosterOutcome) -> RosterPlan {
+  match roster_applied(before: before, outcome: outcome) {
+    RosterApplyRefused { reason: reason } => RosterPlanRefused { row: roster_refuse_row(path: path, reason: reason) }
+    RosterApplyWritten { content: _ } => RosterPlanWrite { path: path, before: before, outcome: outcome }
   }
 }
 
