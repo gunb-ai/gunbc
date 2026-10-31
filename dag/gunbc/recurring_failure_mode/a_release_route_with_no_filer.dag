@@ -1,0 +1,51 @@
+module gunbc.recurring_failure_mode.a_release_route_with_no_filer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// A CONSENT ROUTE THAT NOBODY CAN ASK FOR. The failure is not a missing check: the check is there, it
+// is correct, and it is witnessed. The failure is that the route has a READER and no FILER. The policy
+// reads a consent store for a decision a human was supposed to make; the tests file that decision by
+// writing into the store directly, with the store's own publish call, which is exactly the call no
+// human has; and no production path ever posts the request the Approve app would show. Every claim
+// about the route passes -- including the positive control, which is the one that should have hurt --
+// because the test stands in for the half of the route that was never built. The route is then a
+// fixture: reachable from a witness, unreachable from the fleet, and the operator it was written for
+// is never asked a thing.
+//
+// HOW IT BITES HERE, AND WHY IT IS A FAMILY AND NOT THIS CASE. A consent store has three edges: a
+// request FILED (needs the submission key, and the Approve app cannot do it), a decision DECIDED (the
+// operator's device, and only the operator's device), and a grant REDEEMED (the run that needs it).
+// The witness can reach all three by construction -- it is inside the store -- so a route that is
+// missing the first edge loses the only edge that discriminates it. Spot it by comparing caller
+// lists, not by reading the policy: grep who calls the store's file/publish path and who calls its
+// read path, and if the file path appears only under test/ while the read path runs in production, the
+// route has no filer. The same shape covers any "wait for a human" gate: a run that polls for an
+// approval nobody filed, a recovery that requires an attestation nothing mints, a quarantine that
+// clears on a receipt no instrument writes.
+//
+// WHAT ENDS IT. The filer is a route of its own, not a flag on the reader: it builds the request from
+// the SAME typed subject the reader will rebuild (so the intent hash matches by construction), files it
+// through the canonical approval route rather than a hand-dialled one, and reports which of its
+// outcomes happened -- card filed, card already on file, nothing to ask, refused -- because an operator
+// deciding what to do next reads that, not a look-alike success. And the witness that would have
+// failed on main is the one that runs the FILER and asserts the store it reads is still empty: the
+// route must accept the broker's refusal as its own answer instead of manufacturing the consent.
+data a_release_route_with_no_filer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_release_route_with_no_filer" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "a release route with no filer: the policy READS a consent store, the tests file into that store by hand with a call no operator has, and no production path posts the request the operator would answer",
+    "every claim about such a route passes, positive control included, because the witness stands in for the half that was never built",
+    "spot it by comparing caller lists, not by reading the policy: the store's file path appears only under test/ while its read path runs in production",
+    "the filer is its own route -- same typed subject, canonical approval route, a named outcome -- and the claim that ends the family runs the filer and asserts the store it reads is still empty",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_on_operator_observation"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_release_request"),
+    decl_ref(module_path: "test.claim.printer_execution_hold_recovery_wet_witness", decl_name: "the_release_request_asks_through_the_broker_and_never_conscribes_a_decision"),
+  ],
+}
