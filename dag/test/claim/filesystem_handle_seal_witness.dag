@@ -8,10 +8,12 @@ import extdeps.filesystem.posix { PosixFileIdentity }
 // A FilesystemHandle CANNOT BE SPELLED OR CAST OUTSIDE extdeps.filesystem.filesystem_io. Each RED hands
 // the compiler a module that is not the declaring file and asserts EXACTLY ONE SoleConstructorViolation
 // keyed on FilesystemHandle; the seal-stripped twin (test.fixture.filesystem_handle_seal.unsealed) takes
-// the same literal with no violation, so the refusal is the keyword. A third route, a foreign call to a mint function with authored values, is refused as a
-// MissingExport because no such function exists. Claimed: no foreign module can build a FilesystemHandle by literal, cast or
-// authored-value mint call. NOT claimed: that the host mints one -- that is the realization change, where the lawful
-// positive control and the symlink-swap RED run.
+// the same literal with no violation, so the refusal is the keyword. A fourth probe pins ONE NAME: a foreign call to `filesystem_handle_open` with authored values
+// refuses as MissingExport today because no such export exists, and it flips red if an export of that exact name
+// appears. It is a tripwire on that spelling, not a proof about mints in general. Claimed: no foreign module can
+// build a FilesystemHandle by literal or cast. NOT claimed: coverage of other mint spellings, or that the host
+// mints a handle at all -- that is the realization change, where the lawful positive control and the symlink-swap
+// RED run.
 
 // A verdict as a Bool so the runner prints a PASS or FAIL line per claim (a ProcessExit prints nothing on success).
 fn held(v: CensusVerdict) -> Bool {

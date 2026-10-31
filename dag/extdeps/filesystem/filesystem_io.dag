@@ -264,9 +264,11 @@ fn filesystem_link_create_new(
 //
 // gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls: a check on a path is
 // itself a resolution, so check-then-open and open-then-reopen both leave a window in which the name is
-// repointed. The repair is construction, not a better check: `FilesystemHandle` is sole_constructor and
-// its one mint is the `Filesystem.Open` operation's handler (open(path, O_NOFOLLOW)), so a handle
-// exists only for a descriptor the host actually returned. Every handle operation below takes the
+// repointed. The repair is construction, not a better check: `FilesystemHandle` is sole_constructor. THE MINT DOES NOT
+// EXIST YET: no `Filesystem.Open` operation or handler is declared, and nothing constructs `FilesystemOpened`.
+// The realization change must make that handler (open(path, O_NOFOLLOW)) the one mint, inline over the host
+// channel, so a handle exists only for a descriptor the host actually returned. Until then the seal holds
+// because no handle can be built at all. Every handle operation below takes the
 // HANDLE and never a path, so validate-then-reopen has no spelling: there is no path parameter to pass.
 //
 // The final component is never followed (O_NOFOLLOW; O_PATH where the file itself must not be read), so
