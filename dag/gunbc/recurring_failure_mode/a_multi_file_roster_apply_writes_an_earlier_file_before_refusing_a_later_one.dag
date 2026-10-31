@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_one
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_one: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_one" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "atomic publication of the COMPLETE prepared file set (or an equivalent transaction/recovery mechanism) so readers cannot observe a partial generation, e.g. a staged generation behind ONE atomic pointer update with consumers resolving through it, and the filesystem atomicity assumptions declared (a per-entry rename is atomic for one file only, so staging every file and renaming each into place still exposes a partial tree when a later rename fails)" } },
+
+  receipts: [
+    "INVALID STATE: v2.workflow.roster_import_sweep roster_import_sweep_apply_occurrences_exit, given several files, writes an earlier file's edit and then refuses a later file, leaving a tree with an import and no rename (or any other half of one rename). A refusal that fires after a write is not a stop: it leaves the deficit in the tree.",
+
+    "SPECIMEN, 2026-10-31 (jolly-cat-271, gunbc#15447, srv1 worktree ~/s15447 at 82308725740f, 16G scope): apply with --arg row_key=contains --arg call=contains --arg paths_csv=dag/extdeps/uri.dag,dag/extdeps/uri_path.dag and keys dag/extdeps/uri.dag:123:15; dag/extdeps/uri_path.dag:82:15, 83:15, 103:18, 123:38, 123:65. Answered rc=1 with the single line `REFUSE dag/extdeps/uri_path.dag rename-pipe-operand-unclean call=contains`. `git diff` in that worktree then showed ONE change: dag/extdeps/uri.dag line 4 gained `string_contains` in its std.algebra import; the call at uri.dag:123 (`!(s |> contains(\":\"))`, the keyed site 123:15) was NOT renamed and nothing refused for it.",
+
+    "SECOND ODDITY, same specimen: within uri.dag itself the import landed but the keyed call site did not change and no refusal named it, so a site can be skipped silently while its file's import is written.",
+
+    "SECOND SPECIMEN, same worktree and head, row flat_map over dag/std/algebra.dag, dag/std/graph.dag, dag/std/roster_frontier.dag (keys algebra.dag:1209:8, graph.dag:242:28, roster_frontier.dag:136:3): rc=1 with `REFUSE dag/std/algebra.dag import-closes-cycle home=std.algebra module=std.algebra` (the home module cannot import itself, so that key was mine to omit). `git diff` showed roster_frontier.dag renamed (import and `list_flat_map(xs: groups, f: ...)`) but graph.dag with the import added and `edges |> flat_map(e => ...)` at 242:28 NOT renamed and not refused. Both skipped sites (uri.dag:123:15 and graph.dag:242:28) are pipe sites whose keys point at the call head (verified by byte read of the pinned blob); the one renamed site is a plain call.",
+
+    "HARM: a tree that resolves differently from both the original and the intended edit; a later reader sees an unused import and a bare ambient call, and nothing records that an apply was interrupted.",
+
+    "PARTIAL REPAIR, gunbc#15474 (zesty-badger-599): the apply plans every path before the first write, so a refusal from PLANNING (path admission, read, sweep, splice) writes nothing, and a keyed pipe site that cannot be rewritten this pass refuses rather than being skipped (the SECOND ODDITY and the SECOND SPECIMEN's graph.dag:242:28). The rung is not updated by this row.",
+
+    "RESIDUAL after #15474: a refusal during the COMMIT (lock lost, stale read, host write failure) can still follow earlier file writes; no control covers that phase (review 89088). It is a host-boundary residual (no typed boundary category exists on this carrier, so it stays a receipt; the typed trigger_capability above names the staged commit that closes it, and gunbc#15474 alone does NOT meet that trigger). Next trigger: the typed trigger_capability above (atomic publication of the complete prepared file set); staging plus per-entry rename does NOT meet it, because rename is atomic per entry and a failure between two renames leaves a partial tree.",
+
+    "RUNG FOUND AT: silent wrongness, below the ladder (DESIGN section 5). Ceiling: structurally guaranteed by atomic publication of the complete prepared file set. Discriminating REDs, two cases that must not be conflated: (1) PLANNING-phase refusal, REPAIRED by gunbc#15474: a two-file apply whose second file refuses in planning (path admission, read, sweep, splice) leaves the first file byte-identical; this is the case the SPECIMENs above showed and it now holds. (2) COMMIT-phase failure, REMAINING: a two-file apply where the commit of the second file fails (lock lost, stale read, host write failure) after the first is published leaves the first file changed; no control authors this yet and the repair is the sweep machinery's, not this row's.",
+  ],
+
+  evidence: [],
+}
