@@ -11966,6 +11966,10 @@ fn belt_launch_process(instance: HostDashboardInstance, node_id: String, attempt
         AttemptExitRecordNone =>
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        // An unsubstituted entry proves the unit was started (its hook ran), so the start standing is
+        // recorded; what the artifact cannot do is report the end's status, and it is not evidence that
+        // the holder lives.
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
       }
     }
