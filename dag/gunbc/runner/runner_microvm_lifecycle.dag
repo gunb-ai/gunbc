@@ -334,6 +334,10 @@ type ResourceReadback
 // is mapped onto SlotNetworkQuiescent.
 // WHAT THE UNIT SAID ITS ATTEMPT WAS, OR WHY IT SAID NOTHING -- THREE STATES, NOT A STRING.
 //
+// THIS IS GUNBC'S OWN ATTEMPT TOKEN, WRITTEN INTO THE UNIT'S Environment AT LAUNCH, AND IS NOT systemd's
+// InvocationID. The manager mints a fresh InvocationID per start whatever the caller set; which run of
+// a unit this is belongs to gunbc.systemd_unit_run_identity, which observes it from the host.
+//
 // The controller reads this off the unit rather than copying it from the request, so it is an
 // OBSERVATION and it can fail to be taken: systemd unloads a unit the moment it is collected, and
 // this lane's own receipts produce "Unit ... not loaded" routinely. A reading that folded that into
@@ -347,11 +351,11 @@ type ResourceReadback
 // a record-field position is the defect this module's sibling store codec already documents for
 // `as Nat`: it typechecks and is decided only when it EVALUATES, so the designed empty case never
 // reaches the refusal it was written for (review 69057). The arm replaces the cast.
-type UnitInvocationReading
-  = UnitInvocationRead { invocation_id: NonEmptyStr }
-  | UnitInvocationUnread { reason: NonEmptyStr }
+type UnitAttemptBindingReading
+  = UnitAttemptBindingRead { attempt_token: NonEmptyStr }
+  | UnitAttemptBindingUnread { reason: NonEmptyStr }
 
-type ObservedStop { unit: NonEmptyStr, invocation_id: UnitInvocationReading, outcome: TeardownStop }
+type ObservedStop { unit: NonEmptyStr, attempt_binding: UnitAttemptBindingReading, outcome: TeardownStop }
 
 type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
 
@@ -438,10 +442,10 @@ fn attempt_teardown_readback(bound: CellBoundAttempt, observed: ObservedTeardown
 // rather than a derivation from the attempt, which is what makes the join a wall instead of a
 // comparison of one value with itself.
 fn attempt_teardown_readback_after_invocation(bound: CellBoundAttempt, observed: ObservedTeardown) -> TeardownReadbackBinding {
-  match observed.stop.invocation_id {
-    UnitInvocationUnread { reason: r } =>
+  match observed.stop.attempt_binding {
+    UnitAttemptBindingUnread { reason: r } =>
       TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: r }
-    UnitInvocationRead { invocation_id: seen } =>
+    UnitAttemptBindingRead { attempt_token: seen } =>
       if (seen as String) != (bound.attempt.invocation_id as String) {
         TeardownReadbackForeignSubject {
           subject: SubjectInvocation,

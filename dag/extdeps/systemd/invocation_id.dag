@@ -1,0 +1,55 @@
+module extdeps.systemd.invocation_id
+
+import std.types { String, NonEmptyStr, Int, Bool, brand }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/255/systemd.exec.html#$INVOCATION_ID"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.systemd.invocation_id", decl_name: "systemd_invocation_id_hex_length", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// systemd.exec(5), version 255 (the version extdeps.systemd measures against): `$INVOCATION_ID` is "a randomly
+// generated 128-bit ID which is used to identify the current invocation of the unit, formatted as a string of 32
+// hexadecimal digits"; the manager mints a fresh one on every start and exports it to the unit's processes, and
+// the unit's InvocationID property (org.freedesktop.systemd1.Unit, `ay`; systemctl prints it as the same hex)
+// carries the same value for the loaded unit. An inactive unit that has never run reads empty.
+//
+// It identifies a run only within the manager that minted it: two managers (the system manager, or one user's
+// manager) draw independently, so the id alone does not say whose run it names. That is why the composite lives
+// in gunbc.systemd_unit_run_identity and this module owns only the id's wire shape.
+type SystemdInvocationId = NonEmptyStr where brand("SystemdInvocationId")
+
+data systemd_invocation_id_hex_length: Int = 32
+
+fn systemd_invocation_id_digit(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+}
+
+fn systemd_invocation_id_digits_hold(t: String, i: Int) -> Bool {
+  if i >= systemd_invocation_id_hex_length { true }
+  else { systemd_invocation_id_digit(cp: code_point(char_at(s: t, pos: i))) && systemd_invocation_id_digits_hold(t: t, i: i + 1) }
+}
+
+// DECODE: exactly 32 lowercase hexadecimal digits (systemd prints lowercase; an uppercase spelling is a different
+// producer's text, not systemd's, and refuses). The empty text the property reads before a unit first runs is
+// no invocation id: it decodes to Absent, which the caller must keep apart from "unit not asked".
+fn systemd_invocation_id_of(text: String) -> SystemdInvocationId? {
+  let t = trim(s: text)
+  if string_length(s: t) == systemd_invocation_id_hex_length && systemd_invocation_id_digits_hold(t: t, i: 0) {
+    Present { value: t as SystemdInvocationId }
+  } else { none }
+}
