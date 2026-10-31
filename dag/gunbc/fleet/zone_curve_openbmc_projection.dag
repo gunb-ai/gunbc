@@ -26,6 +26,8 @@ import extdeps.bmc.pid_control_program {
   decimal_celsius_delta,
   decimal_milliseconds,
   decimal_seconds,
+  curve_fits_upstream_stepwise_table,
+  phosphor_stepwise_max_points,
   zone_demand_value,
 }
 
@@ -174,8 +176,6 @@ fn openbmc_curve_zone_built(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenB
 //   curve wider than 95 degrees at this step, is silently dropped and the zone holds the previous
 //   point's duty at full_at and above. The refusal is typed rather than a coarser sampling, so the
 //   approximation is never silently changed.
-data openbmc_stepwise_max_points: Int = 20
-
 type OpenBmcCurveRefusal
   = OpenBmcTimeoutNotPositive
   | OpenBmcPointsExceedUpstreamLimit { required: Int, limit: Int }
@@ -185,10 +185,11 @@ type OpenBmcCurveProjection
   | OpenBmcCurveRefused { causes: List<OpenBmcCurveRefusal> }
 
 fn openbmc_curve_refusals(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> List<OpenBmcCurveRefusal> {
-  let required = length(openbmc_curve_points(curve: curve))
+  let points = openbmc_curve_points(curve: curve)
+  let required = length(points)
   concat(
     if (second_count(row.input_timeout) as Int) > 0 { [] } else { [OpenBmcTimeoutNotPositive] },
-    if required > openbmc_stepwise_max_points { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: openbmc_stepwise_max_points }] } else { [] },
+    if curve_fits_upstream_stepwise_table(curve: points) { [] } else { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: phosphor_stepwise_max_points }] },
   )
 }
 
