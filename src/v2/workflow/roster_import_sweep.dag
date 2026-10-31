@@ -585,41 +585,6 @@ fn roster_import_sweep_row_exit(paths_csv: String, home: String, call: String) -
   if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
 }
 
-// OBSERVATION ONLY (no row decision, no write): the sweep's per-file stages, one run per stage, so the cost of a file is
-// read off the DIFFERENCE between consecutive stage runs (the sweep is pure interpreted code, so no phase line can be
-// printed from inside it). `stage` is one of tokenize | parse | normalize | sites; the run stops after that stage has been
-// forced by its Accepted/Rejected match and exits with the stage name, so each stage run is a prefix of roster_census_text_rows.
-fn roster_import_sweep_stage_exit(path: String, stage: String) -> ProcessExit {
-  let read = Filesystem.Read(path: path)
-  if read.success {
-    match dag_prepared_grammar() {
-      Rejected { diagnostics: _ } => exit_failure(reason: "grammar-unprepared")
-      Accepted { value: prepared, diagnostics: _ } =>
-        match tokenize_prepared(text: read.content, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
-          Rejected { diagnostics: _ } => exit_failure(reason: "tokenize-refused")
-          Accepted { value: stream, diagnostics: _ } =>
-            if stage == "tokenize" { exit_failure(reason: "stage-done tokenize") } else {
-              match parse_module_prepared(tokens: stream, prepared: prepared) {
-                Rejected { diagnostics: _ } => exit_failure(reason: "parse-refused")
-                Accepted { value: artifact, diagnostics: _ } =>
-                  if stage == "parse" { exit_failure(reason: "stage-done parse") } else {
-                    match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                      Rejected { diagnostics: _ } => exit_failure(reason: "normalize-refused")
-                      Accepted { value: scoped, diagnostics: _ } =>
-                        if stage == "normalize" { exit_failure(reason: "stage-done normalize") } else {
-                          exit_failure(reason: "stage-done sites " + int_to_decimal_string(value: length(xs: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites)))
-                        }
-                    }
-                  }
-              }
-            }
-        }
-    }
-  } else {
-    exit_failure(reason: "unreadable")
-  }
-}
-
 fn roster_import_sweep_apply_row_exit(root_dir: String, paths_csv: String, home: String, call: String) -> ProcessExit {
   let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), rows: OnlyCall { call: call })
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
