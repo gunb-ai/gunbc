@@ -24,7 +24,7 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterUnitRow, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
@@ -3443,14 +3443,30 @@ fn dashboard_instance_provision_op_row(
   }
 }
 
-// THE LEGACY DISPATCHER UNIT PER INSTANCE, as data. Declared deficit: no instance's old-writer unit is modeled yet
-// (the lab and preview dispatchers are launched by hand, not by a declared unit), so every instance reads
-// Undeclared and a move that has entries to move refuses until a row names the unit. A row here is the only
-// edit that lets a live move proceed.
-data legacy_writer_units: List<LegacyWriterUnitRow> = []
+// THE LEGACY IDENTITY WRITERS PER INSTANCE, as data, traced by symbol (read of srv1, stern 2026-10-31, system
+// units in /etc/systemd/system running /opt/gunbc-lab/codex-provider-feedback-v0/bin/gunbc as briansrls).
+// The mint is gunbc.roadmap.roadmap_belt_actuate belt_dispatch_attempt_identity_mint, reached by static call
+// graph from these unit entries and no others:
+//   gunbc-srv1-lab-codex-feedback-v0.service  serve, roadmap_serve_handle_srv1_lab -> roadmap_serve_handle_over
+//     -> serve_dispatch_handler_response_over -> belt_dispatch_node_for_instance_over -> belt_actuate_spawn_for_instance.
+// Entries traced NOT to reach it: the belt service (belt_launch_enqueue_cli), the exit drain, the publication
+// answer drain, credential recovery, the publication helper, and the attempt-unit drain (it launches an already
+// minted attempt's worker unit). Their .path/.timer triggers therefore start no writer. The serve unit has no
+// .path or .timer trigger; masking it refuses its restarts too. UNKNOWN, recorded not resolved: what starts
+// gunbc-srv1-lab-codex-feedback-v0-belt.service (no unit file references it); its entry does not reach the
+// mint, but if a trace of another entry ever does, its unit joins this row.
+data legacy_writer_fences: List<LegacyWriterFenceRow> = [
+  LegacyWriterFenceRow {
+    instance_id: srv1_dashboard_lab_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+    },
+  },
+]
 
 fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
-  legacy_writer_fence_for(rows: legacy_writer_units, instance_id: instance.instance_id)
+  legacy_writer_fence_for(rows: legacy_writer_fences, instance_id: instance.instance_id)
 }
 
 fn dashboard_instance_provision_plan_rows(

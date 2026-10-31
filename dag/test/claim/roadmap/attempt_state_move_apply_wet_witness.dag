@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUndeclared, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterRetiredInstance, LegacyWriterUndeclared, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -73,7 +73,7 @@ fn fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> Lega
   let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", enabled], "")
   let body = join(["#!/bin/sh\ncase \"$1\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; esac\nexit 1\n"], "")
   let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
-  LegacyWriterUnit { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, unit: "legacy-dispatcher.service" as NonEmptyStr }
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr, "legacy-dispatcher-two.service" as NonEmptyStr] }
 }
 
 fn excluded_fence(i: HostDashboardInstance) -> LegacyWriterFence {
@@ -305,7 +305,7 @@ test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked
   let ready = plant(i: i)
   let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
   let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
-  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnit { systemctl: "/nonexistent/systemctl" as NonEmptyStr, unit: "legacy-dispatcher.service" as NonEmptyStr })
+  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] })
   let undeclared = move_with_fence(i: i, fence: LegacyWriterUndeclared)
   let untouched = string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
     && string_length(s: Filesystem.List(path: member_of(i: i)).entries) == 0
@@ -326,4 +326,33 @@ test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked
 test fn a_noop_move_does_not_need_the_fence() -> Bool {
   let i = fresh_instance(tag: "fencenoop")
   shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success && move_with_fence(i: i, fence: LegacyWriterUndeclared).success
+}
+
+fn unit_dir_of(i: HostDashboardInstance) -> String {
+  join([parent_of(i: i), "/../units"], "")
+}
+
+fn retired_fence(i: HostDashboardInstance) -> LegacyWriterFence {
+  LegacyWriterRetiredInstance { root: join([parent_of(i: i), "/.."], "") as NonEmptyStr, unit_dirs: [unit_dir_of(i: i) as NonEmptyStr] }
+}
+
+// ARM 15, RED THEN GREEN: A RETIRED INSTANCE IS EXCLUDED ONLY WHILE NO UNIT REFERENCES ITS ROOT. A unit file
+// naming the root makes the move refuse with every flat entry in place; an unlistable unit directory refuses
+// too; with the directory listable and unreferencing the same tree moves.
+test fn a_unit_referencing_a_retired_instance_root_makes_the_move_refuse() -> Bool {
+  let i = fresh_instance(tag: "retired")
+  let ready = plant(i: i) && shell.Mkdir.Parents(path: unit_dir_of(i: i) as FilePath).success
+  let unrelated = Filesystem.Write(path: join([unit_dir_of(i: i), "/other.service"], ""), content: "[Service]\nExecStart=/bin/true\n").success
+  let missing_dir = move_with_fence(i: i, fence: LegacyWriterRetiredInstance { root: parent_of(i: i) as NonEmptyStr, unit_dirs: ["/nonexistent/units" as NonEmptyStr] })
+  let referencing = Filesystem.Write(path: join([unit_dir_of(i: i), "/ghost.service"], ""), content: join(["[Service]\nExecStart=/bin/true --root ", parent_of(i: i), "/..\n"], "")).success
+  let refused = move_with_fence(i: i, fence: retired_fence(i: i))
+  let untouched = string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
+  let removed = Filesystem.Delete(path: join([unit_dir_of(i: i), "/ghost.service"], "")).success
+  let moved = move_with_fence(i: i, fence: retired_fence(i: i))
+  ready && unrelated && referencing && removed
+    && !missing_dir.success && string_contains(s: missing_dir.stderr, pattern: "could not all be listed")
+    && !refused.success && string_contains(s: refused.stderr, pattern: "references the retired instance root")
+    && untouched
+    && moved.success
+    && !string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-")
 }
