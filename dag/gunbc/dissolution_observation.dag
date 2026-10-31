@@ -72,8 +72,9 @@ fn census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
   flat_map(rows, row => frontier_row_subject_refs(row: row))
 }
 
-// Only CensusRefAbsent is a stale subject. OutsideIndex and Ambiguous are UNDECIDED, which the
-// trigger side already refuses on; they are not called stale here.
+// Only CensusRefAbsent is a stale subject. OutsideIndex and Ambiguous are UNDECIDED, which is not
+// stale; frontier_undecided_subject_refs reports them so the census refuses on them (DESIGN section 5)
+// exactly as it does for the trigger refs, instead of passing a subject it could not resolve.
 fn frontier_stale_subject_refs(
   rows: List<FrontierRow>,
   facts: List<DeclFact>,
@@ -87,6 +88,17 @@ fn frontier_stale_subject_refs(
       CensusRefOutsideIndex { ref: _ } => false
       CensusRefAmbiguous { ref: _ } => false
     })
+    |> map(v => census_ref_verdict_ref(verdict: v))
+}
+
+fn frontier_undecided_subject_refs(
+  rows: List<FrontierRow>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> List<DeclarationRef> {
+  census_subject_refs(rows: rows)
+    |> map(ref => census_ref_verdict(ref: ref, facts: facts, modules: modules))
+    |> filter(v => census_ref_is_undecided(verdict: v))
     |> map(v => census_ref_verdict_ref(verdict: v))
 }
 
