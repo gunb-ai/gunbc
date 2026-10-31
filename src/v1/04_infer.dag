@@ -4422,7 +4422,6 @@ type InhabitanceUndecidableReason
   | UndecidableProducedIdentityErased
   | UndecidableRefinementIntroduction
   | UndecidableRefinementPeerChains
-  | UnmodeledNoArmDecides
 
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
@@ -4437,10 +4436,14 @@ type InhabitanceRefusalReason
   | RefusedCallableMismatch
 
 
+// InhabitanceUnmodeled is NOT a property of the facts: no arm of the relation judges the pair yet. It is a
+// separate verdict, not an InhabitanceUndecidableReason, because 'undecidable' is a property of the facts and
+// never of the wiring (DESIGN section 3: a materially different contract needs a materially different name).
 type InhabitanceVerdict
   = Inhabits
   | InhabitanceRefused { reason: InhabitanceRefusalReason }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+  | InhabitanceUnmodeled
 
 fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
   match position {
@@ -4753,12 +4756,12 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
           // THE TERMINAL ARM IS NOT ACCEPTANCE (DESIGN section 5). A pair no arm above judged used to
           // answer Inhabits here, so a record or a rigid type parameter at a grounded Int compiled with no
           // diagnostic. Until each such class is dispositioned it answers a COUNTED, typed
-          // UnmodeledNoArmDecides, whose population and trigger are carried by
+          // InhabitanceUnmodeled verdict, whose population and trigger are carried by
           // gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel; then this
           // arm refuses.
           match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
             Present { value: r } => InhabitanceRefused { reason: r }
-            Absent => InhabitanceUndecidable { reason: UnmodeledNoArmDecides }
+            Absent => InhabitanceUnmodeled
           }
         }
     }
@@ -5620,7 +5623,6 @@ fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) ->
     UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
     UndecidableRefinementPeerChains => "refinement peer chains: the declared and produced refinements MEET on a shared link with neither nesting inside the other -- PEER PREDICATES over one base, measured as FilePath, GcpProjectId and Sha512DigestHex at NonEmptyStr, which are not brands at all -- so this is neither an introduction nor a brand conflict, and neither this seam nor the brand wall decides the pair"
     UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult"
-    UnmodeledNoArmDecides => "unmodeled: no arm of the relation judges this pair. This is NOT an undecidable fact; it is a gap in the relation's wiring, counted here instead of read as acceptance, until every such class is dispositioned and the terminal arm refuses"
   }
 }
 
@@ -5659,6 +5661,14 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
         diagnostic: DeclaredTypeInhabitanceUndecided {
           position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           reason: inhabitance_undecidable_reason_label(reason: r),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+    InhabitanceUnmodeled =>
+      [make_error_node(
+        diagnostic: DeclaredTypeInhabitanceUnmodeled {
+          position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           span: obligation.span
         },
         module_name: scope.module_name
