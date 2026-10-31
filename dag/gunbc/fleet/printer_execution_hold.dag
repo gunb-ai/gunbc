@@ -29,7 +29,11 @@ import std.durable_exclusive_hold {
   DurableHoldNonHolderRelease,ReleasedByOperator,DurableHoldNonHolderReleaseRefusal,DurableHoldRecoveryRefusal,
 }
 import std.scoped_authorization {AuthorizationRefusalCause,authorization_refusal_reason}
-import gunbc.auth.approval_gate {approval_instant_now}
+import gunbc.auth.approval_gate {approval_instant_now,approval_expires_at,approval_file_stored_request,ApprovalFiled,ApprovalFilingRefused}
+import gunbc.auth.approval_request_client {stored_request_from_authorization}
+import std.measure {second}
+import extdeps.crypto.sha2 {sha256_hex}
+import std.bytes {bytes_octets,utf8_encode_bytes}
 import gunbc.auth.approval_decision_store {
   grant_from_store,GrantDerivation,GrantDerived,GrantStillPending,GrantEscalationNotFiled,GrantForAnotherIntent,GrantStoreUnreadable,
   approval_decision_store_root,
@@ -104,7 +108,11 @@ data printer_operator_observation_verb:AuthorizationScope = AuthorizationScope {
 
 data printer_operator_observation_attempt:AttemptIdentity = ("printer-start-stale-hold-release" as NonEmptyStr) as AttemptIdentity
 
-data printer_operator_observation_purpose:NonEmptyStr = "no printer converge for this escalation is running and printer-01 is idle; free the stale printer-start hold"
+// THE SENTENCE THE OPERATOR READS ON THE PHONE. It states what they are attesting to -- no controller
+// driving this printer, the printer idle -- and what approving frees. It is NOT the intent: the intent
+// is the hashed (root, slot, holder, generation) below, and this line is allowed to be reworded
+// without invalidating a decision already made.
+data printer_operator_observation_purpose:NonEmptyStr = "no fleet controller is driving printer-01 and the printer is idle; approving frees the stale printer-start hold on the fleet print-controller slot"
 
 // THE INTENT IS THE PLANNED ACTION ITSELF: which slot, under which root, over which holder and
 // generation. Hashing a constant label here would let an observation approved for ANY hold release
@@ -115,9 +123,23 @@ fn printer_operator_observation_intent_text(hold_root:NonEmptyStr,hold_slot:NonE
   join(["printer-start-stale-hold-release-v1 root=",hold_root as String," slot=",hold_slot as String," holder=",holder as String," generation=",int_to_decimal_string(value:cas_generation_count(g:generation))],"") as NonEmptyStr
 }
 
-fn printer_operator_observation_request(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> AuthorizationRequest<DurableHoldSubject> {
+// THE ESCALATION THE OBSERVATION IS FILED AND DECIDED UNDER, derived from the HOLD itself -- root,
+// slot, holder, generation -- and NOT from the escalation of the converge that happened to meet the
+// hold. One escalation slot carries exactly ONE request: file_approval_request publishes
+// ExpectSlotAbsent, and grant_from_store answers a slot decided under another revision as
+// GrantForAnotherIntent. By the time the release arm below runs, the print-start approval has already
+// occupied the print request's escalation id, so an observation filed there could only ever be
+// answered AnotherIntent -- the route would be reachable only from a witness that writes the store by
+// hand. Deriving the id from the hold is also what lets a LATER dispatch redeem the decision the
+// operator already made: the print escalation id moves with every new request id, this one does not
+// move until the hold itself does (a new holder or generation re-asks; the same stale hold does not).
+fn printer_hold_observation_escalation_id(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> NonEmptyStr {
+  join(["printer-hold-release-",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:printer_operator_observation_intent_text(hold_root:hold_root,hold_slot:hold_slot,holder:holder,generation:generation) as String)))],"") as NonEmptyStr
+}
+
+fn printer_operator_observation_request(hold_root:NonEmptyStr,hold_slot:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration) -> AuthorizationRequest<DurableHoldSubject> {
   AuthorizationRequest {
-    escalation_id: escalation_id,
+    escalation_id: printer_hold_observation_escalation_id(hold_root:hold_root,hold_slot:hold_slot,holder:holder,generation:generation),
     scopes: [printer_operator_observation_verb],
     subject: DurableHoldSubject { hold:file_hold_ref(root:hold_root,slot_key:hold_slot), holder:holder, generation:generation },
     purpose: printer_operator_observation_purpose,
@@ -182,7 +204,8 @@ fn printer_hold_retry_after_release(root:NonEmptyStr,slot_key:NonEmptyStr,owner:
 // THE OPERATOR-OBSERVED RELEASE, for a holder this root cannot observe. The consent is not this
 // module's to invent: it is looked up in gunbc.auth.approval_gate's decision store -- the same
 // route gunbc.auth.approval_device_redemption.redeem_device_over_store commits to -- under the
-// escalation id the operator filed it under, and the authorization is taken over that grant by
+// escalation id the HOLD carries (printer_hold_observation_escalation_id: root, slot, holder,
+// generation; see why below), and the authorization is taken over that grant by
 // std.scoped_authorization's own `authorize` at a real clock instant, so expiry is the std rule and
 // not a local guess. The request's subject NAMES the exact hold being freed (root/slot, holder,
 // generation), which is what std checks the grant against: an approval filed to release a different
@@ -190,11 +213,19 @@ fn printer_hold_retry_after_release(root:NonEmptyStr,slot_key:NonEmptyStr,owner:
 // shells out; without a decided observation the hold STAYS HELD and the refusal names the missing
 // thing by type -- not filed, pending, decided for another intent, store unreadable, expired,
 // refused -- each its own sentence.
+// WHY THE CONSENT DOES NOT LIVE UNDER THE PRINT ESCALATION: this function is handed the print
+// escalation id, and one escalation slot carries exactly ONE request (file_approval_request publishes
+// ExpectSlotAbsent; a slot decided under another revision answers GrantForAnotherIntent). By the time
+// this arm runs, that slot already carries the print-start approval the same converge filed and the
+// operator already decided -- so an observation filed there could only ever be answered
+// AnotherIntent, and the release would be reachable only from a witness that writes the store by
+// hand. The print id remains what the freed slot is NAMED for (printer_execution_hold_owner_text) and
+// what the refusal quotes, because that is the converge the operator is being asked about.
 fn printer_hold_release_on_operator_observation(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,cause:NonEmptyStr,use:fn(PrinterExecutionHold)->ProcessExit) -> ProcessExit {
   match approval_instant_now() {
     Absent=>exit_failure(reason:"Cannot read the clock; an operator observation cannot be checked for expiry, and the stale printer-start hold stays held")
     Present{value:now}=>
-      match printer_hold_operator_grant(root:root,approvals_root:approvals_root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation,observed_at:now) {
+      match printer_hold_operator_grant(root:root,approvals_root:approvals_root,hold_slot:hold_slot,holder:holder,generation:generation,observed_at:now) {
         PrinterHoldOperatorGrantMissing {cause:mc}=>exit_failure(reason:join(["Printer fleet controller is held by an UNOBSERVABLE holder: ",printer_hold_slot_text(slot_key:hold_slot,holder:holder,generation:generation),cause as String," ",printer_hold_operator_grant_missing_detail(cause:mc),". Nothing released."],""))
         PrinterHoldOperatorGrantHeld {decision:d}=>
           match printer_hold_nonholder_assess(root:root,hold_slot:hold_slot,request:ReleasedByOperator {authorization:d},released_by:join(["operator-observed-release:",holder as String],"") as DurableHoldReleaseRef) {
@@ -282,8 +313,8 @@ fn printer_hold_operator_grant_missing_detail(cause:PrinterHoldOperatorGrantCaus
   }
 }
 
-fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,escalation_id:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,observed_at:Timestamp) -> PrinterHoldOperatorGrant {
-  let request = printer_operator_observation_request(hold_root:root,hold_slot:hold_slot,escalation_id:escalation_id,holder:holder,generation:generation)
+fn printer_hold_operator_grant(root:NonEmptyStr,approvals_root:NonEmptyStr,hold_slot:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,observed_at:Timestamp) -> PrinterHoldOperatorGrant {
+  let request = printer_operator_observation_request(hold_root:root,hold_slot:hold_slot,holder:holder,generation:generation)
   match grant_from_store(root:approvals_root,request:request) {
     GrantDerived {authorization:a}=>
       match authorize(authorization:a,request:request,observed_at:observed_at) {
@@ -332,5 +363,113 @@ fn printer_hold_enter(escalation_id:NonEmptyStr,use:fn(PrinterExecutionHold)->Pr
     FileHoldAcquireStoreUnavailable {slot_key:k,cause:c}=>exit_failure(reason:concat(concat("Printer fleet controller store on slot ",concat(k as String," is unavailable: ")),store_failure_detail(cause:c)))
     FileHoldSlotUndecodable {slot_key:k,generation:g,detail:d}=>exit_failure(reason:join(["Printer fleet controller slot ",k as String," is undecodable at generation ",int_to_decimal_string(value: cas_generation_count(g:g)),": ",d as String,"; no second controller admitted."],""))
     FileHoldKeyNotSlotAddressable {slot_key:k}=>exit_failure(reason:join(["Printer fleet controller slot key '",k as String,"' is not slot-addressable; no second controller admitted."],""))
+  }
+}
+
+// HOW LONG THE OPERATOR HAS TO DECIDE THE PRINT-START BED-CLEAR CARD, declared ONCE. The card is
+// filed and answered inside the run that filed it (it polls), so its window is that run's poll
+// budget: 90 ticks at a 10 s cadence.
+data printer_operator_approval_window:Second = second(count:900)
+
+// HOW LONG THE OPERATOR'S ANSWER TO THE STALE-HOLD CARD STAYS GOOD FOR. This is its OWN policy, not
+// a copy of the two 1800 s figures elsewhere: gunbc.auth.branch_run_grant.branch_run_grant_file_window
+// and gunbc.auth.gcp_iam_converge_run.gcp_iam_converge_file_window are how long a run that FILES a card
+// and then POLLS for it stays alive (both spend the figure as a poll budget, window/cadence), whereas
+// nothing here polls -- the card is filed by one dispatch and REDEEMED by a later one, so the figure
+// has to cover an operator's phone, a CI queue, a build and the next dispatch reaching the hold arm.
+// Same magnitude as those two on purpose: it is the longest human-answer window the fleet already
+// runs, and inventing a new magnitude for a third route would be a number with no precedent. It is
+// deliberately NOT the 3600 s of branch_run_grant_window, because this consent attests to a physical
+// state -- nobody is driving the printer -- and the longer it lives, the more the world can move
+// behind it. The pin that makes even 1800 s safe is the subject: it names (root, slot, holder,
+// generation), so if any controller takes the slot in the meantime the generation moves, the derived
+// escalation moves with it, and the old answer cannot reach the new hold.
+data printer_hold_observation_file_window:Second = second(count:1800)
+
+// WHAT ASKING THE OPERATOR ENDED UP DOING, as a type rather than an exit code. The caller has to know
+// WHICH of these happened -- a card was filed, a card was already on file, nothing is held, or the
+// ask was refused -- because the printer workflow records the difference in its durable receipt, and
+// an operator deciding what to do next reads that receipt, not a stack of look-alike successes.
+type PrinterHoldReleaseRequest
+  = HoldReleaseNothingHeld { detail: NonEmptyStr }
+  | HoldReleaseCardFiled { escalation_id: NonEmptyStr }
+  | HoldReleaseCardOnFile { escalation_id: NonEmptyStr, detail: NonEmptyStr }
+  | HoldReleaseRefused { reason: NonEmptyStr }
+
+fn printer_hold_release_request_detail(outcome:PrinterHoldReleaseRequest) -> NonEmptyStr {
+  match outcome {
+    HoldReleaseNothingHeld {detail:d}=>d as NonEmptyStr
+    HoldReleaseCardFiled {escalation_id:e}=>join(["an operator-observation card for this stale printer-start hold is now filed under escalation ",e as String,"; NOTHING HAS BEEN RELEASED -- approve the card, then re-dispatch the print, and the converge that meets the hold releases it under that decision"],"") as NonEmptyStr
+    HoldReleaseCardOnFile {escalation_id:e,detail:d}=>join(["escalation ",e as String," already carries this hold's operator observation: ",d as String],"") as NonEmptyStr
+    HoldReleaseRefused {reason:r}=>r as NonEmptyStr
+  }
+}
+
+// THE FILER THE RELEASE ROUTE WAS MISSING. A release route nobody can file is not a route: the arm
+// above only READS a decision, and the only code that ever FILED an observation wrote the approval
+// store by hand -- a path no operator can take, because the Approve app only DECIDES requests and
+// filing one requires the submission key (gunbc.auth.approval_request_client). This is the filer. It
+// files the observation for THIS hold -- root, slot, holder, generation, under the hold's own
+// escalation id -- through the canonical approval route, the same one a print start files its
+// bed-clear card through, so the card lands in the deck the operator already reads and the decision
+// lands in the store the release arm already reads.
+//
+// It releases NOTHING, and that is why it is a separate operation from the release arm rather than a
+// step inside it. Asking is its only effect: the release stays behind std.scoped_authorization in
+// printer_hold_release_on_operator_observation, taken by the next converge that actually meets the
+// hold, so a decision can never be spent on a hold that has since moved.
+fn printer_hold_release_request() -> PrinterHoldReleaseRequest {
+  printer_hold_release_request_at(root:printer_start_claim_directory,slot_key:hold_key,approvals_root:approval_decision_store_root)
+}
+
+// ROOT-, SLOT- AND STORE-PARAMETERIZED (DESIGN.md §6b: one generalization, not a copy per root), so
+// the witnesses run THIS code against throwaway roots exactly as `printer_hold_enter` does.
+fn printer_hold_release_request_at(root:NonEmptyStr,slot_key:NonEmptyStr,approvals_root:NonEmptyStr) -> PrinterHoldReleaseRequest {
+  match observe_file_hold(root:root,key:slot_key) {
+    HoldSlotAbsent=>HoldReleaseNothingHeld {detail:join(["the printer-start hold slot ",slot_key as String," is absent: nothing is held, so there is nothing to release and no card to file"],"") as NonEmptyStr}
+    HoldSlotFree {generation:_,released_by:_}=>HoldReleaseNothingHeld {detail:join(["the printer-start hold slot ",slot_key as String," is free: nothing is held, so there is nothing to release and no card to file"],"") as NonEmptyStr}
+    HoldSlotHeld {generation:g,owner:o}=>
+      match printer_execution_hold_holder(holder:o) {
+        // A holder that NAMES a process is observable, and observable holders are the converge's own
+        // business: file_hold_recover_dead_holder proves it dead or refuses it live. Filing an operator
+        // card for a holder that can be checked would ask a human to stand in for evidence -- exactly
+        // the substitution the unobservable arm exists to refuse.
+        PrinterExecutionHoldHolderProcess {escalation_id:e,process:_,pid_namespace:_}=>HoldReleaseRefused {reason:join(["the printer-start hold on slot ",slot_key as String," names a process -- ",printer_hold_slot_text(slot_key:slot_key,holder:o,generation:g),"-- so its holder is observable and the converge's own dead-holder recovery decides it; no operator card is filed. Holder escalation ",e as String,"."],"") as NonEmptyStr}
+        PrinterExecutionHoldHolderUnobservable {cause:c}=>printer_hold_release_request_filing(root:root,slot_key:slot_key,approvals_root:approvals_root,holder:o,generation:g,cause:c)
+      }
+    HoldSlotUndecodable {generation:g,detail:d}=>HoldReleaseRefused {reason:join(["the printer-start hold slot ",slot_key as String," is undecodable at generation ",int_to_decimal_string(value:cas_generation_count(g:g)),": ",d as String,"; no card was filed"],"") as NonEmptyStr}
+    HoldObservationUnavailable {cause:cs}=>HoldReleaseRefused {reason:join(["the printer-start hold slot ",slot_key as String," could not be observed: ",cas_unreadable_slot_detail(cause:cs),"; no card was filed"],"") as NonEmptyStr}
+  }
+}
+
+// THE FILING, once the slot is known to be held by a holder this root cannot observe. The standing is
+// read FIRST, through the SAME grant lookup the release arm uses, so a card is never filed twice and
+// an operator who has already answered this hold is never asked again (the broker's own
+// ExpectSlotAbsent would refuse a re-file anyway; reading first is what turns that refusal into a
+// sentence about what is already on file).
+fn printer_hold_release_request_filing(root:NonEmptyStr,slot_key:NonEmptyStr,approvals_root:NonEmptyStr,holder:DurableHoldOwnerRef,generation:CasGeneration,cause:NonEmptyStr) -> PrinterHoldReleaseRequest {
+  let escalation = printer_hold_observation_escalation_id(hold_root:root,hold_slot:slot_key,holder:holder,generation:generation)
+  match approval_instant_now() {
+    Absent=>HoldReleaseRefused {reason:"Cannot read the clock; the operator-observation request for the stale printer-start hold cannot be filed with an expiry, and the hold stays held" as NonEmptyStr}
+    Present{value:now}=>
+      match printer_hold_operator_grant(root:root,approvals_root:approvals_root,hold_slot:slot_key,holder:holder,generation:generation,observed_at:now) {
+        // Decided already -- the operator has answered THIS hold. Whether the answer permits the
+        // release is the release arm's to conclude, at its own clock, against the hold it meets; this
+        // route only reports what stands on file and files nothing.
+        PrinterHoldOperatorGrantHeld {decision:_}=>HoldReleaseCardOnFile {escalation_id:escalation,detail:"already decided; the next converge that meets the hold acts on that decision" as NonEmptyStr}
+        PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantNotFiled {escalation_id:_}}=>{
+          let stored = stored_request_from_authorization(request:printer_operator_observation_request(hold_root:root,hold_slot:slot_key,holder:holder,generation:generation),issued_at:now,expires_at:approval_expires_at(issued:now,window:printer_hold_observation_file_window))
+          match approval_file_stored_request(stored:stored,body_file_name:"printer-hold-release-submit.json",submit_timeout:second(count:30)) {
+            ApprovalFiled=>HoldReleaseCardFiled {escalation_id:escalation}
+            ApprovalFilingRefused {reason:r}=>HoldReleaseRefused {reason:join(["the Approve broker refused the operator-observation request for the stale printer-start hold on slot ",slot_key as String,": ",r as String,"; no card was filed and the hold stays held"],"") as NonEmptyStr}
+          }
+        }
+        // Filed and undecided, decided for another intent, unreadable, or refused by authorize: the
+        // same typed detail the release arm gives. Pending and already-decided mean the operator has
+        // the card in front of them (or has answered it), so they are reported, not refused; the rest
+        // are refusals, because the next step belongs to the store, not to the operator.
+        PrinterHoldOperatorGrantMissing {cause:PrinterHoldGrantStillPending {escalation_id:e}}=>HoldReleaseCardOnFile {escalation_id:e,detail:"filed and awaiting the operator; nothing new was filed" as NonEmptyStr}
+        PrinterHoldOperatorGrantMissing {cause:mc}=>HoldReleaseRefused {reason:join(["no new operator-observation card was filed for the stale printer-start hold on slot ",slot_key as String,": ",printer_hold_operator_grant_missing_detail(cause:mc),"; the hold stays held"],"") as NonEmptyStr}
+      }
   }
 }

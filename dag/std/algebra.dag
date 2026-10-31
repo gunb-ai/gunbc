@@ -1411,6 +1411,16 @@ fn int_total_order() -> TotalOrder<Int> {
   TotalOrder { compare: int_compare_canonical }
 }
 
+fn string_compare_canonical(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+// The canonical content order on String keys, the order the host sort_by applies to them (declared, not derived: the
+// order a String key sorts under is this record's compare, which the migration's rows name explicitly).
+fn string_total_order() -> TotalOrder<String> {
+  TotalOrder { compare: string_compare_canonical }
+}
+
 // std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
 // spelling, which is a primitive with the host realization): no host seam, so the realization
 // is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys

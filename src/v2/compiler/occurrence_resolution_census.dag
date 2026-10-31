@@ -25,7 +25,7 @@ import v2.compiler.resolve {
 // census the NAMESPACE-XL waves are driven from (operator ruling 2026-10-15: every name the corpus uses
 // is an ordinary declaration reached by import) -- the BoundAmbient rows are what is left to move -- and
 // the per-occurrence half of the namespace-wave binding diff
-// (gunbc.instruments.namespace_wave_binding_diff), which joins a base run's rows to a head run's.
+// (retired, gunbc#15428), which joined a base run's rows to a head run's.
 //
 // THE KEY IS (module, authored spelling, ordinal), where the ordinal counts this spelling's recorded
 // occurrences in the module in OCCURRENCE order. The occurrence id itself is graph-scoped and is not

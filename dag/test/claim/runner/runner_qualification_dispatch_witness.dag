@@ -1,5 +1,6 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
@@ -169,11 +170,11 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -261,11 +262,11 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
 test fn the_production_mint_over_the_generated_fleet_converge_workflow_admits_its_floor_job() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -411,7 +412,7 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {
-      let standing = host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))
+      let standing = host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)
       let group = group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch))
       match unit_slot_of(standing: standing) {
       Absent => false

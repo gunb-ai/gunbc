@@ -2752,6 +2752,25 @@ pub fn int_total_order() -> Rc<TotalOrder<i64>> {
     })
 }
 
+pub fn string_compare_canonical(a: String, b: String) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() > b.clone()) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub fn string_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(string_compare_canonical),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
 pub fn list_sort_by_key<T: Clone, K: Clone>(
     xs: Rc<FreeMonoid<T>>,
     key: impl Fn(T) -> K + Clone,
@@ -2795,18 +2814,6 @@ pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     value: V,
 ) -> Rc<HashMap<K, V>> {
     v1_rt::rc_map_insert(m, key, value)
-}
-
-pub fn map_keys_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
-    m: Rc<HashMap<K, V>>,
-) -> Rc<FreeMonoid<K>> {
-    Rc::new(v1_rt::map_keys(&m))
-}
-
-pub fn map_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
-    m: Rc<HashMap<K, V>>,
-) -> Rc<FreeMonoid<K>> {
-    Rc::new(v1_rt::map_keys(&m))
 }
 
 pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
@@ -2876,6 +2883,12 @@ pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<
         }
         ListAtLookup::ListAtMissing { remaining: _, .. } => crate::std_optional::optional_absent(),
     }
+}
+
+pub fn map_support_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+) -> Rc<FreeMonoid<K>> {
+    Rc::new(v1_rt::map_keys(&m))
 }
 
 pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {

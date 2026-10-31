@@ -133,6 +133,14 @@ data srv1_root_install_action: AuthorizedAction = "install" as AuthorizedAction
 data srv1_root_package_action: AuthorizedAction = "install-package" as AuthorizedAction
 data srv1_root_policy_check_action: AuthorizedAction = "check" as AuthorizedAction
 data srv1_root_daemon_reload_action: AuthorizedAction = "daemon-reload" as AuthorizedAction
+// THE REMOVAL ACTIONS. An approval to put something on the host is not an approval to take it off:
+// the retirement's writes and service calls carry their own action words, so a run that asks for a
+// removal inherits nothing from the install scopes above.
+data srv1_root_removal_action: AuthorizedAction = "remove" as AuthorizedAction
+data srv1_root_service_stop_action: AuthorizedAction = "stop" as AuthorizedAction
+data srv1_root_service_disable_action: AuthorizedAction = "disable" as AuthorizedAction
+data srv1_root_account_remove_action: AuthorizedAction = "remove-account" as AuthorizedAction
+data srv1_root_serve_route_off_action: AuthorizedAction = "serve-route-off" as AuthorizedAction
 
 fn srv1_root_write_scope(path: List<String>) -> AuthorizationScope {
   AuthorizationScope { verb: Write, resource: filesystem_position(path: path), action: srv1_root_install_action }
@@ -154,11 +162,57 @@ data srv1_root_daemon_reload_scope: AuthorizationScope = AuthorizationScope {
   verb: Execute, resource: filesystem_position(path: ["usr", "bin", "systemctl"]), action: srv1_root_daemon_reload_action,
 }
 
-data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = [
+// THE REMOVAL SCOPES, spelled the way the install scopes are: a write names the directory it writes
+// in, an execute names the program it runs. The paths are the retirement roster's own -- the unit
+// directory, the retired server's config directory and state root, the hand-installed binary's
+// directory -- and each is a REMOVAL action, so the set below says precisely which trees may come
+// off and by which programs.
+fn srv1_root_removal_scope_at(path: String) -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: absolute_path_position(path: path), action: srv1_root_removal_action }
+}
+
+data srv1_root_service_stop_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "systemctl"]), action: srv1_root_service_stop_action,
+}
+
+data srv1_root_service_disable_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "systemctl"]), action: srv1_root_service_disable_action,
+}
+
+data srv1_root_account_removal_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "sbin", "userdel"]), action: srv1_root_account_remove_action,
+}
+
+data srv1_root_serve_route_removal_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "bin", "tailscale"]), action: srv1_root_serve_route_off_action,
+}
+
+// THE SCOPES THE ntfy RETIREMENT EXERCISES, read off the legs it runs
+// (gunbc.fleet.approval_ntfy_retirement ntfy_retire_legs): stop and disable the unit by name, remove
+// its file, reload the daemon, remove the account, remove its two trees, remove the hand-installed
+// binary, and take the front-door route off tailscale. The four removal scopes name EACH PATH THE
+// RETIREMENT REMOVES, not the directory around it: an operator approving a removal on the phone is
+// approving the named path, and "/usr/local/bin" would have been an approval to remove anything in
+// /usr/local/bin -- including the runner's own binaries. The literals here and the roster there are
+// two spellings of one fact, so gunbc.test.claim.approval_ntfy_retirement_witness
+// every_roster_path_has_its_own_removal_scope_in_the_approval compares them path by path. The census
+// row and the run's own inheritance
+// check read this one value, so what the census says the effect needs and what the run asks the
+// grant for cannot drift apart.
+data approval_ntfy_retire_root_scopes: List<AuthorizationScope> = [
+  srv1_root_service_stop_scope, srv1_root_service_disable_scope, srv1_root_daemon_reload_scope,
+  srv1_root_removal_scope_at(path: "/etc/systemd/system/gunbc-ntfy.service"),
+  srv1_root_removal_scope_at(path: "/etc/gunbc-ntfy"),
+  srv1_root_removal_scope_at(path: "/var/lib/gunbc-ntfy"),
+  srv1_root_removal_scope_at(path: "/usr/local/bin/ntfy"),
+  srv1_root_account_removal_scope, srv1_root_serve_route_removal_scope,
+]
+
+data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = concat([
   srv1_root_write_scope(path: ["etc"]), srv1_root_write_scope(path: ["usr", "local"]),
   srv1_root_write_scope(path: ["opt", "gunbc"]), srv1_root_write_scope(path: ["var", "lib", "gunbc"]),
   srv1_root_apt_get_scope, srv1_root_visudo_check_scope, srv1_root_daemon_reload_scope,
-]
+], approval_ntfy_retire_root_scopes)
 
 // THE SCOPES THE microVM CONTROLLER INSTALL EXERCISES, read off the paths its plan writes
 // (gunbc.host.host_effect_realize microvm_controller_install_steps): the unit directory, the dispatch
