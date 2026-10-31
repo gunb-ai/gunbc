@@ -521,3 +521,50 @@ test fn fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
 test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
   w_fn_value_forwarding_bounds_only_the_instantiated_generic()
 }
+
+// List<K> IS the surface spelling of the FreeMonoid carrier (rust_seed_host_container_base maps both
+// to Vec), so an enum holding List<K> owes exactly what the FreeMonoid<K> enum above owes: im::Vector<K>
+// is Debug/PartialEq/Serialize/Deserialize only for K: Clone, which no derive supplies. Receipt:
+// std.observation_completeness ObservationCompleteness<K> emitted a bare four-trait derive over
+// Rc<Vec<K>> and failed rustc with E0277/E0369. The control pins a non-generic List enum unchanged.
+fn w_list_supplemental_enum_hand_written_impls() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.list_supplemental_enum\nimport std.types { List }\n\ntype KeysLike<K>\n  = NoKeys\n  | SomeKeys { keys: List<K> }\n",
+    "src/generic_item_witness_list_supplemental_enum.rs",
+    [
+      "enum KeysLike<K>",
+      "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"K: Clone + serde::Serialize\", deserialize = \"K: Clone + serde::Deserialize<'de>\"))]",
+      "impl<K: Clone + std::fmt::Debug> std::fmt::Debug for KeysLike<K>",
+      "impl<K: Clone + PartialEq> PartialEq for KeysLike<K>"
+    ],
+    [
+      "enum KeysLike<K: Clone>",
+      "#[derive(Debug"
+    ]
+  )
+}
+
+fn w_list_enum_over_scalar_param_and_nongeneric_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.list_enum_controls\nimport std.types { List }\n\ntype IntsLike\n  = NoInts\n  | SomeInts { ints: List<Int> }\n\ntype ScalarLike<K>\n  = NoScalar\n  | SomeScalar { value: K }\n",
+    "src/generic_item_witness_list_enum_controls.rs",
+    [
+      "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]",
+      "enum IntsLike {",
+      "enum ScalarLike<K>"
+    ],
+    [
+      "impl<K: Clone + std::fmt::Debug> std::fmt::Debug for ScalarLike<K>",
+      "enum ScalarLike<K: Clone>",
+      "impl std::fmt::Debug for IntsLike"
+    ]
+  )
+}
+
+test fn list_supplemental_enum_hand_written_impls() -> Bool {
+  w_list_supplemental_enum_hand_written_impls()
+}
+
+test fn list_enum_over_scalar_param_and_nongeneric_unchanged() -> Bool {
+  w_list_enum_over_scalar_param_and_nongeneric_unchanged()
+}
