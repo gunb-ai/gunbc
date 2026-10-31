@@ -1,5 +1,6 @@
 module gunbc.package_delivery
 
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int, Set }
 import std.algebra { trim }
 import std.content_hash {
@@ -62,7 +63,6 @@ import extdeps.tools.sha512sum {
   Sha512FileObservationRefused,
 }
 import extdeps.tools.node
-import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 import gunbc.codex_runtime_paths {

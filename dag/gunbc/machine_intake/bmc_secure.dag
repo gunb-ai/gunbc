@@ -19,7 +19,7 @@ import std.goal_assessment {
   GoalObservationRefused,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for,

@@ -39,7 +39,6 @@ import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_publisher_token_mint_intervention, approval_ntfy_subscriber_grant_intervention,
 }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
   BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_service_account_member,
