@@ -28,7 +28,8 @@ import std.optional { Optional, Present, Absent }
 // (publication requests) of the store inventory at commit c5671ca07216.
 //
 // MODEL ONLY. This module declares the closed stage roles, the per-spool declaration row, the sealed entry key
-// and the pure decisions of the four operations. The effect layer (listing, create-only write, the rename) is
+// and the pure decisions of the four operations (enqueue, claim, complete, observe) plus the two crash decisions
+// (spool_requeue_assess on boot-id evidence, then spool_stale_assess for the line stop). The effect layer (listing, create-only write, the rename) is
 // the implementation PR; its REDs are the expecting-red claims in test.claim.spool_queue_seal_witness.
 
 type SpoolKind
@@ -267,8 +268,10 @@ fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: Sp
   }
 }
 
-// CRASH REFUSAL. The verdict is an OBSERVATION of the claimant, never an age. Dead licenses the line stop only;
-// there is deliberately no arm that offers the entry again. Unobservable is not dead.
+// CRASH REFUSAL. The verdict is an OBSERVATION of the claimant, never an age. ONE ordered policy over a dead claimant:
+// spool_requeue_assess is consulted first and requeues only on boot-id evidence; where it refuses (no boot-id
+// observation) a claimant observed dead by other means STOPS THE LINE here, through gunbc.roadmap.spool_stall. This
+// decision itself has no arm that offers the entry again. Unobservable is not dead.
 type SpoolClaimantLiveness
   = ClaimantObservedLive { evidence: NonEmptyStr }
   | ClaimantObservedDead { evidence: NonEmptyStr }
