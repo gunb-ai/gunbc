@@ -335,6 +335,15 @@ pub fn primitive_chars() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_string_length() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("string_length".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_sha256_hex_of_text() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -534,6 +543,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_length(),
             "std.algebra".to_string(),
             "length".to_string(),
+            Rc::new(ProjectionFidelity::ModeledProjection),
+        ),
+        primitive_projection_row(
+            primitive_string_length(),
+            "std.host_text".to_string(),
+            "string_length".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(

@@ -1,6 +1,8 @@
 module std.host_text
 
 import std.types { Char, List }
+import std.algebra { fold_list }
+import std.nat { Nat, Zero, Succ }
 
 // THE HOST-TEXT CARRIER AND THE OPERATIONS WHOSE SEMANTICS NEED IT (operator ruling H2, 2026-10-17,
 // v2-namespace-cutover). HostText is the opaque, native representation of text a host hands the
@@ -51,4 +53,22 @@ fn chars(text: HostText) -> List<Char> {
 // unicode_scalar_fold, the conversion plan's route, calls this).
 fn text_of_chars(scalars: List<Char>) -> HostText {
   chars_to_string(chars: scalars, start: 0, end: scalars |> count)
+}
+
+// THE NUMBER OF UNICODE SCALAR VALUES IN HOST TEXT (G2 ruling A, condition 3, tidy-ant-251 2026-10-31):
+// the length of chars(text), never its UTF-8 bytes, UTF-16 code units or grapheme clusters. Host text
+// only: a site over structural text (v2.std.text String) uses std.algebra length on the list it already
+// is, and the string_length wave classifies its sites by representation before any is ported. The
+// answer is a Nat because a count has no negative arm.
+//
+// HOST-REALIZED TODAY, A SEAM BY RULING (tidy-ant-251, 2026-10-31, reversing "a .dag body"): the
+// ambient primitive shadows an explicit import of this declaration, so it binds only through a
+// std.primitive_projection row, and a ModeledProjection body is intercepted by the builtin arm --
+// dead code that looks live, measured: a body returning Zero left every claim holding. So the
+// realization binds by THIS declaration's identity (primitive_string_length, a HostRealizedSeam row)
+// and the body is a self-call no realization reaches; without the row the import binds the
+// self-call and refuses. Dissolution trigger: a .dag realization (the scalar-count fold over chars)
+// replaces the host one once an explicit import outranks the ambient primitive.
+fn string_length(text: HostText) -> Nat {
+  fold_list(xs: chars(text: text), empty: Zero, cons: fn(n, _) { Succ { prev: n } })
 }
