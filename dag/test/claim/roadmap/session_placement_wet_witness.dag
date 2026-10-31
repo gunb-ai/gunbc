@@ -24,7 +24,10 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
-import std.measure { kibibyte, kibibyte_count }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import gunbc.systemd_unit_invocation_liveness {
+  SystemManager, unit_invocation_observation, unit_boot_observation,
+}
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
@@ -33,6 +36,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
+  compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
@@ -47,7 +51,7 @@ import gunbc.compute.attempt_lifecycle {
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -136,6 +140,10 @@ fn slot_store_at(dir: String) -> SlotStore? {
 // which is exactly the difference between "no exit record for this attempt" and "I could not look". The
 // fixture prepares the spool through the production route, so a witness never settles a seat on the
 // strength of a directory it forgot to create.
+// THE FIXTURE'S APPROPRIATION, spelled once: it is what the fixture ledger is minted with and what
+// reserve_real charges. The settlement's own fold ceiling is the production one, spelled in production.
+data fixture_appropriation: Kibibyte = kibibyte(count: 1048576)
+
 fn stores_at(dir: String) -> SessionPlacementStores? {
   let _made = shell.Mkdir.Parents(path: slots_dir(dir: dir) as FilePath)
   let spool_ready = attempt_exit_spool_prepare(instance_root: dir)
@@ -154,8 +162,30 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
   }
 }
 
+// THE SAME SLOT, WITH NO SEAT IN THE LEDGER FOR ITS REFERENCE: the acquisition instant that would bind
+// a not-found reading to this hold simply is not there. This is the shape a wedge takes when the
+// reservation never landed -- and the settlement must keep the slot rather than free it, because a
+// missing instant is not an old one.
+fn launched_without_a_ledger_seat(dir: String) -> Bool {
+  let rec = slot_a(opened: 99999999999)
+  match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } =>
+      match attempt_open(store: slots, record: rec) {
+        AttemptAdvanced { state: _, generation: g1 } =>
+          match attempt_begin_launch(store: slots, reference: rec.reference as NonEmptyStr, expected: g1) {
+            AttemptAdvanced { state: _, generation: _ } => true
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+  }
+}
+
 fn reserve_real(dir: String) -> LeaseGrant? {
-  match compute_reserve_against(subject: subject_at(dir: dir), appropriation: kibibyte(count: 1048576), request: kibibyte(count: 1024), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
+  match compute_reserve_against(subject: subject_at(dir: dir), appropriation: fixture_appropriation, request: kibibyte(count: 1024), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
     ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none
@@ -662,15 +692,72 @@ fn plant_worker_exit_entry(instance_root: String, entry_name: String) -> Bool {
 // manager that ran it) is planted here as AttemptUnitAbsent, which is what that read returns. The
 // clock is pinned to epoch 1 so no arm of the pass can be reading age: in Launching the trigger is the
 // observation alone, and the slot's declared deadline is a century ahead.
-fn settle_with_unit_absent(dir: String, stores: SessionPlacementStores) -> SessionSettlement {
+fn settle_with_unit_absent(dir: String, stores: SessionPlacementStores, evidence: SessionHolderEvidenceReading) -> SessionSettlement {
   let instance = instance_at(dir: dir)
   settlement_of(p: session_placement_settle_pass_at(
     stores: stores,
     host: host,
-    lifecycle_of: u => session_worker_unit_lifecycle_with_standing(instance: instance, unit: u, loaded: AttemptUnitAbsent),
+    lifecycle_of: u => session_worker_unit_lifecycle_with_standing(instance: instance, unit: u, loaded: AttemptUnitAbsent, evidence: evidence),
     now: 1,
   ))
 }
+
+// THE HOLDER'S IDENTITY FOR THESE CONTROLS. The acquisition instant is READ FROM THE FIXTURE LEDGER --
+// the same pool the settlement releases through, over the fixture's own store -- never invented; the
+// rows offset the boot from it, so a row can say "this boot began 100000000 seconds after the hold was
+// acquired" without naming any clock. What the witness DOES seed is the host's boot and the manager's
+// InvocationID standing: those are facts of the kernel and the service manager, and no file a fixture
+// writes can be one. Production reads the same texts through session_holder_evidence, which takes them
+// from Filesystem.Read and from systemctl.
+data fixture_boot_id_text: String = "11111111-1111-1111-1111-111111111111"
+data fixture_boot_margin: EpochSecs = 100000000
+// Closer to the acquisition than the declared skew bound (session_holder_boot_skew_bound_seconds), so
+// the order is a typed refusal rather than a verdict.
+data fixture_boot_within_skew: EpochSecs = 60
+
+fn fixture_acquisition_at(stores: SessionPlacementStores) -> EpochSecs? {
+  match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: kibibyte(count: 0), reference: unit_a()) {
+    SeatAcquisitionNotHeld { reference: _ } => none
+    SeatAcquisitionRefused { detail: _ } => none
+    SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } => Present { value: at }
+  }
+}
+
+fn holder_evidence_boot_at(stores: SessionPlacementStores, boot_started_at: EpochSecs, invocation_text: String) -> SessionHolderEvidenceReading {
+  match fixture_acquisition_at(stores: stores) {
+    none => SessionHolderEvidenceRefused { detail: "the fixture ledger holds no acquisition for this unit to bind the reading to" }
+    Present { value: at } => {
+      let stat = join(["cpu 1 2 3\nbtime ", to_string(boot_started_at), "\n"], "")
+      SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
+        standing: unit_invocation_observation(manager: SystemManager, boot_id_text: fixture_boot_id_text, proc_stat_text: stat, invocation_text: invocation_text),
+        boot: unit_boot_observation(boot_id_text: fixture_boot_id_text, proc_stat_text: stat),
+        acquired_at: at,
+      } }
+    }
+  }
+}
+
+// A boot that began after the hold was acquired, by a margin no declared skew bound approaches: the
+// holder cannot have survived.
+fn holder_evidence_after_acquisition(stores: SessionPlacementStores, margin: EpochSecs, invocation_text: String) -> SessionHolderEvidenceReading {
+  match fixture_acquisition_at(stores: stores) {
+    none => SessionHolderEvidenceRefused { detail: "the fixture ledger holds no acquisition for this unit to bind the reading to" }
+    Present { value: at } => holder_evidence_boot_at(stores: stores, boot_started_at: at + margin, invocation_text: invocation_text)
+  }
+}
+
+// A boot that began before the hold was acquired: the host is in the same boot the seat was taken in.
+fn holder_evidence_before_acquisition(stores: SessionPlacementStores, margin: EpochSecs, invocation_text: String) -> SessionHolderEvidenceReading {
+  match fixture_acquisition_at(stores: stores) {
+    none => SessionHolderEvidenceRefused { detail: "the fixture ledger holds no acquisition for this unit to bind the reading to" }
+    Present { value: at } => if at > margin
+      { holder_evidence_boot_at(stores: stores, boot_started_at: at - margin, invocation_text: invocation_text) }
+      else { SessionHolderEvidenceRefused { detail: "the fixture acquisition is closer to the epoch than the margin, so the boot cannot be placed before it" } }
+  }
+}
+
+fn holder_observed_dead(stores: SessionPlacementStores) -> SessionHolderEvidenceReading { holder_evidence_after_acquisition(stores: stores, margin: fixture_boot_margin, invocation_text: "") }
+
 
 // THE WEDGE, END TO END. Before this change the unsubstituted artifact answered for the HOLDER: the
 // reader said UnitLifecycleUnknown, so every pass kept the seat and nothing could ever end it. Now the
@@ -679,12 +766,13 @@ fn settle_with_unit_absent(dir: String, stores: SessionPlacementStores) -> Sessi
 // nothing else: the seat is released ONCE, from the generation the slot actually holds, and the next
 // pass has nothing to do.
 //
-// WHAT THIS WITNESS DOES NOT DECIDE: whether a bare not-found read is admissible proof that the holder
-// died. That is the holder-identity question -- the manager that ran the unit, the boot, the
-// InvocationID -- and it belongs to the arms inside gunbc.systemd_unit_invocation_liveness, which land
-// with the run-identity carrier. The rfm row hold_recovered_by_age_not_observed_holder_death SITE 5
-// states the admissible rule and its rung; this test only shows the artifact neither proves death nor
-// blocks the pass forever.
+// WHAT MAKES THE NOT-FOUND READING ADMISSIBLE HERE: the reading is bound to the holder's identity
+// before it is allowed to free anything (session_absent_unit_lifecycle, over
+// gunbc.systemd_unit_invocation_liveness unit_reboot_holder_liveness) -- the manager that ran the unit
+// has no such unit, AND the host's boot began after the instant the LEDGER acquired this hold. The
+// witness seeds that boot as a century after the acquisition it made in the fixture ledger, so the
+// declared skew bound is nowhere near the reason. The rfm row
+// hold_recovered_by_age_not_observed_holder_death SITE 5 states the rule and its rung.
 test fn an_unsubstituted_exit_artifact_settles_the_real_seat_once_and_the_next_pass_does_nothing() -> Bool {
   let dir = fresh_dir(tag: "unsub")
   match stores_at(dir: dir) {
@@ -692,8 +780,8 @@ test fn an_unsubstituted_exit_artifact_settles_the_real_seat_once_and_the_next_p
     Present { value: stores } => {
       let launched = launched_with_unexpired_deadline(dir: dir)
       let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
-      let first = settle_with_unit_absent(dir: dir, stores: stores)
-      let second = settle_with_unit_absent(dir: dir, stores: stores)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
+      let second = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
       launched && seeded && released_unit(s: first) == unit_a() && slot_is_terminal(dir: dir)
         && (match second { SessionSettlementDone { unit, why: _ } => unit == unit_a()  _ => false })
         && !ledger_still_holds(dir: dir)
@@ -710,7 +798,7 @@ test fn a_substituted_exit_record_still_settles_the_real_seat_as_it_did() -> Boo
     Present { value: stores } => {
       let launched = launched_with_unexpired_deadline(dir: dir)
       let seeded = plant_worker_exit_entry(instance_root: dir, entry_name: join([node_a, "+", key_a, "+worker+0123456789abcdef0123456789abcdef+exit-code+exited+0"], ""))
-      let first = settle_with_unit_absent(dir: dir, stores: stores)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
       launched && seeded && released_unit(s: first) == unit_a() && slot_is_terminal(dir: dir) && !ledger_still_holds(dir: dir)
     }
   }
@@ -726,7 +814,7 @@ test fn an_undecodable_artifact_that_is_not_an_unsubstituted_hook_still_keeps_th
     Present { value: stores } => {
       let launched = launched_with_unexpired_deadline(dir: dir)
       let seeded = plant_worker_exit_entry(instance_root: dir, entry_name: join([node_a, "+", key_a, "+worker+inv+exit-code+exited+BOGUS"], ""))
-      let first = settle_with_unit_absent(dir: dir, stores: stores)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
       launched && seeded && kept(s: first) && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
     }
   }
@@ -738,6 +826,76 @@ test fn an_undecodable_artifact_that_is_not_an_unsubstituted_hook_still_keeps_th
 // vendor-pane route, a replay, a hand call). A name still carrying `${NAME}` is refused there and
 // nothing is created, so the artifact cannot be reproduced by any modeled route -- and the reader arm
 // (AttemptExitRecordWriterUnsubstituted) is what refuses to read one that already exists on a host.
+// THE SAME ARTIFACT, THE SAME NOT-FOUND UNIT, AND A BOOT THAT PREDATES THE ACQUISITION: the seat is
+// kept. This is the row that separates this change from recovering a hold because the evidence is old
+// (gunbc.recurring_failure_mode hold_recovered_by_age_not_observed_holder_death): the unit is gone from
+// the manager, the artifact is defective, and it STILL does not free the seat, because the host is in
+// the same boot the hold was acquired in and the process could still be running.
+test fn a_not_found_unit_in_the_boot_the_hold_was_acquired_in_keeps_the_seat() -> Bool {
+  let dir = fresh_dir(tag: "sameboot")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_evidence_before_acquisition(stores: stores, margin: fixture_boot_margin, invocation_text: ""))
+      launched && seeded && kept(s: first) && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// THE MANAGER STILL REPORTS THE RUN: the standing says an InvocationID is live, so the same process is
+// up whatever the name lookup answered, and the seat is kept even though the boot moved. The two
+// readings come from the same manager in production (session_holder_evidence reads the standing with
+// attempt_unit_property, which routes by attempt_unit_manager_is_system); this row seeds both to show
+// the conjunction refuses when either half fails.
+test fn a_unit_that_still_reports_an_invocation_id_keeps_the_seat() -> Bool {
+  let dir = fresh_dir(tag: "invlive")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_evidence_after_acquisition(stores: stores, margin: fixture_boot_margin, invocation_text: "22222222222222222222222222222222"))
+      launched && seeded && kept(s: first) && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// THE BOOT AND THE ACQUISITION TOO CLOSE TO ORDER: 60 seconds apart against a declared skew bound of
+// 120, so the order is a typed refusal (BootOrderUndecided) and the seat is kept. A pass may not round
+// two whole-second readings into a verdict about whether a process survived a reboot.
+test fn a_boot_too_close_to_the_acquisition_to_order_keeps_the_seat() -> Bool {
+  let dir = fresh_dir(tag: "skew")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_evidence_after_acquisition(stores: stores, margin: fixture_boot_within_skew, invocation_text: ""))
+      launched && seeded && kept(s: first) && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// NO ACQUISITION IN THE LEDGER FOR THIS REFERENCE: the instant the hold was taken cannot be read, and a
+// missing instant is not an old one. The reading stays unbound and the seat is kept.
+// NO ACQUISITION IN THE LEDGER FOR THIS REFERENCE: the instant the hold was taken cannot be read, so the
+// not-found reading cannot be bound to the holder, and the seat is kept. A missing instant is not an old
+// one, and a pass that treated it as one would free any seat whose ledger term had been dropped.
+test fn a_not_found_unit_with_no_ledger_acquisition_to_bind_to_keeps_the_seat() -> Bool {
+  let dir = fresh_dir(tag: "noacq")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_without_a_ledger_seat(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_evidence_after_acquisition(stores: stores, margin: fixture_boot_margin, invocation_text: ""))
+      launched && seeded && kept(s: first) && slot_is_launching(dir: dir)
+    }
+  }
+}
+
 test fn the_spool_put_refuses_a_name_whose_stop_variables_were_never_substituted() -> Bool {
   let dir = fresh_dir(tag: "putrefuse")
   let inbox = attempt_exit_inbox_dir(instance_root: dir)
@@ -964,7 +1122,7 @@ test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_re
   let counts_after_carry = census_counts(c: census_after_carry)
   let settle_first = match stores_at(dir: dir) {
     Absent => SessionSettlementRefused { unit: "", detail: "no store" }
-    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores)
+    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
   }
   let carry_second = match stores_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
@@ -972,7 +1130,7 @@ test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_re
   }
   let settle_second = match stores_at(dir: dir) {
     Absent => SessionSettlementRefused { unit: "", detail: "no store" }
-    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores)
+    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
   }
   let census_after = match stores_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
