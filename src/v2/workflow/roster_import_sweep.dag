@@ -48,7 +48,7 @@ import std.occurrence_identity {
 import std.types { List, Bool, GitRef, Map }
 import extdeps.git
 import extdeps.git.inspect
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_is_absent }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
@@ -1603,12 +1603,6 @@ fn roster_leg_gates(home: QualifiedName, rows: RosterRowSelection, path: String,
 // There is NO FALLBACK TO SPELLING: in an active run, a site of the gated call passes ONLY if a key of the selection
 // names this file and matches the site's derived key. A file the selection names no key of has the gated row ACT AS
 // ABSENT there (its gated-call sites allow nothing: no import, no rename) -- it is never swept by spelling.
-fn roster_gate_is_present(gate: Optional<RosterSiteGate>) -> Bool {
-  match gate {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
 
 fn roster_gate_allows_site(gate: Optional<RosterSiteGate>, st: ScopedReferenceSite, spans: SpanIndex) -> Bool {
   match gate {
@@ -1954,7 +1948,7 @@ fn roster_rename_plan(
     let innermost = roster_heads_innermost_first(pipe_index: pipe_index, spans: spans, heads: heads)
     // A KEYED SITE IS REWRITTEN OR THE RUN REFUSES: the next pass reads the shifted text, where a census key no longer names
     // the deferred site, so under a key gate a deferred pipe is a silent skip and refuses instead (an unkeyed sweep converges).
-    if length(xs: innermost) != length(xs: heads) && roster_gate_is_present(gate: roster_gate_for(gates: gates, row: row)) {
+    if length(xs: innermost) != length(xs: heads) && !optional_is_absent(opt: roster_gate_for(gates: gates, row: row)) {
       LabelsRenameRefused { reason: RefusalRenamePipeOperandUnclean { call: row.call } }
     } else {
     fold_list(xs: innermost, empty: LabelsSelected { edits: [] }, cons: fn(acc, selected) {
