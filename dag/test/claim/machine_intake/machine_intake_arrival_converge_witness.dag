@@ -2210,6 +2210,16 @@ fn prior_life_established_carries_the_rows_inference(s: StepInstanceStanding<Arr
   }
 }
 
+// THE PENDING STATE OF A RUN'S AccessDiscover STEP, minted once here: the claims name the run and subject they
+// fold under, and this builds the key the row admission compares its pending against. The mint admits exactly
+// this helper (gunbc.machine_intake.arrival_converge access_forced_change_pending), so no claim mints it itself.
+fn forced_pending_for(run: ConvergenceRunId, subject: StepSubjectKey, forced: PublishedCredentialChangeForced) -> AccessForcedChangePending {
+  access_forced_change_pending(
+    key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject),
+    forced: forced,
+  )
+}
+
 // POSITIVE CONTROL, on the real arrival path. The forced state, the approval, the write, the application, the
 // readback, the archive and the run all describe ONE unit (srv13) and ONE run (run_a, whose intake attempt is
 // the attempt the write was admitted under): the subject is the one that run's IdentityBindProvisional binds,
@@ -2229,10 +2239,7 @@ test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs:
       match forced_fold(
         run: run_a,
         subject: srv13_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: leg.sequence.transition.leg.write.forced,
-        ),
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
         world: srv13_post_world(),
@@ -2293,10 +2300,7 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
               match forced_fold(
                 run: run_a,
                 subject: mtjade1_key,
-                pending: access_forced_change_pending(
-                  key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-                  forced: write.forced,
-                ),
+                pending: forced_pending_for(run: run_a, subject: mtjade1_key, forced: write.forced),
                 read: read_mtjade1_current_manager_read(),
                 bind: mtjade1_identity_bind_inputs(),
                 world: prior_life_minimal_dry_world(),
@@ -2332,10 +2336,7 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
           match forced_fold(
             run: run_a,
             subject: srv13_key,
-            pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: leg.sequence.transition.leg.write.forced,
-            ),
+            pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
             read: read_srv13_current_manager_read(),
             bind: srv13_identity_bind_inputs(),
             world: srv13_post_world(),
@@ -2367,10 +2368,7 @@ test fn w_a_matching_forced_pair_from_another_run_cannot_take_the_row() -> Bool 
       match forced_fold(
         run: run_a,
         subject: srv13_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: foreign.sequence.transition.leg.write.forced,
-        ),
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: foreign.sequence.transition.leg.write.forced),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
         world: srv13_post_world(),
@@ -2400,10 +2398,7 @@ test fn w_a_matching_forced_pair_for_another_controller_cannot_take_the_row() ->
       match forced_fold(
         run: run_a,
         subject: srv13_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: foreign.sequence.transition.leg.write.forced,
-        ),
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: foreign.sequence.transition.leg.write.forced),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
         world: srv13_post_world(),
@@ -2436,10 +2431,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
       match forced_fold(
         run: run_a,
         subject: srv13_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: leg.sequence.transition.leg.write.forced,
-        ),
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
         world: srv13_empty_post_world(),
@@ -2486,10 +2478,7 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
       match forced_fold(
         run: run_a,
         subject: srv13_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: leg.sequence.transition.leg.write.forced,
-        ),
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
         world: srv13_post_world(),
@@ -2555,3 +2544,151 @@ test fn diag_leg_produces() -> Bool uses fs: std.resources.Filesystem {
 }
 
 
+
+test fn diag_positive_fold_converges() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+      ) {
+        ArrivalRunFolded { verdict: v } => match v { RunConverged { run: _ } => true  _ => false }
+        _ => false
+      }
+  }
+}
+
+test fn diag_positive_run_incomplete_at_prior_life() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+      ) {
+        ArrivalRunFolded { verdict: v } => match v {
+          RunIncomplete { ledger: _, at: at } => declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+test fn diag_positive_run_stopped_at_bmc_secure() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+      ) {
+        ArrivalRunFolded { verdict: v } => match v {
+          RunStopped { ledger: _, at: at } => declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+test fn diag_positive_converged_bmc_noop() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+      ) {
+        ArrivalRunFolded { verdict: v } => match v {
+          RunConverged { run: r } => match r.ledger.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
+            Present { value: s } => bmc_secure_noop_established(s: s)
+            Absent => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+test fn diag_positive_converged_prior_life_carries_inference() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Absent => false
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: forced_pending_for(run: run_a, subject: srv13_key, forced: leg.sequence.transition.leg.write.forced),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
+      ) {
+        ArrivalRunFolded { verdict: v } => match v {
+          RunConverged { run: r } => match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
+            Present { value: s } => prior_life_established_carries_the_rows_inference(s: s)
+            Absent => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+test fn diag_foreign_write_admits() -> Bool {
+  match admitted_forced_write_at(endpoint: another_controller(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn diag_non_forcing_credential_refused() -> Bool {
+  match admit_published_credential_change_forced(
+    reading: controller_reading(
+      endpoint: lab_endpoint,
+      attempt: "attempt-1" as AttemptIdentity,
+      board: mt_collins_board_authority,
+      login: "admin" as NonEmptyStr,
+      status: 401,
+      body: "{\"error\":{\"code\":\"Base.1.16.0.GeneralError\",\"message\":\"unauthorized\"}}" as NonEmptyStr,
+      capture: srv13_capture,
+      firmware: ForcedChangeBuildUnreadable,
+    ),
+  ) {
+    ForcedChangeAdmitted { state: _ } => false
+    ForcedChangeRefused { cause: _ } => true
+  }
+}

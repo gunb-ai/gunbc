@@ -1404,13 +1404,9 @@ type AccessForcedChangePending sole_constructor {
 
 fn access_forced_change_pending(key: StepInstanceKey, forced: PublishedCredentialChangeForced) -> AccessForcedChangePending
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_forced_change_unit_sequence_converges_under_the_row"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_forced_state_from_another_run_or_controller_cannot_take_the_row"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_from_another_run_cannot_take_the_row"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_for_another_controller_cannot_take_the_row"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_real_path"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse"),
+    // ONE admitted call site in the witness: the helper below the claims builds the pending for the run and
+    // subject a claim is folding under, so the claims themselves never mint it.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_pending_for"),
   ]
 {
   AccessForcedChangePending { key: key, forced: forced }
