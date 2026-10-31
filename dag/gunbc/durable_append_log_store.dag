@@ -54,14 +54,11 @@ type AppendLogStore {
 // Amended with #15471's seal move (decision B): the consumer is the declaring roadmap module's business-key
 // mint, so the frontier is bound to the appearance of that declaration.
 data append_log_mint_consumer_frontier: DissolutionCondition = bound_dissolution(
-  trigger: DeclarationAppears {
-    ref: DeclarationRef {
-      module_path: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr,
-      decl_name: "attempt_append_log_store_open" as NonEmptyStr,
-      field: WholeDeclaration {},
-    },
+  ref: DeclarationRef {
+    module_path: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr,
+    decl_name: "attempt_append_log_store_open" as NonEmptyStr,
+    field: WholeDeclaration {},
   },
-  description: "append_log_store_mint is driven by gunbc.roadmap.roadmap_attempt_state_store's business-key seal mint attempt_append_log_store_open(instance, node, attempt_key, member) -> sealed AttemptAppendLogStore (decision B: the seal lives in the declaring module; the generic durable layer is data-only). FIRES when that mint is declared and the attempt-state store mints each census MigrateToLogStore member through it over the real member-directory read, SUFFICIENT FOR the two expecting-red claims to pass and for a generic attempt_state_write of a log member to be refused",
 )
 
 // THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
