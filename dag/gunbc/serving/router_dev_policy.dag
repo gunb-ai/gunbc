@@ -853,8 +853,8 @@ type RouterDevUpstream {
 // capped row holds a bound session at its cap with 429 + Retry-After and a stranded record, and the former
 // per-row cache_locality field, which only EngineLocal rows honoured, is gone.
 type RouterDevCapacity
-  = OwnedCap { turns: Int }
-  | RentedCapped { turns: Int }
+  = OwnedCap { turns: Nat }
+  | RentedCapped { turns: Nat }
   | RentedUncapped
 
 fn router_dev_row_is_rented(u: RouterDevUpstream) -> Bool {
@@ -955,8 +955,8 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_capacity_members(c: RouterDevCapacity) -> List<JsonKeyValue> {
   match c {
-    OwnedCap { turns: n } => [json_kv(key: "cap", value: json_int(n: n))]
-    RentedCapped { turns: n } => [json_kv(key: "cap", value: json_int(n: n))]
+    OwnedCap { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedCapped { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
     RentedUncapped => no_members()
   }
 }
