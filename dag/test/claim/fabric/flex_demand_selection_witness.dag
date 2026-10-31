@@ -22,7 +22,10 @@ import product.fabric.demand {
   attest_command_principal, empty_demand_population, NoTerminalReceipt, debt_payoff_objective,
 }
 import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
-import product.fabric.flex_vast_shadow { flex_trial_policy }
+import product.fabric.flex_vast_shadow { flex_trial_policy, ShadowEntryEstablished }
+import product.fabric.serving_recipe { SelectionQuoteEstablished }
+import extdeps.cloud.vast_ai { VastAiOffer, vast_ai_quote_currency }
+import std.decimal { ExactDecimal }
 import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements, owned_offer }
 import test.claim.fabric.selected_offer_fixture { bound }
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
@@ -127,7 +130,6 @@ fn population_after_submit(demand: Demand<NonEmptyStr>) -> DemandPopulation<NonE
 test fn an_unread_demand_stops_the_selection_before_any_offer_is_touched() -> Bool {
   let stop = flex_pass_select(
     demand: FlexDemandUnread { reason: "no producer in this test" as NonEmptyStr },
-    policy: flex_trial_policy,
     screened: [],
   )
   match stop {
@@ -150,14 +152,12 @@ test fn an_admitted_demand_that_requires_a_new_attempt_stops_at_the_requirements
     Present { value: c } =>
       match flex_pass_select(
         demand: FlexDemandRead { population: empty_demand_population(), core: c },
-        policy: flex_trial_policy,
         screened: [],
       ) {
         FlexSelectionRequirementsUnread { reason: r } =>
           string_contains(s: r, pattern: "ExecutionRequirements")
             && string_contains(s: flex_selection_wire(s: flex_pass_select(
                  demand: FlexDemandRead { population: empty_demand_population(), core: c },
-                 policy: flex_trial_policy,
                  screened: [],
                )), pattern: "requirements-unread")
         _ => false
@@ -175,13 +175,11 @@ test fn an_admitted_demand_that_does_not_require_a_new_attempt_seeks_no_offer() 
     Present { value: c } =>
       match flex_pass_select(
         demand: FlexDemandRead { population: empty_demand_population(), core: c },
-        policy: flex_trial_policy,
         screened: [],
       ) {
         FlexSelectionNotSeeking { directive: _ } =>
           string_contains(s: flex_selection_wire(s: flex_pass_select(
             demand: FlexDemandRead { population: empty_demand_population(), core: c },
-            policy: flex_trial_policy,
             screened: [],
           )), pattern: "directive=")
         _ => false
@@ -201,13 +199,11 @@ test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool 
     Present { value: c } =>
       match flex_pass_select(
         demand: FlexDemandRead { population: held, core: c },
-        policy: flex_trial_policy,
         screened: [],
       ) {
         FlexSelectionDemandRefused { refusal: _ } =>
           string_contains(s: flex_selection_wire(s: flex_pass_select(
             demand: FlexDemandRead { population: held, core: c },
-            policy: flex_trial_policy,
             screened: [],
           )), pattern: "demand-refused: duplicate-demand demand-flex-1")
         _ => false
@@ -235,6 +231,68 @@ test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool 
 // this shape for a live Vast search offer, because the search response carries none of the six facts a
 // candidacy needs (start cost, transition, opportunity cost, readiness, cited region, use permit), so no
 // live pass reaches this call at all. That is the frontier, not something this claim pretends to close.
+// A LIVE-SHAPED VAST SEARCH OFFER: exactly the fields the search-offers response carries
+// (docs.vast.ai/api-reference/search/search-offers), with the values a real row would have. It is
+// SUPPLIED here rather than fetched, and it is deliberately not a candidate: the response carries none
+// of the six facts a candidacy needs, so the shadow authority refuses it. That refusal is what this
+// claim executes THROUGH THE PASS ARM, which is what makes part (b) of
+// product.fabric.flex_vast_loop flex_select_supply_consumer_frontier an executed statement rather than
+// an inference from types.
+fn w_search_offer() -> VastAiOffer {
+  VastAiOffer {
+    id: 4417, machine_id: 11806, gpu_name: "RTX 4090", num_gpus: 1, compute_cap: 89,
+    gpu_arch: Absent, verification: "verified", geolocation: "US-TX",
+    rentable: true, rented: false, is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
+    storage_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    gpu_ram: 24576,
+    driver_version: Absent,
+  }
+}
+
+fn w_screened_search_offer() -> List<FlexScreenedOffer> {
+  [FlexScreenedOffer {
+    offer: w_search_offer(),
+    entry: ShadowEntryEstablished,
+    quote: SelectionQuoteEstablished { amount: money_amount_micro(count: 1000000), currency: vast_ai_quote_currency },
+  }]
+}
+
+// THE PASS REFUSES A LIVE-SHAPED SEARCH OFFER AS A CANDIDACY, AND SAYS WHICH FIELDS ARE MISSING. The
+// demand is admitted and requires a new attempt, so the fold authorizes a purchase; the offer is a real
+// search row; the pass still cannot rank it, and the answer names the offer and the missing facts.
+// Replace the shadow's binding verdict with a permissive one and this goes red, as does dropping the
+// missing-field list. This is the arm's stop on live data; the empty-population spelling (test 2) is the
+// requirements stop, and no LIVE pass reaches either one, because its demand standing is unread.
+test fn the_pass_refuses_a_live_shaped_search_offer_as_a_candidacy_and_names_the_fields() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
+        screened: w_screened_search_offer(),
+      ) {
+        FlexSelectionCandidatesUnestablished { offer_key: k, missing: m } =>
+          // The receipt line is the pass's own words: the offer it refused, and the fields the search
+          // response does not carry. Both must be present, and the missing list must not be empty.
+          length(m) > 0
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
+                 screened: w_screened_search_offer(),
+               )), pattern: "candidates-unestablished offer=")
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
+                 screened: w_screened_search_offer(),
+               )), pattern: "4417")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
 test fn the_selection_route_carries_the_authoritys_selected_offer() -> Bool {
   flex_rank_candidates(
     policy: flex_trial_policy,

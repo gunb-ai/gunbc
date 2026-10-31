@@ -303,9 +303,12 @@ data flex_pass_affinity: PlacementAffinityKey = "gunbc.flex.serving" as Placemen
 // not discovered here). This entry NEVER ranks offers itself and NEVER builds a CandidateOffer: the
 // candidates come from the shadow adapter, and where the search answer does not carry a consequence that
 // adapter refuses typed and NAMES the field, which is what this returns.
+// The selection decision for one pass: what the demand fold says, and what the pass can act on.
+// NO policy parameter: the policy belongs to the ranking call (flex_rank_candidates), which this
+// function cannot reach without ExecutionRequirements it does not have - carrying a policy here that
+// nothing reads would be a parameter that lies about what the decision consumes.
 fn flex_pass_select(
   demand: FlexDemandStanding,
-  policy: FlexPolicy,
   screened: List<FlexScreenedOffer>,
 ) -> FlexPassSelection {
   match demand {
@@ -333,16 +336,18 @@ fn flex_pass_select(
             // Both stops are typed and name the missing input; neither is filled in with a shape invented
             // at the call site.
             //
-            // On live search data the FIRST question is the one that answers: the shadow refuses to turn a
-            // Vast search offer into a candidacy, because the search response carries none of the six facts
-            // a candidacy needs, and the pass names the offer and the missing fields. That refusal is the
-            // shadow authority's own - test.claim.fabric.flex_vast_shadow_witness executes it against
-            // live-shaped offers - and this arm is what CONSUMES it. An empty population is the other
-            // spelling, and it reaches the second stop, which is what
-            // test.claim.fabric.flex_demand_selection_witness executes end to end through this arm. The
-            // ranking call itself is executed in that same witness over a candidate bound from supplied
-            // values, because no live Vast candidacy exists to reach it from.
-            // flex_select_supply_consumer_frontier states that split in three parts.
+            // WHAT EXECUTION ESTABLISHES, and what it does not (flex_select_supply_consumer_frontier
+            // carries the same split, so no reader has to infer it):
+            //  - A LIVE pass today stops BEFORE this arm: flex_demand_standing() has no producer, so the
+            //    demand is FlexDemandUnread and the pass answers FlexSelectionUnreadDemand. Nothing in
+            //    production reaches flex_pass_candidates. That is the demand producer frontier, not this arm.
+            //  - The candidacy refusal IS executed: test.claim.fabric.flex_demand_selection_witness feeds
+            //    this arm a live-shaped Vast search offer and asserts FlexSelectionCandidatesUnestablished
+            //    naming the offer and the fields the search response does not carry.
+            //  - The requirements stop IS executed by the same witness through this arm, on an empty
+            //    population.
+            //  - The ranking call is executed in that witness over a candidate bound from supplied values,
+            //    because no live Vast candidacy exists to reach it from.
             RequireNewAttempt { reuse: _ } =>
               match flex_pass_candidates(screened: screened) {
                 FlexCandidatesUnestablished { offer_key: k, missing: m } =>
@@ -387,18 +392,26 @@ fn flex_pass_candidates(screened: List<FlexScreenedOffer>) -> FlexCandidatePopul
       machine: flex_machine_key_for_offer(account: flex_vast_account, offer: s.offer),
     ),
   )
+  // The candidates the shadow DID bind, in order, computed once: a refusal anywhere is the answer, and
+  // where nothing refused, this is the answer.
+  let bound = fold(
+    derived,
+    init: [],
+    f: (acc, d) => match d {
+      VastCandidateDerived { candidates: cs } => concat(acc, map(cs, c => c.candidate))
+      VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => acc
+    },
+  )
   match first_where(derived, flex_candidate_refused) {
-    Present { value: VastCandidateConsequencesUnestablished { offer_key: k, missing: m } } =>
-      FlexCandidatesUnestablished { offer_key: k, missing: m }
-    Absent => FlexCandidatesBound {
-      candidates: fold(
-        derived,
-        init: [],
-        f: (acc, d) => match d {
-          VastCandidateDerived { candidates: cs } => concat(acc, map(cs, c => c.candidate))
-          VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => acc
-        },
-      ),
+    Absent => FlexCandidatesBound { candidates: bound }
+    // The predicate above selects exactly the refusals, so the derived variant cannot reach this arm; it
+    // is matched because the TYPE admits it, and its answer is the same bound population - not a no-offer,
+    // which would be this entry inventing the authority's verdict (the defect a reviewer caught in an
+    // earlier revision of this function).
+    Present { value: v } => match v {
+      VastCandidateConsequencesUnestablished { offer_key: k, missing: m } =>
+        FlexCandidatesUnestablished { offer_key: k, missing: m }
+      VastCandidateDerived { candidates: _ } => FlexCandidatesBound { candidates: bound }
     }
   }
 }
@@ -987,7 +1000,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       // THE SELECTION RUNS ON THE DECIDING PATH: the demand is decided by the fabric's own fold and the
       // offers are bound by the shadow adapter, so what this pass reports about WHAT to rent is the
       // fabric's answer, not a ranking done here.
-      let selection = flex_pass_select(demand: flex_demand_standing(), policy: flex_trial_policy, screened: screened)
+      let selection = flex_pass_select(demand: flex_demand_standing(), screened: screened)
       let outcome = flex_run_pass(input: input, api_key: key, releasing: none)
       // THE CARRY FOR THE NEXT PASS: the sightings this pass took (first-sighting times kept, new
       // loadings sighted now, anything no longer loading dropped), the standing of the ask this pass
