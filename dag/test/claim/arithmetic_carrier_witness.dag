@@ -55,6 +55,14 @@ data nat_minus_nat_is_int_source: String = "module probe_arith_nat_minus_nat\nim
 // taking the left operand's typing. Observed through the result's Nat return, which would hold under the old fallback.
 data nat_plus_unmodeled_source: String = "module probe_arith_nat_plus_unmodeled\nimport std.nat { Nat }\ntype Tag = TagA | TagB\nfn f(a: Nat, t: Tag) -> Nat { a + t }\n"
 
+// A Nat beside a kernel Float names no common carrier either (the operand has no declaration and is not a type
+// variable): it refuses rather than taking the left operand's typing (review 89308).
+data nat_plus_float_source: String = "module probe_arith_nat_plus_float\nimport std.nat { Nat }\nimport std.types { Float }\nfn f(a: Nat, x: Float) -> Nat { a + x }\n"
+
+test fn w_nat_plus_kernel_float_refuses() -> Bool {
+  blocking_count(source: nat_plus_float_source) >= 1
+}
+
 test fn w_nat_plus_unmodeled_carrier_refuses() -> Bool {
   blocking_count(source: nat_plus_unmodeled_source) >= 1
 }
