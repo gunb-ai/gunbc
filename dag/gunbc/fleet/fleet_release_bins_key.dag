@@ -20,7 +20,7 @@ import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_if, bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
+  bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
   bash_build_exit,
 }
@@ -1095,15 +1095,15 @@ fn lookup_decode_statements(r: ReleaseBinsLookupRef) -> List<Node> {
       r: LookupAnswerUnusable,
     ),
     read_back(name: "DECODED_STANDING", file: join(["lookup-", r.tag, ".decoded"], ""), reader: ["head", "-n", "1"]),
-    bash_build_if_else(
+    bash_build_if_else_from_stmts(
       cond: test_words(ws: [var(n: "DECODED_STANDING"), lit(t: "="), lit(t: release_bins_standing_wire(standing: LookupEntryPresent))]),
-      then_body: bash_build_stmt_list_from_nodes(stmts: [
+      then_stmts: [
         bash_build_assign(name: "STANDING", value: lit(t: release_bins_standing_wire(standing: LookupEntryPresent))),
         read_back(name: "ENTRY", file: join(["lookup-", r.tag, ".decoded"], ""), reader: ["sed", "-n", "2p"]),
-      ]),
-      else_body: bash_build_stmt_list_from_nodes(stmts: [
+      ],
+      else_stmts: [
         or_refuse(check: test_words(ws: [var(n: "DECODED_STANDING"), lit(t: "="), lit(t: release_bins_standing_wire(standing: LookupEntryAbsent))]), r: LookupAnswerUnusable),
-      ]),
+      ],
     ),
   ]
 }

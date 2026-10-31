@@ -6,7 +6,8 @@ import gunbc.shell_command_text { shell_command_text_of_node }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
 import v2.extdeps.languages.bash_build {
-  bash_build_if_else, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
+  bash_build_if_else, bash_build_if_else_from_stmts, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
+  bash_build_assign, bash_build_word_lit,
 }
 
 data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
@@ -42,4 +43,40 @@ test fn the_serializer_refuses_an_over_arity_statement_list_with_its_reason() ->
       string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "bash_fold_serialize_stmt_list_shape_refused")
     Accepted { value: _, diagnostics: _ } => false
   }
+}
+
+// THE SAME REFUSAL REACHES AN ASSIGN: the shape the seed build's parameter default handed -- one
+// assignment standing as an `if` arm, three positional children (tag, name, value) -- is refused with
+// the shape reason too. This is the half of the contract that kept the fold honest while
+// dag/gunbc/repo/repo_self_build.dag's `default_from` was emitting a refusal marker into all four
+// required workflows in place of the folded build preamble: the fold was right, the caller was wrong.
+test fn a_bare_assign_as_an_if_else_arm_refuses_with_the_shape_reason() -> Bool {
+  let one_arm = bash_build_assign(name: "GUNBC_SEED_TARGET", value: bash_build_word_lit(text: "/target"))
+  let bare_arms = bash_build_if_else(
+    cond: bash_build_command_from_lits(lits: ["test", "-n", "$GUNBC_SEED_TARGET"]),
+    then_body: one_arm,
+    else_body: one_arm,
+  )
+  match bash_fold_serialize_node(stmt: bare_arms) {
+    Rejected { diagnostics: ds } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "bash_fold_serialize_stmt_list_shape_refused")
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE BUILDER OWED BY THE FOLD'S CONTRACT EXISTS AND FOLDS: an `if`/`else` whose two arms are single
+// statements, built through the ONE builder for that shape (bash_build_if_else_from_stmts, the twin
+// of bash_build_if_from_stmts and bash_build_subshell_from_stmts), carries no refusal marker and
+// spells both arms. The claims above pin what the fold refuses; this pins the route the vocabulary
+// must offer so a caller never has to hand the fold a bare statement to get one statement per arm.
+test fn the_one_if_else_builder_folds_single_statement_arms() -> Bool {
+  let folded = bash_build_if_else_from_stmts(
+    cond: bash_build_command_from_lits(lits: ["test", "-n", "$SOURCE"]),
+    then_stmts: [bash_build_assign(name: "TARGET", value: bash_build_word_lit(text: "keep"))],
+    else_stmts: [bash_build_assign(name: "TARGET", value: bash_build_word_lit(text: "fallback"))],
+  )
+  let text = shell_command_text_of_node(stmt: folded)
+  (!string_contains(s: text, pattern: refused_marker))
+    && string_contains(s: text, pattern: "TARGET='keep'")
+    && string_contains(s: text, pattern: "TARGET='fallback'")
 }
