@@ -30,7 +30,7 @@ import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_gen
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret, fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
 import gunbc.fleet.fleet_host_key_enrollment {
-  KnownHostKeyRow, ScannedFirstContact, known_hosts_line, fleet_name_at_ssh_port,
+  KnownHostKeyRow, ScannedFirstContact, ConsolePerBoot, known_hosts_line, fleet_name_at_ssh_port,
 }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
@@ -439,8 +439,9 @@ fn per_boot_pin_of(row: AnchoredHostRow, boot_field: String, key_type: String, k
               key_type: key_type,
               public_key_base64: key_b64,
               sha256_fingerprint: fingerprint,
-              provenance: ScannedFirstContact {
-                scanned_from: join(["the BMC serial console (SOL) of boot ", id, ", printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], ""),
+              provenance: ConsolePerBoot {
+                boot_id: id as NonEmptyStr,
+                channel: join(["the BMC serial console (SOL), printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], "") as NonEmptyStr
               },
             },
           } }
