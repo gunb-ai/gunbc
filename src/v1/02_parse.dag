@@ -5558,21 +5558,40 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, receiv
     PipeCalleeResult { spine: none, method: r.name, method_span: r.span, tokens: r.tokens, ctx: ctx, err: none }
   }
   let method = callee.method
-  let leading_result = match callee.spine {
-    Absent => ParsedNodesResult { nodes: [receiver], ctx: callee.ctx }
-    Present { value: qualifier } => {
-      let wrapper_mint = mint_parsed_node_identity(ctx: callee.ctx, at: ConsumedWindow { from: receiver_from, to: receiver_to })
-      ParsedNodesResult { nodes: [qualifier, make_arg_node(occurrence_identity: wrapper_mint.identity, name: none, value: receiver, span: receiver.span, name_span: receiver.span)], ctx: wrapper_mint.ctx }
-    }
+  let wrapper_mint = mint_parsed_node_identity(ctx: callee.ctx, at: ConsumedWindow { from: receiver_from, to: receiver_to })
+  let piped_arg = make_arg_node(occurrence_identity: wrapper_mint.identity, name: none, value: receiver, span: receiver.span, name_span: receiver.span)
+  let leading_nodes = match callee.spine {
+    Absent => [piped_arg]
+    Present { value: qualifier } => [qualifier, piped_arg]
   }
+  let call_data = pipe_call_expr_data(spine: callee.spine)
   let tokens = skip_newlines(tokens: callee.tokens)
 
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
-    let r2 = parse_call_args(tokens: tokens, ctx: leading_result.ctx)
+    let r2 = parse_call_args(tokens: tokens, ctx: wrapper_mint.ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parsed_expr_result(from: receiver_from, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
+    parsed_expr_result(from: receiver_from, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: call_data, children: concat(leading_nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
   } else {
-    parsed_expr_result(from: receiver_from, tokens: tokens, ctx: leading_result.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading_result.nodes, inferred: none, span: span, name_span: callee.method_span))
+    parsed_expr_result(from: receiver_from, tokens: tokens, ctx: wrapper_mint.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: call_data, children: leading_nodes, inferred: none, span: span, name_span: callee.method_span))
+  }
+}
+
+// A PIPE IS THE CALL IT ABBREVIATES, WITH THE LEFT OPERAND AS THE FIRST ARGUMENT, so each pipe form
+// builds the node its direct call builds. `x |> f(a)` is `f(x, a)`: an ExprCall whose head
+// v1.compiler.infer binds like any call head -- a declared, imported or same-module function through
+// its signature and the direct-call shape walls, and a head with no declared signature (count, map,
+// a host-registered primitive) through the known-method bridge that already serves `count(xs)`.
+// `x |> a.b.f(a)` is `a.b.f(x, a)`: the qualified callee spine make_call_expr builds for a dotted
+// call, which v1.compiler.infer's qualified_direct_call arm rewrites to the same ExprCall.
+//
+// THE DEFECT THIS RETIRES (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method):
+// the unqualified pipe built an ExprMethodCall, indistinguishable from `x.f(a)`, so infer only ever
+// asked the receiver's type for a method `f` and a declared function refused as "method 'f' not
+// found on receiver type".
+fn pipe_call_expr_data(spine: Node?) -> ExprData {
+  match spine {
+    Absent => ExprCall { call_semantics: none, descent_evidence: none }
+    Present { value: _ } => ExprMethodCall { method_semantics: none }
   }
 }
 
