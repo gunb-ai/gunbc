@@ -40,11 +40,12 @@ module gunbc.runner.runner_capability_labels
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { string_contains }
 import product.host_identity { HostIdentity }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
 import gunbc.runner.runner_registration_labels {
   HostCapabilityRow, HostCapabilityWitness, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
-  runner_registration_labels, runner_label_set_union,
+  runner_evidence_gated_registration_labels, runner_label_set_union,
   gunbc_browser_ready_label, gunbc_gpu_docker_label,
 }
 
@@ -209,6 +210,7 @@ fn runner_capability_registration_labels(
   host: HostIdentity,
   own: List<String>,
   witnesses: List<HostCapabilityWitness>,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerRegistrationLabelsResolution {
   let unreadable_reasons = flat_map(witnesses, w => match w {
     CapabilityUnobservable { label: l, cause: c } =>
@@ -229,7 +231,7 @@ fn runner_capability_registration_labels(
       cause: join(["refusing to render LABELS_JSON rather than revoke or fabricate a capability: ", join(reasons, "; ")], "") as NonEmptyStr,
     }
   } else {
-    match runner_registration_labels(host: host) {
+    match runner_evidence_gated_registration_labels(host: host, receipt: receipt) {
       RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
       RegistrationLabelsResolved { labels: ls } => {
         let restated = map(filter(witnesses, w => host_capability_witness_held(w: w)), w => host_capability_witness_label(w: w))
@@ -245,6 +247,6 @@ fn runner_capability_registration_labels(
 // not the browser one, and not any future one. That is the test of whether the generalization is real: this
 // function would have to change under the design review 86550 rejected, and it cannot change under adding
 // the fourth capability.
-fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> RunnerRegistrationLabelsResolution {
-  runner_capability_registration_labels(host: host, own: [gunbc_gpu_docker_label], witnesses: witnesses)
+fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, witnesses: List<HostCapabilityWitness>, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  runner_capability_registration_labels(host: host, own: [gunbc_gpu_docker_label], witnesses: witnesses, receipt: receipt)
 }
