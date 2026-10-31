@@ -5289,7 +5289,11 @@ fn partitioned_rebuild_from_installed(
         if reasons.is_empty() {
             reasons = observation.fingerprint_reasons.iter().collect();
         }
-        let shown: Vec<&str> = reasons.iter().take(24).map(String::as_str).collect();
+        let shown: Vec<&str> = reasons
+            .iter()
+            .take(24)
+            .map(|reason| reason.as_str())
+            .collect();
         return Err(format!(
             "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {} — cargo fingerprint \
              reasons for this build ({} captured, {} shown): [{}]",
@@ -8180,7 +8184,7 @@ mod heal_round_one_base_mirror_tests {
                 fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
             {
                 let path = entry.unwrap().path();
-                if path.file_name().map(|n| n == ".git").unwrap_or(false) {
+                if path.file_name() == Some(std::ffi::OsStr::new(".git")) {
                     continue;
                 }
                 if path.is_dir() {
@@ -8221,7 +8225,7 @@ mod heal_round_one_base_mirror_tests {
     fn a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore() {
         // ARM 1 — THE CI SHAPE THAT WAS REFUSED: the PR edits only `.dag` authorities, so every crate
         // path in the worktree already holds base's bytes.
-        let (root, stage0, base_commit) = base_mirror_fixture();
+        let (root, _stage0, base_commit) = base_mirror_fixture();
         let checkout = Command::new("git")
             .args(["checkout", &base_commit, "--", STAGE0_CRATE_REL])
             .current_dir(&root)
@@ -8232,7 +8236,8 @@ mod heal_round_one_base_mirror_tests {
             "the fixture could not reset the crate to base's bytes: {}",
             String::from_utf8_lossy(&checkout.stderr)
         );
-        let before = mtimes_under(&stage0);
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let before = mtimes_under(&crate_dir);
         assert!(!before.is_empty(), "the fixture's crate is empty");
 
         let restored = bootstrap_round_one_from_base_mirror(
@@ -8255,7 +8260,7 @@ mod heal_round_one_base_mirror_tests {
              overwrites them — the seed must not journal them"
         );
         assert_eq!(
-            mtimes_under(&stage0),
+            mtimes_under(&crate_dir),
             before,
             "the seed rewrote a path whose bytes already equalled base's"
         );
@@ -8268,7 +8273,7 @@ mod heal_round_one_base_mirror_tests {
             "the teardown wrote back paths the seed never moved"
         );
         assert_eq!(
-            mtimes_under(&stage0),
+            mtimes_under(&crate_dir),
             before,
             "the restore rewrote a path it had never moved"
         );
@@ -8277,9 +8282,10 @@ mod heal_round_one_base_mirror_tests {
         // ARM 2 — THE DISCRIMINATOR: on a tree that differs, the differing paths' mtimes MUST move
         // and the one path committed identically on both sides (the crate's build script) must not.
         let (root, stage0, base_commit) = base_mirror_fixture();
-        let build_script = root.join(STAGE0_CRATE_REL).join("build.rs");
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let build_script = crate_dir.join("build.rs");
         let emitted = stage0.join("fixture_emitted.rs");
-        let before = mtimes_under(&stage0);
+        let before = mtimes_under(&crate_dir);
         let restored = bootstrap_round_one_from_base_mirror(
             &root,
             Some(&base_commit),
@@ -8290,7 +8296,7 @@ mod heal_round_one_base_mirror_tests {
             restored.paths_rewritten, 4,
             "the fixture's head edits 4 crate paths"
         );
-        let after = mtimes_under(&stage0);
+        let after = mtimes_under(&crate_dir);
         assert_ne!(
             after[&emitted], before[&emitted],
             "a path whose bytes differ was not rewritten, so arm 1 above proves nothing"
