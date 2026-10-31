@@ -1113,13 +1113,12 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 // the homonym arm). The import arm is the author's own binding: a callee whose signature the import
 // closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
 // the import, never by corpus coincidence. env.parents is built from the resolved imports, one
-// interface env per import. ImportScoped keeps the legacy any-module answer.
+// interface env per import. Unconditional: the floor does not depend on the resolution policy, so
+// no legacy any-module arm survives beside it.
 fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
-  if name_resolution_policy_is_namespace_only() {
-    let declarer_segs = module_path_segments(path: declarer)
-    segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
-      || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
-  } else { true }
+  let declarer_segs = module_path_segments(path: declarer)
+  segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
+    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
 }
 
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
