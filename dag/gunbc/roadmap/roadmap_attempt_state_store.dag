@@ -14,6 +14,13 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead,
 }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem_listing_entry_names }
+import gunbc.durable_append_log_store {
+  AppendLogParent, AppendLogStore, AppendLogSlot, AppendLogMinting, AppendLogReady, AppendLogUnready,
+  AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
+  append_log_census_slot, MemberCensusRow, MigrateToLogStore,
+}
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt {
@@ -563,4 +570,86 @@ fn attempt_state_verification_receipt_read_at(instance: HostDashboardInstance, n
     AttemptStateUnready { detail } => ExactVerificationReceiptUnreadable { detail: detail }
     AttemptStateReady { store } => attempt_state_verification_receipt_read(store: store, head_sha: head_sha, window_identity_hex: window_identity_hex)
   }
+}
+
+// THE APPEND-LOG SEAL (decision B; amends #15471 about where the seal sits). The generic durable layer
+// (gunbc.durable_append_log_store) is data-only -- the unsealed carrier + contract types + pure operations.
+// The SEAL (AttemptAppendLogStore sole_constructor) and its ONE business-key mint live HERE, in the module that
+// DECLARES the members, mirroring roadmap_attempt_worktree_claim_root. The mint takes the business key
+// (instance, node, attempt key) and the member -- NEVER a path -- and uses only the path derived from the sealed
+// attempt-state record, whose directory it reads once for the real listing the mint must be bound to. No
+// exported fn here takes a path or a NonEmptyStr and returns a sealed store: the only inputs are the sealed
+// HostDashboardInstance and the business keys. Land order (with #15413): until #15413 lands and its cutover runs
+// on a host, that host's shared attempt-state root still holds the flat entries #15413 relocates; a member whose
+// real read finds a foreign/un-moved entry is refused with the typed AppendLogLegacyRefused, never treated as
+// absent and never dual-read.
+type AttemptAppendLogStore sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  member_name: NonEmptyStr
+  directory: NonEmptyStr
+  slot: AppendLogSlot
+}
+
+type AttemptAppendLogReading
+  = AttemptAppendLogReady { store: AttemptAppendLogStore }
+  | AttemptAppendLogUnready { detail: String }
+  | AttemptAppendLogLegacyRefused { cause: AppendLogLegacyCause }
+
+// The census log members that are AttemptStateMember values. AttemptDirectoryWire is an in-place record in the
+// wire directory written by the worker lane (roadmap_attempt_directory_wire), NOT an AttemptStateMember, so it is
+// minted through that lane's own directory read, not here; every other census member is not a log member.
+fn attempt_append_log_member_name(member: AttemptStateMember) -> String {
+  match member {
+    AttemptWorkerEvents => "AttemptWorkerEvents"
+    AttemptWorkerLog => "AttemptWorkerLog"
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents"
+    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog"
+    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents"
+    AttemptAuditLog => "AttemptAuditLog"
+    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
+    AttemptSupervisorLog => "AttemptSupervisorLog"
+    _ => ""
+  }
+}
+
+fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
+  match append_log_member_census {
+    Empty {} => Absent
+    Cons { head: r, tail: rest } => match r.disposition {
+      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) then Present { value: r } else attempt_append_log_census_row(name: name)
+      _ => attempt_append_log_census_row(name: name)
+    }
+  }
+}
+
+// THE ONE SEAL MINT. Business key only; the path is derived from the sealed attempt-state record and read once.
+fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> AttemptAppendLogReading {
+  let name = attempt_append_log_member_name(member: member)
+  if name == "" then
+    AttemptAppendLogUnready { detail: "not an append-log member" }
+  else
+    match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+      AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
+      AttemptStateReady { store } =>
+        let member_dir = attempt_state_directory_path(store: store, directory: attempt_state_member_directory(member: member))
+        let listed = Filesystem.List(path: member_dir)
+        if listed.success then
+          match attempt_append_log_census_row(name: name) {
+            Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
+            Present { value: row } => match append_log_census_slot(row: row) {
+              Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
+              Present { value: slot } =>
+                let names = filesystem_listing_entry_names(listing: FilesystemDirectoryListing { entries: listed.entries })
+                match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
+                  AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
+                  AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+                  AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
+                }
+            }
+          }
+        else
+          AttemptAppendLogUnready { detail: join(["the member directory ", member_dir, " could not be listed; a member is never treated as absent from a failed read"], "") }
+    }
 }
