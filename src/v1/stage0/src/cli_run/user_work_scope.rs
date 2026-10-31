@@ -45,21 +45,65 @@ const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
     "sessions.slice",
 ];
 
+// SEED MIRROR of `gunbc.compute.unit_bounds WrapExemptionPremise`: WHICH claim asked to be spared the
+// wrap. A premise never skips by itself -- `live_enclosing_bound` below is what decides -- so no arm
+// here may be reached by a path substring, an env var, or a declared cap alone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WrapExemptionPremise {
+    InCiRunnerEnvironment,
+    InRunnerSlotCgroup,
+    AlreadyInDeclaredUserWorkSlice,
+    UnderModeledSlice { unit: String, slice: String },
+    UnderUnmodeledSystemUnit { unit: String, slice: String },
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds EnclosingBoundCause`: why no live finite enclosing
+// memory.max was observed, as a shape rather than prose.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum EnclosingBoundCause {
+    ChainUnreadable { detail: String },
+    NoFiniteMemoryMax,
+    MemoryMaxZero { dir: String },
+    SwapNotForbidden { dir: String, bytes: u64 },
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds EnclosingBoundObservation`: the ONE answer of the ONE
+// check every bound-premised exemption goes through.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum EnclosingBoundObservation {
+    LiveEnclosingBound {
+        cgroup: String,
+        memory_max: u64,
+    },
+    NoLiveEnclosingBound {
+        cgroup: String,
+        cause: EnclosingBoundCause,
+    },
+}
+
 pub(crate) enum UserWorkScopeStanding {
-    AlreadyInSlice,
-    BoundedByObservedCgroup,
-    RunnerSlotExempt,
-    CiExempt,
+    // THE ONE SKIP ARM: an exempt premise (or none) plus the observed live finite enclosing
+    // memory.max that earned the skip. `memory_max` is the evidence; the premise only says who asked.
+    ExemptUnderObservedBound {
+        premise: Option<WrapExemptionPremise>,
+        cgroup: String,
+        memory_max: u64,
+    },
+    // THE ONE REFUSAL for a premise that claimed an enclosing bound and could not show one, located:
+    // the cgroup consulted and the shape of what its memory.max said (unreadable / 0 / max / swap
+    // still allowed). This is `UncappedSystemSlice` renamed and generalized -- the same cause, no
+    // parallel one minted -- so the slice arm, the CI arm, the slot arm and the unit arm all refuse
+    // through it (srv1 cap deploy run 38865847078: CiExempt skipped, then HostBudgetUnreadable).
+    UncappedEnclosingCgroup {
+        premise: WrapExemptionPremise,
+        cgroup: String,
+        cause: EnclosingBoundCause,
+    },
+    // NOT bound-premised, and deliberately outside `live_enclosing_bound`: the seed's own
+    // #[cfg(test)] cargo-test binary claims no enclosing bound, only that the process is a test
+    // harness (the cfg(test) gate is the check). Wrapping it would need a user manager cargo test
+    // does not have, and would cap the harness rather than the work.
     UnitTestExempt,
-    ExemptSystemUnit {
-        unit: String,
-        slice: String,
-        bound: u64,
-    },
-    UncappedSystemSlice {
-        unit: String,
-        slice: String,
-    },
     UserSessionAbsent,
     UserManagerOwed,
     CgroupUnreadable,
@@ -95,7 +139,7 @@ pub fn reexec_into_user_work_slice_if_owed() {
         UserWorkScopeStanding::CgroupUnreadable
         | UserWorkScopeStanding::UserManagerProbeFailed
         | UserWorkScopeStanding::UserSessionAbsent
-        | UserWorkScopeStanding::UncappedSystemSlice { .. }
+        | UserWorkScopeStanding::UncappedEnclosingCgroup { .. }
         | UserWorkScopeStanding::UserWorkSliceAbsent
         | UserWorkScopeStanding::UserWorkSliceUncapped
         | UserWorkScopeStanding::CallerEnvelopeUnreadable
@@ -107,7 +151,6 @@ pub fn reexec_into_user_work_slice_if_owed() {
             );
             std::process::exit(2);
         }
-        UserWorkScopeStanding::AlreadyInSlice => {}
         UserWorkScopeStanding::UnitTestExempt => {}
         standing => {
             eprintln!(
@@ -118,19 +161,66 @@ pub fn reexec_into_user_work_slice_if_owed() {
     }
 }
 
+// SEED MIRROR of `gunbc.compute.unit_bounds optional_premise_wire` / `wrap_exemption_premise_wire`.
+fn premise_wire(premise: Option<&WrapExemptionPremise>) -> String {
+    match premise {
+        Some(WrapExemptionPremise::InCiRunnerEnvironment) => "ci-runner-environment".to_string(),
+        Some(WrapExemptionPremise::InRunnerSlotCgroup) => "runner-slot-cgroup".to_string(),
+        Some(WrapExemptionPremise::AlreadyInDeclaredUserWorkSlice) => {
+            "already-in-user-work-slice".to_string()
+        }
+        Some(WrapExemptionPremise::UnderModeledSlice { unit, slice }) => {
+            format!("modeled-slice:{slice}:{unit}")
+        }
+        Some(WrapExemptionPremise::UnderUnmodeledSystemUnit { unit, slice }) => {
+            format!("unmodeled-system-unit:{slice}:{unit}")
+        }
+        None => "no-premise".to_string(),
+    }
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds enclosing_bound_cause_text`.
+fn enclosing_bound_cause_text(cause: &EnclosingBoundCause) -> String {
+    match cause {
+        EnclosingBoundCause::ChainUnreadable { detail } => format!(
+            "memory.max unreadable: {detail}; no level of the chain yielded a reading"
+        ),
+        EnclosingBoundCause::NoFiniteMemoryMax => {
+            "no finite memory.max: every memory.max on the chain reads max".to_string()
+        }
+        EnclosingBoundCause::MemoryMaxZero { dir } => {
+            format!("memory.max is 0 at {dir}, which systemd reads as no limit")
+        }
+        EnclosingBoundCause::SwapNotForbidden { dir, bytes } => format!(
+            "tightest memory.max {bytes} at {dir} is not binding: no level on the chain sets memory.swap.max to 0"
+        ),
+    }
+}
+
 pub(crate) fn standing_wire(s: &UserWorkScopeStanding) -> String {
     match s {
-        UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice".to_string(),
-        UserWorkScopeStanding::BoundedByObservedCgroup => "BoundedByObservedCgroup".to_string(),
-        UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
-        UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
+        // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_wire`
+        // One line for both verdicts, and it always names the CGROUP consulted and what its memory.max
+        // said -- the srv1 next run reads one line and tells us which cgroup the job actually sits in
+        // (plan run 38967145061), rather than the standing name alone.
+        UserWorkScopeStanding::ExemptUnderObservedBound {
+            premise,
+            cgroup,
+            memory_max,
+        } => format!(
+            "ExemptUnderObservedBound:{}:{cgroup}:{memory_max}",
+            premise_wire(premise.as_ref())
+        ),
+        UserWorkScopeStanding::UncappedEnclosingCgroup {
+            premise,
+            cgroup,
+            cause,
+        } => format!(
+            "UncappedEnclosingCgroup:{} @ {cgroup}: {}",
+            premise_wire(Some(premise)),
+            enclosing_bound_cause_text(cause)
+        ),
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
-        UserWorkScopeStanding::ExemptSystemUnit { unit, slice, bound } => {
-            format!("ExemptSystemUnit:{slice}:{unit}:{bound}")
-        }
-        UserWorkScopeStanding::UncappedSystemSlice { unit, slice } => {
-            format!("UncappedSystemSlice:{slice}:{unit}")
-        }
         UserWorkScopeStanding::UserSessionAbsent => "UserSessionAbsent".to_string(),
         UserWorkScopeStanding::UserManagerOwed => "UserManagerOwed".to_string(),
         UserWorkScopeStanding::CgroupUnreadable => "CgroupUnreadable".to_string(),
@@ -354,22 +444,6 @@ fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn cgroup_rel_through_segment(text: &str, segment: &str) -> Option<String> {
-    let rel = cgroup_v2_rel_path(text)?;
-    let mut acc = String::new();
-    for seg in rel.split('/') {
-        if seg.is_empty() {
-            continue;
-        }
-        acc.push('/');
-        acc.push_str(seg);
-        if seg == segment {
-            return Some(acc);
-        }
-    }
-    None
-}
-
 enum RootMemoryRead {
     Capped(u64),
     Unbounded,
@@ -381,24 +455,6 @@ fn root_memory_from_file(bound: Option<MemoryBound>) -> RootMemoryRead {
         Some(MemoryBound::Capped(n)) if n > 0 => RootMemoryRead::Capped(n),
         Some(MemoryBound::Capped(_)) | Some(MemoryBound::Unbounded) => RootMemoryRead::Unbounded,
         None => RootMemoryRead::Unreadable,
-    }
-}
-
-// SEED MIRROR of `gunbc.compute.unit_bounds live_modeled_slice_standing`
-fn live_modeled_slice_standing(
-    unit: String,
-    slice: String,
-    slice_memory: RootMemoryRead,
-) -> UserWorkScopeStanding {
-    match slice_memory {
-        RootMemoryRead::Capped(n) if n > 0 => UserWorkScopeStanding::ExemptSystemUnit {
-            unit,
-            slice,
-            bound: n,
-        },
-        RootMemoryRead::Capped(_) | RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
-            UserWorkScopeStanding::UncappedSystemSlice { unit, slice }
-        }
     }
 }
 
@@ -446,8 +502,41 @@ fn cgroup_text_is_root(text: &str) -> bool {
     matches!(cgroup_v2_rel_path(text).as_deref(), Some("/") | Some(""))
 }
 
+// SEED MIRROR of `gunbc.compute.unit_bounds wrap_exemption_premise`
+// Classifies WHICH claim asked to be spared the wrap; it never discharges one. The order is the
+// declared order (slice, slot, CI env, modeled slice, unmodeled system unit).
+fn wrap_exemption_premise(github_actions: bool, text: &str) -> Option<WrapExemptionPremise> {
+    if text.contains(USER_WORK_SLICE) {
+        return Some(WrapExemptionPremise::AlreadyInDeclaredUserWorkSlice);
+    }
+    if text.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
+        return Some(WrapExemptionPremise::InRunnerSlotCgroup);
+    }
+    if github_actions {
+        return Some(WrapExemptionPremise::InCiRunnerEnvironment);
+    }
+    if let Some(slice) = innermost_modeled_capped_slice(text) {
+        let unit = last_cgroup_unit_with_suffix(text, SCOPE_UNIT_SUFFIX)
+            .or_else(|| last_cgroup_unit_with_suffix(text, SERVICE_UNIT_SUFFIX))
+            .unwrap_or_default();
+        return Some(WrapExemptionPremise::UnderModeledSlice { unit, slice });
+    }
+    if let Some((unit, slice)) = system_service_unit_from_cgroup(text) {
+        return if RECOGNIZED_SYSTEM_SLICES.contains(&slice.as_str()) {
+            Some(WrapExemptionPremise::UnderModeledSlice { unit, slice })
+        } else {
+            Some(WrapExemptionPremise::UnderUnmodeledSystemUnit { unit, slice })
+        };
+    }
+    None
+}
+
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing`
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
+// A premise never skips on its own: `live_enclosing_bound` (below, via the chain reader) is called
+// exactly once, here, and only a live finite enclosing memory.max skips -- for the CI arm, the slot
+// arm, the slice arm and the unit arm alike. No arm has a private fast path.
+#[allow(clippy::too_many_arguments)]
 fn standing_from_supplied(
     github_actions: bool,
     cgroup: Option<&str>,
@@ -455,100 +544,97 @@ fn standing_from_supplied(
     user_manager_reachable: bool,
     xdg_runtime_dir: bool,
     root_memory: RootMemoryRead,
-    slice_memory: RootMemoryRead,
     buildbuddy_run_id: Option<&str>,
-    bound: CgroupBound,
+    bound: EnclosingBoundObservation,
 ) -> UserWorkScopeStanding {
     if cgroup.is_some_and(cgroup_text_is_root) && !systemd_manager_present {
         return namespaced_root_standing(root_memory, buildbuddy_run_id);
     }
-    if github_actions {
-        return UserWorkScopeStanding::CiExempt;
-    }
     let Some(cg) = cgroup else {
         return UserWorkScopeStanding::CgroupUnreadable;
     };
-    if cg.contains(USER_WORK_SLICE) {
-        return UserWorkScopeStanding::AlreadyInSlice;
-    }
-    if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
-        return UserWorkScopeStanding::RunnerSlotExempt;
-    }
-    if let Some(slice) = innermost_modeled_capped_slice(cg) {
-        let unit = last_cgroup_unit_with_suffix(cg, SCOPE_UNIT_SUFFIX)
-            .or_else(|| last_cgroup_unit_with_suffix(cg, SERVICE_UNIT_SUFFIX))
-            .unwrap_or_default();
-        return live_modeled_slice_standing(unit, slice, slice_memory);
-    }
+    let premise = wrap_exemption_premise(github_actions, cg);
     match bound {
-        CgroupBound::Bounded => return UserWorkScopeStanding::BoundedByObservedCgroup,
-        fallthrough => eprintln!(
-            "user_work_scope: observed-bound arm did not admit ({})",
-            cgroup_bound_fallthrough_wire(fallthrough)
-        ),
-    }
-    if let Some((unit, slice)) = system_service_unit_from_cgroup(cg) {
-        if RECOGNIZED_SYSTEM_SLICES.contains(&slice.as_str()) {
-            return live_modeled_slice_standing(unit, slice, slice_memory);
+        // ONE skip for every premise: the bound admits, the premise only says who asked.
+        EnclosingBoundObservation::LiveEnclosingBound { cgroup, memory_max } => {
+            UserWorkScopeStanding::ExemptUnderObservedBound {
+                premise,
+                cgroup,
+                memory_max,
+            }
         }
-        return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
-    }
-    if user_manager_reachable {
-        UserWorkScopeStanding::UserManagerOwed
-    } else if xdg_runtime_dir {
-        UserWorkScopeStanding::UserManagerProbeFailed
-    } else {
-        UserWorkScopeStanding::UserSessionAbsent
+        // No bound observed: a premise that claimed one refuses, located. With no premise the process
+        // is ordinary user work and the user-manager arms decide.
+        EnclosingBoundObservation::NoLiveEnclosingBound { cgroup, cause } => match premise {
+            Some(premise) => UserWorkScopeStanding::UncappedEnclosingCgroup {
+                premise,
+                cgroup,
+                cause,
+            },
+            None => {
+                eprintln!(
+                    "user_work_scope: observed-bound arm did not admit ({})",
+                    cgroup_bound_fallthrough_wire(
+                        &EnclosingBoundObservation::NoLiveEnclosingBound { cgroup, cause }
+                    )
+                );
+                if user_manager_reachable {
+                    UserWorkScopeStanding::UserManagerOwed
+                } else if xdg_runtime_dir {
+                    UserWorkScopeStanding::UserManagerProbeFailed
+                } else {
+                    UserWorkScopeStanding::UserSessionAbsent
+                }
+            }
+        },
     }
 }
 
-// SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`, which reads the chain through
-// `extdeps.linux.cgroup_v2_memory`: the process's unified-hierarchy cgroup (`0::<path>`) and every
-// ancestor below the hierarchy root. Bounded when some level carries a finite memory.max (decimal,
-// within u64 -- `parse_cgroup_memory_limit`'s "Limited") AND some level sets memory.swap.max to 0:
-// any ancestor's limit binds and a swap ceiling of 0 anywhere forbids swap below it. A chain with
-// neither file readable is unread; anything else is unbounded.
+// SEED MIRROR of `gunbc.compute.unit_bounds live_enclosing_bound`
+// THE ONE CHECK, SEED SIDE. `gunbc.compute.unit_bounds` declares it as `live_enclosing_bound` over a
+// supplied `CgroupBoundObservation` (the chain's memory.max / memory.swap.max levels, read through
+// `extdeps.linux.cgroup_v2_memory`); the trampoline cannot evaluate that fold before the corpus is
+// resolved, so it performs the walk itself and answers the SAME question: is there a live finite
+// enclosing memory.max on the process's cgroup chain, and if not, what exactly said so. Bounded when
+// some level carries a nonzero finite memory.max (decimal, within u64 -- `parse_cgroup_memory_limit`'s
+// "Limited", the tightest wins because any ancestor's limit binds) AND some level sets memory.swap.max
+// to 0 (a swap ceiling of 0 anywhere forbids swap below it). The negatives are the check's typed
+// causes, naming the cgroup consulted: 0 is not a bound (systemd reads it as no limit), `max`/garbage
+// everywhere is no finite max, a limit with swap still allowed is not binding, and a chain that yielded
+// no reading at all is unread.
 // RETAINED, with this file: the reason is that the trampoline must decide before the corpus is
-// resolved, so it cannot evaluate the `.dag` fold; the migration trigger is the file's own (Test/Run
-// wrap emitted natively, this file deletes). Executed by the unit tests below over fixture trees, not
-// only by the `.dag` witness's text join.
-#[derive(Clone, Copy)]
-enum CgroupBound {
-    Bounded,
-    Unbounded,
-    Unread,
-}
-
-// SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`
-fn cgroup_bound_fallthrough_wire(b: CgroupBound) -> &'static str {
-    match b {
-        CgroupBound::Bounded => "chain-bounded",
-        CgroupBound::Unbounded => "chain-unbounded",
-        CgroupBound::Unread => "chain-unread",
-    }
-}
-
-fn observed_cgroup_bound(proc_self_cgroup: &str) -> CgroupBound {
-    observed_cgroup_bound_in(proc_self_cgroup, std::path::Path::new("/sys/fs/cgroup"))
-}
-
-fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path) -> CgroupBound {
+// resolved; the migration trigger is the file's own (Test/Run wrap emitted natively, this file
+// deletes). Executed by the unit tests below over fixture trees, not only by the `.dag` witness's
+// text join.
+fn live_enclosing_bound_in(
+    proc_self_cgroup: &str,
+    sysfs_root: &std::path::Path,
+) -> EnclosingBoundObservation {
     let Some(path) = proc_self_cgroup.lines().find_map(|l| l.strip_prefix("0::")) else {
-        return CgroupBound::Unread;
+        return no_live_enclosing_bound(
+            enclosing_cgroup_label(proc_self_cgroup),
+            EnclosingBoundCause::ChainUnreadable {
+                detail: "no unified-hierarchy (0::) line in /proc/self/cgroup".to_string(),
+            },
+        );
     };
+    let label = enclosing_cgroup_label(proc_self_cgroup);
     let mut any_read = false;
-    let mut binding_limit = false;
-    let mut zero_limit = false;
+    let mut tightest: Option<(String, u64)> = None;
     let mut swap_forbidden = false;
     let mut current = path.trim().trim_end_matches('/').to_string();
     while !current.is_empty() {
         let dir = format!("{}{current}", sysfs_root.display());
         if let Ok(max) = std::fs::read_to_string(format!("{dir}/memory.max")) {
             any_read = true;
-            match max.trim().parse::<u64>() {
-                Ok(0) => zero_limit = true,
-                Ok(_) => binding_limit = true,
-                Err(_) => {}
+            // A non-numeric reading (`max`, or out of u64 range) is not a limit and is skipped; 0
+            // PARSES and so stays the tightest, which is how the check gets to name it MemoryMaxZero
+            // rather than treating it as no limit.
+            if let Ok(n) = max.trim().parse::<u64>() {
+                match &tightest {
+                    Some((_, best)) if *best <= n => {}
+                    _ => tightest = Some((dir.clone(), n)),
+                }
             }
         }
         if let Ok(swap) = std::fs::read_to_string(format!("{dir}/memory.swap.max")) {
@@ -562,18 +648,59 @@ fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path
             None => current.clear(),
         }
     }
-    if binding_limit && !zero_limit && swap_forbidden {
-        CgroupBound::Bounded
-    } else if any_read {
-        CgroupBound::Unbounded
-    } else {
-        CgroupBound::Unread
+    if !any_read {
+        let detail =
+            format!("no memory.max or memory.swap.max readable at {label} or any ancestor of it");
+        return no_live_enclosing_bound(label, EnclosingBoundCause::ChainUnreadable { detail });
+    }
+    match tightest {
+        None => no_live_enclosing_bound(label, EnclosingBoundCause::NoFiniteMemoryMax),
+        Some((dir, 0)) => {
+            no_live_enclosing_bound(dir.clone(), EnclosingBoundCause::MemoryMaxZero { dir })
+        }
+        Some((dir, bytes)) if !swap_forbidden => no_live_enclosing_bound(
+            dir.clone(),
+            EnclosingBoundCause::SwapNotForbidden { dir, bytes },
+        ),
+        Some((dir, bytes)) => EnclosingBoundObservation::LiveEnclosingBound {
+            cgroup: dir,
+            memory_max: bytes,
+        },
     }
 }
 
+fn no_live_enclosing_bound(
+    cgroup: String,
+    cause: EnclosingBoundCause,
+) -> EnclosingBoundObservation {
+    EnclosingBoundObservation::NoLiveEnclosingBound { cgroup, cause }
+}
+
+// THE CGROUP A REFUSAL NAMES WHEN NO LEVEL COULD BE READ AT ALL: the path read from
+// /proc/self/cgroup, flattened to one line.
+fn enclosing_cgroup_label(text: &str) -> String {
+    text.replace('\n', " ").trim().to_string()
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`
+fn cgroup_bound_fallthrough_wire(b: &EnclosingBoundObservation) -> &'static str {
+    match b {
+        EnclosingBoundObservation::LiveEnclosingBound { .. } => "chain-bounded",
+        EnclosingBoundObservation::NoLiveEnclosingBound {
+            cause: EnclosingBoundCause::ChainUnreadable { .. },
+            ..
+        } => "chain-unread",
+        EnclosingBoundObservation::NoLiveEnclosingBound { .. } => "chain-unbounded",
+    }
+}
+
+fn live_enclosing_bound(proc_self_cgroup: &str) -> EnclosingBoundObservation {
+    live_enclosing_bound_in(proc_self_cgroup, std::path::Path::new("/sys/fs/cgroup"))
+}
+
 #[cfg(test)]
-mod observed_cgroup_bound_tests {
-    use super::{observed_cgroup_bound_in, CgroupBound};
+pub(crate) mod observed_cgroup_bound_tests {
+    use super::{live_enclosing_bound_in, EnclosingBoundCause, EnclosingBoundObservation};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -582,7 +709,7 @@ mod observed_cgroup_bound_tests {
     // Plain functions rather than a struct with impls: an impl method is not citable as a
     // DeclarationRef, and this module's items are enumerated in
     // gunbc.user_work_observed_bound_seed_growth.
-    fn fixture_root() -> PathBuf {
+    pub(crate) fn fixture_root() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "gunbc-cgroup-bound-{}-{}",
             std::process::id(),
@@ -592,7 +719,7 @@ mod observed_cgroup_bound_tests {
         dir
     }
 
-    fn tree(levels: &[(&str, &str, &str)]) -> PathBuf {
+    pub(crate) fn tree(levels: &[(&str, &str, &str)]) -> PathBuf {
         let root = fixture_root();
         for (path, max, swap) in levels {
             let dir = root.join(path.trim_start_matches('/'));
@@ -603,12 +730,26 @@ mod observed_cgroup_bound_tests {
         root
     }
 
-    // Reads the verdict and removes the fixture, so each tree is read exactly once.
-    fn verdict(root: PathBuf, leaf: &str) -> &'static str {
-        let v = match observed_cgroup_bound_in(&format!("0::{leaf}\n"), &root) {
-            CgroupBound::Bounded => "bounded",
-            CgroupBound::Unbounded => "unbounded",
-            CgroupBound::Unread => "unread",
+    // Reads the verdict and removes the fixture, so each tree is read exactly once. The verdict is
+    // the ONE check's answer, named -- which shape fired, and the CGROUP that answered it (fixture
+    // root stripped, so the assertion reads as the cgroup path a host refusal would print).
+    fn verdict(root: PathBuf, leaf: &str) -> String {
+        let prefix = root.display().to_string();
+        let strip = |p: &str| p.trim_start_matches(prefix.as_str()).to_string();
+        let v = match live_enclosing_bound_in(&format!("0::{leaf}\n"), &root) {
+            EnclosingBoundObservation::LiveEnclosingBound { cgroup, memory_max } => {
+                format!("bounded@{}:{memory_max}", strip(&cgroup))
+            }
+            EnclosingBoundObservation::NoLiveEnclosingBound { cgroup, cause } => match cause {
+                EnclosingBoundCause::ChainUnreadable { .. } => format!("unread@{cgroup}"),
+                EnclosingBoundCause::NoFiniteMemoryMax => {
+                    format!("no-finite-max@{}", strip(&cgroup))
+                }
+                EnclosingBoundCause::MemoryMaxZero { dir } => format!("zero@{}", strip(&dir)),
+                EnclosingBoundCause::SwapNotForbidden { dir, bytes } => {
+                    format!("swap-allowed@{}:{bytes}", strip(&dir))
+                }
+            },
         };
         let _ = std::fs::remove_dir_all(&root);
         v
@@ -619,7 +760,10 @@ mod observed_cgroup_bound_tests {
             ("/system.slice/job.service", "21474836480", "0"),
             ("/system.slice", "max", "max"),
         ]);
-        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+        assert_eq!(
+            verdict(t, "/system.slice/job.service"),
+            "bounded@/system.slice/job.service:21474836480"
+        );
     }
 
     #[test]
@@ -628,7 +772,10 @@ mod observed_cgroup_bound_tests {
             ("/system.slice/job.service", "max", "0"),
             ("/system.slice", "8589934592", "max"),
         ]);
-        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+        assert_eq!(
+            verdict(t, "/system.slice/job.service"),
+            "bounded@/system.slice:8589934592"
+        );
     }
 
     #[test]
@@ -637,26 +784,43 @@ mod observed_cgroup_bound_tests {
             ("/system.slice/job.service", "max", "max"),
             ("/system.slice", "8589934592", "0"),
         ]);
-        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
+        assert_eq!(
+            verdict(t, "/system.slice/job.service"),
+            "bounded@/system.slice:8589934592"
+        );
     }
 
     #[test]
     fn unlimited_max_or_allowed_swap_or_out_of_range_never_bounds() {
+        // None of these is a live finite bound, and each names its own shape -- the refusal is the
+        // same for all of them, the located cause is not.
         let unlimited = tree(&[("/system.slice/job.service", "max", "0")]);
-        assert_eq!(verdict(unlimited, "/system.slice/job.service"), "unbounded");
+        assert_eq!(
+            verdict(unlimited, "/system.slice/job.service"),
+            "no-finite-max@0::/system.slice/job.service"
+        );
         let swap = tree(&[("/system.slice/job.service", "21474836480", "max")]);
-        assert_eq!(verdict(swap, "/system.slice/job.service"), "unbounded");
+        assert_eq!(
+            verdict(swap, "/system.slice/job.service"),
+            "swap-allowed@/system.slice/job.service:21474836480"
+        );
         let huge = tree(&[("/system.slice/job.service", "99999999999999999999999", "0")]);
-        assert_eq!(verdict(huge, "/system.slice/job.service"), "unbounded");
+        assert_eq!(
+            verdict(huge, "/system.slice/job.service"),
+            "no-finite-max@0::/system.slice/job.service"
+        );
         let zero = tree(&[("/system.slice/job.service", "0", "0")]);
-        assert_eq!(verdict(zero, "/system.slice/job.service"), "unbounded");
+        assert_eq!(
+            verdict(zero, "/system.slice/job.service"),
+            "zero@/system.slice/job.service"
+        );
         let zero_ancestor = tree(&[
             ("/system.slice/job.service", "21474836480", "0"),
             ("/system.slice", "0", "max"),
         ]);
         assert_eq!(
             verdict(zero_ancestor, "/system.slice/job.service"),
-            "unbounded"
+            "zero@/system.slice"
         );
     }
 
@@ -664,16 +828,18 @@ mod observed_cgroup_bound_tests {
     fn an_unreadable_chain_or_missing_line_is_unread_not_bounded() {
         let empty = fixture_root();
         assert!(matches!(
-            observed_cgroup_bound_in("1:name=systemd:/x\n", &empty),
-            CgroupBound::Unread
+            live_enclosing_bound_in("1:name=systemd:/x\n", &empty),
+            EnclosingBoundObservation::NoLiveEnclosingBound {
+                cause: EnclosingBoundCause::ChainUnreadable { .. },
+                ..
+            }
         ));
-        assert_eq!(verdict(empty, "/system.slice/job.service"), "unread");
+        let _ = std::fs::remove_dir_all(&empty);
+        assert_eq!(
+            verdict(fixture_root(), "/system.slice/job.service"),
+            "unread@0::/system.slice/job.service"
+        );
     }
-}
-
-fn live_slice_memory(cg: &str, slice: &str) -> RootMemoryRead {
-    let rel = cgroup_rel_through_segment(cg, slice).unwrap_or_else(|| format!("/{slice}"));
-    root_memory_from_file(read_cgroup_memory_file(&rel, "memory.max"))
 }
 
 fn user_manager_reachable() -> bool {
@@ -716,22 +882,19 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
     } else {
         RootMemoryRead::Unreadable
     };
-    let modeled = cg.and_then(innermost_modeled_capped_slice);
-    let service_slice = cg.and_then(system_service_unit_from_cgroup).map(|(_, s)| s);
-    let slice_for_live = modeled
-        .or_else(|| service_slice.filter(|s| RECOGNIZED_SYSTEM_SLICES.contains(&s.as_str())));
-    let slice_memory = match (cg, slice_for_live.as_deref()) {
-        (Some(text), Some(slice)) => live_slice_memory(text, slice),
-        _ => RootMemoryRead::Unreadable,
-    };
+    // ONE check, called once, for every exempt premise: the chain of the cgroup this process actually
+    // sits in. No premise -- CI env, slot path, slice path, unit path -- gets its own reading or its
+    // own fast path any more.
+    let bound = cg.map(live_enclosing_bound).unwrap_or_else(|| {
+        no_live_enclosing_bound(
+            String::new(),
+            EnclosingBoundCause::ChainUnreadable {
+                detail: "/proc/self/cgroup unreadable".to_string(),
+            },
+        )
+    });
     let need_user_manager = !namespaced_root
-        && !github_actions
-        && cg.is_some_and(|text| {
-            !text.contains(USER_WORK_SLICE)
-                && !text.contains(RUNNER_SLOT_CGROUP_NEEDLE)
-                && innermost_modeled_capped_slice(text).is_none()
-                && system_service_unit_from_cgroup(text).is_none()
-        });
+        && cg.is_some_and(|text| wrap_exemption_premise(github_actions, text).is_none());
     standing_from_supplied(
         github_actions,
         cg,
@@ -739,22 +902,197 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
         need_user_manager && user_manager_reachable(),
         xdg_runtime_dir,
         root_memory,
-        slice_memory,
         buildbuddy_run_id.as_deref(),
-        cg.map(observed_cgroup_bound).unwrap_or(CgroupBound::Unread),
+        bound,
     )
 }
 
 #[cfg(test)]
 mod standing_fixture_tests {
     use super::*;
+    use std::path::PathBuf;
 
-    // The observed-bound arm sits after the modeled-slice arm and BEFORE the system-unit refusal:
-    // a guest's job unit under an unmodeled system.slice is admitted only by its observed chain.
+    // A runner slot as CI actually lays it out on srv1: an `actions-runner@<host>.service` unit under
+    // system.slice, which is what the declared needle (`runner_unit_prefix`) matches. A name invented
+    // for the test would exercise the classifier against a path no host produces -- and quietly pass
+    // through the unmodeled-system-unit premise instead.
+    const SLOT: &str =
+        r"0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service";
+    const SLOT_LEAF: &str =
+        r"/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service";
+
+    // THE ONE CHECK, as the fold sees it: the observation is supplied to `standing_from_supplied`, so
+    // each row says what the chain reading answered and what the fold made of it. The chain reader's
+    // own verdicts (fixture trees on disk) are covered in `observed_cgroup_bound_tests` above; the
+    // four rows at the bottom of this module pin the RED pairs end to end -- observation built from a
+    // fixture tree, fold, then the printed line.
+    fn wire_with_bound(
+        github_actions: bool,
+        cgroup: Option<&str>,
+        bound: EnclosingBoundObservation,
+    ) -> String {
+        standing_wire(&standing_from_supplied(
+            github_actions,
+            cgroup,
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            None,
+            bound,
+        ))
+    }
+
+    fn live(cgroup: &str, bytes: u64) -> EnclosingBoundObservation {
+        EnclosingBoundObservation::LiveEnclosingBound {
+            cgroup: cgroup.to_string(),
+            memory_max: bytes,
+        }
+    }
+
+    // A chain that yielded no reading: the check names the CGROUP IT READ (the /proc/self/cgroup path,
+    // flattened), not a directory, so rows that pin an unread refusal pass that path in.
+    fn unread_at(cgroup: &str, detail: &str) -> EnclosingBoundObservation {
+        missing(
+            cgroup,
+            EnclosingBoundCause::ChainUnreadable {
+                detail: detail.to_string(),
+            },
+        )
+    }
+
+    fn missing(cgroup: &str, cause: EnclosingBoundCause) -> EnclosingBoundObservation {
+        EnclosingBoundObservation::NoLiveEnclosingBound {
+            cgroup: cgroup.to_string(),
+            cause,
+        }
+    }
+
+    fn no_finite_max(cgroup: &str) -> EnclosingBoundObservation {
+        missing(cgroup, EnclosingBoundCause::NoFiniteMemoryMax)
+    }
+
+    // A premise that claims an enclosing bound refuses, located, when the check found none -- and the
+    // line names the cgroup consulted and what its memory.max said. THE CI ARM: GITHUB_ACTIONS set is
+    // no longer a skip (srv1 cap deploy run 38865847078: `CiExempt`, then HostBudgetUnreadable).
     #[test]
-    fn a_system_service_with_an_observed_bound_chain_admits_and_without_one_refuses() {
-        let cg = "0::/system.slice/gunbc-revision-job.service";
-        let run = |bound| {
+    fn ci_environment_without_a_live_bound_refuses_naming_the_cgroup_and_the_reading() {
+        let cg = "0::/system.slice/gunbc-cap-deploy.service";
+        let got = wire_with_bound(true, Some(cg), no_finite_max(cg));
+        assert_eq!(
+            got,
+            "UncappedEnclosingCgroup:ci-runner-environment @ 0::/system.slice/gunbc-cap-deploy.service: no finite memory.max: every memory.max on the chain reads max"
+        );
+    }
+
+    // THE RUNNER SLOT ARM, same pair. A slot path is not a bound; an observed finite one is.
+    #[test]
+    fn runner_slot_without_a_live_bound_refuses_and_with_one_skips() {
+        // Literals, not format!: the `.dag` mirror join compares the DECLARED wire of these
+        // standings against the seed's text, so the expected line must be readable there.
+        let cg = SLOT;
+        assert_eq!(
+            wire_with_bound(false, Some(cg), no_finite_max(cg)),
+            r"UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service: no finite memory.max: every memory.max on the chain reads max"
+        );
+        assert_eq!(
+            wire_with_bound(false, Some(cg), live(cg, 21474836480)),
+            r"ExemptUnderObservedBound:runner-slot-cgroup:0::/system.slice/system-actions\x2drunner.slice/actions-runner@srv1-03.service:21474836480"
+        );
+    }
+
+    // THE CI ARM'S POSITIVE CONTROL: the same GITHUB_ACTIONS process skips once a finite
+    // memory.max is actually observed.
+    #[test]
+    fn ci_environment_with_a_live_bound_skips() {
+        let cg = "0::/system.slice/gunbc-cap-deploy.service";
+        assert_eq!(
+            wire_with_bound(true, Some(cg), live(cg, 22548578304)),
+            "ExemptUnderObservedBound:ci-runner-environment:0::/system.slice/gunbc-cap-deploy.service:22548578304"
+        );
+    }
+
+    // THE ALREADY-IN-SLICE ARM, same pair: even a path that is the user-work slice itself is exempt
+    // only while a finite bound is observed (its own slice memory.max, normally).
+    #[test]
+    fn already_in_the_user_work_slice_requires_the_live_bound_too() {
+        let cg = format!("0::/{USER_WORK_SLICE}/gunbc-run.scope");
+        assert_eq!(
+            wire_with_bound(false, Some(&cg), no_finite_max(&cg)),
+            format!("UncappedEnclosingCgroup:already-in-user-work-slice @ {cg}: no finite memory.max: every memory.max on the chain reads max")
+        );
+        assert_eq!(
+            wire_with_bound(false, Some(&cg), live(&cg, 1073741824)),
+            format!("ExemptUnderObservedBound:already-in-user-work-slice:{cg}:1073741824")
+        );
+    }
+
+    // Every premise refuses through the ONE located cause, whatever its shape: unreadable, zero, or
+    // swap-still-allowed are three names for "no live finite enclosing bound".
+    #[test]
+    fn every_negative_shape_of_the_check_refuses_the_same_way_with_its_own_cause() {
+        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+        let premise = "modeled-slice:gunbc-repository-convergence.slice:gunbc-tree-sync.service";
+        let cases = [
+            (
+                missing(cg, EnclosingBoundCause::ChainUnreadable { detail: "EACCES".into() }),
+                "memory.max unreadable: EACCES; no level of the chain yielded a reading",
+            ),
+            (
+                missing(cg, EnclosingBoundCause::MemoryMaxZero { dir: "/sys/fs/cgroup/gunbc-repository-convergence.slice".into() }),
+                "memory.max is 0 at /sys/fs/cgroup/gunbc-repository-convergence.slice, which systemd reads as no limit",
+            ),
+            (
+                missing(cg, EnclosingBoundCause::SwapNotForbidden { dir: "/sys/fs/cgroup/x".into(), bytes: 4096 }),
+                "tightest memory.max 4096 at /sys/fs/cgroup/x is not binding: no level on the chain sets memory.swap.max to 0",
+            ),
+        ];
+        for (bound, cause) in cases {
+            let got = wire_with_bound(false, Some(cg), bound);
+            assert_eq!(
+                got,
+                format!("UncappedEnclosingCgroup:{premise} @ {cg}: {cause}"),
+                "cause {cause:?}"
+            );
+        }
+    }
+
+    // The arm BoundedByObservedCgroup used to be: no premise at all, but a finite bound observed,
+    // still skips. With no premise AND no bound, the user-manager arms decide.
+    #[test]
+    fn a_session_cgroup_skips_on_an_observed_bound_and_else_reaches_the_user_manager_arms() {
+        let cg = "0::/user.slice/user-1000.slice/gunbc-session.scope";
+        assert_eq!(
+            wire_with_bound(false, Some(cg), live(cg, 4096)),
+            "ExemptUnderObservedBound:no-premise:0::/user.slice/user-1000.slice/gunbc-session.scope:4096"
+        );
+        assert_eq!(
+            standing_wire(&standing_from_supplied(
+                false,
+                Some(cg),
+                true,
+                true,
+                false,
+                RootMemoryRead::Unreadable,
+                None,
+                no_finite_max(cg),
+            )),
+            "UserManagerOwed"
+        );
+        assert_eq!(
+            standing_wire(&standing_from_supplied(
+                false,
+                Some(cg),
+                true,
+                false,
+                true,
+                RootMemoryRead::Unreadable,
+                None,
+                no_finite_max(cg),
+            )),
+            "UserManagerProbeFailed"
+        );
+        assert_eq!(
             standing_wire(&standing_from_supplied(
                 false,
                 Some(cg),
@@ -762,250 +1100,282 @@ mod standing_fixture_tests {
                 false,
                 false,
                 RootMemoryRead::Unreadable,
-                RootMemoryRead::Unreadable,
                 None,
-                bound,
-            ))
-        };
-        assert_eq!(run(CgroupBound::Bounded), "BoundedByObservedCgroup");
-        assert_eq!(
-            run(CgroupBound::Unbounded),
-            "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
-        );
-        assert_eq!(
-            run(CgroupBound::Unread),
-            "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+                no_finite_max(cg),
+            )),
+            "UserSessionAbsent"
         );
     }
 
-    fn wire(
-        github_actions: bool,
-        cgroup: Option<&str>,
-        systemd_manager_present: bool,
-        user_manager_reachable: bool,
-        xdg_runtime_dir: bool,
-        root_memory: RootMemoryRead,
-        slice_memory: RootMemoryRead,
-        buildbuddy_run_id: Option<&str>,
-    ) -> String {
+    // The unmodeled-system-unit arm (a guest job unit under system.slice): admitted only by its
+    // observed chain; without one it refuses, located.
+    #[test]
+    fn a_system_service_admits_only_on_an_observed_bound() {
+        let cg = "0::/system.slice/gunbc-revision-job.service";
+        assert_eq!(
+            wire_with_bound(false, Some(cg), live(cg, 8589934592)),
+            "ExemptUnderObservedBound:unmodeled-system-unit:system.slice:gunbc-revision-job.service:0::/system.slice/gunbc-revision-job.service:8589934592"
+        );
+        assert_eq!(
+            wire_with_bound(false, Some(cg), no_finite_max(cg)),
+            "UncappedEnclosingCgroup:unmodeled-system-unit:system.slice:gunbc-revision-job.service @ 0::/system.slice/gunbc-revision-job.service: no finite memory.max: every memory.max on the chain reads max"
+        );
+    }
+
+    // The wire words the declared fallthrough fold declares, printed when a premise-free process
+    // reaches the user-manager arms.
+    #[test]
+    fn the_fallthrough_wire_names_which_answer_the_check_gave() {
+        assert_eq!(
+            cgroup_bound_fallthrough_wire(&live("x", 1)),
+            "chain-bounded"
+        );
+        assert_eq!(
+            cgroup_bound_fallthrough_wire(&missing("x", EnclosingBoundCause::NoFiniteMemoryMax)),
+            "chain-unbounded"
+        );
+        assert_eq!(
+            cgroup_bound_fallthrough_wire(&missing(
+                "x",
+                EnclosingBoundCause::ChainUnreadable { detail: "x".into() }
+            )),
+            "chain-unread"
+        );
+    }
+
+    // UNCHANGED BEHAVIOUR, pinned across the cut: the namespaced-root pair reads the container root's
+    // memory.max, not the chain, so it never goes through the one check. Its subject is different, and
+    // it was already live-bound (review 80587).
+    fn root_wire(root_memory: RootMemoryRead, buildbuddy_run_id: Option<&str>) -> String {
         standing_wire(&standing_from_supplied(
-            github_actions,
-            cgroup,
-            systemd_manager_present,
-            user_manager_reachable,
-            xdg_runtime_dir,
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
             root_memory,
-            slice_memory,
             buildbuddy_run_id,
-            CgroupBound::Unread,
+            no_finite_max("/"),
         ))
     }
 
     #[test]
-    fn sessions_slice_scope_refuses_as_uncapped_system_slice() {
-        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Unreadable,
-            None,
-        );
-        assert_eq!(
-            got,
-            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
-        );
-    }
-
-    #[test]
-    fn system_slice_service_refuses_uncapped() {
-        let cg = "0::/system.slice/gunbc-tree-sync.service";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Unreadable,
-            None,
-        );
-        assert_eq!(
-            got,
-            "UncappedSystemSlice:system.slice:gunbc-tree-sync.service"
-        );
-    }
-
-    #[test]
     fn namespaced_root_finite_memory_max_skips() {
-        let got = wire(
-            false,
-            Some("0::/"),
-            false,
-            false,
-            false,
-            RootMemoryRead::Capped(25769803776),
-            RootMemoryRead::Unreadable,
-            None,
+        assert_eq!(
+            root_wire(RootMemoryRead::Capped(25769803776), None),
+            "ExemptBoundedContainer:25769803776"
         );
-        assert_eq!(got, "ExemptBoundedContainer:25769803776");
     }
 
     #[test]
     fn namespaced_root_unbounded_memory_max_refuses() {
-        let got = wire(
-            false,
-            Some("0::/"),
-            false,
-            false,
-            false,
-            RootMemoryRead::Unbounded,
-            RootMemoryRead::Unreadable,
-            None,
+        assert_eq!(
+            root_wire(RootMemoryRead::Unbounded, None),
+            "BoundedContainerUncapped"
         );
-        assert_eq!(got, "BoundedContainerUncapped");
     }
 
     #[test]
     fn namespaced_root_unbounded_memory_max_refuses_even_with_a_buildbuddy_run_id() {
-        let got = wire(
-            false,
-            Some("0::/"),
-            false,
-            false,
-            false,
-            RootMemoryRead::Unbounded,
-            RootMemoryRead::Unreadable,
-            Some("measured-rbe-run"),
+        assert_eq!(
+            root_wire(RootMemoryRead::Unbounded, Some("measured-rbe-run")),
+            "BoundedContainerUncapped"
         );
-        assert_eq!(got, "BoundedContainerUncapped");
     }
 
     #[test]
     fn namespaced_root_zero_memory_max_refuses_even_with_a_buildbuddy_run_id() {
-        let got = wire(
-            false,
-            Some("0::/"),
-            false,
-            false,
-            false,
-            RootMemoryRead::Capped(0),
-            RootMemoryRead::Unreadable,
-            Some("measured-rbe-run"),
+        assert_eq!(
+            root_wire(RootMemoryRead::Capped(0), Some("measured-rbe-run")),
+            "BoundedContainerUncapped"
         );
-        assert_eq!(got, "BoundedContainerUncapped");
     }
 
     #[test]
     fn namespaced_root_unreadable_memory_max_with_buildbuddy_run_id_is_externally_bounded() {
-        let got = wire(
-            false,
-            Some("0::/"),
-            false,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Unreadable,
-            Some("measured-rbe-run"),
-        );
-        assert_eq!(got, "ExternallyBoundedExecutor:measured-rbe-run");
-    }
-
-    #[test]
-    fn modeled_slice_with_finite_memory_max_skips() {
-        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Capped(1),
-            None,
-        );
         assert_eq!(
-            got,
-            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+            root_wire(RootMemoryRead::Unreadable, Some("measured-rbe-run")),
+            "ExternallyBoundedExecutor:measured-rbe-run"
         );
     }
 
+    // UNIT_TEST_EXEMPT is the one exempt arm that claims no enclosing bound, so it is the one arm
+    // reached without the check being consulted at all (its gate is cfg(test), not a memory.max).
     #[test]
-    fn modeled_slice_with_zero_memory_max_refuses() {
-        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Capped(0),
-            None,
-        );
+    fn the_unit_test_arm_skips_without_any_bound_observed() {
         assert_eq!(
-            got,
-            "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+            standing_wire(&UserWorkScopeStanding::UnitTestExempt),
+            "UnitTestExempt"
+        );
+        assert!(matches!(
+            user_work_scope_standing(),
+            UserWorkScopeStanding::UnitTestExempt
+        ));
+    }
+
+    // THE DECLARED FIXTURE CGROUPS, spelled as `.dag` spells them, so the mirror join can compare the
+    // declared fold's wire with the seed's printed line for the SAME cgroup. These three paths are the
+    // ones `test.claim.live_deploy.user_work_slice_witness` composes from the declared needles.
+    const SESSIONS_SCOPE: &str =
+        "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+    const SYSTEM_TREE_SYNC: &str = "0::/system.slice/gunbc-tree-sync.service";
+    const MODELED_TREE_SYNC: &str =
+        "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+
+    // sessions.slice is a recognized slice (gunbc.oomd_install), so its premise names it, but a wrap
+    // into gunbc-user-work.slice is not a fallback for a slice that already carries a named memory
+    // policy: an unreadable or unbounded local memory.max refuses (review 80751).
+    #[test]
+    fn sessions_slice_scope_refuses_as_uncapped_system_slice() {
+        assert_eq!(
+            wire_with_bound(false, Some(SESSIONS_SCOPE), unread_at(SESSIONS_SCOPE, "fixture")),
+            "UncappedEnclosingCgroup:modeled-slice:sessions.slice:docker-deadbeef.scope @ 0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope: memory.max unreadable: fixture; no level of the chain yielded a reading"
         );
     }
 
     #[test]
     fn sessions_slice_with_finite_local_memory_max_skips() {
-        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Capped(137438953472),
-            None,
-        );
         assert_eq!(
-            got,
-            "ExemptSystemUnit:sessions.slice:docker-deadbeef.scope:137438953472"
+            wire_with_bound(false, Some(SESSIONS_SCOPE), live(SESSIONS_SCOPE, 137438953472)),
+            "ExemptUnderObservedBound:modeled-slice:sessions.slice:docker-deadbeef.scope:0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope:137438953472"
         );
     }
 
     #[test]
-    fn sessions_slice_with_unbounded_local_memory_max_refuses() {
-        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
-        let got = wire(
-            false,
-            Some(cg),
-            true,
-            false,
-            false,
-            RootMemoryRead::Unreadable,
-            RootMemoryRead::Unbounded,
-            None,
-        );
+    fn a_system_slice_named_service_cgroup_refuses_uncapped() {
         assert_eq!(
-            got,
-            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
+            wire_with_bound(false, Some(SYSTEM_TREE_SYNC), unread_at(SYSTEM_TREE_SYNC, "fixture")),
+            "UncappedEnclosingCgroup:unmodeled-system-unit:system.slice:gunbc-tree-sync.service @ 0::/system.slice/gunbc-tree-sync.service: memory.max unreadable: fixture; no level of the chain yielded a reading"
         );
     }
 
     #[test]
-    fn sessions_slice_with_unreadable_local_memory_max_refuses() {
-        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
-        let got = wire(
-            false,
-            Some(cg),
+    fn modeled_slice_with_zero_memory_max_refuses() {
+        assert_eq!(
+            wire_with_bound(
+                false,
+                Some(MODELED_TREE_SYNC),
+                missing(
+                    "/sys/fs/cgroup/gunbc-repository-convergence.slice",
+                    EnclosingBoundCause::MemoryMaxZero {
+                        dir: "/sys/fs/cgroup/gunbc-repository-convergence.slice".to_string(),
+                    },
+                ),
+            ),
+            "UncappedEnclosingCgroup:modeled-slice:gunbc-repository-convergence.slice:gunbc-tree-sync.service @ /sys/fs/cgroup/gunbc-repository-convergence.slice: memory.max is 0 at /sys/fs/cgroup/gunbc-repository-convergence.slice, which systemd reads as no limit"
+        );
+        // The same path with no reading at all is the same refusal, with the unread cause.
+        assert_eq!(
+            wire_with_bound(false, Some(MODELED_TREE_SYNC), unread_at(MODELED_TREE_SYNC, "fixture")),
+            "UncappedEnclosingCgroup:modeled-slice:gunbc-repository-convergence.slice:gunbc-tree-sync.service @ 0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service: memory.max unreadable: fixture; no level of the chain yielded a reading"
+        );
+    }
+
+    // ---- RED pairs, end to end: a fixture cgroup tree -> the ONE check -> the fold -> the line. ----
+    use super::observed_cgroup_bound_tests::{fixture_root, tree};
+
+    fn chain_verdict(leaf: &str, max: &str, swap: &str) -> (PathBuf, EnclosingBoundObservation) {
+        let root = tree(&[(leaf, max, swap)]);
+        let obs = live_enclosing_bound_in(&format!("0::{leaf}\n"), &root);
+        (root, obs)
+    }
+
+    // RED 1 (CI arm): GITHUB_ACTIONS set, and the process's chain has memory.max = max -> refuse, and
+    // the refusal prints the /proc/self/cgroup path plus what memory.max said. The positive control is
+    // `ci_environment_with_a_live_bound_skips` plus this one: same tree, finite max -> skip.
+    #[test]
+    fn a_ci_runner_on_a_chain_whose_memory_max_is_max_refuses_and_names_the_cgroup() {
+        let leaf = "/system.slice/gunbc-cap-deploy.service";
+        let (root, obs) = chain_verdict(leaf, "max", "0");
+        assert!(matches!(
+            obs,
+            EnclosingBoundObservation::NoLiveEnclosingBound {
+                cause: EnclosingBoundCause::NoFiniteMemoryMax,
+                ..
+            }
+        ));
+        let got = standing_wire(&standing_from_supplied(
+            true,
+            Some(&format!("0::{leaf}")),
             true,
             false,
             false,
             RootMemoryRead::Unreadable,
+            None,
+            obs,
+        ));
+        assert!(
+            got.starts_with("UncappedEnclosingCgroup:ci-runner-environment @ 0::/system.slice/gunbc-cap-deploy.service:"),
+            "{got}"
+        );
+        assert!(
+            got.contains("every memory.max on the chain reads max"),
+            "{got}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+
+        let (root, obs) = chain_verdict(leaf, "22548578304", "0");
+        let got = standing_wire(&standing_from_supplied(
+            true,
+            Some(&format!("0::{leaf}")),
+            true,
+            false,
+            false,
             RootMemoryRead::Unreadable,
             None,
+            obs,
+        ));
+        assert!(
+            got.starts_with("ExemptUnderObservedBound:ci-runner-environment:"),
+            "{got}"
         );
-        assert_eq!(
-            got,
-            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
+        assert!(got.ends_with(":22548578304"), "{got}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // RED 2 (slot arm): a runner-slot path with no finite max refuses; the positive control -- the same
+    // slot tree with a finite memory.max -- skips.
+    #[test]
+    fn a_runner_slot_without_a_finite_memory_max_refuses_and_with_one_skips() {
+        let (root, obs) = chain_verdict(SLOT_LEAF, "max", "max");
+        let got = standing_wire(&standing_from_supplied(
+            false,
+            Some(SLOT),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            None,
+            obs,
+        ));
+        assert!(
+            got.starts_with(&format!(
+                "UncappedEnclosingCgroup:runner-slot-cgroup @ {SLOT}:"
+            )),
+            "{got}"
         );
+        assert!(got.contains(SLOT_LEAF), "{got}");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let (root, obs) = chain_verdict(SLOT_LEAF, "21474836480", "0");
+        let got = standing_wire(&standing_from_supplied(
+            false,
+            Some(SLOT),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            None,
+            obs,
+        ));
+        assert!(
+            got.starts_with("ExemptUnderObservedBound:runner-slot-cgroup:"),
+            "{got}"
+        );
+        // The bounded cgroup named is the deepest finite level of the fixture tree, i.e. the slot
+        // directory itself (prefixed by the fixture root the walk was read from).
+        assert!(got.contains(SLOT_LEAF.trim_start_matches('/')), "{got}");
+        assert!(got.ends_with(":21474836480"), "{got}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
