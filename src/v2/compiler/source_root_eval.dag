@@ -4793,7 +4793,7 @@ fn native_census_subject_closure(
                     Accepted { value: reached, diagnostics: _ } =>
                       NativeCensusSubjectClosureRead {
                         subject: subject.module,
-                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(m, r) { map_insert(m, r, true) })
+                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(reached_set, name) { map_insert(reached_set, name, true) })
                       }
                   }
               }
