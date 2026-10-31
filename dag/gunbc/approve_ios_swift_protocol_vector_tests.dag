@@ -6,7 +6,7 @@ import std.optional { Present }
 // The carrier reads the artifact row that names its own emitted file, so it declares that dependency
 // rather than relying on whichever closure the entry file happens to pull in.
 import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact, artifact_location }
-import gunbc.auth.approval_device_redemption_fixtures {surface_vectors, SurfaceVector, EnvelopeVector, escape_specimens, fx_env_enrollment_path, fx_env_enrolment_grant, fx_env_enrolment_readback, fx_env_fetched_request, fx_env_pending_list, fx_env_push_update, fx_env_push_update_client_data, fx_env_push_update_request, fx_env_read_authentication, fx_env_redemption_response_enrollment_revoked, fx_env_redemption_response_enrollment_unknown, fx_env_request_path, fx_env_signed_redemption, fx_env_enrolment_request}
+import gunbc.auth.approval_device_redemption_fixtures {surface_vectors, SurfaceVector, EnvelopeVector, escape_specimens, fx_env_enrollment_path, fx_env_enrolment_grant, fx_env_enrolment_readback, fx_env_fetched_request, fx_env_pending_list, fx_env_push_update, fx_env_push_update_client_data, fx_env_push_update_request, fx_env_read_authentication, fx_env_redemption_response_enrollment_revoked, fx_env_redemption_response_enrollment_unknown, fx_env_request_path, fx_env_signed_redemption, fx_env_enrolment_request, fx_read_auth}
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftType, SwiftArgument, SwiftDeclarationModifier,
   SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,
@@ -266,7 +266,7 @@ fn at_tests(parts: ResourceParts) -> List<SwiftDecl> {
       n: "testReadAuthenticationEncodesToTheFixtureBytes", th: true,
       b: [
         sw_let(n: "body", e: at_envelope(v: fx_env_read_authentication)),
-        sw_let(n: "auth", e: sw_calln(f: "ReadAuth", a: [sw_arg(l: "enrollmentId", v: sw_str(s: "enr-482913")), sw_arg(l: "requestedAt", v: sw_str(s: "2026-09-18T12:00:30Z")), sw_arg(l: "assertionB64", v: sw_str(s: "omlzaWduYXR1cmU"))])),
+        sw_let(n: "auth", e: sw_calln(f: "ReadAuth", a: [sw_arg(l: "enrollmentId", v: sw_str(s: fx_read_auth.enrollment_id as String)), sw_arg(l: "requestedAt", v: sw_str(s: fx_read_auth.requested_at as String)), sw_arg(l: "assertionB64", v: sw_str(s: fx_read_auth.assertion_b64 as String))])),
         at_assert(n: "XCTAssertEqual", a: [sw_call(f: sw_path(b: "WireEncode", m: "readRequest"), a: [sw_pos(v: sw_id(n: "auth"))]), sw_id(n: "body")]),
         sw_let(n: "pushBody", e: at_envelope(v: fx_env_push_update)),
         sw_let(n: "push", e: at_decode(decoder: "pushUpdate", e: at_data_utf8(e: sw_id(n: "pushBody")))),
