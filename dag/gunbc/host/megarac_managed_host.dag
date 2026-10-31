@@ -17,7 +17,7 @@ import gunbc.host.bmc_control_binding {
 import gunbc.host.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
-  megarac_operation_executed_at, megarac_current_build,
+  megarac_operation_executed_at, megarac_current_build, megarac_identity_eq,
 }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 
@@ -136,7 +136,7 @@ fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host:
         CurrentBuildKnownUnread { transition: t } =>
           MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: t.to } }
         CurrentBuildRead { reading: r } =>
-          if megarac_observed_identity_eq(a: route.observation.identity, b: r.identity) {
+          if megarac_identity_eq(a: route.observation.identity, b: r.identity) {
             megarac_grounded_admission(evidence: evidence, host: h, route: route, operation: operation, identity: r.identity)
           } else if bmc_firmware_release_identity_eq(a: r.identity.firmware, b: observed) {
             // The same release reported by a DIFFERENT controller: the receipts join the build, but they were
@@ -148,13 +148,6 @@ fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host:
       }
     }
   }
-}
-
-// Two observations of THE SAME controller: same baseboard, same chassis part, same reported release. The
-// release alone is not enough to license an operation -- the committed receipts were executed on a board,
-// and a row whose access observation names another board cannot inherit them.
-fn megarac_observed_identity_eq(a: BmcObservedIdentity, b: BmcObservedIdentity) -> Bool {
-  (a.board == b.board) && (a.chassis_part_number == b.chassis_part_number) && bmc_firmware_release_identity_eq(a: a.firmware, b: b.firmware)
 }
 
 // THE SAME ADMISSION FOR A LABEL, over the rows it is given so the not-managed refusal has something to
