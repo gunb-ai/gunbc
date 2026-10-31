@@ -17,7 +17,10 @@ data algebra_carrier_table_keyed_by_leaf_name_stall: GuaranteeStall = GuaranteeS
   population: BoundedPopulation {
     members: Cons {
       head: "v1.compiler.types carrier_in_algebra_table and carrier_defines_field",
-      tail: Empty {}
+      tail: Cons {
+        head: "v1.compiler.types arithmetic_carrier_type nominal_type_ref(name: selected.decl_name) when neither operand node is the selected carrier",
+        tail: Empty {}
+      }
     }
   },
   next_rung_trigger: climbs_when(capability: "AlgebraCarrier carries the carrier's DeclarationRef and the arithmetic fold compares it with declaration_ref_eq, so two carriers sharing a leaf name are distinct carriers")
