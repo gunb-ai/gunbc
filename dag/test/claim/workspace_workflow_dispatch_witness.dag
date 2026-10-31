@@ -3,7 +3,7 @@ module test.claim.workspace_workflow_dispatch_witness
 import std.types { Bool, String }
 import gunbc.fleet.fleet_converge_workflow {
   WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
-  fleet_converge_job_with_steps, fleet_converge_shared_job_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
+  fleet_converge_job_with_steps, fleet_converge_shared_job_if, fleet_converge_after_grant_wait_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
   fleet_converge_mode_release_product, CompilerPairOnly,
   fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyNotConsumed,
 }
@@ -58,11 +58,11 @@ test fn fleet_dispatch_stays_within_github_input_limit() -> Bool {
 // programs. The production job envelope still owns the actual if-condition assignment. Shared
 // modes must select it positively; dedicated modes cannot select the credentialed shared job. The job's
 // condition is the grant-wait gate (fleet_converge_after_grant_wait_if) around the mode selector, so the
-// selector is read as contained in it and the no-negative-clause law is asked of the selector alone.
+// condition is compared exactly with that composition (nothing may be OR'd outside the selector) and the no-negative-clause law is asked of the selector alone.
 test fn dedicated_installs_do_not_also_run_the_shared_credentialed_job() -> Bool {
   match fleet_converge_job_with_steps(steps: []).if_condition {
     Absent => false
-    Present { value: condition } => string_contains(s: condition, pattern: fleet_converge_shared_job_if)
+    Present { value: condition } => condition == fleet_converge_after_grant_wait_if(after_build: true, mode_if: fleet_converge_shared_job_if)
       && string_contains(s: condition, pattern: "github.event.inputs.mode == 'workspace_image_build'")
       && string_contains(s: condition, pattern: "github.event.inputs.mode == 'revision_job_image_build'")
       && string_contains(s: condition, pattern: "github.event.inputs.mode == 'workspace_allocation_plan'")
