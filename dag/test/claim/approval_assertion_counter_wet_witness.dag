@@ -5,8 +5,8 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int }
 import std.durable_compare_and_set { ExpectSlotGeneration, cas_attempt, CasPreconditionFailed, CasReadablePresent }
 import std.content_hash { content_hash_of_value }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
-import gunbc.durable_cas_file_store { CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path, CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.durable_cas_file_store { CasSlotProbe, ProbedHead, cas_probe_bisect, admit_cas_attempt, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced,
   AssertionCounterStoreReady, AssertionCounterStoreUnready, assertion_counter_store, assertion_counter_slots_path,
@@ -197,9 +197,11 @@ test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() 
 // generation 6, and the bisection resumes from exactly those two observed facts -- the absent bound it
 // carries was true when it was read and is stale when it is used, which is the interleaving. It must
 // report generation 5 holding counter 5, a generation that really was committed, one behind the real
-// head. A writer acting on that stale head then attempts the real exclusive create of generation 6: the
-// OS reports occupancy, the create never overwrites (generation 6 still holds counter 6), and the store
-// classifies it as a lost race.
+// head. A writer acting on that stale head then runs the store's own file_compare_and_set expecting
+// generation 5: the store observes generation 6, refuses before any create is attempted, and answers a
+// lost race naming generation 6 (generation 6 still holds counter 6). The create-level race is the
+// two-writer control in test.claim.durable_cas_file_store_wet_witness; the classification fold that used
+// to be called here directly is deleted (see test.claim.outcome_laundering_seal_witness).
 test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create() -> ProcessExit {
   let root = fresh_counter_root()
   let key: NonEmptyStr = "enr-interleave"
@@ -223,24 +225,26 @@ test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writ
     Absent => false
   }
   let target_path = cas_file_slot_path(root: slots_at(dir: root), key: key, generation: 6)
-  let stale_write = Filesystem.WriteCreateNew(path: target_path, content: "7")
   let stale_attempt = cas_attempt(key: key, expected: ExpectSlotGeneration { generation: 5 }, proposed: "7" as NonEmptyStr, proposed_content: content_hash_of_value(value: "7"))
-  let classified = cas_outcome_from_create(
-    attempt: stale_attempt,
-    target: 6,
-    created: filesystem_create_new(path: stale_write.path, success: stale_write.success, error: stale_write.error, error_kind: stale_write.error_kind),
-    post: observe_cas_slot_state(root: slots_at(dir: root), key: key),
-  )
+  let classified = match admit_cas_attempt(attempt: stale_attempt) {
+    CasAttemptAdmitted { verified: v } => Present { value: file_compare_and_set(root: slots_at(dir: root), publication: DefaultAccessCreateOnly, verified: v) }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => Absent
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => Absent
+    CasAttemptKeyNotSlotAddressable { key: _ } => Absent
+  }
   let refused_as_race = match classified {
-    CasPreconditionFailed { expected: _, observed: o } => match o {
-      CasReadablePresent { version: v } => v.generation == 6 && (v.value as String) == "6"
+    Present { value: outcome } => match outcome {
+      CasPreconditionFailed { expected: _, observed: o } => match o {
+        CasReadablePresent { version: v } => v.generation == 6 && (v.value as String) == "6"
+        _ => false
+      }
       _ => false
     }
-    _ => false
+    Absent => false
   }
   let not_overwritten = Filesystem.Read(path: target_path).content == "6"
   let removed = shell.Remove.RecursiveForce(path: root)
   counter_verdict(readings: [appended],
-    holds: seeded && admitted_at(a: appended, counter: 6) && stale_real && !stale_write.success && refused_as_race && not_overwritten && removed.success,
+    holds: seeded && admitted_at(a: appended, counter: 6) && stale_real && refused_as_race && not_overwritten && removed.success,
     claim: "the mid-search append did not yield a stale real head, or the stale writer was not refused by the create")
 }

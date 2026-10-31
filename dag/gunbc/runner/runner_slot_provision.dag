@@ -39,7 +39,8 @@ import extdeps.github.actions_runner {
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_slot_job_role { runner_instance_job_user }
+import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_instance_tree_mode }
+import extdeps.access.posix { FileMode }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation {
   identity_is_fabric_execution_member,
@@ -201,7 +202,7 @@ fn membership_removed_unit_names(
 // Membership only admits a removal when provenance says the incarnation is already dead
 // (unregistered/ephemeral, inactive, disabled). The 21-to-12 retirees can still be serving when the
 // obligation exists, so they never become `MemberRemoved` and the inhibitor never reached the apply
-// script -- which is why `cap_converge_decision` stayed withheld after 22-50 completed. Required
+// script -- which is why `cap_converge_decision` (deleted 2026-10-30) stayed withheld after 22-50 completed. Required
 // retirees that `slot_removal_realization` says need actuation are therefore masked from the
 // transition set itself. Tree deletion stays on the membership path and still requires
 // `RetirementComplete`.
@@ -628,6 +629,7 @@ type RunnerSlotProvisionPlan {
 fn gunbc_runner_slot_privileged_commands(
   slot_dir: NonEmptyStr,
   job_user: NonEmptyStr,
+  mode: FileMode,
 ) -> ActionsRunnerSlotPrivilegedCommands {
   ActionsRunnerSlotPrivilegedCommands {
     remove_command: executor_privileged_operation_shell_command(
@@ -638,7 +640,7 @@ fn gunbc_runner_slot_privileged_commands(
         path: slot_dir,
         owner: job_user,
         group: job_user,
-        mode: executor_managed_directory_mode,
+        mode: mode,
       },
     ),
   }
@@ -722,6 +724,7 @@ fn runner_slot_provision_plan_over(
                 instance_name: m.instance_name,
                 ci_job_user: deploy.job_user,
               ),
+              mode: runner_instance_tree_mode(host: deploy.host_label as HostIdentity, instance_name: m.instance_name),
             ),
           )]
         MemberChanged { at: _, from: _, to: _ } => []
