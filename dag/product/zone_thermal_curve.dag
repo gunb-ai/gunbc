@@ -84,7 +84,8 @@ fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
   }
 }
 
-// A ZONE'S REQUIRED SENSORS ARE OBSERVED ONE STATUS EACH, AND AN UNREAD ONE IS A VALUE, NOT AN OMISSION.
+// A ZONE'S REQUIRED SENSORS ARE OBSERVED, AND AN UNREAD ONE IS A VALUE, NOT AN OMISSION. The list can
+// repeat a sensor, so exactly one observation per required sensor is demanded (below), not assumed.
 // zone_duty proves completeness against the required set before it computes the hottest, so one cool
 // reading beside an unread required sensor is ZoneFailSafe and no adapter has to invent a convention
 // of replacing a failure with an empty list.
@@ -104,25 +105,30 @@ fn zone_sensor_read_temperature(o: ZoneSensorObservation) -> Celsius? {
   }
 }
 
-fn zone_sensor_is_read(observations: List<ZoneSensorObservation>, sensor: NonEmptyStr) -> Bool {
-  any(observations, o => o.sensor == sensor && match zone_sensor_read_temperature(o: o) {
-    Absent => false
-    Present { value: _ } => true
-  })
+// THE TEMPERATURE A REQUIRED SENSOR CONTRIBUTES, ABSENT UNLESS IT HAS EXACTLY ONE OBSERVATION AND IT IS
+// A READ. A list can write a sensor twice, so a duplicate (Unread beside Read, or two Reads) is
+// contradictory evidence and counts as unread: absence of agreement is never a reading.
+fn zone_required_temperature(observations: List<ZoneSensorObservation>, sensor: NonEmptyStr) -> Celsius? {
+  let mine = filter(observations, o => o.sensor == sensor)
+  match first(mine) {
+    Absent => Absent
+    Present { value: o } => if length(mine) == 1 { zone_sensor_read_temperature(o: o) } else { Absent }
+  }
 }
 
 fn zone_required_readings(required: List<NonEmptyStr>, observations: List<ZoneSensorObservation>) -> List<Celsius> {
-  fold(observations, init: [], f: (acc, o) => match zone_sensor_read_temperature(o: o) {
+  fold(required, init: [], f: (acc, n) => match zone_required_temperature(observations: observations, sensor: n) {
     Absent => acc
-    Present { value: t } => if any(required, n => n == o.sensor) { concat(acc, [t]) } else { acc }
+    Present { value: t } => concat(acc, [t])
   })
 }
 
 fn zone_duty(curve: ZoneCurve, required: List<NonEmptyStr>, observations: List<ZoneSensorObservation>) -> ZoneDuty {
-  if length(required) == 0 || !all(required, n => zone_sensor_is_read(observations: observations, sensor: n)) {
+  let readings = zone_required_readings(required: required, observations: observations)
+  if length(required) == 0 || length(readings) != length(required) {
     ZoneFailSafe
   } else {
-    match zone_hottest(readings: zone_required_readings(required: required, observations: observations)) {
+    match zone_hottest(readings: readings) {
       Absent => ZoneFailSafe
       Present { value: t } => ZoneFollowsCurve { hottest: t, duty: zone_curve_duty(curve: curve, t: t) }
     }

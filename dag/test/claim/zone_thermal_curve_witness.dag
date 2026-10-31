@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Second, celsius, percent, percent_count, second }
 import std.optional { Absent, Present }
-import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, ZoneSensorObservation, ZoneSensorRead, ZoneSensorUnread, zone_curve, zone_curve_duty, zone_curve_for_load, zone_duty, zone_duty_percent }
+import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, ZoneSensorObservation, ZoneSensorRead, ZoneSensorStatus, ZoneSensorUnread, zone_curve, zone_curve_duty, zone_curve_for_load, zone_duty, zone_duty_percent }
 
 // SUPPLIED: readings. EXECUTED: the real zone_duty fold. The curves are the two live h11 zone curves
 // (a16-fan.sh, read 2026-10-30): CPU zone 20% to 60 C, 100% at 85 C; GPU idle 20% to 75 C, 100% at 88 C.
@@ -24,13 +24,18 @@ fn sensor_b() -> NonEmptyStr {
   "b" as NonEmptyStr
 }
 
-// One required sensor "a"; every temp is a read of it, so the zone follows the hottest.
+// Each temp is a read of its own required sensor s0, s1, ..., so the zone follows the hottest.
+fn sensor_n(i: Int) -> NonEmptyStr {
+  ("s" + to_string(i)) as NonEmptyStr
+}
+
+fn no_obs() -> List<ZoneSensorObservation> {
+  []
+}
+
 fn duty_at(curve: ZoneCurve, temps: List<Int>) -> Int {
-  percent_count(zone_duty_percent(zone_duty(
-    curve: curve,
-    required: [sensor_a()],
-    observations: map(temps, t => ZoneSensorObservation { sensor: sensor_a(), status: ZoneSensorRead { temperature: celsius(t) } }),
-  ))) as Int
+  let obs = fold(temps, init: no_obs(), f: (acc, t) => concat(acc, [ZoneSensorObservation { sensor: sensor_n(i: length(acc)), status: ZoneSensorRead { temperature: celsius(t) } }]))
+  percent_count(zone_duty_percent(zone_duty(curve: curve, required: map(obs, o => o.sensor), observations: obs))) as Int
 }
 
 // THE FAIL-SAFE RED: no reading must drive 100, on every curve, and a floor-only answer is the failure.
@@ -94,6 +99,22 @@ test fn witness_partial_sensor_failure_drives_full_duty() -> Bool {
   two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorUnread }) == 100
     && two_sensor_duty(b: ZoneSensorObservation { sensor: "c" as NonEmptyStr, status: ZoneSensorRead { temperature: celsius(40) } }) == 100
     && two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorRead { temperature: celsius(40) } }) == 20
+}
+
+// CONTRADICTORY EVIDENCE: one required sensor observed twice, Unread beside Read 40, or two Reads, is not a
+// reading. Both must be 100; a single Read of the same value is the control (floor).
+fn one_sensor_duty(obs: List<ZoneSensorObservation>) -> Int {
+  percent_count(zone_duty_percent(zone_duty(curve: gpu_idle_curve(), required: [sensor_a()], observations: obs))) as Int
+}
+
+fn a_obs(status: ZoneSensorStatus) -> ZoneSensorObservation {
+  ZoneSensorObservation { sensor: sensor_a(), status: status }
+}
+
+test fn witness_duplicate_observation_of_a_required_sensor_drives_full_duty() -> Bool {
+  one_sensor_duty(obs: [a_obs(status: ZoneSensorUnread), a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 100
+    && one_sensor_duty(obs: [a_obs(status: ZoneSensorRead { temperature: celsius(40) }), a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 100
+    && one_sensor_duty(obs: [a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 20
 }
 
 // A CURVE EXISTS ONLY WHEN VALID. Refused: floor over 100, reversed thresholds, equal thresholds.
