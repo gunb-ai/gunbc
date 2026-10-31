@@ -1078,23 +1078,23 @@ pub fn v1_set_element_params(
             if {
                 let mut __found = false;
                 for te in field_type_exprs.iter().cloned() {
-                    if ((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
-                        == "Set".to_string())
-                        && {
-                            let mut __found = false;
-                            for c in te.children.clone().iter().cloned() {
-                                if v1_type_expr_contains_param_name(
-                                    p.clone(),
-                                    c.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
+                    if (v1_type_expr_is_finite_power_set_carrier(
+                        te.clone(),
+                        source_indices.clone(),
+                    ) && {
+                        let mut __found = false;
+                        for c in te.children.clone().iter().cloned() {
+                            if v1_type_expr_contains_param_name(
+                                p.clone(),
+                                c.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
                             }
-                            __found
-                        })
-                    {
+                        }
+                        __found
+                    }) {
                         __found = true;
                         break;
                     }
@@ -1106,6 +1106,19 @@ pub fn v1_set_element_params(
         }
         __result
     })
+}
+
+pub fn v1_type_expr_is_finite_power_set_carrier(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::std_types::container_template_algebra(crate::v1_std_core::authored_name_at(
+        source_indices,
+        type_expr,
+    )) {
+        Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
+        std::option::Option::None => false,
+    }
 }
 
 pub fn v1_set_unroutable_row_refusal() -> String {
@@ -4783,12 +4796,19 @@ pub fn v1_emit_struct_from_capability_table(
             )) {
             Rc::new(vec![])
         } else {
-            v1_item_ord_propagated_param_names(
-                generic_param_names.clone(),
-                field_type_exprs.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )
+            crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                v1_set_element_params(
+                    generic_param_names.clone(),
+                    field_type_exprs.clone(),
+                    source_indices.clone(),
+                ),
+                v1_item_ord_propagated_param_names(
+                    generic_param_names.clone(),
+                    field_type_exprs.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ),
+            ))
         };
         if ((fm_params.clone().len() as i64) > 0) {
             {

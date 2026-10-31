@@ -663,10 +663,20 @@ fn v1_set_element_params(
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      authored_name_at(source_indices: source_indices, node: te) == "Set"
+      v1_type_expr_is_finite_power_set_carrier(type_expr: te, source_indices: source_indices)
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
+}
+
+// Set<T> is FinitePowerSet<T> by alias (std.types), realized as im::OrdSet, so a payload written
+// either way owes P: Ord. Asked of the same roster as v1_type_expr_is_free_monoid_carrier, never a
+// literal spelling.
+fn v1_type_expr_is_finite_power_set_carrier(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
+    Present { value: algebra } => algebra == "FinitePowerSet"
+    Absent => false
+  }
 }
 
 fn v1_set_unroutable_row_refusal() -> String {
@@ -2751,7 +2761,10 @@ fn v1_emit_struct_from_capability_table(
     || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
     []
   } else {
-    v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
+    unique_strings(items: concat(
+      v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices),
+      v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
+    ))
   }
   if (fm_params |> count) > 0 {
     let base = if declared_shared { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
