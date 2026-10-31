@@ -12,10 +12,22 @@ import gunbc.workspace_allocation_plan {
   ActorIntentAcquire, ActorIntentRetire,
 }
 import gunbc.workspace_acquisition_invocation {
-  workspace_prior_actor_standing, SlotInvocationObserved, SlotInvocationUnreadable,
+  workspace_prior_actor_standing,
   WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
 }
+import gunbc.systemd_unit_invocation_liveness { SystemManager, UnitRunIdentity, UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, unit_invocation_observation, unit_run_wire }
 import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
+
+data fixture_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data fixture_proc_stat: String = "cpu 1 2 3\nbtime 1792000000\nprocesses 5\n"
+
+fn fixture_slot(invocation: String) -> UnitInvocationObservation {
+  unit_invocation_observation(manager: SystemManager, boot_id_text: fixture_boot_id, proc_stat_text: fixture_proc_stat, invocation_text: invocation)
+}
+
+fn fixture_run(invocation: String) -> UnitRunIdentity? {
+  match fixture_slot(invocation: invocation) { UnitInvocationPresent { run: r } => Present { value: r }  _ => none }
+}
 
 fn takeover_plan() -> WorkspaceReservationPlan? {
   match launch_fixture_allocation() {
@@ -72,8 +84,14 @@ test fn matching_hold_recovers_and_foreign_hold_retains() -> Bool {
 
 // The slot unit's InvocationID decides the prior actor's standing.
 test fn prior_actor_standing_follows_the_slot_invocation() -> Bool {
-  (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "new-invocation" }) { PriorActorTerminal => true _ => false })
-  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "" }) { PriorActorTerminal => true _ => false })
-  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "old-invocation" }) { PriorActorRunning => true _ => false })
-  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationUnreadable) { PriorActorUnobservable { reason: _ } => true _ => false })
+  let old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let new = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  match fixture_run(invocation: old) {
+    Absent => false
+    Present { value: r } =>
+      (match workspace_prior_actor_standing(recorded: r, slot: fixture_slot(invocation: new)) { PriorActorTerminal => true _ => false })
+      && (match workspace_prior_actor_standing(recorded: r, slot: UnitInvocationAbsent) { PriorActorTerminal => true _ => false })
+      && (match workspace_prior_actor_standing(recorded: r, slot: fixture_slot(invocation: old)) { PriorActorRunning => true _ => false })
+      && (match workspace_prior_actor_standing(recorded: r, slot: UnitInvocationUnreadable { cause: "fixture" as NonEmptyStr }) { PriorActorUnobservable { reason: _ } => true _ => false })
+  }
 }
