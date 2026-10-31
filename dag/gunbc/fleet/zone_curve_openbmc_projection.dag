@@ -3,7 +3,7 @@ module gunbc.fleet.zone_curve_openbmc_projection
 import std.types { Int, List, NonEmptyStr }
 import std.decimal { ExactDecimal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, celsius, celsius_count, percent_count, second_count }
+import std.measure { Celsius, CelsiusDelta, Second, celsius, celsius_count, celsius_delta, celsius_delta_count, percent_count, second_count }
 import product.zone_thermal_curve { ZoneCurve, zone_curve_duty, zone_full_duty }
 import extdeps.bmc.pid_control_program {
   ActuatorController,
@@ -50,9 +50,9 @@ import extdeps.bmc.pid_control_program {
 // (sha256 fd5b69275308850861f90d7e864d8ca3c6f6d05ded175a49a92b7beacfdb2fc7, read 2026-10-31):
 // samplePeriod 1, hysteresis 1/1, isCeiling false, actuator feed-forward gain 1 with every other
 // gain, limit and slew zero and output limits 3..100, cycle and update intervals 1000 ms.
-data openbmc_curve_sample_step: Int = 5
+data openbmc_curve_sample_step: CelsiusDelta = celsius_delta(5)
 
-data openbmc_curve_hysteresis: Int = 1
+data openbmc_curve_hysteresis: CelsiusDelta = celsius_delta(1)
 
 // WHAT A ROW SUPPLIES FOR ONE CURVE-FOLLOWING ZONE. Which sensor the BMC reads, where its extsensor
 // lives, how stale a reading may get and which fan inputs the actuator drives are facts of the
@@ -65,6 +65,7 @@ type OpenBmcCurveZoneRow {
   controller_name: NonEmptyStr
   actuator_name: NonEmptyStr
   actuator_inputs: List<NonEmptyStr>
+  excluded_inputs: List<NonEmptyStr>
 }
 
 type OpenBmcCurveZone {
@@ -72,12 +73,12 @@ type OpenBmcCurveZone {
   zone: ProgramZone
 }
 
-fn openbmc_curve_point(curve: ZoneCurve, index: Int, at: Int) -> DemandCurvePoint {
+fn openbmc_curve_point(curve: ZoneCurve, index: Int, at: Celsius) -> DemandCurvePoint {
   DemandCurvePoint {
     index: index,
-    reading: decimal_celsius(value: ExactDecimal { units: at, fraction_digits: 0 }),
+    reading: decimal_celsius(value: ExactDecimal { units: celsius_count(at), fraction_digits: 0 }),
     output: zone_demand_value(value: ExactDecimal {
-      units: percent_count(zone_curve_duty(curve: curve, t: celsius(at))) as Int,
+      units: percent_count(zone_curve_duty(curve: curve, t: at)) as Int,
       fraction_digits: 0,
     }),
   }
@@ -86,9 +87,9 @@ fn openbmc_curve_point(curve: ZoneCurve, index: Int, at: Int) -> DemandCurvePoin
 // Points at flat_until, flat_until + step, ... and a final point at full_at, so the curve's 100 is
 // always a point and the last sample never overshoots it. flat_until >= full_at yields the one point
 // at flat_until, whose duty zone_curve_duty answers.
-fn openbmc_curve_points_from(curve: ZoneCurve, index: Int, at: Int) -> List<DemandCurvePoint> {
-  let hi = celsius_count(curve.full_at)
-  if at >= hi {
+fn openbmc_curve_points_from(curve: ZoneCurve, index: Int, at: Celsius) -> List<DemandCurvePoint> {
+  let hi = curve.full_at
+  if celsius_count(at) >= celsius_count(hi) {
     [openbmc_curve_point(curve: curve, index: index, at: at)]
   } else {
     concat(
@@ -96,14 +97,14 @@ fn openbmc_curve_points_from(curve: ZoneCurve, index: Int, at: Int) -> List<Dema
       openbmc_curve_points_from(
         curve: curve,
         index: index + 1,
-        at: if at + openbmc_curve_sample_step > hi { hi } else { at + openbmc_curve_sample_step },
+        at: if celsius_count(at) + celsius_delta_count(openbmc_curve_sample_step) > celsius_count(hi) { hi } else { celsius(celsius_count(at) + celsius_delta_count(openbmc_curve_sample_step)) },
       ),
     )
   }
 }
 
 fn openbmc_curve_points(curve: ZoneCurve) -> List<DemandCurvePoint> {
-  openbmc_curve_points_from(curve: curve, index: 0, at: celsius_count(curve.flat_until))
+  openbmc_curve_points_from(curve: curve, index: 0, at: curve.flat_until)
 }
 
 fn openbmc_whole(units: Int) -> ExactDecimal {
@@ -138,14 +139,14 @@ fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurv
         setpoint: decimal_celsius(value: openbmc_whole(units: 30)),
         failsafe_output: zone_demand_value(value: full),
         sample_period: decimal_seconds(value: openbmc_whole(units: 1)),
-        positive_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: openbmc_curve_hysteresis)),
-        negative_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: openbmc_curve_hysteresis)),
+        positive_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: celsius_delta_count(openbmc_curve_hysteresis))),
+        negative_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: celsius_delta_count(openbmc_curve_hysteresis))),
         is_ceiling: false,
         curve: openbmc_curve_points(curve: curve),
       }],
       actuator_controllers: [ActuatorController {
         name: row.actuator_name,
-        inputs: row.actuator_inputs,
+        inputs: filter(row.actuator_inputs, i => !any(row.excluded_inputs, x => x == i)),
         configured_setpoint_unused_by_runtime: openbmc_whole(units: 30),
         sample_period: decimal_seconds(value: openbmc_whole(units: 1)),
         gains: PidGains { proportional: openbmc_whole(units: 0), integral: openbmc_whole(units: 0), derivative: openbmc_whole(units: 0) },

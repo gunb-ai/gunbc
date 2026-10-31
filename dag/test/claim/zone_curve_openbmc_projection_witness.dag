@@ -32,7 +32,8 @@ fn butch_row() -> OpenBmcCurveZoneRow {
     input_timeout: second(15),
     controller_name: "GPU_MAX_CURVE" as NonEmptyStr,
     actuator_name: "CHASSIS" as NonEmptyStr,
-    actuator_inputs: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr, "FAN4" as NonEmptyStr],
+    actuator_inputs: ["FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr, "FAN4" as NonEmptyStr, "FAN5" as NonEmptyStr],
+    excluded_inputs: ["FAN5" as NonEmptyStr],
   }
 }
 
@@ -92,7 +93,9 @@ test fn witness_stale_input_drives_full_duty_by_construction() -> Bool {
   }
 }
 
-// ITS POSITIVE CONTROL: the failsafe is not the curve's floor, and FAN5 is not an actuator input.
+// ITS POSITIVE CONTROL: the failsafe is not the curve's floor, and a row-excluded input (FAN5, whose
+// tach reads nan on butch and pins the BMC failsafe) is dropped by the projection from the row's four
+// listed fans; removing the filter leaves four inputs and reds this.
 test fn witness_failsafe_is_distinct_from_floor_and_fan5_is_excluded() -> Bool {
   match butch_curve() {
     Absent => false
