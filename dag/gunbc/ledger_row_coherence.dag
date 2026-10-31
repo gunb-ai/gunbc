@@ -246,13 +246,6 @@ fn ledger_row_coherence_rendered(c: LedgerRowCoherence) -> String {
 
 data ledger_repair_trailer_token: String = "Ledger-Rows-Repaired:"
 
-// THE PATH IS DECLARED ONCE AND CONSUMED BY BOTH ENDS. The gate WRITES this file and the heal commit
-// step READS it; if each spelled its own literal the two would drift and the failure would be
-// silent -- heal would commit with no trailer and nothing would say the declaration had been written
-// somewhere nobody looked. It lives under target/ because that directory is ignored, so the
-// declaration cannot itself become a committed artifact the drift gate then has to adjudicate.
-data heal_repair_declaration_artifact_path: String = "target/heal-repair-declaration.txt"
-
 // THE DENOMINATOR IS DECLARED, BECAUSE A COUNT WITHOUT ONE UNDERCOUNTS SILENTLY. A commit carrying
 // no repair trailer has two completely different meanings -- this heal judged the ledgers and found
 // nothing to repair, or the declaration step never ran at all -- and with only the repair token
