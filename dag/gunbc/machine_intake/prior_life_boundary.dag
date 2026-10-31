@@ -1067,7 +1067,7 @@ fn prior_life_forced_write_budget() -> LegBudget {
 // realization of that leg, not its discharge.
 fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedFirstRotationWriteLeg?
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
   ]
 {
   let deadline = effect_leg_deadline(budget: prior_life_forced_write_budget(), started: dry_prior_life_instant(millis: began_millis))
@@ -1129,7 +1129,7 @@ type ForcedFirstRotationWriteTransition sole_constructor {
 // the active run, and dry_archive_prior_life_across_forced_write, which orders the instants.
 fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, application: BmcAccountApplication, pre_capture: PriorLifeArchive?) -> ForcedFirstRotationWriteTransition?
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
   ]
 {
   if !declaration_ref_eq(a: leg_deadline_leg(d: leg.deadline), b: leg_completed_leg(c: leg.completed)) {
@@ -1270,6 +1270,7 @@ fn dry_archive_prior_life_across_forced_write(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "forced_call_is_indeterminate"),
   ]
 {
   let forced_inference = match across {
@@ -1419,13 +1420,13 @@ fn dry_archive_prior_life(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_pre_capture"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "pre_capture"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_pre_capture"),
   ]
 {
   match prior_life_policy_for(platform: platform) {

@@ -1972,6 +1972,12 @@ fn forced_bmc_inputs(subject: MachineIntakeSubject, readback: BmcAccountStateObs
 // AN AUTHENTICATED READ OF THE SAME CONTROLLER, SUBJECT AND ATTEMPT AT ANOTHER BUILD: the read a post-write
 // controller answers when its firmware is not the build the 403 inferred. Same producers, same world, a
 // different build identity -- the disagreement RED (iv) consumes it.
+//
+// WHAT THIS READ IS NOT: 03.22.00 shares ONE password per account between Redfish and the managed account, and
+// its faithful dry surface is the Redfish account read (crisp-gull-572's item 3, PR #15370 --
+// gunbc.bmc_model's Redfish world), not this IPMI-modeled read. The Redfish read replaces this call and the
+// sequence's reads when it lands; that is a follow-up, not a blocker, and nothing here claims the IPMI shape is
+// what 03.22.00 serves (the build row already records IPMI lanplus as NOT grounded for this build).
 fn srv13_read_at_build(subject: MachineIntakeSubject, firmware: BmcFirmwareReleaseIdentity) -> BmcAccountStateObservation {
   let attempt = (subject.attempt_id as NonEmptyStr) as AttemptIdentity
   dry_read_bmc_account_state(

@@ -152,7 +152,7 @@ fn rotation_route_from_citation(
   citation: ExternalAuthority,
 ) -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_cited_route")
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "cited_route_at")
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
