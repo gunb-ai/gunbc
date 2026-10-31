@@ -34,7 +34,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
-import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_node_for_instance, belt_dispatch_result_ok, belt_spawn_outcome_json, belt_dispatch_env_var, belt_redeliver_instance_env_var, belt_redeliver_attempt_key_env_var, belt_continuation_decision_for_instance, belt_lookup_node, NodeFound, NodeMissing, AuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_node_for_instance, belt_dispatch_result_ok, belt_spawn_outcome_json, belt_dispatch_env_var, belt_redeliver_instance_env_var, belt_redeliver_attempt_key_env_var, belt_continuation_decision_for_node, belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused, belt_lookup_node, NodeFound, NodeMissing, AuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationResume, ContinuationHoldUntil, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
@@ -483,9 +484,11 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
 // wake named: the node is looked up over the GLOBAL plan (belt_find_node_in), so the instance identity is
 // the only thing that stops a wake firing on the wrong instance -- and that is worse than a wedge.
 // THE ENTRY MAY ONLY CONTINUE, NEVER START (review 87645, decision A1): it also reads
-// GUNBC_BELT_REDELIVER_ATTEMPT_KEY and, before dispatch, requires belt_continuation_decision_for_instance
-// (the SAME derivation the belt fold uses) for the node to be a Resume or a request-pending Hold-Until for
-// EXACTLY that key -- see belt_redeliver_attempt_continues. So the wake re-delivers an attempt the door already
+// GUNBC_BELT_REDELIVER_ATTEMPT_KEY and, before dispatch, requires the node's continuation decision
+// (belt_continuation_decision_for_node -- the SAME derivation the belt fold uses; for_instance is a projection
+// onto it) to be a Resume or a request-pending Hold-Until for EXACTLY that key -- see
+// belt_redeliver_attempt_continues. It reads it AFTER the restore step, in the order the door route already
+// uses -- see belt_redeliver_attempt_wake_admission. So the wake re-delivers an attempt the door already
 // admitted, never fresh work; it is not a second door into new dispatch, and the fail-closed admitted-instance
 // list still governs what it was written for -- STARTING work from the belt-dispatch CLI.
 // The pure predicate behind belt_redeliver_attempt_cli's wrong-instance guard (rationale
@@ -497,7 +500,7 @@ fn belt_redeliver_instance_matches(resolved: String, expected: String) -> Bool {
 }
 
 // THE STRUCTURAL GUARD (review 87645, manager decision A1): the wake entry may ONLY continue, never start.
-// It re-delivers only when the node's own continuation decision -- the existing belt_continuation_decision_for_instance,
+// It re-delivers only when the node's own continuation decision -- the existing belt_continuation_decision_for_node,
 // the SAME derivation the belt fold uses, so no second decision path -- is a Resume or a request-pending
 // Hold-Until for EXACTLY the attempt the armed wake names. Spawn-fresh, plain hold, complete, ended, refused,
 // or a Resume/Hold-Until for a DIFFERENT key all refuse: a wake re-delivers admitted in-flight work, it does not
@@ -511,6 +514,50 @@ fn belt_redeliver_attempt_continues(decision: ContinuationDecision, attempt_key:
     ContinuationHold { reason: _ } => false
     ContinuationComplete { reason: _ } => false
     ContinuationEnded { reason: _ } => false
+  }
+}
+
+// THE WAKE'S OWN ADMISSION SEQUENCE (lab defect, srv1 lab 7f6955095167, 2026-10-30 17:01Z, attempt
+// e5a42384c6a5e13d): restore FIRST, then the unchanged decision, then the unchanged key guard -- the order the
+// door route already uses. WHY THE OLD ORDER COULD NOT WORK: the guard above says what the wake must establish,
+// and it establishes it through the decision, but the decision reads the prior attempt's SUBMISSION CAPTURE,
+// whose head is observed in the worktree (belt_prior_attempt_capture -> belt_worktree_head_observe). With the
+// tree reaped that leg is not a verdict about the lineage at all: ContinuationRefused there says the capture
+// cannot be observed, so the guard's Bool is false and the wake can never re-deliver the very attempt it was
+// armed for -- while the door route, which restores before it decides, restored that attempt 20 minutes later.
+// The ORDER was the unjustified link, so the order is the whole change: this runs the SAME restore step the
+// spawn route runs (belt_attempt_worktree_restore_for_instance) and adds no derivation of its own -- no second
+// decision path, no second restore path, and belt_redeliver_attempt_continues is untouched. Its fail-closed arms
+// REFUSE the wake: a tree that cannot be re-materialized is an unknown tree, and unknown refuses (§5).
+// The step is the operator-approved bounded scaffold (attempt_worktree_restore_scaffold /
+// attempt_worktree_restore_dissolve_trigger); its population is enforced BY NAME inside the step
+// (attempt_worktree_restore_scaffold_attempt_key), so this call site admits no member the door route did not
+// already admit and adds no lifetime -- both call sites go away with the same dissolve trigger.
+type BeltRedeliverWakeAdmission
+  = WakeAdmissionAdmitted { restore: String }
+  | WakeAdmissionRestoreRefused { detail: String }
+  | WakeAdmissionContinuationRefused
+
+fn belt_redeliver_attempt_wake_admission(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltRedeliverWakeAdmission {
+  match belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node_id) {
+    AttemptWorktreeBranchAbsent { branch: _, detail } => WakeAdmissionRestoreRefused { detail: detail }
+    AttemptWorktreeRestoreRefused { detail } => WakeAdmissionRestoreRefused { detail: detail }
+    AttemptWorktreeRestored { worktree_path: worktree_path, branch: branch } =>
+      belt_redeliver_attempt_after_restore(instance: instance, node_id: node_id, attempt_key: attempt_key, restore: join(["re-materialized ", worktree_path, " from branch ", branch], ""))
+    AttemptWorktreeNotNeeded =>
+      belt_redeliver_attempt_after_restore(instance: instance, node_id: node_id, attempt_key: attempt_key, restore: "no restore was needed")
+  }
+}
+
+// THE GUARD, READ AFTER THE STEP: the SAME continuation derivation (for_node is the projection for_instance
+// already points at) and the SAME key guard, neither of them touched here. Split out only so the step's outcome
+// is the one thing that changes what the guard is asked about.
+fn belt_redeliver_attempt_after_restore(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, restore: String) -> BeltRedeliverWakeAdmission {
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node_id)
+  if belt_redeliver_attempt_continues(decision: decision, attempt_key: attempt_key) {
+    WakeAdmissionAdmitted { restore: restore }
+  } else {
+    WakeAdmissionContinuationRefused
   }
 }
 
@@ -541,11 +588,15 @@ fn belt_redeliver_attempt_cli() -> ProcessExit {
                           NodeMissing => exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " is not in the accepted plan, so its continuation cannot be read — refusing re-delivery (fail-closed)"], ""))
                           AuthorityProjectionRefused { detail: detail } => exit_failure(reason: join(["belt_redeliver_attempt_cli: the authority projection is refused, so node ", node_id, "'s continuation cannot be read: ", detail, " — refusing re-delivery (fail-closed)"], ""))
                           NodeFound { node: node } =>
-                            if belt_redeliver_attempt_continues(decision: belt_continuation_decision_for_instance(instance: instance, node: node), attempt_key: attempt_key) {
-                              let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
-                              if belt_dispatch_result_ok(r: r) { ExitSuccess } else { exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r))) }
-                            } else {
-                              exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " has no Resume or request-pending Hold-Until continuation for attempt ", attempt_key, " — a wake may only re-deliver an already-admitted attempt, never start fresh work; refusing"], ""))
+                            match belt_redeliver_attempt_wake_admission(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+                              WakeAdmissionAdmitted { restore: _ } => {
+                                let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
+                                if belt_dispatch_result_ok(r: r) { ExitSuccess } else { exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r))) }
+                              }
+                              WakeAdmissionRestoreRefused { detail } =>
+                                exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " attempt ", attempt_key, " cannot be re-delivered because its prior worktree could not be restored, so its continuation cannot be read at all -- ", detail, "; refusing (fail-closed)"], ""))
+                              WakeAdmissionContinuationRefused =>
+                                exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " has no Resume or request-pending Hold-Until continuation for attempt ", attempt_key, " — a wake may only re-deliver an already-admitted attempt, never start fresh work; refusing"], ""))
                             }
                         }
                       }

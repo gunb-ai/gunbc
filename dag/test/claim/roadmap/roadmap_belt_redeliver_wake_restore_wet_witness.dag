@@ -1,0 +1,342 @@
+module test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness
+
+// WET WITNESS FOR THE RE-DELIVERY WAKE'S ADMISSION ORDER (gunbc.roadmap.roadmap_belt_tick_cli,
+// belt_redeliver_attempt_wake_admission), ON THE STATE THE WEDGE NEEDS: a request-pending attempt whose dispatch
+// branch is PRESENT and whose worktree is ABSENT (a reclaim, not a crash). Real git, real worktree root, real
+// provider-events.jsonl; nothing mocked. WHY WET: the ORDER is the whole claim, and an order is only evidence when
+// an actuation happens in the middle -- a worktree that did not exist when the call started and exists when it
+// returns cannot be faked by a stub, so 'the step ran before the decision was read' is shown, not asserted.
+//
+// (1) THE WEDGE, REPRODUCED: with the tree absent, the continuation the wake gate reads comes back Refused -- its
+// capture leg observes the prior attempt's head IN THE WORKTREE, so an absent tree is not a verdict about the
+// lineage, it is an unreadable fact. The unchanged key gate is therefore false and the wake can never re-deliver
+// the attempt it was armed for: srv1 lab 7f6955095167, 2026-10-30 17:01Z, attempt e5a42384c6a5e13d, while the
+// door route (which restores first) restored that same tree at 17:21Z.
+// (2) THE FIX, ADMITTING: the wake runs the SAME restore step the door route runs, THEN reads the same decision
+// and the same gate -- neither changed here -- and comes back Admitted over a tree that was absent at entry.
+// (3) THE GATE STILL REFUSES WHAT IT MUST, wet at the wake entry: a key other than the one its own continuation
+// names (the key gate, intact after the restore), and a node whose lineage is SpawnFresh-only (fresh work, which
+// this entry may never start), leaving its tree absent.
+// (4) THE POPULATION IS A NAME, NOT A STATE: an UNNAMED attempt in the IDENTICAL state (branch present, tree
+// absent, request-pending resumable) is refused at both routes and NEVER TOUCHED -- the step selects no prior
+// attempt other than attempt_worktree_restore_scaffold_attempt_key, so its tree stays absent and its claim slot
+// stays a slot that has never held a record: no generation was written, before or after. The named attempt, in the
+// same state with the same everything but the key, does get a tree and does get a claim record. That pair is what
+// makes the NAME the population. Operator-bounded scaffold: attempt_worktree_restore_scaffold /
+// attempt_worktree_restore_dissolve_trigger (decision msg_e623cf1e); the wake call site adds no member and no
+// lifetime.
+//
+// The restore's other fail-closed arms (branch absent under a surviving row, unreadable ledger, malformed stream,
+// refused reopen) are covered where they can be staged faithfully, in
+// test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness, which now runs the same pinned step.
+
+import std.logic { Bool }
+import std.types { String, FilePath, List, NonEmptyStr }
+import std.filesystem { path_parent_directory }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_branch_name,
+}
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore, AttemptWorktreeRestored,
+  AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
+  belt_claim_tree_at, belt_continuation_decision_for_node, belt_prior_attempt_recovery,
+  attempt_worktree_restore_scaffold_attempt_key,
+}
+import gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationResume, ContinuationHoldUntil, ContinuationSpawnFresh, ContinuationRefused }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { worktree_claim_read, worktree_claim_reference, WorktreeClaimAbsent, WorktreeClaimHeld, WorktreeClaimUnreadable }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_attempt_wake_admission, belt_redeliver_attempt_continues, BeltRedeliverWakeAdmission, WakeAdmissionAdmitted, WakeAdmissionRestoreRefused, WakeAdmissionContinuationRefused }
+import gunbc.harness.harness_session_recovery { SessionValidated, session_event_request_pending, session_recovery_resumability, ResumabilityResumable, ResumabilityNotRequestPending, ResumabilityMalformed }
+
+// THE SUBJECT KEY OF THE POPULATION, read from the code that enforces it: the fixture never carries its own copy,
+// so a rename of the approved attempt moves the witness with the gate instead of leaving a green lie behind.
+fn subject_key() -> String { attempt_worktree_restore_scaffold_attempt_key }
+
+// An attempt key OUTSIDE the population: a well-formed 16-hex key that the named pin must refuse, in the identical
+// state. Chosen to differ from the subject key in two digits, so a typo cannot quietly make them equal.
+fn outside_key() -> String { "f5a42384c6a5e13e" }
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_redeliver_wake_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["redeliver-wake-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["redeliver-wake-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18101,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn git_ok(dir: String, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn mkdir_p(dir: String) -> Bool {
+  shell.Mkdir.Parents(path: dir as FilePath).success
+}
+
+// Lay a real repo at the instance's repo_root with one commit, then create the dispatch branch that IS the ledger
+// row for (node, attempt_key): the ledger is git for-each-ref on refs/heads/dispatch/.
+fn lay_repo_with_dispatch_branch(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  let root = instance.instance_root as String
+  let repo = instance.repo_root as String
+  git_ok(dir: root, args: ["init", "-q", repo])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && git_ok(dir: repo, args: ["config", "commit.gpgsign", "false"])
+    && Filesystem.Write(path: join([repo, "/file.txt"], ""), content: "base\n").success
+    && git_ok(dir: repo, args: ["add", "-A"])
+    && git_ok(dir: repo, args: ["commit", "-q", "-m", "base"])
+    && git_ok(dir: repo, args: ["branch", dispatch_branch_name(node_id: node, attempt_key: attempt_key)])
+}
+
+// Seed the worker's provider-events.jsonl with one resumable request-pending event at the exact path the recovery
+// reading reads. This is the worktree-INDEPENDENT half of the wake's standing: it reads the same with the tree
+// present or absent, which is exactly why a refusal that turns on the tree cannot be a verdict about the lineage.
+fn seed_request_pending_events(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  let events_path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)
+  mkdir_p(path_parent_directory(path: events_path))
+    && Filesystem.Write(path: events_path, content: join([session_event_request_pending(round: 7, cause: "the pool front answered 429 (no capacity)", since: 1000, validation: SessionValidated), "\n"], "")).success
+}
+
+fn prepare_claim_store(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  mkdir_p(worktree_claim_slots_root_of(instance: instance) as String)
+    && mkdir_p(path_parent_directory(path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)))
+}
+
+fn cleaned(instance: HostDashboardInstance, verdict: Bool) -> Bool {
+  shell.Remove.RecursiveForce(path: instance.instance_root as String).success && verdict
+}
+
+// The tree at the attempt's worktree path, as the belt reads it: true only for a genuinely ABSENT tree (an
+// unobserved one is a different fact and must not count as the wedge's shape).
+fn tree_absent(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)) {
+    ClaimTreeAbsent => true
+    ClaimTreePresent => false
+    ClaimTreeUnobserved { detail: _ } => false
+  }
+}
+
+fn tree_present(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  match belt_claim_tree_at(instance: instance, path: dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: attempt_key)) {
+    ClaimTreeAbsent => false
+    ClaimTreePresent => true
+    ClaimTreeUnobserved { detail: _ } => false
+  }
+}
+
+// Does this attempt's recovery stream read request-pending AND resumable? That is the restore gate's own test,
+// asserted here so a refusal can be attributed to the NAME and not to the state.
+fn recovery_resumable(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: attempt_key)) {
+    ResumabilityResumable => true
+    ResumabilityNotRequestPending => false
+    ResumabilityMalformed { mismatch: _ } => false
+  }
+}
+
+// Has the attempt's claim slot EVER held a record? Read before and after an actuation that must not touch it:
+// 'the claim generation is unchanged' shown as 'no generation was ever written' (an unreadable slot counts as
+// touched, so a red points at the actuation rather than hiding behind it).
+fn claim_slot_recorded(instance: HostDashboardInstance, node: RoadmapNodeId, attempt_key: String) -> Bool {
+  match worktree_claim_read(root: worktree_claim_slots_root_of(instance: instance), reference: worktree_claim_reference(node_id: node as String, attempt_key: attempt_key) as NonEmptyStr) {
+    WorktreeClaimAbsent => false
+    WorktreeClaimHeld { claim: _, generation: _ } => true
+    WorktreeClaimUnreadable { detail: _ } => true
+  }
+}
+
+fn is_not_needed(step: AttemptWorktreeRestore) -> Bool {
+  match step {
+    AttemptWorktreeRestored { worktree_path: _, branch: _ } => false
+    AttemptWorktreeNotNeeded => true
+    AttemptWorktreeBranchAbsent { branch: _, detail: _ } => false
+    AttemptWorktreeRestoreRefused { detail: _ } => false
+  }
+}
+
+fn decision_is_refused(decision: ContinuationDecision) -> Bool {
+  match decision {
+    ContinuationRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+fn decision_is_spawn_fresh(decision: ContinuationDecision) -> Bool {
+  match decision {
+    ContinuationSpawnFresh { reason: _ } => true
+    _ => false
+  }
+}
+
+// Does the decision continue EXACTLY this attempt key (Resume or request-pending Hold-Until)? The same question
+// belt_redeliver_attempt_continues answers, asked here of the decision itself so a refusal can be localized to
+// the key and not to the tree.
+fn decision_names_key(decision: ContinuationDecision, attempt_key: String) -> Bool {
+  match decision {
+    ContinuationResume { reason: _, attempt_key: k, ordinal: _, causes: _ } => k == attempt_key
+    ContinuationHoldUntil { reason: _, attempt_key: k, redeliver_at: _ } => k == attempt_key
+    _ => false
+  }
+}
+
+fn admission_is_admitted(admission: BeltRedeliverWakeAdmission) -> Bool {
+  match admission {
+    WakeAdmissionAdmitted { restore: _ } => true
+    WakeAdmissionRestoreRefused { detail: _ } => false
+    WakeAdmissionContinuationRefused => false
+  }
+}
+
+fn admission_is_continuation_refused(admission: BeltRedeliverWakeAdmission) -> Bool {
+  match admission {
+    WakeAdmissionAdmitted { restore: _ } => false
+    WakeAdmissionRestoreRefused { detail: _ } => false
+    WakeAdmissionContinuationRefused => true
+  }
+}
+
+// (1) THE WEDGE, REPRODUCED FROM THE WAKE'S SIDE, BEFORE ANY STEP. A request-pending attempt whose branch is
+// present and whose tree is absent: its recovery stream reads resumable and its ledger row is there, yet the
+// continuation the gate reads comes back Refused (its capture leg cannot observe a head in a tree that is gone),
+// and the unchanged key gate is false on that reading. The state to re-deliver is present; the entry refuses it.
+test fn a_woken_attempt_with_its_worktree_reaped_refuses_its_own_continuation() -> Bool {
+  let instance = fresh_instance(tag: "wedge")
+  let node = "n-redeliver-wedge"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let resumable = recovery_resumable(instance: instance, node: node, attempt_key: key)
+  let absent = tree_absent(instance: instance, node: node, attempt_key: key)
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && resumable && absent && decision_is_refused(decision: decision) && !belt_redeliver_attempt_continues(decision: decision, attempt_key: key))
+}
+
+// (2) THE WAKE ADMISSION, ADMITTING, WITH THE STEP SHOWN TO HAVE RUN FIRST. Same state; the admission is Admitted
+// and the worktree EXISTS when it returns. The tree was absent when the call started, and the admission does not
+// create a tree after a verdict -- an Admitted arm over a tree that did not exist at entry is the order.
+test fn the_wake_entry_restores_before_it_reads_the_continuation() -> Bool {
+  let instance = fresh_instance(tag: "order")
+  let node = "n-redeliver-order"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let absent_before = tree_absent(instance: instance, node: node, attempt_key: key)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && absent_before && admission_is_admitted(admission: admission) && tree_present(instance: instance, node: node, attempt_key: key))
+}
+
+// (3) THE SAME GATE, UNCHANGED, OVER THE DECISION READ AFTER THE STEP: that decision continues exactly the attempt
+// the wake was armed with, and the unchanged key guard is true for it. Nothing in the continuation was loosened to
+// get here -- it could only be READ once the tree existed.
+test fn the_continuation_read_after_the_step_names_the_woken_attempt() -> Bool {
+  let instance = fresh_instance(tag: "gate")
+  let node = "n-redeliver-gate"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && admission_is_admitted(admission: admission) && decision_names_key(decision: decision, attempt_key: key) && belt_redeliver_attempt_continues(decision: decision, attempt_key: key))
+}
+
+// (4) THE KEY GATE SURVIVES THE STEP: the same attempt state, and the wake names a DIFFERENT key. The decision
+// continues the admitted attempt (so the refusal is not about the tree), and the unchanged guard -- which compares
+// that decision's attempt key against the key the wake was armed with -- refuses. Restoring does not widen what a
+// wake may continue.
+test fn a_wake_naming_another_attempt_key_is_refused_after_the_step() -> Bool {
+  let instance = fresh_instance(tag: "key")
+  let node = "n-redeliver-key"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: outside_key())
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && admission_is_continuation_refused(admission: admission) && decision_names_key(decision: decision, attempt_key: key) && !belt_redeliver_attempt_continues(decision: decision, attempt_key: outside_key()))
+}
+
+// (5) THE POPULATION IS A NAME, NOT A STATE -- AT THE DOOR'S STEP. An attempt in the IDENTICAL state under a key
+// the operator did not approve: branch present, tree absent, recovery resumable (asserted in the same verdict, so
+// the refusal cannot be blamed on the state) -- and the step selects nothing, so it is NotNeeded and the tree is
+// still absent when it returns.
+test fn an_unnamed_attempt_in_the_identical_state_is_not_selected_by_the_step() -> Bool {
+  let instance = fresh_instance(tag: "pin-door")
+  let node = "n-redeliver-pin-door"
+  let key = outside_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let resumable = recovery_resumable(instance: instance, node: node, attempt_key: key)
+  let absent_before = tree_absent(instance: instance, node: node, attempt_key: key)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  cleaned(instance: instance, verdict: laid && resumable && absent_before && is_not_needed(step: step) && tree_absent(instance: instance, node: node, attempt_key: key))
+}
+
+// (6) AND NEVER TOUCHED -- AT THE WAKE. The same unnamed attempt through the wake entry: refused, its tree still
+// absent, and its claim slot still a slot that has never held a record. A pin that acted and then reported
+// NotNeeded would fail this leg; a pin that only refuses would pass it.
+test fn the_unnamed_attempt_is_never_restored_at_the_wake_and_its_claim_slot_is_unchanged() -> Bool {
+  let instance = fresh_instance(tag: "pin-wake")
+  let node = "n-redeliver-pin-wake"
+  let key = outside_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
+  let clean_before = !claim_slot_recorded(instance: instance, node: node, attempt_key: key)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && is_not_needed(step: step) && clean_before && admission_is_continuation_refused(admission: admission) && tree_absent(instance: instance, node: node, attempt_key: key) && !claim_slot_recorded(instance: instance, node: node, attempt_key: key))
+}
+
+// (7) THE NAMED POPULATION DOES REACH BOTH: the approved key, every other input identical, gets the tree and gets
+// the claim record. This is the existing named positive control, restated at the wake entry so the pair with leg
+// (6) leaves no reading in which the state, rather than the name, is the population.
+test fn the_named_attempt_is_restored_and_its_claim_slot_is_reopened() -> Bool {
+  let instance = fresh_instance(tag: "pin-named")
+  let node = "n-redeliver-pin-named"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
+    && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let clean_before = !claim_slot_recorded(instance: instance, node: node, attempt_key: key)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && clean_before && admission_is_admitted(admission: admission) && tree_present(instance: instance, node: node, attempt_key: key) && claim_slot_recorded(instance: instance, node: node, attempt_key: key))
+}
+
+// (8) THE SPAWN-FRESH-ONLY CONTROL: a node with no prior attempt of its own at all -- the dispatch branch
+// namespace exists (another node has a row), this node has none -- so its decision is SpawnFresh: fresh work,
+// which this entry may never start. It is refused, and its tree stays absent: a refusal that actuates nothing.
+test fn a_spawn_fresh_only_node_is_refused_and_starts_nothing() -> Bool {
+  let instance = fresh_instance(tag: "fresh")
+  let other = "n-redeliver-other-row"
+  let node = "n-redeliver-fresh"
+  let key = subject_key()
+  let laid = lay_repo_with_dispatch_branch(instance: instance, node: other, attempt_key: key)
+    && prepare_claim_store(instance: instance, node: node, attempt_key: key)
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node)
+  let admission = belt_redeliver_attempt_wake_admission(instance: instance, node_id: node, attempt_key: key)
+  cleaned(instance: instance, verdict: laid && decision_is_spawn_fresh(decision: decision) && admission_is_continuation_refused(admission: admission) && tree_absent(instance: instance, node: node, attempt_key: key))
+}

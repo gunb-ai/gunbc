@@ -17,6 +17,13 @@ module test.claim.roadmap.belt_worktree_restore_wet_witness
 // The BranchAbsent and ledger/pane-unknown arms need a dangling ref / an unobservable host a wet git
 // fixture cannot forge faithfully; those are covered hermetically in roadmap_belt_actuate_witness (the
 // standing collapse and the branch check) and attempt_worktree_claim_wet (the standing classifier).
+//
+// EVERY RESTORE-BEHAVIOUR LEG HERE USES attempt_worktree_restore_scaffold_attempt_key AS ITS ATTEMPT KEY.
+// The step's population is enforced by NAME (operator decision msg_e623cf1e), so a leg that armed itself with
+// some other key would still see NotNeeded -- for the pin, not for the state leg it claims to test -- and a green
+// would be a lie. The pinned name is read from the code that enforces it, never copied here. The pair that makes
+// the NAME (not the state) the population, an unnamed attempt in the identical state left untouched, is witnessed
+// in test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness, which runs this same step at both routes.
 
 import std.logic { Bool }
 import std.types { String, FilePath, List, NonEmptyStr }
@@ -34,7 +41,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exec, ExecOk, ExecFailed, ExecRefused,
-  belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestore,
+  belt_attempt_worktree_restore_for_instance, attempt_worktree_restore_scaffold_attempt_key, AttemptWorktreeRestore,
   AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused,
   belt_attempts_observe_for_instance, belt_prior_attempt_recovery, belt_claim_tree_at, AttemptsObserved,
   belt_lineage_standing, BeltAttemptPanesObserved, claim_reopen_refusal_outcome, WorktreeClaimEnsure, ClaimEnsured, ClaimEnsureRefused,
@@ -197,7 +204,7 @@ test fn the_worktree_is_absent_before_the_restore() -> Bool {
 test fn the_restore_returns_the_restored_arm() -> Bool {
   let instance = fresh_instance(tag: "arm")
   let node = "n-wt-arm"
-  let key = "4d5e6f7081921324"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -209,7 +216,7 @@ test fn the_restore_returns_the_restored_arm() -> Bool {
 test fn the_restored_worktree_exists_after_the_restore() -> Bool {
   let instance = fresh_instance(tag: "after")
   let node = "n-wt-after"
-  let key = "5e6f708192132435"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -227,7 +234,7 @@ test fn the_restored_worktree_exists_after_the_restore() -> Bool {
 test fn the_restored_head_equals_the_branch_head() -> Bool {
   let instance = fresh_instance(tag: "head")
   let node = "n-wt-head"
-  let key = "6f70819213243546"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -245,7 +252,7 @@ test fn the_restored_head_equals_the_branch_head() -> Bool {
 test fn an_already_present_tree_is_not_needed() -> Bool {
   let instance = fresh_instance(tag: "restore-present")
   let node = "n-wt-present"
-  let key = "7081921324354657"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let branch = dispatch_branch_name(node_id: node, attempt_key: key)
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: key)
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
@@ -262,7 +269,7 @@ test fn an_already_present_tree_is_not_needed() -> Bool {
 test fn a_lineage_without_a_request_pending_stream_is_not_needed() -> Bool {
   let instance = fresh_instance(tag: "restore-none")
   let node = "n-wt-none"
-  let key = "8192132435465768"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
@@ -285,7 +292,7 @@ fn lay_malformed_stream_on_a_missing_tree(instance: HostDashboardInstance, node:
 test fn a_number_typed_event_line_reads_as_a_malformed_resumability() -> Bool {
   let instance = fresh_instance(tag: "restore-mal-read")
   let node = "n-wt-mal-read"
-  let key = "8192132435465768"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
   let pk = ledger_first_key(instance: instance)
   let malformed = match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node, attempt_key: pk)) { ResumabilityMalformed { mismatch: _ } => true _ => false }
@@ -295,7 +302,7 @@ test fn a_number_typed_event_line_reads_as_a_malformed_resumability() -> Bool {
 test fn a_malformed_stream_on_a_missing_tree_is_a_refused_restore() -> Bool {
   let instance = fresh_instance(tag: "restore-mal-step")
   let node = "n-wt-mal-step"
-  let key = "8192132435465768"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
   let refused = match belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node) {
     AttemptWorktreeRestoreRefused { detail: _ } => true
@@ -309,7 +316,7 @@ test fn a_malformed_stream_on_a_missing_tree_is_a_refused_restore() -> Bool {
 test fn a_refused_malformed_restore_creates_no_worktree() -> Bool {
   let instance = fresh_instance(tag: "restore-mal-tree")
   let node = "n-wt-mal-tree"
-  let key = "8192132435465768"
+  let key = attempt_worktree_restore_scaffold_attempt_key
   let laid = lay_malformed_stream_on_a_missing_tree(instance: instance, node: node, key: key)
   let pk = ledger_first_key(instance: instance)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)

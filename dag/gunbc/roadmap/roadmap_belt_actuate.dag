@@ -1841,7 +1841,12 @@ data attempt_worktree_restore_scaffold: Disposition = Scaffold {
   }
 }
 
-data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "Population: exactly attempt e5a42384c6a5e13d on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists, so no member can be added); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore and belt_attempt_worktree_restore_for_instance in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal.")
+// THE APPROVED POPULATION'S NAME, IN ONE PLACE. The operator approval bounds the scaffold to ONE attempt BY
+// NAME, so the gate reads this value and the row below quotes it -- the id exists nowhere else as a copy (§5:
+// a scaffold states its own population, and a state match must not stand in for the name).
+data attempt_worktree_restore_scaffold_attempt_key: String = "e5a42384c6a5e13d"
+
+data attempt_worktree_restore_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: join(["Population: exactly the attempt named by attempt_worktree_restore_scaffold_attempt_key (", attempt_worktree_restore_scaffold_attempt_key, ") on lab instance srv1-lab-codex-feedback-v0, whose worktree claim reads terminal:recovered while its recovery stream is request-pending (written by the pre-D1/D2 release, which no longer exists); operator approval is decision msg_e623cf1e (DESIGN section 5), granting no broader population and no census. The gate ENFORCES that name: belt_attempt_worktree_restore_for_instance selects no prior attempt other than it, so an attempt that merely RESEMBLES the state is untouched (no claim reopen, no worktree add) and the ordinary route refuses it with a typed refusal. The step runs at TWO call sites -- the spawn route (belt_actuate_spawn_for_instance) and the re-delivery wake entry (belt_redeliver_attempt_wake_admission) -- and the second adds no member and no lifetime. DISSOLVES WHEN that attempt's own recovery stream has left request-pending (answered, ended or spawned fresh), read from its existing record: delete AttemptWorktreeRestore, attempt_worktree_restore_scaffold_attempt_key, belt_attempt_worktree_restore_for_instance and BOTH call sites in the first lab-dev change after. An attempt whose reading is unknown does not hold the deletion open; the ordinary route then refuses it with a typed refusal."], ""))
 
 // THE CLAIM SUB-STEP'S OWN OUTCOME. It only ever ensures that an OPEN claim names the worktree path, so it does not
 // borrow AttemptWorktreeRestore's 'nothing to do' / 'branch absent' variants -- reusing that type for two roles would
@@ -1918,11 +1923,17 @@ fn belt_worktree_claim_ensure_open_for_instance(
 // THE RESTORE STEP itself. Resolves the node's prior attempt from the ledger (the same ledger the decision reads),
 // applies the three-way gate, then re-materializes the tree from the branch and reopens the claim. Every read is
 // the modeled one; the two git calls run through the belt's exec path (the same host_exec_argv/capability program
-// the claim-open flow uses), so no parallel authority is introduced.
+// the claim-open flow uses), so no parallel authority is introduced. TWO ROUTES RUN IT, BEFORE THEY READ THE
+// CONTINUATION, and both read it as an ACTUATION with typed refusal arms: the spawn route
+// (belt_actuate_spawn_for_instance) and the re-delivery wake entry (belt_redeliver_attempt_wake_admission, in
+// gunbc.roadmap.roadmap_belt_tick_cli). Reading the continuation with the tree absent is not evidence the lineage
+// ended -- its capture leg (belt_worktree_head_observe) simply cannot be read -- so a route that decides first
+// cannot restore, and a route that restores first cannot decide on an unknown tree.
 fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> AttemptWorktreeRestore {
   // The attempt to restore is the node's prior attempt -- the SAME first-per-node row the continuation decision
   // reads -- so the restore and the decision never disagree about WHICH attempt is being resumed (one selection
-  // rule). The GATE is RESUMABILITY, not ENDEDNESS: it reads the recovery reading (the attempt-state event
+  // rule), and that row is then narrowed to the ONE attempt the scaffold is approved for (the name, below).
+  // The GATE is RESUMABILITY, not ENDEDNESS: it reads the recovery reading (the attempt-state event
   // stream), which is TREE-INDEPENDENT. A reclaimed worktree makes the CONTINUATION Refused (its capture cannot
   // be read), so gating the restore on that standing would CYCLE -- missing tree => Refused => unknown => restore
   // refuses => tree stays missing, and the wedge would never clear. The recovery reading says 'request-pending
@@ -1935,7 +1946,13 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
     AttemptsRefused { reason } =>
       AttemptWorktreeRestoreRefused { detail: join(["the prior-attempt ledger could not be read to decide whether a request-pending worktree needs restoring: ", reason], "") }
     AttemptsObserved { attempts } =>
-      match (attempts |> filter(a => a.node_id as String == node_id as String)).first() {
+      // THE POPULATION IS A NAME, NOT A RESSEMBLANCE (operator decision msg_e623cf1e). The approval grants this
+      // scaffold to exactly ONE attempt, so the SELECTION itself is narrowed to attempt_worktree_restore_scaffold_attempt_key:
+      // a prior attempt that matches every state test below but is not that attempt selects nothing here -- Absent,
+      // NotNeeded, no claim reopen, no `git worktree add`, no touch of any kind -- and the ordinary route refuses
+      // it from the unchanged continuation. Narrowing the selection rather than adding a test inside the acting arm
+      // is what makes 'never touched' a fact of the code instead of a promise in a comment.
+      match (attempts |> filter(a => a.node_id as String == node_id as String) |> filter(a => a.attempt_key == attempt_worktree_restore_scaffold_attempt_key)).first() {
         Absent => AttemptWorktreeNotNeeded
         Present { value: p } =>
           match session_recovery_resumability(belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: p.attempt_key)) {

@@ -26,7 +26,11 @@ module gunbc.roadmap.roadmap_attempt_redelivery_wake
 // the same node-dispatch path, never a parallel spawn. That route CONTINUES ONLY, never STARTS: it carries
 // the attempt key and dispatches only when the node's own continuation decision is a Resume/Hold-Until for
 // exactly that key (belt_redeliver_attempt_continues), so a wake re-delivers an already-admitted attempt
-// rather than opening a second door into new dispatch (review 87645, decision A1). It is deliberately NOT belt_dispatch_node_cli,
+// rather than opening a second door into new dispatch (review 87645, decision A1). It reads that decision AFTER
+// running the SAME worktree-restore step the door route runs first (belt_redeliver_attempt_wake_admission): the
+// decision reads the prior attempt's submission capture, whose head lives in the worktree, so a woken attempt
+// whose tree was reaped would otherwise refuse on an unreadable capture forever -- restore, then decide (the door
+// order), never decide on a tree this route did not check. It is deliberately NOT belt_dispatch_node_cli,
 // whose narrow admitted-instance list refuses this lab's instance id. The authorization
 // pattern is DERIVED, not borrowed: characterized against
 // gunbc.auth.authorization_pattern_selection.select_authorization_pattern (consumed by the witness and
