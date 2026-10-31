@@ -41,6 +41,8 @@ import std.algebra {
 import extdeps.dns.domain_name { DnsLabel, dns_label_eq, host_name_label_count }
 import extdeps.network.endpoint {
   parse_network_host,
+  host_by_name,
+  render_network_host,
   NetworkHostParsed,
   NetworkHostRefused,
   HostByName,
@@ -146,6 +148,8 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
 import extdeps.network.ipv4 { render_ipv4_address }
 import product.host_identity { host_identity_eq }
+import gunbc.host.boot_medium { bmc_boot_image_export }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.dissolution {
@@ -830,6 +834,20 @@ test fn the_rule_and_the_probe_rows_key_on_one_release() -> Bool {
         Absent => false
         Present { value: probe_release } => bmc_firmware_release_identity_eq(a: rule_release, b: probe_release)
       }
+  }
+}
+
+// THE BOOT PATH'S OWN EXPORT LEG NAMES ITS HOST, and the name is the identity authority's datum rather than a
+// re-spelled string. This is the `boot_medium bmc_boot_image_export` row the naming audit in
+// docs/probes/bmc_media_share_naming_2026-10-27.md names: a boot publishes its image to srv2 over SSH, and the
+// target carries a `NetworkHost`. Re-type that leg as a number -- the way the BMC's media share carries one --
+// and the arm stops matching. That is the authorable boundary the brief asks for: a host row that spells an
+// address where a name belongs is refused by the type, not relabelled by a comment.
+test fn the_boot_image_export_leg_names_its_host_and_holds_no_number() -> Bool {
+  match bmc_boot_image_export.target.address.host {
+    HostByName { name: n } =>
+      (render_network_host(host: host_by_name(name: n)) as String) == (operator_host_srv2 as String)
+    HostByAddress { address: _ } => false
   }
 }
 
