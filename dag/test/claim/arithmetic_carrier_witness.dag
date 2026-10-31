@@ -27,7 +27,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE EXECUTED EVIDENCE THAT AN ARITHMETIC RESULT IS TYPED FROM BOTH OPERANDS' CARRIERS (Q1e), on the
+// THE EVIDENCE (executed on srv1 before this PR leaves review; results on the PR) THAT AN ARITHMETIC RESULT IS TYPED FROM BOTH OPERANDS' CARRIERS (Q1e), on the
 // source -> .dag-acceptance path. Before, the binop fold typed at the LEFT operand: `Nat + Int` was a Nat while
 // `Int + Nat` was an Int, and unary `-Nat` was a Nat (a negative natural). Result types are observed through
 // `(expr) as Nat`: an Int as Nat refinement cast refuses (refinement_cast_wall_witness), a Nat as Nat is the
