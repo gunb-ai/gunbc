@@ -30007,6 +30007,105 @@ pub fn emit_typed_collection_lambda(
     }
 }
 
+pub fn rust_fold_declarable_acc_type(
+    acc_type_node: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let si = scope.type_env.source_indices.clone();
+        let acc_type_str = render_rust_type(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            si.clone(),
+            emit_info.clone(),
+        );
+        let acc_type_name = crate::v1_std_core::authored_name_at(si.clone(), acc_type_node.clone());
+        let is_type_var = if (acc_type_node.inferred.clone() != std::option::Option::None) {
+            is_type_variable(acc_type_node.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let child_is_type_var = {
+            let mut __found = false;
+            for c in acc_type_node.children.clone().iter().cloned() {
+                if type_node_child_is_type_variable(c.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let has_unbound = type_node_has_unbound_type_variable(
+            acc_type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            si.clone(),
+        );
+        let has_closure_unbound = type_node_has_closure_unbound_generic_atom(
+            acc_type_node.clone(),
+            emit_info.fn_generic_param_names.clone(),
+            scope.type_env.clone(),
+            si.clone(),
+        );
+        let render_spurious = rust_fold_rendered_type_has_any_spurious_generic(
+            acc_type_str.clone(),
+            emit_info.fn_generic_param_names.clone(),
+        );
+        let bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
+            && crate::std_types::is_container_type(acc_type_name));
+        let bare_parametric_head = type_node_carries_applicationless_parametric_head(
+            acc_type_node.clone(),
+            shared_types.clone(),
+            si.clone(),
+            emit_info.clone(),
+        );
+        let unit_child = ({
+            let mut __found = false;
+            for c in acc_type_node.children.clone().iter().cloned() {
+                if (crate::v1_compiler_infer_types::is_unit_like(c.clone())
+                    || (c.ident_span.clone() == std::option::Option::None))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } || {
+            let mut __found = false;
+            for c in acc_type_node.children.clone().iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for gc in c.children.clone().iter().cloned() {
+                        if (crate::v1_compiler_infer_types::is_unit_like(gc.clone())
+                            || (gc.ident_span.clone() == std::option::Option::None))
+                        {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        });
+        if (((((((bare_container.clone() || unit_child.clone()) || is_type_var.clone())
+            || child_is_type_var.clone())
+            || has_unbound.clone())
+            || has_closure_unbound.clone())
+            || render_spurious.clone())
+            || bare_parametric_head.clone())
+        {
+            "_".to_string()
+        } else {
+            acc_type_str.clone()
+        }
+    }
+}
+
 pub fn rust_fold_safe_acc_type(acc_type_str: String) -> String {
     if (((acc_type_str.clone() == "Rc<Vec<()>>".to_string())
         || (acc_type_str.clone() == "Vec<()>".to_string()))
@@ -30324,8 +30423,8 @@ pub fn emit_rust_fold_method_call(
             && fold_proof.safe_field_moves.clone());
         let structural_move =
             (fold_proof.eligible.clone() && fold_proof.whole_acc_single_use.clone());
-        let acc_unwrap = (structural_unwrap.clone()
-            && v1_rt::set_contains(&shared_types, acc_type_name.clone()));
+        let acc_unwrap =
+            (structural_unwrap.clone() && v1_rt::set_contains(&shared_types, acc_type_name));
         let fold_emit_info = if acc_unwrap.clone() {
             match (*fold_lambda_node.expr_data.clone()).clone() {
                 ExprData::ExprLambda => {
@@ -30463,60 +30562,28 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.source_indices.clone(),
             fold_emit_info.clone(),
         );
-        let acc_type_is_type_var = if (acc_type_node.inferred.clone() != std::option::Option::None)
-        {
-            is_type_variable(acc_type_node.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let acc_child_is_type_var = {
-            let mut __found = false;
-            for c in acc_type_node.children.clone().iter().cloned() {
-                if type_node_child_is_type_variable(c.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let acc_has_unbound_type_var = type_node_has_unbound_type_variable(
-            acc_type_node.clone(),
-            emit_info.fn_generic_param_names.clone(),
-            scope.type_env.source_indices.clone(),
-        );
-        let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(
-            acc_type_node.clone(),
-            emit_info.fn_generic_param_names.clone(),
-            scope.type_env.clone(),
-            scope.type_env.source_indices.clone(),
-        );
-        let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(
-            acc_type_str.clone(),
-            emit_info.fn_generic_param_names.clone(),
-        );
         let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(
             elem_type_str.clone(),
             emit_info.fn_generic_param_names.clone(),
         );
-        let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
-            && crate::std_types::is_container_type(acc_type_name.clone()));
-        let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(
+        let init_acc_type_str = rust_fold_declarable_acc_type(
             acc_type_node.clone(),
             shared_types.clone(),
-            scope.type_env.source_indices.clone(),
+            scope.clone(),
             fold_emit_info.clone(),
         );
-        let lambda_acc_type_str = if ((((((is_bare_container.clone()
-            || acc_type_is_type_var.clone())
-            || acc_child_is_type_var.clone())
-            || acc_has_unbound_type_var.clone())
-            || acc_has_closure_unbound_generic.clone())
-            || acc_render_has_spurious_generic.clone())
-            || acc_carries_bare_parametric_head.clone())
-        {
-            "_".to_string()
+        let lambda_acc_type_str = if (init_acc_type_str.clone() != "_".to_string()) {
+            init_acc_type_str.clone()
         } else {
-            acc_type_str.clone()
+            match contextual_acc_type.clone() {
+                Some(result_node) => rust_fold_declarable_acc_type(
+                    result_node.clone(),
+                    shared_types.clone(),
+                    scope.clone(),
+                    fold_emit_info.clone(),
+                ),
+                std::option::Option::None => "_".to_string(),
+            }
         };
         let fold_elem_type_str = if elem_render_has_spurious_generic.clone() {
             "_".to_string()
