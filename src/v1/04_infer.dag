@@ -8591,6 +8591,13 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
 // already exists at the fold call; this is the fact it was missing. STRUCTURAL ONLY -- declared
 // params on an expansion -- so it adds no spelling-keyed identity decision beside those
 // gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
+// `init: none` / `[]` types the accumulator with a unit placeholder payload (`Option<()>`), which
+// is_fully_resolved admits; the step's return is the only thing that fixes the payload, so the
+// accumulator is open exactly as an unapplied generic is.
+fn fold_accumulator_has_unit_placeholder(n: Node) -> Bool {
+  n.children |> any(c => is_unit_like(n: c) || c.ident_span == none)
+}
+
 fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
   (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
 }
@@ -10194,7 +10201,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
           Present { value: acc } =>
-            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) || fold_accumulator_has_unit_placeholder(n: acc) {
               match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
                 Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
                 Absent => call_fold_acc_type
