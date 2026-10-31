@@ -3104,6 +3104,14 @@ fn roster_occ_expect_refused(name: String, text: String, keys: List<String>, pre
   }
 }
 
+fn roster_occ_expect_ambiguous(name: String, text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_occ_outcome(text: text, keys: keys, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == "label-sites-ambiguous" { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
+}
+
 fn roster_occ_expect_unmatched(name: String, text: String, keys: List<String>, key: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_occ_outcome(text: text, keys: keys, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } =>
@@ -3126,6 +3134,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
   let chain_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String, j: String) -> Optional<String> {\n  m |> map_get(k) |> map_get(j)\n}\n"
   let not_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(m |> map_get(k))\n}\n"
   let not_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(map_lookup(m: m, key: k))\n}\n"
+  let by_name = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Int {\n  let h = map_get\n  1\n}\n"
   [
     roster_control_verdict(name: "occurrences-selected-site-rewrites-unselected-untouched", fail: roster_occ_expect_text(name: "occurrences-selected-site-rewrites-unselected-untouched", before: src, keys: ["control/rename.dag:7:3"], after: second_only, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-every-site-selected", fail: roster_occ_expect_text(name: "occurrences-every-site-selected", before: src, keys: ["control/rename.dag:6:11", "control/rename.dag:7:3"], after: both, prepared: prepared, lex: lex)),
@@ -3146,7 +3155,8 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control()),
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex))
+    roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-ambiguous", fail: roster_occ_expect_ambiguous(name: "occurrences-keyed-non-head-reference-refuses-ambiguous", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
   ]
 }
 
