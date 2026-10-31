@@ -1212,6 +1212,17 @@ fn term_valuation_eq(a: TermValuation, b: TermValuation) -> Bool {
     && axis_goal_eq(a: a.goal, b: b.goal)
 }
 
+// Occurrence-sensitive, order-independent comparison of two valuation lists: equal as a MULTISET, so
+// multiplicity is preserved and nothing is deduped. A raw SelectionPolicy may carry repeated terms
+// (admission refuses duplicates, but this comparator must be lawful over SelectionPolicy as declared),
+// so membership plus cardinality is not enough: [A,A] and [A,B] have the same membership and the same
+// count yet are different policies, and [A,A,B] and [A,B,B] have the same membership in both directions
+// yet different multiplicities. Each element's multiplicity must match on both sides.
+fn valuations_multiset_eq(a: List<TermValuation>, b: List<TermValuation>) -> Bool {
+  count(a) == count(b)
+    && all(a, x => (filter(a, y => term_valuation_eq(a: x, b: y)) |> count) == (filter(b, y => term_valuation_eq(a: x, b: y)) |> count))
+}
+
 // Structural equality of two SelectionPolicy values: same arm, same identity, and same
 // behavior-affecting parameters. This is what lets a receipt distinguish a change of arm, or of the
 // preferred parameter, while every other input is held fixed — the decision authority records WHICH
@@ -1238,8 +1249,7 @@ fn policy_equality(a: SelectionPolicy, b: SelectionPolicy) -> Bool {
           declaration_ref_eq(a: ia, b: ib)
             && valued_measure_eq(a: ma, b: mb)
             && currency_code_eq(a: ca, b: cb)
-            && (count(va) == count(vb))
-            && all(va, x => any(vb, y => term_valuation_eq(a: x, b: y)))
+            && valuations_multiset_eq(a: va, b: vb)
         _ => false
       }
   }

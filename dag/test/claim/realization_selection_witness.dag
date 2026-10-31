@@ -28,6 +28,10 @@ import std.decision {
   UnfundedAxis,
   select_realization,
   receipts_eq,
+  policy_equality,
+  ValuedObjective,
+  TermValuation,
+  NetValue,
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,
@@ -46,6 +50,8 @@ import std.decision {
   CausalModelEstablished,
   FleetObservedCoupling,
 }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -1020,4 +1026,43 @@ test fn usesep_receipt_is_stable_under_a_repeated_identical_policy() -> Bool {
         Present { value: r2 } => receipts_eq(a: r1, b: r2)
       }
   }
+}
+
+// A fixed valuation on a given term, for the policy_equality multiset controls below. Only the term
+// identity varies between the valuations a control compares; scale and goal are held constant so the
+// comparison is about multiplicity, not about the valuation's other fields.
+fn tv(term: DeclarationRef) -> TermValuation {
+  TermValuation { term: term, scale_micro: money_amount_micro(count: 10), goal: HigherIsBetter }
+}
+
+// POLICY-EQUALITY CONTROL — the asymmetric pair. p has A twice, q has A once and B once. They have the
+// same membership and the same count, so a membership+cardinality comparator wrongly reports them equal
+// in one direction. The multiset comparator must report them unequal in BOTH directions.
+// RED: if the ValuedObjective arm compared valuations by membership plus cardinality (the pre-fix code),
+// policy_equality(p, q) would be true -> red.
+test fn policy_equality_refuses_a_duplicate_against_a_distinct_term() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — unequal multiplicities with the SAME membership in both directions.
+// [A,A,B] and [A,B,B] contain the same terms and the same total count, and every term of each matches
+// some term of the other in both directions, so a membership+cardinality comparator reports them equal.
+// The multiset comparator must report them unequal in both directions.
+// RED: if the arm compared by membership plus cardinality, both directions would be true -> red.
+test fn policy_equality_refuses_unequal_multiplicities_with_equal_membership() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b), tv(id_b)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — the positive control. Two UNIQUE valuation lists that differ only in ORDER
+// must be equal: the comparison is order-independent, and nothing is deduped.
+// RED: if the comparator were order-sensitive (elementwise by index), the reordered pair would be
+// reported unequal -> red.
+test fn policy_equality_accepts_reordered_unique_valuations() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_b), tv(id_a)], measure: NetValue, currency: Usd }
+  policy_equality(a: p, b: q) && policy_equality(a: q, b: p)
 }
