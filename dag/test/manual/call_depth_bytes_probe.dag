@@ -21,3 +21,7 @@ fn call_depth_bytes_probe_control() -> ProcessExit {
 fn call_depth_bytes_probe_near_limit() -> ProcessExit {
   if nested_depth(n: 99000) == 792000 { ExitSuccess } else { exit_failure(reason: "nested_depth returned the wrong sum") }
 }
+
+fn call_depth_bytes_probe_past_limit() -> ProcessExit {
+  if nested_depth(n: 100010) == 800080 { ExitSuccess } else { exit_failure(reason: "nested_depth returned the wrong sum") }
+}
