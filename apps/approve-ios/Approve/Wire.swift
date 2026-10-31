@@ -288,8 +288,8 @@ enum WireDecode {
     }
 
     /// approval_push_custom_keys: the hint travels as the top-level custom key "notification_id"
-    /// beside aps. It is decoded and then used for NOTHING but being present: the push wakes the
-    /// list and never selects what is shown.
+    /// beside aps. It is a locator and never authority: a tapped alert brings the pending request it
+    /// names to the front of the list, and the request itself is still read over the authenticated route.
     static func pushHint(_ userInfo: [AnyHashable: Any]) throws -> ApprovalPushHint {
         guard let id = userInfo["notification_id"] as? String, !id.isEmpty else { throw WireError.refused(at: "notification_id", cause: "missing") }
         return ApprovalPushHint(notification_id: id)

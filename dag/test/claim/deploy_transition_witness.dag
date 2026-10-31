@@ -11,9 +11,25 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
 }
 import gunbc.deploy_transition_store { transition_inhibition_slots }
+import std.durable_compare_and_set {
+  CasSlotObservationRefused,
+  CasGenerationPublicationRefused,
+  CasGenerationSpaceExhausted,
+  CasUnreadableReadRefused,
+  cas_store_failure_detail,
+  cas_generation_first,
+}
+import gunbc.deploy_transition_lease_store {
+  transition_lease_slots,
+  TransitionLeaseRefusal,
+  TransitionLeaseOccupied,
+  TransitionLeaseUndecodable,
+  TransitionLeaseLost,
+  TransitionLeaseUnavailable,
+}
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_root_spelling_refusal, dashboard_declared_instance_roots_are_one_spelling, srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_root_spelling_refusal, dashboard_declared_instance_roots_are_one_spelling, dashboard_instance_roots_are_one_spelling, srv1_live_dashboard_instance }
 import gunbc.deploy_transition {
   TransitionRecord,
   TransitionFileObservation,
@@ -28,6 +44,7 @@ import gunbc.deploy_transition {
   LeaseAcquired,
   LeaseHeldBy,
   LeaseHeldUndecodable,
+  LeaseAcquireLost,
   LeaseUnobtainable,
   ActuationStanding,
   ActuationPermitted,
@@ -45,7 +62,6 @@ import gunbc.deploy_transition {
   transition_record_json,
   transition_record_decode,
   transition_file_observation_of,
-  transition_lease_file_name,
   transition_record_same_subject,
   lease_acquisition_refused,
   actuation_standing_of,
@@ -83,17 +99,23 @@ fn partial_record() -> TransitionRecord {
 fn acquisition_arm(a: LeaseAcquisition) -> String {
   match a {
     LeaseAcquired(_) => "acquired"
-    LeaseHeldBy { record: _ } => "held"
+    LeaseHeldBy { holder: _ } => "held"
     LeaseHeldUndecodable { cause: _ } => "undecodable"
+    LeaseAcquireLost { cause: _ } => "lost"
     LeaseUnobtainable { cause: _ } => "unobtainable"
   }
 }
 
-// THE REFUSED ACQUISITIONS NEED NO CONTEXT: a refused create mints no guard, so the refusal fold is driven here
-// directly. The admitting arm mints a guard bound to a context, which only the context mint over a listed directory
-// yields, so it is test.claim.deploy_transition_wet_witness a_second_acquire_is_refused_and_names_the_holder.
-fn acquire_with(observed: TransitionFileObservation) -> String {
-  acquisition_arm(a: lease_acquisition_refused(error: "File exists (os error 17)", observed: observed))
+// THE REFUSED ACQUISITIONS NEED NO CONTEXT: a refusal of the lease store carries no held proof, so the refusal fold
+// is driven here directly over the store's refusal arms. The admitting arm mints a guard bound to a context and
+// carrying a committed hold, which only the context mint over a listed directory and a real acquire yield, so it is
+// test.claim.deploy_transition_wet_witness a_held_lease_refuses_a_second_acquire_until_its_holder_releases.
+fn acquire_with(refusal: TransitionLeaseRefusal) -> String {
+  acquisition_arm(a: lease_acquisition_refused(refusal: refusal))
+}
+
+fn occupied() -> TransitionLeaseRefusal {
+  TransitionLeaseOccupied { holder: "[\"deployer\", \"run-0\"]", generation: 1 }
 }
 
 fn decoded_ok(d: TransitionRecordDecode) -> Bool {
@@ -169,6 +191,15 @@ test fn the_instance_root_rule_answers_each_spelling_by_its_own_arm() -> Bool {
     && string_contains(s: root_spelling_answer(root: "/opt/gunbc/.."), pattern: "segment")
 }
 
+// THE LAW DISCRIMINATES: one relative or one trailing-separator root among canonical ones fails the set, and the
+// canonical set holds. Without this the declared-row claim below could only go red by a change to the rows.
+test fn one_badly_spelled_root_fails_the_instance_set() -> Bool {
+  let good = [instance_rooted(root: "/opt/gunbc"), instance_rooted(root: "/srv/gunbc")]
+  dashboard_instance_roots_are_one_spelling(instances: good)
+    && !dashboard_instance_roots_are_one_spelling(instances: [instance_rooted(root: "/opt/gunbc"), instance_rooted(root: "srv/gunbc")])
+    && !dashboard_instance_roots_are_one_spelling(instances: [instance_rooted(root: "/srv/gunbc/"), instance_rooted(root: "/opt/gunbc")])
+}
+
 // THE DECLARED INSTANCES INHABIT THE RULE: every production root the context would mint over is spelled one way,
 // read off the real declared rows. srv1 live is named, so the law cannot be satisfied by an empty roster.
 test fn every_declared_instance_root_is_absolute_and_spelled_one_way() -> Bool {
@@ -176,33 +207,58 @@ test fn every_declared_instance_root_is_absolute_and_spelled_one_way() -> Bool {
     && root_spelling_answer(root: srv1_live_dashboard_instance().instance_root as String) == "admitted"
 }
 
-// THE THREE REFUSED ACQUISITION ARMS ARE DISTINCT, driven through one function over inputs that differ only in
-// the observation the decision consumes. Asserting one arm alone would stay green against a fold that answered it
-// unconditionally; none of them may answer the admitting arm.
-test fn the_three_refused_acquisition_outcomes_are_three_different_answers() -> Bool {
-  let held = acquire_with(observed: TransitionFilePresent { record: in_force_record() })
-  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
-  let unobtainable = acquire_with(observed: absent_observation())
+// THE ONE STORE-FAILURE RENDERING KEEPS EVERY ARM: std.durable_compare_and_set cas_store_failure_detail, which the
+// lease store's unavailable and release-refused arms consume. Each arm by its own input, so a fold that answered one
+// arm for all, or dropped the exhausted arm into a generic sentence, fails.
+test fn the_store_failure_detail_keeps_every_arm() -> Bool {
+  let unreadable = cas_store_failure_detail(cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "EACCES" as NonEmptyStr } })
+  let refused = cas_store_failure_detail(cause: CasGenerationPublicationRefused { detail: "ENOSPC" as NonEmptyStr })
+  let exhausted = cas_store_failure_detail(cause: CasGenerationSpaceExhausted { head: cas_generation_first() })
+  string_contains(s: unreadable, pattern: "read refused: EACCES")
+    && refused == "ENOSPC"
+    && string_contains(s: exhausted, pattern: "exhausted at 1")
+}
+
+// ALL FOUR REFUSAL ARMS ARE DISTINCT, and none is an acquisition, driven through the one fold over the store's
+// refusal. Asserting one arm alone would stay green against a fold that answered it unconditionally.
+test fn the_four_refused_acquisitions_are_four_different_answers() -> Bool {
+  let held = acquire_with(refusal: occupied())
+  let corrupt = acquire_with(refusal: TransitionLeaseUndecodable { detail: "bad" })
+  let lost = acquire_with(refusal: TransitionLeaseLost { detail: "raced" })
+  let unobtainable = acquire_with(refusal: TransitionLeaseUnavailable { detail: "EACCES" })
   held == "held"
     && corrupt == "undecodable"
+    && lost == "lost"
     && unobtainable == "unobtainable"
 }
 
-// THE FAIL-CLOSED DIRECTION, and it is the one a reasonable implementation gets wrong. A lease file
-// that exists and does not decode is NOT a free lease: rendering it as absent would hand a second
-// converge the critical section a first one is still inside. This witness reds the moment the
-// undecodable arm is folded into either neighbour.
+// THE FAIL-CLOSED DIRECTION, and it is the one a reasonable implementation gets wrong. A lease slot that
+// does not decode is NOT a free lease: rendering it as absent would hand a second converge the critical
+// section a first one is still inside. This witness reds the moment the undecodable arm is folded into
+// either neighbour.
 test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
-  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
+  let corrupt = acquire_with(refusal: TransitionLeaseUndecodable { detail: "bad" })
   corrupt != "acquired" && corrupt != "held"
 }
 
-// A CREATE THAT FAILED WITH NOTHING READABLE IS NOT A HELD LEASE EITHER. Permission denied on the
-// directory and a lease held by a peer have opposite remedies -- fix the host, or wait -- so a fold
-// that answered "held" for both would send an operator to wait out a lease that does not exist.
-test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool {
-  acquire_with(observed: absent_observation())
-    != acquire_with(observed: TransitionFilePresent { record: in_force_record() })
+// A STORE THAT COULD NOT BE READ OR WRITTEN IS NOT A HELD LEASE, AND NOT A LOST RACE EITHER. Permission denied
+// on the root and a lease held by a peer have opposite remedies -- fix the host, or wait -- and a lost race is a
+// third (re-observe), so a fold that answered one for another would send an operator to the wrong one.
+test fn a_store_refusal_is_distinguished_from_a_held_lease_and_a_lost_race() -> Bool {
+  let unavailable = acquire_with(refusal: TransitionLeaseUnavailable { detail: "EACCES" })
+  unavailable != acquire_with(refusal: occupied())
+    && unavailable != acquire_with(refusal: TransitionLeaseLost { detail: "raced" })
+}
+
+// THE HELD ARM NAMES THE HOLDER the hold library read off the slot, so a refused converge can say who to wait for.
+test fn a_held_lease_names_its_holder() -> Bool {
+  match lease_acquisition_refused(refusal: occupied()) {
+    LeaseHeldBy { holder: h } => string_contains(s: h, pattern: "run-0")
+    LeaseAcquired(_) => false
+    LeaseHeldUndecodable { cause: _ } => false
+    LeaseAcquireLost { cause: _ } => false
+    LeaseUnobtainable { cause: _ } => false
+  }
 }
 
 // THE ROUND TRIP IS THE ORACLE FOR THE ENCODING, not a golden string: what production writes is what
@@ -398,7 +454,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
     listing: "transition-inhibition.json.tmp",
     read: read_refused(e: "No such file or directory"),
   )) == "absent"
-    && transition_lease_file_name != transition_inhibition_slots.member as String
+    && transition_lease_slots.member as String != transition_inhibition_slots.member as String
 }
 
 // ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:

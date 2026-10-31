@@ -1,0 +1,38 @@
+module test.claim.symbol_total_order_witness
+
+import std.types { Bool, String, List }
+import std.algebra { list_sort_by_key, list_map, TotalOrder, Ordering, Less, Equal, Greater }
+import v2.std.node { symbol_total_order, symbol_lexeme, symbol_intern_lexeme, Symbol }
+
+// The declared Symbol order is the String order over the lexeme. Symbols are interned out of lexicographic order, so an
+// order by intern sequence (the wrong key order) would return them as interned; the declared order must not.
+fn lexemes(xs: List<Symbol>) -> List<String> {
+  list_map(xs: xs, f: fn(s) { symbol_lexeme(sym: s) })
+}
+
+data interned_out_of_order: List<Symbol> = [symbol_intern_lexeme(lexeme: "pear"), symbol_intern_lexeme(lexeme: "apple"), symbol_intern_lexeme(lexeme: "fig")]
+
+fn symbol_compare_reversed(a: Symbol, b: Symbol) -> Ordering {
+  match symbol_total_order().compare(b, a) {
+    Less => Less
+    Equal => Equal
+    Greater => Greater
+  }
+}
+
+data reversed_symbol_order: TotalOrder<Symbol> = { compare: symbol_compare_reversed }
+
+test fn the_declared_symbol_order_sorts_by_lexeme() -> Bool {
+  lexemes(xs: list_sort_by_key(xs: interned_out_of_order, key: fn(s) { s }, order: symbol_total_order()))
+    == ["apple", "fig", "pear"]
+}
+
+test fn the_declared_symbol_order_agrees_with_the_host_sort() -> Bool {
+  lexemes(xs: list_sort_by_key(xs: interned_out_of_order, key: fn(s) { s }, order: symbol_total_order()))
+    == lexemes(xs: interned_out_of_order |> sort_by(s => s))
+}
+
+test fn a_reversed_symbol_order_is_a_discriminating_red() -> Bool {
+  lexemes(xs: list_sort_by_key(xs: interned_out_of_order, key: fn(s) { s }, order: reversed_symbol_order))
+    != ["apple", "fig", "pear"]
+}

@@ -1,0 +1,58 @@
+module test.claim.seed_build_preamble_no_marker_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
+
+data claim_subject: String = "the seed-build preamble serializes to shell that carries every statement the producer authored: no refusal marker anywhere in it, and both arms of each parameter default present"
+
+// WHERE THIS CLAIM ACTUALLY RUNS, stated rather than assumed, because the honest answer is not
+// "a job runs it". It is not discovered: witness discovery is a source-root walk for *_test.dag
+// (claim_executor's invoke_floor_discovery_producer_over_corpus hands the producer only source_roots
+// and exclude_substrings -- witness_discovery_scan_dirs scopes owned data decls, not witnesses), and
+// no file in the dag tree is named that way. It is not on a scheduled cadence: the required GitHub
+// job judges two instrument rows and, in DESIGN's own sentence, "nothing on the required path
+// evaluates a witness" -- a loss declared at gunbc.rung_drop v1_required_lanes_withdrawn. What
+// executes it is the floor's enrolment of newly added test fns in files the change touches
+// (v2.workflow.floor_enrolment_margin; the executor's enrolled_test_fns set), the route an author
+// runs locally: claim_batch over this entry, both rows green with compile and typecheck floors clean
+// at 2026-10-31T05:12Z. TRIGGER for a scheduled home: the trigger named at
+// gunbc.recurring_failure_mode.an_authored_gate_reached_by_no_execution_route. Once a generated
+// artifact's regeneration is compared on an executed route, this claim belongs on that route, because
+// a preamble that cannot be emitted is exactly what such a comparison is for.
+data real_execution_home_doc: String = "Floor-enrolled (a newly added test fn in a touched file) and run by the author locally with claim_batch; no scheduled job runs it, and that is covered by v1_required_lanes_withdrawn."
+
+// WHY THIS WITNESS EXISTS. #15235 (486127ca2c87, 2026-10-28) rewrote the seed-build preamble's
+// parameter defaults from a word form the bash grammar cannot spell into the grammar's own if/else,
+// and passed each arm as a BARE STATEMENT where the grammar's body is a statement-list node. The
+// fold had refused that shape eight days earlier (#14586), so every regeneration since emits the
+// refusal marker in place of the default assignments rather than the assignments: seven committed
+// workflow artifacts (fleet-converge, heal, heal-publish, witnesses, drift-watch, instrument-dispatch,
+// branch-run-grant-broker) went stale at once, and the PRs that needed one of them took only their
+// own hunks of the regenerated file -- which is the drift this branch closes. The class is
+// gunbc.recurring_failure_mode.a_serializer_drops_admitted_children_from_a_malformed_body.
+//
+// NOTHING READ THE PREAMBLE. That is how a producer whose output cannot be emitted sat on main for
+// three days: the preamble is a string built at emit time, and no claim had ever looked at it.
+
+// THE MARKER THE EMITTER SUBSTITUTES WHEN IT REFUSES A STATEMENT. A generated step that carries it
+// is not valid shell, which is the point -- but a generated WORKFLOW that carries it has already
+// lost a statement, and nothing in the step's own text says so.
+data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
+
+// THE PREAMBLE EMITS: no statement in it is refused.
+test fn the_seed_build_preamble_emits_without_a_refusal_marker() -> Bool {
+  !string_contains(s: repo_self_build_env_preamble(), pattern: refused_marker)
+}
+
+// BOTH ARMS OF EACH DEFAULT SURVIVE THE FOLD. A refusal is not the only way to lose a statement --
+// the class's failure mode is a plausible program with the body gone -- so the claim names the arms
+// themselves: the assignment that keeps an inherited value, and the assignment that supplies the
+// checkout-relative default, for both prefixes the preamble defaults.
+test fn the_seed_build_preamble_keeps_both_default_arms() -> Bool {
+  let text = repo_self_build_env_preamble()
+  string_contains(s: text, pattern: "GUNBC_SEED_TARGET=\"$CARGO_TARGET_DIR\"")
+    && string_contains(s: text, pattern: "GUNBC_SEED_TARGET=\"$GUNBC_SEED_CHECKOUT\"'/target'")
+    && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$CARGO_HOME\"")
+    && string_contains(s: text, pattern: "GUNBC_SEED_CARGO_HOME=\"$HOME\"'/.cargo'")
+}

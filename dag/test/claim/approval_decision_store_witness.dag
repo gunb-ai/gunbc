@@ -7,7 +7,6 @@ import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagM
 import std.measure { byte_size_count }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import extdeps.tailscale.identity { tailnet_identity_of }
 import extdeps.filesystem.filesystem_io { filesystem_exact_read }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
@@ -15,9 +14,8 @@ import gunbc.auth.approval_decision_store {
   approval_mac_key_id, approval_mac_key_suite, approval_capability_authority,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed,
   StoredDecisionParsed, StoredRecordUnreadable,
-  claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
+  claims_for,
   IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
-  redeem_over_store, RedemptionIdentityUntrusted,
   EscalationSlot, EscalationPending, EscalationDecided, EscalationUnreadable, EscalationNotFiled,
   PendingFold, pending_fold_step, request_needs_attention_at,
 }
@@ -30,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // HMAC-SHA-256 over exactly approval_capability_signing_input(claims_for(fixture_request, d))
 // under this key -- the same arrangement mac_verification_witness_test uses with the RFC 4231
 // vectors: the implementation is checked against bytes it did not produce. Issuance now exists
-// (extdeps.crypto.mac mac_sign, consumed by approval_request_submission issue_links), so these
+// (extdeps.crypto.mac mac_sign), so these
 // literals are the regression control that the signing input did not move, beside the round-trip
 // in approval_request_submission_witness_test.
 data fixture_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -110,19 +108,6 @@ test fn a_newline_in_expires_at_is_unreadable_not_a_filed_request() -> Bool {
   }
 }
 
-// ── the link segment ───────────────────────────────────────────────────────────────────────────
-
-test fn capability_segment_round_trips_and_refuses_a_third_decision_word() -> Bool {
-  let seg = capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag)
-  match parse_capability_segment(segment: seg as String) {
-    CapabilitySegmentParsed { escalation_id: e, decision: ProposeApprove, tag_hex: t } => e == "esc-mtc1-boot-1" && t == fixture_approve_tag
-    _ => false
-  }
-    && match parse_capability_segment(segment: "esc-mtc1-boot-1.maybe.abcd") { CapabilitySegmentMalformed { detail: _ } => true  _ => false }
-    && match parse_capability_segment(segment: "esc.mtc1.approve.abcd") { CapabilitySegmentMalformed { detail: _ } => true  _ => false }
-    && match parse_capability_segment(segment: "esc-mtc1-boot-1.approve.") { CapabilitySegmentMalformed { detail: _ } => true  _ => false }
-}
-
 // ── the tag authenticates the STORED claims, and the decision is part of them ──────────────────
 
 test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() -> Bool {
@@ -138,7 +123,7 @@ test fn fixture_tags_verify_over_the_stored_claims_and_not_across_decisions() ->
 
 // THE TRUST STANDING FOLLOWS THE INSTANCE ROW AND NOTHING ELSE: loopback opens the gate ONLY as
 // Unattributed (never as Established -- a loopback bind does not attribute the on-host peer, so
-// the record names the bearer), any other bind or an unparseable host keeps it closed, and the production row is
+// the operator routes refuse), any other bind or an unparseable host keeps it closed, and the production row is
 // exactly the derivation over the broker's bind row, the same value the emitted broker unit's --host
 // carries -- so the gate cannot be
 // opened by editing a row beside the one the unit is emitted from.
@@ -149,22 +134,6 @@ test fn identity_trust_is_derived_from_the_instance_bind() -> Bool {
     && match approval_identity_trust_for(listen_host: "srv1.internal") { IdentityHeaderTrustNotEstablished { blocker: _ } => true  _ => false }
     && approval_identity_trust == approval_identity_trust_for(listen_host: approval_broker_listen_host)
     && approval_identity_trust == approval_identity_trust_for(listen_host: deployment_spec_srv1().approval_broker.listen.host as NonEmptyStr)
-}
-
-// AN UNTRUSTED IDENTITY HEADER REFUSES BEFORE THE SEGMENT IS EVEN PARSED -- with a well-formed
-// segment and a loaded key, so nothing else could be the cause. The untrusted standing is supplied,
-// since the production row is whatever the instance bind makes it.
-test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
-  true
-    && match redeem_over_store(
-      root: "/nonexistent/approvals",
-      trust: IdentityHeaderTrustNotEstablished { blocker: "witness: the deployment cannot vouch for the header" },
-      keyring: ApprovalKeyLoaded { key: fixture_key() },
-      method: POST,
-      segment: capability_path_segment(escalation_id: "esc-mtc1-boot-1", decision: ProposeApprove, tag_hex: fixture_approve_tag) as String,
-      presented_identity: tailnet_identity_of(header_value: "briansrls@gmail.com"),
-      observed_at: "2026-09-16T21:00:00Z",
-    ) { RedemptionIdentityUntrusted { blocker: _ } => true  _ => false }
 }
 
 // ── what the phone lists: only the requests that still need the operator ───────────────────────

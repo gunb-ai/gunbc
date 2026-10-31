@@ -8,12 +8,17 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
+import gunbc.auth.profile_store_root { ProfileStoreReading, ProfileStoreReady, ProfileStoreUnready, profile_store, profile_store_slots_path }
 import gunbc.auth.profile_projection {
-  ProfileStoreLayout, PrincipalProfile,
+  PrincipalProfile,
   ProfileStoreUpsert, ProfileStoreUpserted, ProfileStoreUpsertRefused,
   ProfileStoreReadAll, ProfileStoreRead, ProfileStoreUnread,
-  profile_store_upsert_from_session, profile_store_read_all,
+  profile_store_upsert_from_session, profile_store_read_all, profile_store_roster,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -23,19 +28,36 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it because no claim ran the real store path: every consumer supplied profiles as values. These
 // claims execute the REAL upsert (sha256 file name, owner-only write) and the REAL read-all
 // (Filesystem.List through filesystem_listing_observation, then Filesystem.Read and the decoder)
-// against a directory the claim creates with shell.Mktemp.Dir and removes afterwards. Each asserts
+// against a directory the claim creates with shell.Mktemp.Dir and removes afterwards, through the production
+// mint (gunbc.auth.profile_store_root profile_store) over an instance whose root is that directory. Each asserts
 // the ROUTE's result shape -- the one principal and name that was written comes back -- so a read
 // that answers an empty roster, or refuses, is red.
 
-fn ps_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+fn ps_with_temp_dir(scenario: fn(FilePath) -> ProcessExit) -> ProcessExit {
   let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && observed && cleaned.success
+  if !dir.success { exit_failure(reason: "the fixture directory could not be created") } else {
+    let observed = scenario(dir.path)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    match observed {
+      ExitSuccess => if cleaned.success { ExitSuccess } else { exit_failure(reason: "the fixture directory could not be removed") }
+      ExitFailure { code: _, reason: _ } => observed
+    }
+  }
 }
 
-fn ps_layout(dir: FilePath) -> ProfileStoreLayout {
-  ProfileStoreLayout { root: dir }
+fn ps_instance(dir: FilePath) -> HostDashboardInstance {
+  isolated_dashboard_instance(deployment: deployment_id(name: "profile-store-fixture" as NonEmptyStr), instance_id: "profile-store-fixture", layout: srv1_host_layout(), root: dir,
+    serve_function: "unused", listen_port: 18746, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+}
+
+// The store's directory, created the way the instance directory row would create it.
+fn ps_store_dir(dir: FilePath) -> FilePath {
+  profile_store_slots_path(instance: ps_instance(dir: dir))
+}
+
+fn ps_store(dir: FilePath) -> ProfileStoreReading {
+  let made = shell.Mkdir.Parents(path: ps_store_dir(dir: dir))
+  profile_store(instance: ps_instance(dir: dir))
 }
 
 fn ps_principal() -> PrincipalRef {
@@ -55,10 +77,10 @@ fn ps_session(name: String, authenticated_at: String) -> AuthenticatedSession {
   }
 }
 
-fn ps_upserted(u: ProfileStoreUpsert) -> Bool {
+fn ps_upserted(u: ProfileStoreUpsert) -> ProcessExit {
   match u {
-    ProfileStoreUpserted { principal: p } => principal_ref_eq(a: p, b: ps_principal())
-    ProfileStoreUpsertRefused { step: _, reason: _ } => false
+    ProfileStoreUpserted { principal: p } => if principal_ref_eq(a: p, b: ps_principal()) { ExitSuccess } else { exit_failure(reason: "the upsert answered a different principal") }
+    ProfileStoreUpsertRefused { step: s, reason: r } => exit_failure(reason: join(["the upsert refused at ", s, ": ", r], ""))
   }
 }
 
@@ -68,47 +90,61 @@ fn ps_profile_is(p: PrincipalProfile, name: String) -> Bool {
 }
 
 // Exactly one profile, the witness principal carrying `name`, and nothing skipped.
-fn ps_read_exactly_one(r: ProfileStoreReadAll, name: String) -> Bool {
+fn ps_read_exactly_one(r: ProfileStoreReadAll, name: String) -> ProcessExit {
   match r {
-    ProfileStoreUnread { step: _, reason: _ } => false
+    ProfileStoreUnread { step: s, reason: why } => exit_failure(reason: join(["the read-all refused at ", s, ": ", why], ""))
     ProfileStoreRead { profiles: ps, skipped: sk } =>
-      count(ps) == 1
-        && count(sk) == 0
-        && (match ps.first() { Present { value: p } => ps_profile_is(p: p, name: name), Absent => false })
+      if count(ps) == 1 && count(sk) == 0 && (match ps.first() { Present { value: p } => ps_profile_is(p: p, name: name), Absent => false }) { ExitSuccess }
+      else { exit_failure(reason: "the read-all did not return exactly the one upserted profile with nothing skipped") }
+  }
+}
+
+// The store the claims run against, minted the production way. A mint that refuses fails the claim with its
+// own detail; it never reaches the business assertions (stern-ram-763, 2026-10-25).
+fn ps_upsert_then_read(dir: FilePath, name: String) -> ProcessExit {
+  match ps_store(dir: dir) {
+    ProfileStoreUnready { detail: d } => exit_failure(reason: join(["the profile store mint refused over the fixture tree: ", d], ""))
+    ProfileStoreReady { store: st } =>
+      match ps_upserted(u: profile_store_upsert_from_session(store: st, session: ps_session(name: name, authenticated_at: "2026-09-30T00:00:00Z"))) {
+        ExitSuccess => ps_read_exactly_one(r: profile_store_read_all(store: st), name: name)
+        ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+      }
   }
 }
 
 // 1. THE CLAIM THAT WAS RED BEFORE THE FIX: one real upsert, then the real read-all over the same
 // directory returns that one profile.
-test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> Bool {
-  ps_with_temp_dir(scenario: fn(dir) {
-    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
-    ps_upserted(u: upsert)
-      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
-  })
+test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> ProcessExit {
+  ps_with_temp_dir(scenario: fn(dir) { ps_upsert_then_read(dir: dir, name: "Ada Witness") })
 }
 
 // 2. A NON-.json ENTRY BESIDE THE PROFILE. The decoder's rule (profile_store_decode_entries) is
 // that an entry not ending in ".json" is IGNORED -- neither decoded nor recorded as skipped; only a
 // .json entry that fails to read or decode is carried in `skipped`. So the roster is still the one
 // profile with zero skipped.
-test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> Bool {
+test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> ProcessExit {
   ps_with_temp_dir(scenario: fn(dir) {
-    let stray = Filesystem.Write(path: concat(dir as String, "/README.txt"), content: "not a profile")
-    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
-    stray.success
-      && ps_upserted(u: upsert)
-      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
+    let made = shell.Mkdir.Parents(path: ps_store_dir(dir: dir))
+    let stray = Filesystem.Write(path: concat(ps_store_dir(dir: dir) as String, "/README.txt"), content: "not a profile")
+    if !(made.success && stray.success) { exit_failure(reason: "the stray entry could not be planted") }
+    else { ps_upsert_then_read(dir: dir, name: "Ada Witness") }
   })
 }
 
 // 3. A MISSING STORE DIRECTORY IS AN UNREAD STORE AT STEP "list" -- never an empty roster, which
-// would be indistinguishable from a store nobody has logged into.
-test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> Bool {
+// would be indistinguishable from a store nobody has logged into. This claim's subject IS the refusal: the mint
+// answers its Unready arm, matched directly, and the roster the serve routes read (profile_store_roster) carries
+// that refusal as Unread at "list".
+test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> ProcessExit {
   ps_with_temp_dir(scenario: fn(dir) {
-    match profile_store_read_all(layout: ps_layout(dir: concat(dir as String, "/absent-store") as FilePath)) {
-      ProfileStoreUnread { step: s, reason: _ } => s == "list"
-      ProfileStoreRead { profiles: _, skipped: _ } => false
+    let reading = profile_store(instance: ps_instance(dir: dir))
+    match reading {
+      ProfileStoreReady { store: _ } => exit_failure(reason: "the profile store minted over a directory that does not exist")
+      ProfileStoreUnready { detail: _ } =>
+        match profile_store_roster(reading: reading) {
+          ProfileStoreUnread { step: s, reason: _ } => if s == "list" { ExitSuccess } else { exit_failure(reason: join(["the roster refused at ", s, ", not at list"], "")) }
+          ProfileStoreRead { profiles: _, skipped: _ } => exit_failure(reason: "the roster over a refused mint answered a roster")
+        }
     }
   })
 }

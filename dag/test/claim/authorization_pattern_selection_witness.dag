@@ -32,7 +32,7 @@ import gunbc.auth.privileged_effect_census {
   RealizedUnderApprovedConvergence, PrivilegedEffectSite, convergence_lineage_defects, srv1_root_mutation_approval_root,
 }
 import gunbc.ci.deploy_route_requirement {
-  srv1_deploy_route_requirement, srv1_observed_job_tenancy, deploy_route_switch_admitted, SoleTenantOfJobUid,
+  srv1_deploy_route_requirement, SharesJobUidWithPullRequestJobs, deploy_route_switch_admitted, SoleTenantOfJobUid,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
@@ -731,9 +731,9 @@ test fn the_attempt_unit_stall_release_shares_the_rearm_site_and_its_selection()
       && selected_federated(s: v.selection))
 }
 
-// D3: the deploy route's root may not switch while srv1 shares its job uid with pull request jobs.
-test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bool {
-  !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: srv1_observed_job_tenancy)
+// D3: the deploy route's root may not switch while the job uid is shared with pull request jobs.
+test fn the_deploy_route_switch_is_refused_while_the_job_uid_is_shared() -> Bool {
+  !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SharesJobUidWithPullRequestJobs)
     && deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SoleTenantOfJobUid)
 }
 
