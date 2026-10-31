@@ -61,10 +61,14 @@ import gunbc.compute.work_request {
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
 
-// A fixture hex is admitted by the same decoder git's own plumbing output goes through. The fallback is
-// NOT the text wearing a nominal label -- that was a String -> GitObjectId cast with no declared route,
-// which the native emitter refuses -- it is git's NULL id, so a fixture no validator admits is visibly
-// wrong (its id is the null id) instead of silently admitted.
+// A fixture hex is admitted by the same decoder git's own plumbing output goes through. The fallback
+// still does not REFUSE -- it substitutes git's NULL id -- and it is visible to a run only where a claim
+// asserts on that id. What it removes is the widening: the old arm admitted ARBITRARY text as an object
+// id (the exact thing extdeps.git.object_store's note forbids: "a consumer casting text into one could
+// produce a GitSha1ObjectId carrying 'x'"), and the new arm can name exactly one id, the one that means
+// "no such tree". Making these fixtures refuse outright is a separate change: tree(hex:) has 24 call
+// sites in this file, and a refusal type would touch every one -- a fixture-authoring gate, not a cast
+// removal, and out of scope here.
 fn tree(hex: String) -> WorkSubject {
   match git_object_id_from_untagged_hex(hex: hex) {
     Present { value: oid } => ExactTree { tree: oid }
