@@ -472,7 +472,7 @@ fn router_dev_body_filter_lines() -> List<String> {
     "    local line = buf:sub(pos, stop - 1)",
     "    local data = line:match('^data:%s*(.-)%s*$')",
     "    if data and data ~= '[DONE]' then observe(data) end",
-    "    pos = stop",
+    "    pos = stop + 1",
     "  end",
     "  buf = buf:sub(pos)",
     "  if ngx.arg[2] and buf ~= '' then",

@@ -105,6 +105,30 @@ fn echo_lines_holding_turn(name: String) -> List<String> {
   ["ngx.req.read_body()", "if ngx.var.arg_hold then ngx.sleep(6) end", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
 }
 
+// THE SAME ECHO, ABLE TO ANSWER AS A STREAM: ?sse=1 answers text/event-stream with the frames below, the
+// usage frame split across two flushes so the router's body filter sees a frame that spans chunks. The
+// frames are declared once; the fixture prints them and the case compares the client's bytes to them.
+fn sse_content_frame() -> String { "data: \{\"choices\":[\{\"delta\":\{\"content\":\"hi\"}}]}" }
+fn sse_usage_head() -> String { "data: \{\"usage\":\{\"prompt_tokens\":7001,\"completion_tokens\":3003," }
+fn sse_usage_tail() -> String { "\"prompt_tokens_details\":\{\"cached_tokens\":5001}}}" }
+fn sse_done_frame() -> String { "data: [DONE]" }
+fn sse_stream_text() -> String { sse_content_frame() + "\n\n" + sse_usage_head() + sse_usage_tail() + "\n\n" + sse_done_frame() + "\n\n" }
+
+fn echo_lines_or_sse(name: String) -> List<String> {
+  [
+    "ngx.req.read_body()",
+    "if ngx.var.arg_sse then",
+    "  ngx.header['Content-Type'] = 'text/event-stream'",
+    "  ngx.print([[" + sse_content_frame() + "]] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([[" + sse_usage_head() + "]]) ngx.flush(true) ngx.sleep(0.2)",
+    "  ngx.print([[" + sse_usage_tail() + "]] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([[" + sse_done_frame() + "]] .. '\\n\\n')",
+    "  return",
+    "end",
+    "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')",
+  ]
+}
+
 fn tls_fixture_server(port: Port, cert: String, key: String, name: String) -> List<NginxDirective> {
   match tok(text: "127.0.0.1") { Absent => no_directives() Present { value: host } =>
   match tok(text: cert) { Absent => no_directives() Present { value: c } =>
@@ -128,7 +152,7 @@ fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDire
 // (?reset) or optionally waits four seconds (?slow) before a second.
 fn dev_upstreams() -> List<NginxDirective> {
   concat(concat(concat(concat(concat(
-      fixture_server(port: 19101 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "a"))),
+      fixture_server(port: 19101 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines_or_sse(name: "a"))),
       tls_fixture_server(port: 19443 as Port, cert: "/etc/fake/b.crt", key: "/etc/fake/b.key", name: "b")),
     tls_fixture_server(port: 19444 as Port, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "d")),
     // The two engines that answer m-e. e1's certificate is outside the pins, so every turn routed to it
@@ -591,6 +615,11 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let bytes_rewritten = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"), path: "/v1/chat/completions")
   let bytes_dropped = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"none\", \"zeta\": 1"), path: "/v1/chat/completions")
   let two_sites = dev_request(key: "ck-falsifier", session: "dup-1", body: "\{\"model\": \"flash-next\", \"metadata\": \{\"model\": \"flash-next\"}}", path: "/v1/chat/completions")
+  // A STREAMED TURN THROUGH THE DEV ROUTER (review of 94abf8b: the body filter's line loop restarted at
+  // the newline it had just found and never ended). The stream must arrive unchanged and complete, the
+  // usage frame split across chunks must be read, and the turn must be released.
+  let sse = dev_request(key: "ck-falsifier", session: "sse-1", body: model_body(model: "m-a"), path: "/v1/chat/completions?sse=1")
+  let sse_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   // A ROW LOWERED TO CAP 0 UNDER A LIVE BINDING. cap-1 is bound to f1; the reload keeps the state
   // dictionary (bindings and counters) and loads f1 at cap 0. The bound turn must be refused at the cap
   // like any full engine-local row, and nothing it did may move f1's active count.
@@ -684,6 +713,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // A cap is the ceiling for every non-overflow row, 0 included: the bound turn is refused at the cap
     // and is not counted, so f1's active count stays 0. Read as an uncapped sentinel, the turn was served
     // without a reservation and released one in the log phase, leaving active:f1 at -1.
+    case_of(identity: "dev_sse_stream_is_relayed_unchanged_and_completes", held: contains(s: sse, p: sse_stream_text() + "\n200 exit=0"), observed: one_line(s: sse)),
+    case_of(identity: "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released", held: contains(s: sse_stats, p: "\"prompt_tokens\":7001") && contains(s: sse_stats, p: "\"completion_tokens\":3003") && contains(s: sse_stats, p: "\"cached_prompt_tokens\":5001") && contains(s: sse_stats, p: "\"active:a\":0"), observed: one_line(s: sse_stats)),
     case_of(identity: "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted", held: contains(s: cap_0_bound, p: "\n429 exit=0") && contains(s: cap_0_bound, p: "at its active-turn cap") && !contains(s: cap_0_bound, p: "upstream=") && contains(s: cap_0_stats, p: "\"active:f1\":0") && !contains(s: cap_0_stats, p: "\"upstream:f1:429\""), observed: concat(one_line(s: cap_0_bound), one_line(s: cap_0_stats))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
@@ -748,6 +779,8 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_effort_drop_splices_enable_thinking_in_place",
     "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded",
     "dev_reload_loads_f1_at_cap_0",
+    "dev_sse_stream_is_relayed_unchanged_and_completes",
+    "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released",
     "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted",
     "world_is_removed",
   ]
