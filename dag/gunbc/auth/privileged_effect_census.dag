@@ -1174,6 +1174,11 @@ data host_primary_network_converge_edge_beside_the_broker_route: DivergenceReaso
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the host_primary_network_converge mode files an access_request (gunbc.auth.access_request) for its staged files and its netplan try on the named target and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), keeping its fresh-connection readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
 }
 
+data boot_medium_reader_probe_edge_beside_the_approval_route: DivergenceReason = DivergenceReason {
+  statement: "the boot-medium reader probe reads, as the administrator over the fleet SSH edge, what the unprivileged reader account can reach on the BMC export host (sudo -u the account, a read of /srv/bmc) beside its own forced-command legs; it writes nothing on the host, but every instance is an operator dispatch, so a human attends it, and the operator ruling of 2026-10-22 names the approval route as the only approval for attendable host-root reach. No authority adapter requests a capability for this probe, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the boot_medium_reader_probe wet mode files an access_request (gunbc.auth.access_request) for its administrator-leg reads on the named export host and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_device_redemption redeem_device_over_store), keeping its staged RED and facts readbacks. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
+}
+
 fn fleet_host_root_effect_on_dispatch(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
@@ -1534,7 +1539,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.host.boot_medium_reader_probe", decl_name: "boot_medium_reader_probe_wet"),
     effect: boot_medium_reader_probe_effect(),
     realized: RealizedAdministratorEdge,
-    divergence_reason: none,
+    divergence_reason: Present { value: boot_medium_reader_probe_edge_beside_the_approval_route },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_mint_wet"),
