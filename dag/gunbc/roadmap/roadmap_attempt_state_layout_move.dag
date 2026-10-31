@@ -129,10 +129,13 @@ fn move_readback_refusal(row: MoveRow, before_parent: String, after_parent: Stri
 // Two fence kinds:
 //   LegacyWriterUnits           the units whose ExecStart entry reaches the identity mint (the set is data,
 //                               traced by symbol; see legacy_writer_units in roadmap_dashboard_instance);
-//   LegacyWriterUndeclared      nothing is declared: refuses, never reads as excluded.
+//   LegacyWriterUndeclared      nothing is declared: refuses, never reads as excluded;
+//   LegacyWriterFenceConflict   more than one row is declared for one instance: refuses on every route, since
+//                               neither row is the authority and a silent pick would be a first- or last-wins fork.
 type LegacyWriterFence
   = LegacyWriterUnits { systemctl: NonEmptyStr, units: List<NonEmptyStr> }
   | LegacyWriterUndeclared
+  | LegacyWriterFenceConflict { instance_id: NonEmptyStr, rows: Int }
 
 type LegacyWriterExclusion
   = LegacyWriterExcluded
@@ -164,11 +167,12 @@ fn legacy_writer_exclusion_all(exclusions: List<LegacyWriterExclusion>) -> Legac
 // One instance's declared fence. Data, never control flow: a new instance is a row.
 type LegacyWriterFenceRow { instance_id: NonEmptyStr, fence: LegacyWriterFence }
 
-// The fence an instance's declared row yields, or Undeclared when it has none.
+// The fence an instance's declared row yields: Undeclared when it has none, a typed conflict when it has several.
 fn legacy_writer_fence_for(rows: List<LegacyWriterFenceRow>, instance_id: NonEmptyStr) -> LegacyWriterFence {
-  fold(
-    rows.filter(fn(r) { r.instance_id == instance_id }),
-    init: LegacyWriterUndeclared,
-    f: (acc, r) => r.fence,
-  )
+  let mine = rows.filter(fn(r) { r.instance_id == instance_id })
+  if length(xs: mine) > 1 {
+    LegacyWriterFenceConflict { instance_id: instance_id, rows: length(xs: mine) }
+  } else {
+    fold(mine, init: LegacyWriterUndeclared, f: (acc, r) => r.fence)
+  }
 }

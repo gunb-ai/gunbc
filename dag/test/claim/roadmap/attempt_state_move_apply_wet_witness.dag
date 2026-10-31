@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -433,4 +433,16 @@ test fn the_activation_gate_passes_an_excluded_writer() -> Bool {
   let i = fresh_instance(tag: "gate3")
   let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
   ready && gate_with(i: i, f: excluded_fence(i: i)).success
+}
+
+test fn two_fence_rows_for_one_instance_are_a_typed_conflict_that_refuses_the_move_and_the_noop() -> Bool {
+  let i = fresh_instance(tag: "dupfence")
+  let id = "dup-instance" as NonEmptyStr
+  let row = LegacyWriterFenceRow { instance_id: id, fence: LegacyWriterUnits { systemctl: "/usr/bin/systemctl" as NonEmptyStr, units: ["a.service" as NonEmptyStr] } }
+  let other = LegacyWriterFenceRow { instance_id: id, fence: LegacyWriterUndeclared }
+  let single = match legacy_writer_fence_for(rows: [row], instance_id: id) { LegacyWriterUnits { systemctl: _, units: _ } => true, LegacyWriterUndeclared => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
+  let conflict = match legacy_writer_fence_for(rows: [row, other], instance_id: id) { LegacyWriterFenceConflict { instance_id: _, rows: n } => n == 2, LegacyWriterUnits { systemctl: _, units: _ } => false, LegacyWriterUndeclared => false }
+  let ready = plant(i: i)
+  let refused = move_with_fence(i: i, fence: LegacyWriterFenceConflict { instance_id: id, rows: 2 })
+  single && conflict && ready && !refused.success && string_contains(s: refused.stderr, pattern: "declares 2 rows")
 }
