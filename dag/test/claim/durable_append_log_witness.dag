@@ -210,13 +210,22 @@ data baseline_source: String = "module probe_append_log_baseline\nimport std.typ
 
 data log_member_write_source: String = "module probe_append_log_member_write\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerEvents, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nfn f(s: AttemptState) -> String {\n  let w = attempt_state_write(store: s, member: AttemptWorkerEvents, content: \"x\")\n  \"\"\n}\n"
 
+data plain_member_write_source: String = "module probe_append_log_plain_write\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptKeyRecord, attempt_state_write }\nfn f(s: AttemptState) -> String {\n  let w = attempt_state_write(store: s, member: AttemptKeyRecord, content: \"x\")\n  \"\"\n}\n"
+
 data events_initializer_source: String = "module probe_append_log_events_initializer\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_initialize_for_instance }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
 
-// RED (EXPECTED, TRIGGER: the log and sandbox-written members leave AttemptStateMember and are reached only
-// through AppendLogStore) -- A LOG MEMBER IS WRITTEN THROUGH THE GENERIC ATTEMPT-STATE WRITE. Nothing refuses it
-// today (the closed enum still lists AttemptWorkerEvents); the migrated tree must.
+// GREEN CONTROL (flipped by this PR): the log and sandbox-written members have left AttemptStateMember and are
+// reached only through the sealed AppendLogStore, so a log member is NOT a value of the generic write's parameter
+// type -- passing one is a keyed type error on the real acceptance path, not a runtime branch.
 test fn a_log_member_cannot_be_written_through_the_generic_attempt_state_write() -> ProcessExit {
   census_exit(blocking_delta(hostile: log_member_write_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// POSITIVE CONTROL: the barrier refuses log members WITHOUT rejecting plain members -- writing a plain
+// AttemptStateMember through attempt_state_write still compiles clean, so the hostile delta is not a blanket
+// "attempt_state_write is broken" but specifically the log member leaving the accepted type.
+test fn a_plain_member_is_accepted_by_the_generic_attempt_state_write() -> ProcessExit {
+  census_exit(blocking_delta(hostile: plain_member_write_source, safe: baseline_source, holds: fn(n) { n == 0 }))
 }
 
 // KEYED CLAIM (flipped GREEN by this PR's deletion): THE EVENTS FILE IS NO LONGER CREATED BY A BARE
