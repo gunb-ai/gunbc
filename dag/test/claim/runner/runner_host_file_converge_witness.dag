@@ -1655,7 +1655,7 @@ fn host_leg_kinds(host: String) -> List<String> {
   match runner_host_file_subject(host: host as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => []
     RunnerHostFileSubjectAdmitted { subject: subj } =>
-      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid(), receipt: ReceiptAbsent) {
         RunnerHostFilesDesiredRefused { cause: _ } => []
         RunnerHostFilesDesired { files: fs, withheld: _ } => map(host_run_legs(subj: subj, fs: fs), l => runner_host_leg_kind(leg: l))
       }
