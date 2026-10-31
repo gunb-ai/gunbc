@@ -106,9 +106,11 @@ fn mkdir_create_only_with_mode_command(path: String, octal_mode: NonEmptyStr) ->
 
 // ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
 // "ln invocation"): the create-only publication step. A second name for the same inode, never a
-// replacement of the bytes behind an existing name.
+// replacement of the bytes behind an existing name. -T (--no-target-directory) treats the destination as a
+// NAME, never as a directory to link into: without it an existing directory destination (or a symlink to
+// one) makes ln succeed by creating source's basename INSIDE it, a "publication" at a path nobody named.
 fn ln_hard_command(source: String, destination: String) -> ArgvCommand {
-  argv_command(program: ln_program(), arguments: ["--", source, destination])
+  argv_command(program: ln_program(), arguments: ["-T", "--", source, destination])
 }
 
 // ls -ld: ONE long-format line for the path itself, never its contents. The -n form prints numeric
