@@ -322,15 +322,10 @@ fn flex_member_line(m: FlexMemberWalls) -> String {
 //   none), and
 //   the standing of the last create ask (its answer can be lost in transit; a pass that cannot see the
 //   ask cannot reconcile it, and would rent a second card on top of the one it already pays for).
-// So the pass keeps a carry file beside the receipt, under the same authority that writes the receipt.
-// It is line-based and re-readable: a line this pass cannot parse is SKIPPED, never guessed at, and a
-// missing file is a first pass, not a failure. It carries no secret -- an ask id, a contract id, a
-// machine id and two instants.
+// So the pass keeps a carry file for the next one. A carry this pass cannot read is never guessed at (it
+// reads Unread), and an absent one is untrusted, not a first pass: absence does not say no ask is in flight.
+// It carries no secret.
 //
-// The path is a literal target/ path, the same choice the receipt already makes (see this module's row in
-// gunbc.realization_census_rows: "CI receipt written by direct Filesystem.Write to a literal target/
-// path"). A SCHEDULED wet dispatch must move both files under the fleet-converge state root; that is the
-// go-wet slice's decision, not this one's, and it is named here so it is not lost.
 // The directory is gunbc.host.host_layout srv1_flex_pass_carry_root (the host-path authority; DESIGN 3), and
 // the entry path is derived from it, so the three facts a filesystem observation needs (the directory that is
 // listed, the entry name, the full path) cannot disagree. The pass has ONE home host (flex_carry_home_host).
@@ -425,7 +420,8 @@ type FlexCarryStanding
 // FlexSightingsUnread), which means the loading cut CANNOT fire, and no cooldown is claimed. The pass keeps
 // cards it cannot age and holds off on nothing else -- the alternative is a pass that destroys a card on
 // the strength of a file it never read, or that rents a second one because it forgot it asked for the first.
-// The state repairs itself: the next pass that reads a COMPLETE roster writes a fresh baseline.
+// Only the sightings recover on their own (the next pass that reads a COMPLETE roster writes a fresh
+// baseline); the ask standing does not, and needs the operator (FlexCarryStanding, flex_carry_remedy).
 //
 // WHY A FILE ON ONE HOST AND NOT std.durable_compare_and_set OR A SHARED STORE (flex_carry_home_frontier).
 // Exclusion between passes is account-wide: the FlexPass mode is keyed to the concurrency group
