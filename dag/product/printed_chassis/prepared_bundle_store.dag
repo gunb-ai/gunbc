@@ -1,0 +1,273 @@
+module product.printed_chassis.prepared_bundle_store
+
+import std.types { String, NonEmptyStr, FilePath, List, Bool }
+import std.content_hash { sha256_hex_of_text, Sha256Digest }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_string_list, FieldRead, FieldAbsent, FieldMalformed }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.process_hold_identity { text_at }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
+
+// THE PREPARED BUNDLE STORE, SEALED. A fleet preparation writes one bundle -- the CAD check output, the staged
+// profiles, the sliced plates and the prepared-queues.json receipt -- and LATER runs read it back: the inventory
+// verbs (plan_remaining, record_inspection, reserve_plan) re-verify its bytes. That later reader makes it a store,
+// not a scratch output (ruling M1), so it is keyed by a business identity and never by a caller-chosen directory.
+//
+// LAYOUT. prepared-plans/prepared-<sha256 of the plan text>/ is only an INDEX; it holds
+//   attempt-<random>/              one preparation, STAGED here; every bundle file is written beneath it
+//   published-attempt-<random>.json  the create-once PUBLISH RECEIPT of that attempt: its full typed identity
+//                                    (PreparationInputs plus the plan digest) and the sha256 of every bundle file
+// A preparation is visible to readers only through its receipt, and the receipt is written last, after every
+// bundle file exists. Nothing is written into an attempt directory after its receipt (the only staging value that
+// can write is consumed by publish), and a reader verifies the receipt's digests against the files on every read:
+// a changed, missing or extra file is a typed Corrupt refusal, never a silent fallback.
+//
+// THE IDENTITY is the plan text digest and PreparationInputs: recipe, source revision, assembly root and the content
+// digests of the observed print runtime receipt, the pinned slicer archive and the staged profiles. Another recipe,
+// revision, runtime or profile is another preparation beside the first, and the first's bytes are never touched.
+//
+// READERS LIST THE PUBLISHED RECEIPTS FOR A PLAN. Exactly one: verified and read. None: NotPrepared (with the
+// unpublished attempt directories named as RESIDUE: an attempt without a receipt is a preparation that never
+// finished; it is reported and never read). More than one: Ambiguous, naming each receipt and identity; there is
+// no newest-wins and no fallback.
+//
+// RETIRING A PREPARATION has NO modeled authority yet. Deleting a published-<attempt>.json by hand changes which
+// preparation is authoritative, and that is OUTSIDE the modeled authority until the typed retirement op exists:
+// it names the exact attempt, checks the dependent inventory's standing, and refuses when that standing is
+// unestablished. It is enrolled as a declared frontier row (prepared_bundle_retirement_frontier_rows in
+// gunbc.census_closure_frontier), dissolved when prepared_bundle_retire appears.
+//
+// The staging directory is created owner-only (mktemp -d); a preparation and its later readers run as one principal,
+// and any other reader fails the digest verification loudly rather than reading a bundle it cannot see whole.
+type PreparedBundleDeclaration { member: NonEmptyStr }
+
+data prepared_bundle_slots: PreparedBundleDeclaration = PreparedBundleDeclaration { member: "prepared-plans" as NonEmptyStr }
+
+data prepared_bundle_key_prefix: String = "prepared-"
+data prepared_attempt_prefix: String = "attempt-"
+data prepared_published_prefix: String = "published-"
+data prepared_published_suffix: String = ".json"
+data prepared_receipt_schema: String = "gunbc.prepared-bundle.v1"
+data prepared_queues_receipt_name: String = "prepared-queues.json"
+
+type PreparationInputs {
+  recipe: String
+  source_revision: String
+  assembly_root: String
+  runtime_receipt_sha256: Sha256Digest
+  slicer_archive_sha256: Sha256Digest
+  profiles_sha256: Sha256Digest
+}
+
+type PreparedBundleStaging sole_constructor { index: NonEmptyStr, root: NonEmptyStr }
+
+type PreparedBundle sole_constructor { root: NonEmptyStr, attempt: String, identity: String }
+
+data prepared_bundle_retirement_notice: String = "Deleting a published receipt by hand is OUTSIDE the modeled authority: it changes which preparation is authoritative. A typed retirement op (exact attempt, dependent inventory standing checked, refusing when unestablished) does not exist yet."
+
+data prepared_bundle_retirement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_published"),
+    reason: "an Ambiguous reading has no modeled remedy: no typed op retires one named attempt after checking the dependent inventory standing, so removing a published receipt by hand is outside the modeled authority",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_retire"))
+  )
+]
+
+type PreparedBundleStagingReading = PreparedBundleStagingReady { staging: PreparedBundleStaging } | PreparedBundleStagingUnready { detail: String }
+
+type PreparedBundleReading
+  = PreparedBundleReady { bundle: PreparedBundle }
+  | PreparedBundleNotPrepared { residue: List<String> }
+  | PreparedBundleAmbiguous { published: List<String>, notice: String }
+  | PreparedBundleCorrupt { detail: String }
+  | PreparedBundleUnready { detail: String }
+
+fn prepared_plans_root(tree: HostStateTree) -> String {
+  join([host_state_tree_path(tree: tree) as String, "/", prepared_bundle_slots.member as String], "")
+}
+
+fn prepared_plan_index(tree: HostStateTree, plan_text: String) -> String {
+  join([prepared_plans_root(tree: tree), "/", prepared_bundle_key_prefix, sha256_hex_of_text(text: plan_text)], "")
+}
+
+fn index_entries(index: String) -> List<String>? {
+  let listing = Filesystem.List(path: index)
+  match filesystem_listing_observation(directory: index, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(listed) => Present { value: filesystem_listing_entry_names(listing: listed) }
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => none
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => none
+  }
+}
+
+// THE STAGING MINT TAKES THE TREE AND THE PLAN TEXT, never a path. It ensures the plan's index and creates a fresh
+// attempt directory beneath it; a new attempt never reuses another's name.
+fn prepared_bundle_stage(tree: HostStateTree, plan_text: String) -> PreparedBundleStagingReading {
+  if plan_text == "" { return PreparedBundleStagingUnready { detail: "A prepared bundle is keyed by a plan, and the plan is empty" } }
+  let index = prepared_plan_index(tree: tree, plan_text: plan_text)
+  if !shell.Mkdir.Parents(path: index as FilePath).success { return PreparedBundleStagingUnready { detail: concat("Cannot create the prepared plan index ", index) } }
+  let attempt = shell.Mktemp.DirWithTemplate(template: join([index, "/", prepared_attempt_prefix, "XXXXXX"], ""))
+  if !attempt.success { return PreparedBundleStagingUnready { detail: concat("Cannot create a staging attempt under ", index) } }
+  PreparedBundleStagingReady { staging: PreparedBundleStaging { index: index as NonEmptyStr, root: attempt.path as String as NonEmptyStr } }
+}
+
+// The staging directory, for the preparation steps that write their outputs beneath it.
+fn prepared_bundle_stage_directory(staging: PreparedBundleStaging) -> String { staging.root as String }
+
+type PreparedQueuesWrite = PreparedQueuesWritten | PreparedQueuesRefused { cause: String }
+
+// THE QUEUES RECEIPT is a bundle file like the others, create-once and read back byte-equal; its digest is
+// covered by the publish receipt.
+fn prepared_bundle_stage_queues(staging: PreparedBundleStaging, content: String) -> PreparedQueuesWrite {
+  let path = join([staging.root as String, "/", prepared_queues_receipt_name], "")
+  if !Filesystem.WriteCreateNew(path: path, content: content).success { return PreparedQueuesRefused { cause: "Prepared queue receipt already exists or is not writable" } }
+  let back = Filesystem.Read(path: path)
+  if back.success && back.content == content { PreparedQueuesWritten } else { PreparedQueuesRefused { cause: "The prepared queue receipt read back differently from what was written" } }
+}
+
+fn file_sha(path: String) -> String? {
+  match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
+    Sha256FileDigest { digest: d } => Present { value: d.hex as String }
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+  }
+}
+
+// THE FILES OF A TREE, relative and sorted; a symlink, or any row that is not a regular file, refuses the tree.
+fn tree_files(root: String) -> List<String>? {
+  let listed = shell.Find.FilesAndSymlinksWithMode(root: root as FilePath)
+  if !listed.success { return none }
+  let rows = split(s: listed.stdout, delimiter: "\n").filter(r => r != "")
+  if !all(rows, r => starts_with(s: r, prefix: "f\t") && count(split(s: r, delimiter: "\t")) == 5) { return none }
+  let names = rows.map(r => text_at(xs: split(s: r, delimiter: "\t"), i: 2))
+  if any(names, n => n == "") { none } else { Present { value: names } }
+}
+
+fn file_lines(root: String, names: List<String>) -> List<String> {
+  names.map(n => match file_sha(path: join([root, "/", n], "")) { Present { value: d } => join([d, " ", n], "") Absent => concat("unreadable ", n) })
+}
+
+fn inputs_text(inputs: PreparationInputs) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "recipe", value: json_string(s: inputs.recipe)),
+    json_kv(key: "source_revision", value: json_string(s: inputs.source_revision)),
+    json_kv(key: "assembly_root", value: json_string(s: inputs.assembly_root)),
+    json_kv(key: "runtime_receipt_sha256", value: json_string(s: inputs.runtime_receipt_sha256.hex as String)),
+    json_kv(key: "slicer_archive_sha256", value: json_string(s: inputs.slicer_archive_sha256.hex as String)),
+    json_kv(key: "profiles_sha256", value: json_string(s: inputs.profiles_sha256.hex as String)),
+  ]))
+}
+
+type PublishedReceipt { attempt: String, plan: String, identity: String, files: List<String> }
+
+fn read_published_receipt(index: String, name: String) -> PublishedReceipt? {
+  let read = Filesystem.Read(path: join([index, "/", name], ""))
+  if !read.success { return none }
+  let v = match parse_json_document(s: read.content) { JsonDocumentParsed { value: j } => j JsonDocumentUnreadable { gap: _ } => return none }
+  let schema = match json_field_string(obj: v, key: "schema") { FieldRead { value: s } => s FieldAbsent => return none FieldMalformed { cause: _ } => return none }
+  let attempt = match json_field_string(obj: v, key: "attempt") { FieldRead { value: s } => s FieldAbsent => return none FieldMalformed { cause: _ } => return none }
+  let plan = match json_field_string(obj: v, key: "plan_sha256") { FieldRead { value: s } => s FieldAbsent => return none FieldMalformed { cause: _ } => return none }
+  let identity = match json_field_string(obj: v, key: "identity") { FieldRead { value: s } => s FieldAbsent => return none FieldMalformed { cause: _ } => return none }
+  let files = match json_field_string_list(obj: v, key: "files") { FieldRead { value: l } => l FieldAbsent => return none FieldMalformed { cause: _ } => return none }
+  if schema != prepared_receipt_schema || name != join([prepared_published_prefix, attempt, prepared_published_suffix], "") { return none }
+  Present { value: PublishedReceipt { attempt: attempt, plan: plan, identity: identity, files: files } }
+}
+
+fn receipt_names(entries: List<String>) -> List<String> {
+  entries.filter(e => starts_with(s: e, prefix: prepared_published_prefix) && ends_with(s: e, suffix: prepared_published_suffix))
+}
+
+fn receipt_summary(index: String, name: String) -> String {
+  match read_published_receipt(index: index, name: name) {
+    Present { value: r } => join([name, " ", r.identity], "")
+    Absent => concat(name, " (unreadable receipt)")
+  }
+}
+
+type PreparedPublication = PreparedPublished | PreparedPublishRefused { cause: String }
+
+// PUBLICATION: every bundle file is enumerated and digested, and the receipt naming the attempt, the identity and
+// every digest is created once and read back byte-equal. A receipt for the same identity already published refuses.
+fn prepared_bundle_publish(staging: PreparedBundleStaging, inputs: PreparationInputs) -> PreparedPublication {
+  if inputs.recipe == "" || inputs.source_revision == "" || inputs.assembly_root == "" {
+    return PreparedPublishRefused { cause: "A preparation identity needs every text input; one is empty" }
+  }
+  let index = staging.index as String
+  let root = staging.root as String
+  let attempt = text_at(xs: split(s: root, delimiter: "/"), i: count(split(s: root, delimiter: "/")) - 1)
+  let names = match tree_files(root: root) { Present { value: n } => n Absent => return PreparedPublishRefused { cause: "The staged bundle cannot be enumerated, or holds a symlink or other non-file entry" } }
+  if count(names) == 0 { return PreparedPublishRefused { cause: "The staged bundle is empty" } }
+  let lines = file_lines(root: root, names: names)
+  if any(lines, l => starts_with(s: l, prefix: "unreadable ")) { return PreparedPublishRefused { cause: "A staged bundle file cannot be digested" } }
+  let identity = inputs_text(inputs: inputs)
+  let existing = match index_entries(index: index) { Present { value: e } => receipt_names(entries: e) Absent => return PreparedPublishRefused { cause: "The plan index cannot be listed" } }
+  if any(existing, n => match read_published_receipt(index: index, name: n) { Present { value: r } => r.identity == identity Absent => false }) {
+    return PreparedPublishRefused { cause: "A preparation with this identity is already published for this plan" }
+  }
+  let receipt = serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: prepared_receipt_schema)),
+    json_kv(key: "attempt", value: json_string(s: attempt)),
+    json_kv(key: "plan_sha256", value: json_string(s: text_at(xs: split(s: index, delimiter: "/"), i: count(split(s: index, delimiter: "/")) - 1))),
+    json_kv(key: "identity", value: json_string(s: identity)),
+    json_kv(key: "files", value: json_array(elements: lines.map(l => json_string(s: l)))),
+  ]))
+  let path = join([index, "/", prepared_published_prefix, attempt, prepared_published_suffix], "")
+  if !Filesystem.WriteCreateNew(path: path, content: receipt).success { return PreparedPublishRefused { cause: "The publish receipt already exists or is not writable" } }
+  let back = Filesystem.Read(path: path)
+  if back.success && back.content == receipt { PreparedPublished } else { PreparedPublishRefused { cause: "The publish receipt read back differently from what was written" } }
+}
+
+// THE READER MINT. It lists the published receipts for the plan; the one receipt is verified file by file.
+fn prepared_bundle_published(tree: HostStateTree, plan_text: String) -> PreparedBundleReading {
+  if plan_text == "" { return PreparedBundleUnready { detail: "A prepared bundle is keyed by a plan, and the plan is empty" } }
+  let plans = prepared_plans_root(tree: tree)
+  if !shell.Mkdir.Parents(path: plans as FilePath).success { return PreparedBundleUnready { detail: concat("Cannot create the prepared plans directory ", plans) } }
+  let key = concat(prepared_bundle_key_prefix, sha256_hex_of_text(text: plan_text))
+  match listed_entry_presence(directory: plans, name: key) {
+    FilesystemEntryAbsent(_) => PreparedBundleNotPrepared { residue: [] }
+    FilesystemEntryPresenceIndeterminate { cause: c } => PreparedBundleUnready { detail: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => PreparedBundleUnready { detail: c }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let index = join([plans, "/", key], "")
+      match index_entries(index: index) {
+        Absent => PreparedBundleUnready { detail: concat("The plan index cannot be listed: ", index) }
+        Present { value: entries } => {
+          let receipts = receipt_names(entries: entries)
+          let residue = entries.filter(e => starts_with(s: e, prefix: prepared_attempt_prefix) && !any(receipts, r => r == join([prepared_published_prefix, e, prepared_published_suffix], "")))
+          if count(receipts) == 0 { return PreparedBundleNotPrepared { residue: residue } }
+          if count(receipts) > 1 { return PreparedBundleAmbiguous { published: receipts.map(r => receipt_summary(index: index, name: r)), notice: prepared_bundle_retirement_notice } }
+          let name = text_at(xs: receipts, i: 0)
+          match read_published_receipt(index: index, name: name) {
+            Absent => PreparedBundleCorrupt { detail: concat("The publish receipt is unreadable or malformed: ", name) }
+            Present { value: r } => {
+              let root = join([index, "/", r.attempt], "")
+              if r.plan != key { return PreparedBundleCorrupt { detail: concat("The publish receipt names another plan: ", name) } }
+              match tree_files(root: root) {
+                Absent => PreparedBundleCorrupt { detail: concat("The published attempt cannot be enumerated: ", root) }
+                Present { value: names } => {
+                  let actual = file_lines(root: root, names: names)
+                  let changed = r.files.filter(l => !any(actual, a => a == l))
+                  let extra = actual.filter(a => !any(r.files, l => l == a))
+                  if count(changed) != 0 || count(extra) != 0 {
+                    PreparedBundleCorrupt { detail: join(["The published bundle differs from its receipt; changed or missing: [", join(changed, ", "), "] extra: [", join(extra, ", "), "]"], "") }
+                  } else {
+                    PreparedBundleReady { bundle: PreparedBundle { root: root as NonEmptyStr, attempt: r.attempt, identity: r.identity } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The published bundle's directory, for the readers that open its files.
+fn prepared_bundle_directory(bundle: PreparedBundle) -> String { bundle.root as String }
+
+// The identity the receipt named, for a reader that reports it.
+fn prepared_bundle_identity(bundle: PreparedBundle) -> String { bundle.identity }

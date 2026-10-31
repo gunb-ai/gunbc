@@ -24,7 +24,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
 import extdeps.linux.procfs { ProcNetPnp, procfs_path_literal }
@@ -560,6 +560,7 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
       archive: runner_guest_runner_tarball_path(root: root, artifact: artifact),
       into_directory: runner_guest_tree_runner_dir(root: root, image: image),
       strip_components: 0,
+      existing_directories: TarOverwriteDir,
     ),
     mkdir_parents_command(path: runner_guest_tree_unit_dir(root: root, image: image)),
     mkdir_parents_command(path: runner_guest_agent_drop_in_dir(root: root, image: image)),

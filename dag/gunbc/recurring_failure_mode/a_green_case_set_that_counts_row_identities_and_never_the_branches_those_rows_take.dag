@@ -1,0 +1,83 @@
+module gunbc.recurring_failure_mode.a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// AN INSTRUMENT WHOSE CASE ROWS ARE COUNTED BY IDENTITY REPORTS GREEN OVER A SUBJECT WHOSE BRANCHES WERE
+// NEVER ENTERED. The cases ran, each one held, and the receipt said something true about the ROSTER and
+// nothing about the code. Filed 2026-10-31 by proud-bear-756 at the manager's direction (calm-crab-645,
+// msg_b18efa42), naming as its first instance the receipt this author produced personally: 53 of 53 held at
+// 50043a419018734c846f483c06fb97cc68335fa0, and that head carried the two defects filed as
+// 'a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads' and
+// 'a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative'.
+
+data a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG: the green verdict was not even a wrong VERDICT, it was a true verdict about the
+  // wrong object, which is why no one contradicted it. The ceiling is MechanicallyPreventable because the
+  // refusing construction has already been run once by hand (the control receipt below), not because a
+  // mechanism is on the required path.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of an instrument to record, per case row, which clause of its subject that row enters, and to refuse a roster that leaves a declared clause of the subject unentered -- for the router proxy falsifier, the axes its own dev-world map already names (cache locality, per-upstream cap including the zero sentinel, in-service, pinned, overflow) -- so that a green run is a statement about the subject and not a restatement of which cases the author thought of"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** Every declared case identity holds, the identity count matches the declared row count,
+    the process exits zero -- and the behaviour that is broken was never exercised. The count is over
+    IDENTITIES, and identities are authored by the same hand that wrote the subject, so a green count is a
+    statement about the author's attention, re-derived and re-reported. Nothing in the instrument records what
+    each case ENTERED, so the only coverage fact available is the roster itself.",
+
+    "**THE INSTANCE, MEASURED.** The 2026-10-30 srv1 receipt at 50043a419018734c846f483c06fb97cc68335fa0: 53
+    falsifier identities == 53 declared rows (set-compared, not counted), 53 held, 0 not held, exit zero, run
+    as an on-host job. The head was broken twice: an alias rewrite that re-encoded the whole forwarded body,
+    and a bound engine-local arm that released a turn it had never reserved. NEITHER BRANCH WAS REACHED. Both
+    byte-fidelity cases sent a DIRECT model id, so the rewrite predicate was false and the branch did not run;
+    no fixture row was simultaneously engine_local and cap 0, so the arm that skipped the reservation did not
+    run either. The receipt was accurate and, for the decision it was used in, worthless.",
+
+    "**WHY IT LOOKED SAFE -- AND WHY THE INSTRUMENT IS NOT THE CULPRIT.** That falsifier is a real instrument:
+    it emits the proxy from the model, starts containers, drives requests, and reads back counters; it caught
+    several genuine defects the same week. What is missing is not rigour but a COVERAGE OBJECT: the case set
+    has no field saying which subject clause each case is responsible for, so coverage can only be argued in
+    prose, and prose about a roster always reads back green.",
+
+    "**THE CONTROL THAT MAKES A RECEIPT SAY SOMETHING ABOUT THE SUBJECT (as executed, calm-moth-166, srv1).**
+    Take the fixed tree and restore ONE file -- router_dev_policy.dag at the pre-fix revision -- leaving the
+    instrument untouched. Exactly the four newest cases fail and every other case holds. That run is the shape
+    this row demands of a receipt: a body change to the subject MOVES the verdict, on a case set chosen to move.
+    A run that cannot be moved by the defect it is offered as evidence for is a run over the roster.",
+
+    "**NOT A DUPLICATE OF THE ADJACENT ROWS.** 'green_reported_over_a_population_the_instrument_does_not_own' is
+    about a population whose AUTHORITY is wrong; 'green_floor_executes_no_claim_whose_verdict_a_body_change_can_move'
+    is about a required floor whose STATIC roster omits affected claims; 'a_rust_test_target_that_does_not_compile_reads_green'
+    is about a check that never ran at all. None of them is this: here the cases ran, and held, and were green,
+    and the branch that broke was never entered by any of them.",
+
+    "**CEILING AND TRIGGER.** MechanicallyPreventable. The construction is a coverage obligation carried as
+    data -- per case, the subject clause it enters; per instrument, a refusal over clauses no case enters --
+    and the falsifier's own dev-world map already enumerates the router's axes, so the obligation is writable
+    today. Blocker ClimbableButUnbuilt: nothing waits on an authority or a new capability; what is missing is a
+    lane that builds the obligation and puts the run on the required path, since CI's v2-bootstrap executes no
+    claim rows and a hand-run receipt -- however careful -- is exactly what this row indicts.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "falsifier_cases"),
+    decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "row_cases"),
+    decl_ref(module_path: "gunbc.serving.router_dev_scaffold", decl_name: "router_dev_policy_scaffold"),
+    decl_ref(module_path: "v2.std.subject_evidence", decl_name: "subject_evidence_establishes"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads", decl_name: "a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative", decl_name: "a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative"),
+  ],
+}
