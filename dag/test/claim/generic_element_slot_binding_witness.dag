@@ -56,6 +56,32 @@ fn slot_alias_undeclared_control_source() -> String {
   slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { 1 })\n}\n")
 }
 
+// THE MAPPED-KEY SHAPE (lively-carp-891's fixture test.fixture.generic_lambda_param_typing.field_read_gap,
+// the S2 sort_by -> list_sort_by_key rewrite of v2.std.node bag_hash_digest): the callee RETURNS the key's
+// codomain, `List<K>` through std.algebra list_map, so the lambda's return binds K in the same argument fold
+// that binds Q from xs. sk above returns xs and never reads K; this pair is what holds the slot read open when
+// the lambda also contributes a binding (unify_lambda_solves). The fixture refused "no field 'text' on type
+// 'T'" on a seed without generic_actual_position_type (1170b706a63a) and resolves on one with it (50881456fb46).
+fn mapped_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat("module slotbind.", module_leaf), "\n\nimport std.algebra { list_map }\nimport std.types { List, String }\n\ntype Payload {\n  digest: String\n}\n\ntype Hash = Payload\n\nfn keys_of<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<K> {\n  list_map(xs: xs, f: key)\n}\n\n"), body)
+}
+
+fn mapped_alias_key_source() -> String {
+  mapped_source(module_leaf: "mappedalias", body: "fn digests(xs: List<Hash>) -> List<String> {\n  keys_of(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn mapped_record_key_source() -> String {
+  mapped_source(module_leaf: "mappedrecord", body: "fn digests(xs: List<Payload>) -> List<String> {\n  keys_of(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn mapped_alias_undeclared_source() -> String {
+  mapped_source(module_leaf: "mappednope", body: "fn digests(xs: List<Hash>) -> List<String> {\n  keys_of(xs: xs, key: fn(h) { h.nope })\n}\n")
+}
+
+fn mapped_alias_undeclared_control_source() -> String {
+  mapped_source(module_leaf: "mappednope", body: "fn digests(xs: List<Hash>) -> List<String> {\n  keys_of(xs: xs, key: fn(h) { \"x\" })\n}\n")
+}
+
 // THE UNBOUND-PARAMETER READ: the slot's element is a type variable NOTHING grounds -- a parameter with no
 // declaration behind it. Kept identity must not turn this into an acceptance: the field read on a parameter
 // that declares no record can never be established, so this refuses with the guard for the same reason it
@@ -129,6 +155,28 @@ test fn an_alias_element_still_refuses_an_undeclared_field_test() -> Bool {
 // field read and not the harness.
 test fn an_alias_element_module_without_the_undeclared_read_compiles_test() -> Bool {
   compile_dag_rust_emit_check(slot_alias_undeclared_control_source(), "src/slotbind_aliasnope.rs", ["keyed"], ["compile_error"])
+}
+
+// THE MAPPED-KEY CLIMB (lively-carp-891's RED, kept enrolled as the regression control): the lambda's return
+// binds K while its parameter reads a field through the alias element bound from xs.
+test fn a_mapped_lambda_key_reads_a_field_through_an_alias_element_test() -> Bool {
+  compile_dag_rust_emit_check(mapped_alias_key_source(), "src/slotbind_mappedalias.rs", ["digests"], ["compile_error"])
+}
+
+// CONTROL: the record element of the same mapped shape.
+test fn a_mapped_lambda_key_reads_a_field_through_a_record_element_test() -> Bool {
+  compile_dag_rust_emit_check(mapped_record_key_source(), "src/slotbind_mappedrecord.rs", ["digests"], ["compile_error"])
+}
+
+// POSITIVE CONTROL: with K bound by the lambda's return, an undeclared field through the alias element still
+// refuses -- the binding is read as the record's type, not as anything.
+test fn a_mapped_alias_element_still_refuses_an_undeclared_field_test() -> Bool {
+  !compile_dag_rust_emit_check(mapped_alias_undeclared_source(), "src/slotbind_mappednope.rs", [], [])
+}
+
+// ITS HARNESS CONTROL: the same module without the undeclared read compiles.
+test fn a_mapped_alias_element_module_without_the_undeclared_read_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(mapped_alias_undeclared_control_source(), "src/slotbind_mappednope.rs", ["digests"], ["compile_error"])
 }
 
 // THE BRANCH-JOIN SHAPE (the last corpus diagnostic). v2.compiler.dependency_demand_census.dag's
