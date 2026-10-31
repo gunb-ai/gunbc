@@ -1,0 +1,91 @@
+module v2.test.claim.compiler.uses_row_restatement
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.types { Bool, List }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, dependency_demand_of }
+import v2.compiler.uses_row_restatement { UsesRowAliasUnestablished, UsesRowNotRestated, UsesRowResolved, UsesRowRestates, UsesRowTypeUnresolved, UsesRowUndecided, UsesRowUnobserved, uses_row_deletable, uses_row_standing }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+
+// The fold's interface is the carrier rows and the authored-row reading, so each claim SUPPLIES them
+// (DESIGN section 3). The inhabitance claim that the real producer emits Network for a corpus fn
+// belongs to the route change, which owns the fact walk.
+
+fn q(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn net() -> QualifiedName {
+  q(dotted: "std.resources.Network")
+}
+
+fn fs() -> QualifiedName {
+  q(dotted: "std.resources.Filesystem")
+}
+
+fn ops() -> List<OperationFact> {
+  [
+    OperationFact { path: q(dotted: "m.Http.Get"), requirement: RequiresResources { resources: [net()] } },
+    OperationFact { path: q(dotted: "m.Clock.Now"), requirement: RequiresNone },
+    OperationFact { path: q(dotted: "m.Shell.Exec"), requirement: RequiresOpaque }
+  ]
+}
+
+fn plain(path: String, callees: List<QualifiedName>) -> FunctionFact {
+  FunctionFact { path: q(dotted: path), callees: callees, calls_function_value: false }
+}
+
+fn closure() -> List<FunctionFact> {
+  [
+    plain(path: "m.f_ok", callees: [q(dotted: "m.Http.Get")]),
+    plain(path: "m.f_pure", callees: [q(dotted: "m.Clock.Now")]),
+    plain(path: "m.f_opaque", callees: [q(dotted: "m.Shell.Exec")]),
+    plain(path: "m.f_wide", callees: [q(dotted: "m.Http.Get"), q(dotted: "m.Clock.Now")])
+  ]
+}
+
+fn standing(function: String, reading: UsesRowReading) -> UsesRowStanding {
+  uses_row_standing(rows: dependency_demand_of(functions: closure(), operations: ops()), function: q(dotted: function), reading: reading)
+}
+
+test fn a_network_row_on_a_fn_that_derives_network_restates_holds() -> Bool {
+  match standing(function: "m.f_ok", reading: UsesRowResolved { resource: net() }) {
+    UsesRowRestates { resource: r } => r == net()
+    UsesRowNotRestated { resource: _ } => false
+    UsesRowUndecided { resource: _, cause: _ } => false
+    UsesRowUnobserved => false
+  }
+}
+
+test fn a_network_row_on_a_fn_that_derives_none_is_not_a_restatement_RED() -> Bool {
+  match standing(function: "m.f_pure", reading: UsesRowResolved { resource: net() }) {
+    UsesRowNotRestated { resource: r } => (r == net()) && !uses_row_deletable(s: UsesRowNotRestated { resource: r })
+    UsesRowRestates { resource: _ } => false
+    UsesRowUndecided { resource: _, cause: _ } => false
+    UsesRowUnobserved => false
+  }
+}
+
+test fn an_undecided_demand_never_licenses_a_deletion_RED() -> Bool {
+  match standing(function: "m.f_opaque", reading: UsesRowResolved { resource: net() }) {
+    UsesRowUndecided { resource: _, cause: c } => !uses_row_deletable(s: UsesRowUndecided { resource: net(), cause: c })
+    UsesRowRestates { resource: _ } => false
+    UsesRowNotRestated { resource: _ } => false
+    UsesRowUnobserved => false
+  }
+}
+
+test fn a_row_is_judged_by_its_own_resource_not_the_fn_set_RED() -> Bool {
+  match standing(function: "m.f_wide", reading: UsesRowResolved { resource: fs() }) {
+    UsesRowNotRestated { resource: r } => r == fs()
+    UsesRowRestates { resource: _ } => false
+    UsesRowUndecided { resource: _, cause: _ } => false
+    UsesRowUnobserved => false
+  }
+}
+
+test fn an_unreadable_row_or_an_absent_fn_is_unobserved_never_deletable_RED() -> Bool {
+  let a = standing(function: "m.f_ok", reading: UsesRowTypeUnresolved)
+  let b = standing(function: "m.f_ok", reading: UsesRowAliasUnestablished)
+  let c = standing(function: "m.not_in_the_closure", reading: UsesRowResolved { resource: net() })
+  !uses_row_deletable(s: a) && !uses_row_deletable(s: b) && !uses_row_deletable(s: c)
+}

@@ -1,0 +1,113 @@
+module v2.test.claim.compiler.uses_row_restatement_route
+
+import std.algebra { fold_list, length }
+import std.types { Bool, List }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.source_root_eval { native_demand_census_report }
+import v2.compiler.uses_row_restatement { UsesRowNotRestated, UsesRowRestates, UsesRowStanding, UsesRowUndecided, UsesRowUnobserved, uses_row_deletable }
+import v2.compiler.uses_row_restatement_route { UsesRowRestatementEntry, uses_row_restatement_of_report }
+import v2.test.claim.compiler.dependency_demand_census { ddc_report }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+fn urr_standings(entries: List<UsesRowRestatementEntry>, function: String) -> List<UsesRowStanding> {
+  fold_list(xs: entries, empty: [], cons: fn(acc, e) {
+    if qualified_name_to_dotted_string(qn: e.function) == function { e.standings } else { acc }
+  })
+}
+
+fn urr_entries() -> List<UsesRowRestatementEntry> {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: r, diagnostics: _ } => uses_row_restatement_of_report(r: r)
+  }
+}
+
+fn urr_only_standing_deletable(function: String) -> Bool {
+  let sts = urr_standings(entries: urr_entries(), function: function)
+  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) { any || uses_row_deletable(s: s) })
+}
+
+fn urr_only_standing_not_restated(function: String) -> Bool {
+  let sts = urr_standings(entries: urr_entries(), function: function)
+  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) {
+    match s {
+      UsesRowNotRestated { resource: _ } => true
+      UsesRowRestates { resource: _ } => false
+      UsesRowUndecided { resource: _, cause: _ } => false
+      UsesRowUnobserved => false
+    }
+  })
+}
+
+fn urr_only_standing_undecided(function: String) -> Bool {
+  let sts = urr_standings(entries: urr_entries(), function: function)
+  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) {
+    match s {
+      UsesRowUndecided { resource: _, cause: _ } => true
+      UsesRowRestates { resource: _ } => false
+      UsesRowNotRestated { resource: _ } => false
+      UsesRowUnobserved => false
+    }
+  })
+}
+
+// INHABITANCE (DESIGN section 3 pairing): the REAL front end, resolver and reducer, over the census fixture, emit
+// Network for a corpus-shaped fn, and the route's standing for its authored row is Restates. Asserts the route.
+test fn a_fn_calling_a_network_operation_has_its_row_restated_by_the_real_route_holds() -> Bool {
+  urr_only_standing_deletable(function: "t.app.restates")
+}
+
+test fn a_transitive_network_fn_has_its_row_restated_holds() -> Bool {
+  urr_only_standing_deletable(function: "t.app.transitive")
+}
+
+test fn an_over_claiming_row_is_not_restated_by_the_real_route_RED() -> Bool {
+  urr_only_standing_not_restated(function: "t.app.over_claims") && !urr_only_standing_deletable(function: "t.app.over_claims")
+}
+
+test fn an_opaque_reaching_row_is_undecided_never_deletable_by_the_real_route_RED() -> Bool {
+  urr_only_standing_undecided(function: "t.app.opaque_reach") && !urr_only_standing_deletable(function: "t.app.opaque_reach")
+}
+
+// CARRIER BOUNDARY: the same fn shape over an operation that no longer declares `requires Network`. Removing the
+// operation's Network edge drops Network from the fn's derived demand, so its row is no longer a restatement.
+data urr_cut_resources: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n"
+
+data urr_cut_types: String = "module std.types\n\ntype Bool = True | False\n"
+
+data urr_cut_http: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires none\n  }\n}\n"
+
+data urr_cut_app: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n"
+
+fn urr_cut_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data urr_cut_ingest: SourceRootIngest = [
+  urr_cut_read(source: urr_cut_types, id: ^urr_cut_types_artifact, unit: ^urr_cut_types_cu, path: "dag/std/types.dag"),
+  urr_cut_read(source: urr_cut_resources, id: ^urr_cut_resources_artifact, unit: ^urr_cut_resources_cu, path: "dag/std/resources.dag"),
+  urr_cut_read(source: urr_cut_http, id: ^urr_cut_http_artifact, unit: ^urr_cut_http_cu, path: "dag/t/http.dag"),
+  urr_cut_read(source: urr_cut_app, id: ^urr_cut_app_artifact, unit: ^urr_cut_app_cu, path: "dag/t/app.dag")
+]
+
+test fn removing_the_operations_network_edge_removes_the_restatement_RED() -> Bool {
+  match native_demand_census_report(ingest: urr_cut_ingest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      {
+        let sts = urr_standings(entries: uses_row_restatement_of_report(r: r), function: "t.app.restates")
+        (length(xs: sts) == 1) && !fold_list(xs: sts, empty: false, cons: fn(any, s) { any || uses_row_deletable(s: s) })
+      }
+  }
+}
