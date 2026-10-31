@@ -1,6 +1,9 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
 import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { retires_dissolution }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
@@ -591,6 +594,17 @@ fn attempt_append_log_member_name(member: AttemptLogMember) -> String {
     _ => ""
   }
 }
+
+// The AttemptDirectoryWire census member (row Seeadecb2) is NOT yet sealed: it is still written by the harness
+// through harness_turn.harness_wire_log_path (its two writers) and read by harness_conversation_fork,
+// roadmap_dispatch_actuator and roadmap_authority. Declared as frontier (lane standard for unfinished work), so the
+// append-log store keeps REFUSING to mint it (attempt_append_log_member_name yields "" for it -> Unready). The
+// frontier dissolves when harness_wire_log_path retires, i.e. when those writers take the attempt append-log store.
+data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path"),
+  reason: "census member Seeadecb2 (AttemptDirectoryWire) is not sealed; written by harness_turn through harness_wire_log_path; its two writers write through harness_wire_log_path, read by harness_conversation_fork, roadmap_dispatch_actuator and roadmap_authority",
+  dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path")),
+)]
 
 fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
   match append_log_member_census {
