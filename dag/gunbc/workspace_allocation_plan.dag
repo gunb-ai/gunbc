@@ -109,8 +109,8 @@ fn workspace_reservation_apply(cells: FabricAllocationStore, plan: WorkspaceRese
   let reservation = plan.reservation
   match workspace_current_acquisition_invocation(plan: plan) {
     Absent => WorkspaceReservationApplyRefused { reason: "reservation mutation has no manager-attested controller invocation" }
-    Present { value: invocation } => {
-      let owner = concat("workspace-controller:", invocation) as DurableHoldOwnerRef
+    Present { value: run } => {
+      let owner = concat("workspace-controller:", run.invocation_id as String) as DurableHoldOwnerRef
       match workspace_slot_mutation_acquire(slot_key: fabric_cell_allocation_key(slot: reservation.slot), owner: owner) {
         WorkspaceSlotMutationRefused { reason } => WorkspaceReservationApplyRefused { reason: reason }
         WorkspaceSlotMutationAdmitted { lease } => {
@@ -200,7 +200,10 @@ fn workspace_actor_takeover_decision(plan: WorkspaceReservationPlan, hold: Durab
 fn workspace_actor_takeover_unheld(prior: WorkspacePriorActorStanding, intent: WorkspaceActorIntent) -> WorkspaceActorTakeoverDecision {
   match prior {
     PriorActorRunning => TakeoverRetain { reason: "the elected acquisition actor is still running" }
-    PriorActorUnobservable { reason } => TakeoverRetain { reason: reason }
+    PriorActorUnobservable { reason } => match intent {
+      ActorIntentAcquire => TakeoverRetain { reason: reason }
+      ActorIntentRetire => TakeoverCancelActor
+    }
     PriorActorTerminal => match intent {
       ActorIntentAcquire => TakeoverRearmActor
       ActorIntentRetire => TakeoverCancelActor

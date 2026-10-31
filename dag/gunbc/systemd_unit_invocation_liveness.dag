@@ -1,29 +1,98 @@
 module gunbc.systemd_unit_invocation_liveness
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int, Bool, EpochSecs }
+import std.optional { Present, Absent }
+import std.algebra { trim, list_at_optional }
+import std.types { list_length }
 import std.durable_exclusive_hold {
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
 }
+import extdeps.uuid { Uuid }
+import extdeps.systemd.invocation_id { SystemdInvocationId, systemd_invocation_id_of }
+import extdeps.linux.kernel_random { kernel_boot_id_of }
+import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
 
-// ONE SYSTEMD-UNIT HOLDER OBSERVER, keyed by InvocationID. It answers whether this unit start
-// is still the live holder. It does not yet retire the other spellings; those are residue sites
-// (gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue):
+// ONE SYSTEMD-UNIT HOLDER OBSERVER, keyed by the OBSERVED IDENTITY OF A UNIT RUN. It answers whether
+// this run of the unit is still the live holder. It does not yet retire the other spellings; those
+// are residue sites (gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue):
 //   - gunbc.compute.attempt_lifecycle UnitLifecycle — outcome / seat-freeing, not this question
 //   - gunbc.roadmap_dispatch_actuator AttemptUnitObservation — LoadState/SubState/exit
-//   - gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding — wraps this fold
+//   - the ~30 runner sites that thread a caller-minted `invocation_id` parameter (an attempt token, not
+//     systemd's InvocationID; the observation-side reading is gunbc.runner.runner_microvm_lifecycle
+//     UnitAttemptBindingReading)
 //
-// The belt hold has no CasGeneration. InvocationID is that hold's fence: it names one start of
-// the unit. A later start is a different hold, whoever owns the unit name.
+// A RUN IS (manager, boot, InvocationID), each read from the host, none asserted by the caller:
+//   - manager: the instance the reading was taken from (the system manager, or one user's);
+//   - boot: extdeps.linux.kernel_random kernel_boot_id_of over /proc/sys/kernel/random/boot_id, and the
+//     boot's START INSTANT (extdeps.linux.proc_stat proc_stat_boot_time, /proc/stat btime, whole seconds,
+//     so a consumer comparing it with another clock owns the skew bound). The instant is evidence beside
+//     the id, not part of run equality: it is derived from the boot and can wobble with clock steps;
+//   - invocation: extdeps.systemd.invocation_id systemd_invocation_id_of over the unit's InvocationID
+//     property, or $INVOCATION_ID inside the unit as the manager exports it.
+// The id alone does not name a run: managers draw ids independently and a reboot ends every run of the
+// boot, so equality is over the triple.
+//
+// The belt hold has no CasGeneration. The run is that hold's fence: it names one start of the unit. A
+// later start is a different hold, whoever owns the unit name.
 //
 // Recovery is decided by this observation, never by age.
+//
+// A MISSING OR MALFORMED COMPONENT IS A TYPED REFUSAL, never a default: UnitInvocationUnreadable carries
+// the located cause, so "the run is gone" (an observed different run) and "the run could not be asked"
+// are never one value. CONSUMERS (§3c): gunbc.workspace_acquisition_invocation (migrated in this change),
+// the slot-unit create-once request binding (bold-dove-340) and the srv1 session-memory lease holder-death
+// proof (snappy-carp-24) are declared frontiers, each adopting this observation in its own change.
+type SystemdManagerInstance
+  = SystemManager
+  | UserManager { uid: Int }
+
+type UnitRunIdentity {
+  manager: SystemdManagerInstance
+  boot_id: Uuid
+  boot_started_at: EpochSecs
+  invocation_id: SystemdInvocationId
+}
 
 type UnitInvocationObservation
-  = UnitInvocationPresent { invocation_id: NonEmptyStr }
+  = UnitInvocationPresent { run: UnitRunIdentity }
   | UnitInvocationAbsent
   | UnitInvocationUnreadable { cause: NonEmptyStr }
 
+fn systemd_manager_wire(manager: SystemdManagerInstance) -> String {
+  match manager {
+    SystemManager => "system"
+    UserManager { uid: u } => concat("user", concat("", u))
+  }
+}
+
+// ADMISSION from the raw readings. An empty InvocationID is a unit that has not run (Absent: observed
+// gone); any other component that fails its wire decode is Unreadable.
+fn unit_invocation_observation(manager: SystemdManagerInstance, boot_id_text: String, proc_stat_text: String, invocation_text: String) -> UnitInvocationObservation {
+  match kernel_boot_id_of(text: boot_id_text) {
+    Absent => UnitInvocationUnreadable { cause: "boot_id is not a UUID (random(4))" as NonEmptyStr }
+    Present { value: boot } => match proc_stat_boot_time(content: proc_stat_text) {
+      BootTimeLineAbsent => UnitInvocationUnreadable { cause: "/proc/stat has no btime line" as NonEmptyStr }
+      BootTimeUnparseable { field: _ } => UnitInvocationUnreadable { cause: "/proc/stat btime is not an integer" as NonEmptyStr }
+      BootTimeBeforeEpoch { field: _ } => UnitInvocationUnreadable { cause: "/proc/stat btime precedes the epoch" as NonEmptyStr }
+      BootTimeObserved { epoch_seconds: t } =>
+        if trim(s: invocation_text) == "" { UnitInvocationAbsent }
+        else { match systemd_invocation_id_of(text: invocation_text) {
+          Absent => UnitInvocationUnreadable { cause: "InvocationID is not 32 lowercase hex digits (systemd.exec(5))" as NonEmptyStr }
+          Present { value: inv } => UnitInvocationPresent { run: UnitRunIdentity { manager: manager, boot_id: boot, boot_started_at: t, invocation_id: inv } }
+        } }
+    }
+  }
+}
+
+fn unit_run_differs(recorded: UnitRunIdentity, observed: UnitRunIdentity) -> String? {
+  if systemd_manager_wire(manager: recorded.manager) != systemd_manager_wire(manager: observed.manager) { Present { value: "manager" } }
+  else if (recorded.boot_id as String) != (observed.boot_id as String) { Present { value: "boot_id" } }
+  else if (recorded.invocation_id as String) != (observed.invocation_id as String) { Present { value: "invocation_id" } }
+  else { none }
+}
+
 fn unit_invocation_holder_liveness(
-  recorded_invocation: NonEmptyStr,
+  recorded: UnitRunIdentity,
   observed: UnitInvocationObservation,
 ) -> DurableHoldHolderLiveness {
   match observed {
@@ -32,15 +101,62 @@ fn unit_invocation_holder_liveness(
       HolderObservedDead {
         evidence: "the unit has no InvocationID; the recorded start is gone" as NonEmptyStr,
       }
-    UnitInvocationPresent { invocation_id: id } =>
-      if (id as String) == (recorded_invocation as String) {
+    UnitInvocationPresent { run: o } => match unit_run_differs(recorded: recorded, observed: o) {
+      Absent =>
         HolderObservedLive {
-          evidence: "InvocationID still matches the recorded start" as NonEmptyStr,
+          evidence: "manager, boot and InvocationID still match the recorded run" as NonEmptyStr,
         }
-      } else {
+      Present { value: d } =>
         HolderObservedDead {
-          evidence: "InvocationID moved; the recorded start is a different activation" as NonEmptyStr,
+          evidence: concat("the observed run differs from the recorded one in ", d) as NonEmptyStr,
+        }
+    }
+  }
+}
+
+// PERSISTED FORM of a run (the workspace actor record stores it in one field): manager|boot|btime|invocation.
+// A text that is not exactly that, including a pre-carrier bare InvocationID, decodes to Absent: a recorded run
+// that cannot be read back is never guessed at.
+fn unit_run_wire(run: UnitRunIdentity) -> String {
+  join([systemd_manager_wire(manager: run.manager), run.boot_id as String, concat("", run.boot_started_at), run.invocation_id as String], "|")
+}
+
+fn unit_run_of_wire(wire: String) -> UnitRunIdentity? {
+  let parts = split(s: wire, delimiter: "|")
+  if list_length(items: parts) != 4 { none }
+  else { match list_at_optional(xs: parts, index: 0) {
+    Absent => none
+    Present { value: m } => match unit_run_manager_of_wire(text: m) {
+      Absent => none
+      Present { value: mgr } => match list_at_optional(xs: parts, index: 1) {
+        Absent => none
+        Present { value: b } => match kernel_boot_id_of(text: b) {
+          Absent => none
+          Present { value: boot } => match list_at_optional(xs: parts, index: 2) {
+            Absent => none
+            Present { value: t } => match parse_int(s: t) {
+              Absent => none
+              Present { value: ts } => match list_at_optional(xs: parts, index: 3) {
+                Absent => none
+                Present { value: i } => match systemd_invocation_id_of(text: i) {
+                  Absent => none
+                  Present { value: inv } => Present { value: UnitRunIdentity { manager: mgr, boot_id: boot, boot_started_at: ts, invocation_id: inv } }
+                }
+              }
+            }
+          }
         }
       }
-  }
+    }
+  } }
+}
+
+fn unit_run_manager_of_wire(text: String) -> SystemdManagerInstance? {
+  if text == "system" { Present { value: SystemManager } }
+  else if starts_with(s: text, prefix: "user") {
+    match parse_int(s: substring(s: text, start: 4, end: string_length(s: text))) {
+      Present { value: u } => Present { value: UserManager { uid: u } }
+      Absent => none
+    }
+  } else { none }
 }

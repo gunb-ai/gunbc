@@ -3,24 +3,52 @@ module test.claim.systemd_unit_invocation_liveness_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.systemd_unit_invocation_liveness {
-  UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, unit_invocation_holder_liveness,
+  SystemManager, UserManager, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable,
+  unit_invocation_observation, unit_invocation_holder_liveness, unit_run_wire, unit_run_of_wire,
 }
 
-data recorded: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr
+data boot_a: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data boot_b: String = "11111111-2222-4333-8444-555555555555"
+data inv_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data inv_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data stat_text: String = "cpu 1 2 3\nbtime 1792000000\nprocesses 5\n"
 
-test fn a_reused_unit_name_with_a_different_invocation_id_is_not_the_same_holder() -> Bool {
-  let live = unit_invocation_holder_liveness(recorded_invocation: recorded, observed: UnitInvocationPresent { invocation_id: recorded })
-  let moved = unit_invocation_holder_liveness(
-    recorded_invocation: recorded,
-    observed: UnitInvocationPresent { invocation_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr },
-  )
-  let gone = unit_invocation_holder_liveness(recorded_invocation: recorded, observed: UnitInvocationAbsent)
-  let unread = unit_invocation_holder_liveness(
-    recorded_invocation: recorded,
-    observed: UnitInvocationUnreadable { cause: "systemctl show refused" as NonEmptyStr },
-  )
-  (match live { HolderObservedLive { evidence: _ } => true  _ => false })
-    && (match moved { HolderObservedDead { evidence: e } => (e as String) != ""  _ => false })
-    && (match gone { HolderObservedDead { evidence: _ } => true  _ => false })
-    && (match unread { HolderLivenessUnobservable { cause: c } => (c as String) == "systemctl show refused"  _ => false })
+test fn a_reading_with_a_mismatched_boot_invocation_or_manager_is_not_the_same_run() -> Bool {
+  let recorded = unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: inv_a)
+  match recorded {
+    UnitInvocationPresent { run: r } => {
+      let same = unit_invocation_holder_liveness(recorded: r, observed: unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: inv_a))
+      let other_inv = unit_invocation_holder_liveness(recorded: r, observed: unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: inv_b))
+      let other_boot = unit_invocation_holder_liveness(recorded: r, observed: unit_invocation_observation(manager: SystemManager, boot_id_text: boot_b, proc_stat_text: stat_text, invocation_text: inv_a))
+      let other_mgr = unit_invocation_holder_liveness(recorded: r, observed: unit_invocation_observation(manager: UserManager { uid: 1000 }, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: inv_a))
+      let gone = unit_invocation_holder_liveness(recorded: r, observed: UnitInvocationAbsent)
+      (match same { HolderObservedLive { evidence: _ } => true  _ => false })
+        && (match other_inv { HolderObservedDead { evidence: _ } => true  _ => false })
+        && (match other_boot { HolderObservedDead { evidence: _ } => true  _ => false })
+        && (match other_mgr { HolderObservedDead { evidence: _ } => true  _ => false })
+        && (match gone { HolderObservedDead { evidence: _ } => true  _ => false })
+    }
+    _ => false
+  }
+}
+
+test fn a_malformed_or_absent_reading_is_a_typed_refusal_never_a_default() -> Bool {
+  let bad_inv = unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: "not-hex")
+  let bad_boot = unit_invocation_observation(manager: SystemManager, boot_id_text: "nope", proc_stat_text: stat_text, invocation_text: inv_a)
+  let no_btime = unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: "cpu 1\n", invocation_text: inv_a)
+  (match bad_inv { UnitInvocationUnreadable { cause: _ } => true  _ => false })
+    && (match bad_boot { UnitInvocationUnreadable { cause: _ } => true  _ => false })
+    && (match no_btime { UnitInvocationUnreadable { cause: _ } => true  _ => false })
+}
+
+test fn a_run_round_trips_its_wire_and_a_bare_legacy_id_is_unreadable() -> Bool {
+  match unit_invocation_observation(manager: SystemManager, boot_id_text: boot_a, proc_stat_text: stat_text, invocation_text: inv_a) {
+    UnitInvocationPresent { run: r } => {
+      let back = unit_run_of_wire(wire: unit_run_wire(run: r))
+      let legacy = unit_run_of_wire(wire: inv_a)
+      (match back { Present { value: b } => unit_run_wire(run: b) == unit_run_wire(run: r)  Absent => false })
+        && (match legacy { Present { value: _ } => false  Absent => true })
+    }
+    _ => false
+  }
 }
