@@ -1608,7 +1608,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths> | decl-ref-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths>"
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 

@@ -316,11 +316,11 @@ test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
 }
 
 // THE PREDICATE KEYS ON THE VERB ROW, not on the plan arm: every census verb plans the one
-// NativeDriverCensusVerb arm, so demand-census and decl-ref-census are told apart only by the word
+// NativeDriverCensusVerb arm, so demand-census and any other word are told apart only by the word
 // the row carries. An arm answering one constant for the whole row fails one side of this pair.
 test fn demand_census_is_not_another_census_verb_holds() -> Bool {
   parsed_verb_is_demand_census(argv: ["demand-census", "dag"])
-    && !parsed_verb_is_demand_census(argv: ["decl-ref-census", "dag"])
+    && !parsed_verb_is_demand_census(argv: ["census", "dag"])
 }
 
 // THE SCOPED VERB: its own word, a subject operand checked against the one label-to-module function
