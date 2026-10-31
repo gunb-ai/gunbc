@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -9471,18 +9471,25 @@ fn expected_type_is_open_variable(exp: Node) -> Bool {
 // Peel Optional/Outcome wrappers and resolve type-alias RHS so empty_map/empty_set
 // classify the collection they inhabit (review 79806). Concrete non-collection
 // expected types stay at the surface and keep the keyed/Set refusal.
+// The three collection carriers a collection literal's expected type may be, by roster algebra.
+fn spelling_is_collection_carrier(name: String) -> Bool {
+  container_spelling_is_algebra(name: name, algebra: "FreeMonoid")
+    || container_spelling_is_algebra(name: name, algebra: "FinitePowerSet")
+    || container_spelling_is_algebra(name: name, algebra: "FinitelySupportedFunction")
+}
+
 fn expected_collection_surface(exp: Node, scope: InferScope, fuel: Int) -> Node {
   if fuel <= 0 {
     exp
   } else {
     let last = qualified_last_segment(name: expected_type_spelling(exp: exp, scope: scope))
-    if last == "Map" || last == "Set" || last == "List" {
+    if spelling_is_collection_carrier(name: last) {
       exp
     } else {
       match exp.inferred {
         Present { value: Resolved { node: rt } } =>
           let rt_last = qualified_last_segment(name: expected_type_spelling(exp: rt, scope: scope))
-          if rt_last == "Map" || rt_last == "Set" || rt_last == "List" || rt_last == "Outcome" || rt_last == "Optional" {
+          if spelling_is_collection_carrier(name: rt_last) || rt_last == "Outcome" || rt_last == "Optional" {
             expected_collection_surface(exp: rt, scope: scope, fuel: fuel - 1)
           } else {
             expected_collection_unwrap(exp: exp, scope: scope, last: last, fuel: fuel)
@@ -9590,7 +9597,7 @@ fn expected_type_is_keyed_collection(exp: Node, scope: InferScope) -> Bool {
     if node_is_keyed_collection(n: core, source_indices: si) {
       true
     } else {
-      last == "Map" || ((core.children |> count) == 2 && core.name == "Map")
+      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction") || ((core.children |> count) == 2 && core.name == "Map")
     }
   }
 }
@@ -9605,7 +9612,7 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
         if node_is_set_collection(n: core, source_indices: si) {
       true
     } else {
-      last == "Set" || ((core.children |> count) == 1 && core.name == "Set")
+      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet") || ((core.children |> count) == 1 && core.name == "Set")
     }
   }
 }
