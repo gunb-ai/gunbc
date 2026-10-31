@@ -99,7 +99,6 @@ test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool {
     expected: SelectionReceipt {
       scope: scope_for(position: RustFnItemReturn),
       pareto_survivors: [rust_fn_type_impl_trait, rust_fn_type_boxed_trait_object],
-      policy_authority: rust_fn_type_policy_identity(position: RustFnItemReturn),
       applied_policy: PreferSurvivor { identity: rust_fn_type_policy_identity(position: RustFnItemReturn), preferred: rust_fn_type_impl_trait },
       selected_identity: rust_fn_type_impl_trait,
     },
@@ -116,7 +115,6 @@ test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool {
     expected: SelectionReceipt {
       scope: scope_for(position: RustFnBoundReturn),
       pareto_survivors: [rust_fn_type_boxed_trait_object],
-      policy_authority: rust_fn_type_policy_identity(position: RustFnBoundReturn),
       applied_policy: UniqueSurvivorRequired { identity: rust_fn_type_policy_identity(position: RustFnBoundReturn) },
       selected_identity: rust_fn_type_boxed_trait_object,
     },

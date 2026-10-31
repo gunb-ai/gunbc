@@ -839,15 +839,15 @@ type DecisionScope {
 // have a name of their own so the refusal arm can carry them too.
 //
 // `applied_policy` records the SEMANTIC policy that was applied — its arm and its behavior-affecting
-// parameters — not merely the authority reference. `policy_authority` says WHO defines the policy; it
-// cannot say WHICH policy ran. Without the applied policy, UniqueSurvivorRequired { P } and
-// UniqueSurvivorElsePrefer { P, preferred: B } over the same field produce byte-identical receipts, and
-// receipts_eq cannot tell the two decisions apart. The value is the caller's own SelectionPolicy, so it
-// cannot drift from what was actually applied; policy_equality compares it structurally.
+// parameters. It REPLACES the old `policy_authority` field: the authority reference (WHO defines the
+// policy) is now projected from the policy itself via policy_identity_of, so the same fact lives in
+// exactly one place and cannot be stored in two disagreeing copies. Without the applied policy,
+// UniqueSurvivorRequired { P } and UniqueSurvivorElsePrefer { P, preferred: B } over the same field
+// produced byte-identical receipts; the applied policy is the caller's own SelectionPolicy value, so it
+// cannot drift from what was actually applied, and policy_equality compares it structurally.
 type SelectionReceipt {
   scope: DecisionScope
   pareto_survivors: List<DeclarationRef>
-  policy_authority: DeclarationRef
   applied_policy: SelectionPolicy
   selected_identity: DeclarationRef
 }
@@ -1248,7 +1248,6 @@ fn policy_equality(a: SelectionPolicy, b: SelectionPolicy) -> Bool {
 fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
   scopes_eq(a: a.scope, b: b.scope)
     && declaration_refs_same_set(a: a.pareto_survivors, b: b.pareto_survivors)
-    && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
     && policy_equality(a: a.applied_policy, b: b.applied_policy)
     && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
 }
@@ -1277,14 +1276,12 @@ fn mint_scope(
 fn mint_receipt(
   scope: DecisionScope,
   pareto_survivors: List<DeclarationRef>,
-  policy_authority: DeclarationRef,
   applied_policy: SelectionPolicy,
   selected_identity: DeclarationRef,
 ) -> SelectionReceipt {
   SelectionReceipt {
     scope: scope,
     pareto_survivors: pareto_survivors,
-    policy_authority: policy_authority,
     applied_policy: applied_policy,
     selected_identity: selected_identity,
   }
@@ -1692,7 +1689,6 @@ fn select_survivor_receipt(
         receipt: mint_receipt(
           scope: scope,
           pareto_survivors: survivors,
-          policy_authority: policy_identity_of(policy: policy),
           applied_policy: policy,
           selected_identity: selected,
         ),
