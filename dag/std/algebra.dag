@@ -572,6 +572,11 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
             CallableOf { params: _, return_type: _ } => false
             ReceiverSelf => p == acc_type
             ReceiverElement => p == acc_type
+            // A closed variant answers every match over it, reachable or not (DESIGN 4b). The rule
+            // is the one this predicate states: the plain parameter whose type IS the type the step
+            // returns. A dual-form position is that parameter exactly when the step returns the dual
+            // form; literal equality, the same test its siblings get, with no guess about which side.
+            ReceiverElementOrSelf => p == acc_type
             ReceiverKey => p == acc_type
             ReceiverValue => p == acc_type
             NamedTemplate { name: _ } => p == acc_type
