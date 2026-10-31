@@ -83,3 +83,22 @@ Per wave:
 - An imported positive control.
 - The binding-diff admission check: only ambient → the declared home may change.
 - Deletion of the head's `std.primitives` contract row and its registry entry when the residual reaches zero.
+
+## F. RULING (tidy-ant-251, 2026-10-31, namespace-homes charter): A, strict
+
+Grounds: DESIGN §5 (no fabricated defaults), the cardinality rulings, and §7 (the seed's divergences are recorded as corrections).
+
+Conditions, each binding on the waves:
+1. `substring` and `char_at` in `std.host_text` take `Nat` indices and return `Optional`. Every migrated site handles Absent explicitly, with **no call-site default**.
+2. `code_point` → `std.unicode.char_class` `unicode_char_code_point(Char)` via `chars`. Empty text **refuses at the site**.
+3. `string_length` in `std.host_text` counts scalars over **host text only**. Sites over `v2.std.text` use the algebra `length`. **Classify the 20 sites by representation first.**
+4. The `atom_identity_hash` seam names its `HashFamily`.
+5. **One correction row per seed divergence**:
+   - `substring` clamp/wrap;
+   - `char_at` `""`/Null;
+   - `code_point` 0;
+   - `split`/`replace` with an empty separator;
+   - `replace`'s `format!` coercion;
+   - `get`'s list/map overload.
+
+Design proceeds. Applies wait on the sweep fixes.
