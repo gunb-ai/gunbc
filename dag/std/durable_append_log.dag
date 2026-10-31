@@ -39,11 +39,6 @@ type AppendFraming
   = RecordPerGeneration
   | NewlineDelimitedStream
 
-// Who authors the bytes. A log has exactly one author kind per member, declared in the owner's row.
-type AppendAuthor
-  = HostAuthored
-  | SandboxAuthored { principal: DurableHoldOwnerRef }
-
 // The head a reader can state without interpreting a record: how many whole records, how many bytes.
 type AppendLogHead {
   record_count: Nat
