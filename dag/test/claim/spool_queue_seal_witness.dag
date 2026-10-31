@@ -14,18 +14,11 @@ import gunbc.spool_queue {
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 
-// THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue) IS A MODEL; ITS EFFECT LAYER IS NOT
-// BUILT. Two kinds of claim live here and are labelled by name.
-//
-// GREEN NOW (the model): the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, the lawful
-// mint is admitted, and the pure decisions refuse the way the contract says (a lost election is AlreadyClaimed, two
-// stages is a refusal never a pick, an unobservable claimant is not dead).
-//
-// EXPECTING-RED (the implementation): each `_today` claim asserts the state that must stop holding. The four
-// operations and the mint do not exist as effects (importing them is a MissingExport today), and the three spools'
-// raw stage-path functions are still importable. When the implementation lands the first group FLIPS to
-// "exists" and the second to MissingExport; the claims then stay enrolled as permanent regression controls
-// (DESIGN section 4b, dissolution on climb).
+// THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
+// control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
+// exist), the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, and the raw stage-path
+// functions and HostSpoolStage are GONE (importing them is a MissingExport). Former expecting-red claims were
+// converted, not deleted (DESIGN section 4b, dissolution on climb).
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
@@ -214,36 +207,36 @@ test fn an_observed_dead_claimant_stops_the_line_and_is_not_reclaimed() -> Proce
   }
 }
 
-test fn the_enqueue_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_enqueue_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_enqueue"), holds: fn(n) { n == 1 }))
+test fn the_enqueue_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_enqueue_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_claim_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_claim_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_claim"), holds: fn(n) { n == 1 }))
+test fn the_claim_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_claim_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_complete_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_complete_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_complete"), holds: fn(n) { n == 1 }))
+test fn the_complete_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_complete_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_observe_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_observe_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_observe"), holds: fn(n) { n == 1 }))
+test fn the_observe_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_observe_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_instance_keyed_mint_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_open_source, wanted_class: "MissingExport", wanted_subject: "spool_open"), holds: fn(n) { n == 1 }))
+test fn the_instance_keyed_open_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_open_source), holds: fn(n) { n == 0 }))
 }
 
-test fn the_unit_spool_claimed_dir_is_importable_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_unit_claimed_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+test fn the_unit_spool_claimed_dir_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_unit_claimed_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
 }
 
-test fn the_exit_spool_stage_dir_is_importable_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_exit_stage_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+test fn the_exit_spool_stage_dir_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_exit_stage_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
 }
 
-test fn the_publication_request_dir_is_importable_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_publication_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+test fn the_publication_request_dir_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_publication_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
 }
 
 test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit {
@@ -314,9 +307,9 @@ test fn no_reap_stale_reclaim_operation_exists() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: probe_reap_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_reap_stale"), holds: fn(n) { n == 1 }))
 }
 
-// EXPECTING-RED: the evidence-gated requeue effect does not exist yet (the pure decision spool_requeue_assess does).
-test fn the_requeue_on_evidence_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_requeue_on_evidence_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_requeue_on_evidence"), holds: fn(n) { n == 1 }))
+// The evidence-gated requeue effect resolves; its stripped twin is the MissingExport probes above.
+test fn the_requeue_on_evidence_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_requeue_on_evidence_source), holds: fn(n) { n == 0 }))
 }
 
 test fn a_different_boot_id_licenses_requeue_to_pending() -> ProcessExit {
@@ -345,13 +338,13 @@ test fn only_a_claimed_entry_is_requeued() -> ProcessExit {
 }
 
 // EXPECTING-RED: the one stale effect is the line stop feeding gunbc.roadmap.spool_stall; it does not exist yet.
-test fn the_stale_stop_effect_does_not_exist_today() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_subject_census(source: probe_stale_stop_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_stale_stop"), holds: fn(n) { n == 1 }))
+test fn the_stale_stop_effect_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: probe_stale_stop_source), holds: fn(n) { n == 0 }))
 }
 
 // EXPECTING-RED: HostSpoolStage must dissolve into SpoolRole (consumers moved: gunbc.durable_handoff_host,
 // gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
-test fn the_host_spool_stage_enum_is_importable_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_host_spool_stage_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_host_spool_stage_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
 }
