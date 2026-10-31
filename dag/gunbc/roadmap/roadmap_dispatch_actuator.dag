@@ -2267,24 +2267,6 @@ type DispatchAttemptEventsInitialization
   = DispatchAttemptEventsInitialized
   | DispatchAttemptEventsInitializationFailed { detail: String }
 
-fn dispatch_attempt_events_initialize_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> DispatchAttemptEventsInitialization {
-  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
-  match instance.worker {
-    WorkerIsServiceUser => {
-      let written = Filesystem.Write(path: path, content: "")
-      if written.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: written.error } }
-    }
-    WorkerDedicatedAccount => {
-      let created = Filesystem.WriteCreateNewWithMode(path: path, content: "", mode: file_mode_bits(mode: dispatch_attempt_events_group_writable_mode))
-      if created.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: created.error } }
-    }
-  }
-}
-
 fn attempt_current_pointer_argv_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
