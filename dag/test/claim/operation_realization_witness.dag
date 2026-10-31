@@ -924,3 +924,37 @@ test fn the_plain_bootdev_operation_carries_the_clear_device_only() -> Bool {
     _ => false
   }
 }
+
+// SdrElistVerbose (the conditional verbose SDR capture feeding the thermal admission rule): the
+// dry world deliberately does NOT answer it. Verbose record bytes are vendor output, and until a
+// real capture is committed any dry reply would be synthetic evidence - the very thing the
+// admission rule must be grounded on, not fabricated (manager msg_4049c507). So a dispatched
+// verbose read surfaces as a harness fault carrying the grounding reason, and the route records
+// the dispatch; the wet lane answers it for real.
+fn sdr_elist_verbose_call() -> Bool {
+  let r = diagnostic.ipmi.Tool.SdrElistVerbose(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  r.success
+}
+
+test fn a_dispatched_verbose_sdr_read_faults_with_the_grounding_reason() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { sdr_elist_verbose_call() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "no committed verbose SDR capture", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["SdrElistVerbose"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
+          Absent => false
+        }
+    _ => false
+  }
+}
