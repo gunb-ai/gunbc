@@ -25,13 +25,18 @@ import gunbc.ensure {
 import std.upsert_decision { Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, NotApplied, EffectConverged, EffectNotConverged, classify_reconciled }
 import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
+import gunbc.host_state_root { HostStateTree }
+import product.printing.cad_runtime_store {
+  print_runtime_path, cad_runtime_store, CadRuntimeStore, CadRuntimeStoreReady, CadRuntimeStoreUnready,
+  cad_environment_prefix, cad_environment_interpreter, cad_environment_publication, CadEnvironmentNotBuilt,
+  CadEnvironmentUnpublished, CadEnvironmentPublished, CadEnvironmentMarkerWrong, CadEnvironmentStoreUnreadable,
+  cad_environment_publish, CadPublished, CadPublishRefused, cad_build_under_lock, CadBuildResult, CadBuilt, CadBuildFailed,
+}
 import product.printing.print_runtime {
-  print_runtime_root, cad_environments_directory, cad_environment_prefix, cad_environment_interpreter,
-  cad_environment_lock, cad_environment_marker, probe_cad_interpreter, RuntimeMatches, RuntimeMismatch,
+  probe_cad_interpreter, RuntimeMatches, RuntimeMismatch,
   CadEnvironmentReading, CadEnvironmentAbsent, CadEnvironmentReady, CadEnvironmentWrong, CadEnvironmentUnreadable,
   cad_environment_reading_reason, read_cad_environment,
 }
-import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 
 // CONVERGING THE PRINT RUNTIME'S CAD ENVIRONMENT, on the host and route it is observed on
 // (product.printing.print_runtime read_cad_environment, LocalExec). The decision is gunbc.ensure's:
@@ -50,23 +55,21 @@ import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntry
 // population pip and the solver choose is not locked, so the environment is an OBSERVED MATCHING
 // environment, not a reproducible one: a rebuild on another day may differ below the pins.
 
-fn micromamba_path(spec: CadRuntimeSpec) -> String {
-  join([print_runtime_root, "/bin/micromamba-", spec.solver.version as String], "")
+fn micromamba_path(tree: HostStateTree, spec: CadRuntimeSpec) -> String {
+  join([print_runtime_path(tree: tree), "/bin/micromamba-", spec.solver.version as String], "")
 }
 
-fn micromamba_subject(spec: CadRuntimeSpec) -> AcquisitionSubject {
-  let path = micromamba_path(spec: spec)
+fn micromamba_subject(tree: HostStateTree, spec: CadRuntimeSpec) -> AcquisitionSubject {
+  let path = micromamba_path(tree: tree, spec: spec)
   AcquisitionSubject {
     identity: concat("micromamba-linux-aarch64-", spec.solver.version as String) as NonEmptyStr,
     key: ContentDigestSha256 { hex: spec.solver.sha256 },
     install_path: path as NonEmptyStr,
     staging_path: Present { value: concat(path, ".part") as NonEmptyStr },
-    parent_directory: concat(print_runtime_root, "/bin") as NonEmptyStr,
+    parent_directory: concat(print_runtime_path(tree: tree), "/bin") as NonEmptyStr,
     sources: [AcquisitionSource { identity: "github.com/mamba-org/micromamba-releases", locator: SourceUrl { url: spec.solver.url } }],
   }
 }
-
-type CadBuildResult = CadBuilt | CadBuildFailed { reason: String }
 
 // One build step on this host; a refusal names the step and carries its stderr.
 fn run_local(label: String, command: ArgvCommand) -> String? {
@@ -79,29 +82,31 @@ fn run_local(label: String, command: ArgvCommand) -> String? {
 
 // THE BUILD UNDER THE LOCK. The prefix is re-checked after the lock is taken: another convergence
 // may have published between the observation and the lock, and then this one builds nothing.
-fn build_locked(spec: CadRuntimeSpec, micromamba: String) -> CadBuildResult {
-  let prefix = cad_environment_prefix(spec: spec)
-  match listed_entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
-    FilesystemEntryAbsent(_) => {}
-    FilesystemEntryListed { directory: _, name: _ } => return CadBuildFailed { reason: concat("Another convergence created ", prefix, " after this one observed it absent; nothing built") }
-    FilesystemEntryPresenceIndeterminate { cause: c } => return CadBuildFailed { reason: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadBuildFailed { reason: c }
+fn build_locked(tree: HostStateTree, store: CadRuntimeStore, spec: CadRuntimeSpec, micromamba: String) -> CadBuildResult {
+  let prefix = cad_environment_prefix(store: store, spec: spec)
+  match cad_environment_publication(store: store, spec: spec) {
+    CadEnvironmentNotBuilt => {}
+    CadEnvironmentUnpublished { prefix: _ } => return CadBuildFailed { reason: concat("Another convergence created ", prefix, " after this one observed it absent; nothing built") }
+    CadEnvironmentPublished => return CadBuildFailed { reason: concat("Another convergence created ", prefix, " after this one observed it absent; nothing built") }
+    CadEnvironmentMarkerWrong { prefix: _ } => return CadBuildFailed { reason: concat("Another convergence created ", prefix, " after this one observed it absent; nothing built") }
+    CadEnvironmentStoreUnreadable { reason: c } => return CadBuildFailed { reason: c }
   }
   let failure = match run_local(label: "micromamba create", command: micromamba_create_command(
     micromamba: micromamba_at(executable: micromamba as NonEmptyStr),
-    root_prefix: concat(print_runtime_root, "/micromamba-root"),
+    root_prefix: concat(print_runtime_path(tree: tree), "/micromamba-root"),
     prefix: prefix,
     channel: conda_forge_channel,
     requirements: spec.interpreter_packages,
   )) {
     Present { value: e } => Present { value: e }
-    Absent => match run_local(label: "pip install", command: pip_module_install_command(interpreter: python_interpreter_at(executable: cad_environment_interpreter(spec: spec) as NonEmptyStr), requirements: spec.requirements)) {
+    Absent => match run_local(label: "pip install", command: pip_module_install_command(interpreter: python_interpreter_at(executable: cad_environment_interpreter(store: store, spec: spec) as NonEmptyStr), requirements: spec.requirements)) {
       Present { value: e } => Present { value: e }
-      Absent => match probe_cad_interpreter(spec: spec, interpreter: cad_environment_interpreter(spec: spec)) {
+      Absent => match probe_cad_interpreter(spec: spec, interpreter: cad_environment_interpreter(store: store, spec: spec)) {
         RuntimeMismatch { reason: r } => Present { value: concat("Built environment failed its probe: ", r) }
-        RuntimeMatches =>
-          if Filesystem.WriteCreateNew(path: cad_environment_marker(spec: spec), content: cad_runtime_spec_text(spec: spec)).success { none }
-          else { Present { value: "Cannot write the CAD environment ready marker" } }
+        RuntimeMatches => match cad_environment_publish(store: store, spec: spec) {
+          CadPublished => none
+          CadPublishRefused { cause: c } => Present { value: c }
+        }
       }
     }
   }
@@ -114,9 +119,9 @@ fn build_locked(spec: CadRuntimeSpec, micromamba: String) -> CadBuildResult {
   }
 }
 
-fn build_cad_environment(spec: CadRuntimeSpec) -> CadBuildResult {
-  let micromamba = micromamba_path(spec: spec)
-  match acquire_artifact(subject: micromamba_subject(spec: spec), handler: url_file_acquisition_handler) {
+fn build_cad_environment(tree: HostStateTree, store: CadRuntimeStore, spec: CadRuntimeSpec) -> CadBuildResult {
+  let micromamba = micromamba_path(tree: tree, spec: spec)
+  match acquire_artifact(subject: micromamba_subject(tree: tree, spec: spec), handler: url_file_acquisition_handler) {
     AcquisitionRefused { cause: c } => return CadBuildFailed { reason: concat("Cannot acquire the pinned micromamba: ", acquisition_refusal_text(cause: c)) }
     AcquisitionAlreadyPresent { identity: _, install_path: _ } => {}
     AcquisitionFetched { identity: _, install_path: _, source: _ } => {}
@@ -125,17 +130,7 @@ fn build_cad_environment(spec: CadRuntimeSpec) -> CadBuildResult {
     Present { value: e } => return CadBuildFailed { reason: e }
     Absent => {}
   }
-  if !shell.Mkdir.NewOwnerOnly(path: cad_environment_lock(spec: spec) as FilePath).success {
-    return CadBuildFailed { reason: concat("Cannot take the CAD environment convergence lock ", cad_environment_lock(spec: spec)) }
-  }
-  let result = build_locked(spec: spec, micromamba: micromamba)
-  let released = shell.Remove.RecursiveForce(path: cad_environment_lock(spec: spec) as FilePath)
-  if released.success { result } else {
-    match result {
-      CadBuilt => CadBuildFailed { reason: concat("Built, but cannot release the convergence lock ", cad_environment_lock(spec: spec)) }
-      CadBuildFailed { reason: r } => CadBuildFailed { reason: concat(r, "; and the convergence lock could not be released") }
-    }
-  }
+  cad_build_under_lock(store: store, spec: spec, build: p => build_locked(tree: tree, store: store, spec: spec, micromamba: micromamba))
 }
 
 // THE READING AS AN ENSURE OBSERVATION. Ready satisfies; Absent may be built; Wrong is observed but
@@ -167,14 +162,15 @@ fn build_plan(r: CadEnvironmentReading) -> EnsurePlan<CadRuntimeSpec> {
   }
 }
 
-fn converge_cad_runtime(receipt: String) -> ProcessExit {
-  if !shell.Mkdir.Parents(path: cad_environments_directory() as FilePath).success {
-    return exit_failure(reason: concat("Cannot create the print runtime directory ", cad_environments_directory()))
+fn converge_cad_runtime(tree: HostStateTree, receipt: String) -> ProcessExit {
+  let store = match cad_runtime_store(tree: tree) {
+    CadRuntimeStoreUnready { detail: d } => return exit_failure(reason: d)
+    CadRuntimeStoreReady { store: st } => st
   }
-  let before = read_cad_environment()
+  let before = read_cad_environment(tree: tree)
   let decision = ensure_decide(policy: EnsureMayApply, observation: as_observation(r: before), observation_satisfies: satisfies(r: before), mismatch_reason: cad_environment_reading_reason(r: before), plan: build_plan(r: before))
   let build = match decision {
-    Apply { plan: spec } => Present { value: build_cad_environment(spec: spec) }
+    Apply { plan: spec } => Present { value: build_cad_environment(tree: tree, store: store, spec: spec) }
     Noop => none
     Refuse { reason: _ } => none
   }
@@ -183,7 +179,7 @@ fn converge_cad_runtime(receipt: String) -> ProcessExit {
     Present { value: CadBuildFailed { reason: _ } } => NotApplied
     Absent => NotApplied
   }
-  let after = read_cad_environment()
+  let after = read_cad_environment(tree: tree)
   let reconciled = ensure_reconcile(
     policy: EnsureMayApply,
     before: as_observation(r: before), before_satisfies: satisfies(r: before), mismatch_reason: cad_environment_reading_reason(r: before), plan: build_plan(r: before),
@@ -197,7 +193,7 @@ fn converge_cad_runtime(receipt: String) -> ProcessExit {
   }
   let body = join([
     concat("spec_sha256=", cad_runtime_spec_digest(spec: cad_runtime_spec)),
-    concat("prefix=", cad_environment_prefix(spec: cad_runtime_spec)),
+    concat("prefix=", cad_environment_prefix(store: store, spec: cad_runtime_spec)),
     concat("before=", cad_environment_reading_reason(r: before)),
     concat("build=", build_note),
     concat("after=", cad_environment_reading_reason(r: after)),
