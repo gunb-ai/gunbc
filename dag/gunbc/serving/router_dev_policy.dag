@@ -648,7 +648,7 @@ fn router_dev_stats_lines() -> List<String> {
     "    completion_tokens = state:get(k .. 'generated') or 0,",
     "    cached_prompt_tokens = state:get(k .. 'cached') or 0,",
     "    cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
-    "    comparison_value_usd = (value_micro or 0) / 1000000\}",
+    "    comparison_value_usd = value_micro and value_micro / 1000000 or nil\}",
     "end",
     "local meter = \{version = 2, epoch = state:get('meter:v2:epoch'), models = \{}}",
     "local all = \{version = 2, epoch = meter.epoch, models = \{}}",
@@ -857,10 +857,6 @@ type RouterDevCapacity
   | RentedCapped { turns: Nat }
   | RentedUncapped
 
-fn router_dev_row_is_rented(u: RouterDevUpstream) -> Bool {
-  match u.capacity { OwnedCap { turns: _ } => false RentedCapped { turns: _ } => true RentedUncapped => true }
-}
-
 // HOW MANY CONVERSATIONS A ROW RETAINS. The first-party Strata rows' count is DERIVED from the serving layout
 // (gunbc.serving.serving_layout, ServingReplicaConfig.admitted_conversations) and never typed here.
 // RetentionFrontier is a declared gap: the row's count cannot yet be derived (srv3's and srv1-vllm's layouts
@@ -943,7 +939,6 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
   ], tls), [
     json_kv(key: "model", value: json_string(s: u.model)),
     json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
-    json_kv(key: "overflow", value: json_bool(b: router_dev_row_is_rented(u: u))),
     json_kv(key: "path_prefix", value: json_string(s: u.path_prefix)),
     json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
@@ -955,9 +950,9 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_capacity_members(c: RouterDevCapacity) -> List<JsonKeyValue> {
   match c {
-    OwnedCap { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedCapped { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedUncapped => no_members()
+    OwnedCap { turns: n } => [json_kv(key: "overflow", value: json_bool(b: false)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedCapped { turns: n } => [json_kv(key: "overflow", value: json_bool(b: true)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedUncapped => [json_kv(key: "overflow", value: json_bool(b: true))]
   }
 }
 
