@@ -1949,21 +1949,23 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
 }
 
 pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
-    let declarer_segs = crate::v1_std_core::module_path_segments(declarer.clone());
-    ((segment_lcp_len(
-        declarer_segs.clone(),
-        crate::v1_std_core::module_path_segments(env.module_path.clone()),
-    ) == (declarer_segs.clone().len() as i64))
-        || (import_visible_name(env.clone(), name) && {
-            let mut __found = false;
-            for p in env.parents.clone().iter().cloned() {
-                if (p.module_path.clone() == declarer.clone()) {
-                    __found = true;
-                    break;
+    {
+        let declarer_segs = crate::v1_std_core::module_path_segments(declarer.clone());
+        ((segment_lcp_len(
+            declarer_segs.clone(),
+            crate::v1_std_core::module_path_segments(env.module_path.clone()),
+        ) == (declarer_segs.clone().len() as i64))
+            || (import_visible_name(env.clone(), name) && {
+                let mut __found = false;
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == declarer.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
-            }
-            __found
-        }))
+                __found
+            }))
+    }
 }
 
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
