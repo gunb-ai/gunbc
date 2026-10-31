@@ -12,6 +12,7 @@ import gunbc.host.megarac_operation_standing {
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
 }
 import gunbc.machine_intake.mtcollins1_access_observation {
+  mtcollins1_boot_run_40258937016_diagnostics_hash,
   mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
   mtcollins1_current_build_firmware, mtcollins1_current_build_identity,
 }
@@ -191,7 +192,7 @@ data mtcollins1_current_build_read_at: EpochMs = 1792864843000
 // not the true one.
 data mtcollins1_run_40258937016_diagnostics: EvidenceRef = EvidenceRef {
   label: "artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt",
-  digest: Sha256Hash(Sha256Digest { hex: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f" }),
+  digest: mtcollins1_boot_run_40258937016_diagnostics_hash,
 }
 
 // 2026-10-26T02:55:27.734Z: the attach's own established_at, printed in boot 5's media line beside the
