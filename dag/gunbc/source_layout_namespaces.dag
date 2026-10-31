@@ -358,6 +358,7 @@ fn layout_namespaces() -> List<String> {
     "test.claim.vllm",
     "test.ctl",
     "test.fixture",
+    "test.fixture.attempt_state_seal",
     "test.fixture.c_host_store_seal",
     "test.fixture.belt_store_seal",
     "test.fixture.cross_module_alias_handler",
