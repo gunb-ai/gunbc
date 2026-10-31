@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, CarryBytes, move_hold_payload }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -203,4 +203,73 @@ test fn a_carry_bytes_destination_with_other_bytes_is_refused_and_the_receipt_st
   let refused = move_of(i: i, row: dogfood_start_slots.move)
   ready && seeded && !refused.success
     && Filesystem.Read(path: join([parent_of(i: i), "/dogfood-start-receipt.1"], "")).content == "legacy-receipt"
+}
+
+// THE LIVE SHAPE (inventory of 2026-10-31: 105 flat 32-byte attempt-identity entries, n1..nK per node): two nodes
+// with n1..n5 each, entries of exactly 32 bytes. ARM 9: the move reads every legacy entry (32 bytes each), keeps
+// each ordinal's number as the slot `<node>-n<k>.1`, and the NEXT mint after the move continues the sequence at n6
+// for both nodes. The hold slot does not carry the old bytes (HoldPayload); the ordinal set is what the store reads.
+fn plant_sequences(i: HostDashboardInstance) -> Bool {
+  let entry = "minted_at: 2026-10-29T10:00:00Z\n"
+  shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
+    && [1, 2, 3, 4, 5].all(fn(k) {
+      Filesystem.Write(path: flat(i: i, name: join(["c-n", to_string(value: k)], "")), content: entry).success
+        && Filesystem.Write(path: flat(i: i, name: join(["d-n", to_string(value: k)], "")), content: entry).success
+    })
+}
+
+fn next_ordinal(i: HostDashboardInstance, node: String) -> Int {
+  match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail: _ } => 0 - 1
+    AttemptIdentityStoreReady { store } =>
+      match attempt_identity_claim(store: store, node_id: node, minted_at: "t", ordinal: 1) {
+        AttemptIdentityClaimRefused { detail: _ } => 0 - 2
+        AttemptIdentityClaimed { ordinal } => ordinal
+      }
+  }
+}
+
+test fn the_numbering_survives_the_move_and_the_next_mint_continues_the_sequence() -> Bool {
+  let i = fresh_instance(tag: "sequences")
+  let ready = plant_sequences(i: i)
+  let applied = move_of(i: i, row: attempt_identity_slots.move)
+  let members = split(s: Filesystem.List(path: member_of(i: i)).entries, delimiter: "\n")
+  ready && applied.success
+    && string_contains(s: applied.stdout, pattern: "c-n5: slot written, 31 legacy bytes read back")
+    && length(xs: members) == 10
+    && members.any(fn(m) { m == "c-n5.1" }) && members.any(fn(m) { m == "d-n1.1" })
+    && next_ordinal(i: i, node: "c") == 6 && next_ordinal(i: i, node: "d") == 6
+}
+
+// ARM 10, RED: A MINT RACING THE MOVE IS NOT LOST AND DOES NOT INTERLEAVE. The old writer is the only source of a
+// flat entry: one that appears after the move (here c-n6) leaves the store Unready, so the new mint refuses
+// (never claims n1 of a fresh sequence); the rerun moves it and the sequence continues at n7.
+test fn a_flat_entry_minted_after_the_move_refuses_the_mint_and_the_rerun_keeps_the_sequence() -> Bool {
+  let i = fresh_instance(tag: "late")
+  let ready = plant_sequences(i: i)
+  let first = move_of(i: i, row: attempt_identity_slots.move)
+  let late = Filesystem.Write(path: flat(i: i, name: "c-n6"), content: "minted_at: 2026-10-30T10:00:00Z\n").success
+  let refused_mint = next_ordinal(i: i, node: "c") == 0 - 1
+  let rerun = move_of(i: i, row: attempt_identity_slots.move)
+  ready && first.success && late && refused_mint && rerun.success
+    && Filesystem.Read(path: join([member_of(i: i), "/c-n6.1"], "")).success
+    && next_ordinal(i: i, node: "c") == 7
+}
+
+// ARM 11, RED (the readback's side of the race): an entry the old writer minted between the plan's listing and the
+// readback is a legacy entry remaining after the move: the readback refuses, so the move does not report success.
+test fn a_flat_entry_appearing_between_plan_and_readback_refuses_the_move() -> Bool {
+  let row = attempt_identity_slots.move
+  let refusal = move_readback_refusal(row: row, before_parent: "attempt-identity-c-n1", after_parent: "attempt-identity-c-n6", after_member: "c-n1.1")
+  string_contains(s: refusal, pattern: "left legacy entries") && string_contains(s: refusal, pattern: "attempt-identity-c-n6")
+}
+
+// ARM 12, RED: A CARRIED ENTRY THE TRANSPORT WOULD TRIM IS NOT CARRIED. A receipt ending in a newline reads back one
+// byte short through the exec transport; a CarryBytes move refuses it and the receipt stays.
+test fn a_carry_bytes_entry_the_transport_would_trim_is_refused_and_stays() -> Bool {
+  let i = fresh_instance(tag: "trim")
+  let ready = plant_receipt(i: i, bytes: "{\"schema\": \"dogfood-start-receipt/v6\"}\n")
+  let refused = move_of(i: i, row: dogfood_start_slots.move)
+  ready && !refused.success && string_contains(s: refused.stderr, pattern: "not read faithfully")
+    && string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "dogfood-start-receipt.1")
 }

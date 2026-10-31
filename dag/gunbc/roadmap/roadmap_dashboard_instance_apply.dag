@@ -78,7 +78,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -935,8 +935,24 @@ fn dashboard_apply_provision_op(
                   acc
                 } else {
                   let old = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", legacy])
+                  // The transport trims trailing whitespace from stdout, so a row that carries the bytes themselves
+                  // proves the read was faithful against the file's own size, and refuses otherwise: a carried
+                  // receipt never silently loses its tail.
+                  let sized = match row.content {
+                    HoldPayload => dashboard_exec_ok(stdout: "")
+                    CarryBytes => {
+                      let size = dashboard_target_exec(instance: instance, program: "/usr/bin/stat" as FilePath, args: ["-c", "%s", "--", legacy])
+                      if size.success && size.stdout == to_string(value: string_length(s: old.stdout)) {
+                        dashboard_exec_ok(stdout: "")
+                      } else {
+                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " was not read faithfully (size ", size.stdout, " vs ", to_string(value: string_length(s: old.stdout)), " bytes read); not carried, nothing removed"], ""))
+                      }
+                    }
+                  }
                   if !old.success {
                     dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be read: ", old.stderr], ""))
+                  } else if !sized.success {
+                    sized
                   } else {
                     let expected = move_expected_content(row: row, legacy_bytes: old.stdout)
                     let placed = if e.slot_present {
