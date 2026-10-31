@@ -1817,7 +1817,7 @@ fn arithmetic_requirement(op: BinOp) -> ArithmeticRequirement? {
 // algebra_carriers is keyed by the carrier's leaf name (AlgebraCarrier carries no declaration identity), so
 // this lookup is the table's own contract: a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat
 // only by the injection rows and operand declarations that feed the fold, which are compared by
-// declaration_ref_eq. Giving AlgebraCarrier a declaration identity is the follow-up that removes the name key.
+// declaration_ref_eq. Giving AlgebraCarrier a declaration identity is the climb gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall declares.
 fn carrier_in_algebra_table(carrier: DeclarationRef) -> Bool {
   algebra_carriers() |> any(c => c.name == carrier.decl_name)
 }
