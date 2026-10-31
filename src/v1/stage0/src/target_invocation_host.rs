@@ -261,10 +261,6 @@ pub enum TargetProducer {
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
-    PrimitiveEgressCensus,
-    PrimitiveEgressCensusV2,
-    PrimitiveEgressCensusDag,
-    PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
@@ -494,22 +490,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("typed-graph-exclusive-bytes-floor-subject"),
             TargetProducer::TypedGraphExclusiveBytesFloorSubject,
-        ),
-        (
-            instrument_label("primitive-egress-census"),
-            TargetProducer::PrimitiveEgressCensus,
-        ),
-        (
-            instrument_label("primitive-egress-census-v2"),
-            TargetProducer::PrimitiveEgressCensusV2,
-        ),
-        (
-            instrument_label("primitive-egress-census-dag"),
-            TargetProducer::PrimitiveEgressCensusDag,
-        ),
-        (
-            instrument_label("primitive-egress-census-seed"),
-            TargetProducer::PrimitiveEgressCensusSeed,
         ),
         (
             instrument_label("required-lane-resolution-census"),
@@ -1071,21 +1051,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
             run_typed_graph_exclusive_bytes_floor_subject()
         }
-        TargetProducer::PrimitiveEgressCensus => {
-            run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
-        }
-        TargetProducer::PrimitiveEgressCensusV2 => run_primitive_egress_census(
-            "primitive-egress-census-v2",
-            "primitive_egress_census_v2_exit",
-        ),
-        TargetProducer::PrimitiveEgressCensusDag => run_primitive_egress_census(
-            "primitive-egress-census-dag",
-            "primitive_egress_census_dag_exit",
-        ),
-        TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
-            "primitive-egress-census-seed",
-            "primitive_egress_census_seed_exit",
-        ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
         TargetProducer::NativeCensusVerb { verb } => {
             run_census_verb(verb, label, &self_host_source_roots())
@@ -1124,32 +1089,10 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
     run_cli_wire_census(function, entry, function)
 }
 
-/// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
-/// `gunbc.primitive_egress.census_live` `primitive_egress_census_*_exit` entries, each answering a
-/// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
-/// standing carries. The bytes are printed on EVERY termination, because the receipt is the
-/// product and a did-not-hold census is exactly when its identity lists are wanted.
-///
-/// THE THREE TERMINATIONS map off the wire exit read through the one classifier in `cli_run`:
-/// success is the census holding; `ExitFailure { code: 1 }` is a located census finding (an
-/// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
-/// is the population not being established (a refused entry, no identities) and is `Refused`;
-/// a resolve or eval failure is `SubjectUnreached`.
-/// One runner for the four census labels: the scope is the `.dag` entry function the label
-/// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
-/// bounded projection is a label of its own and not a flag on the full one.
-fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
-    run_cli_wire_census(
-        label,
-        "dag/gunbc/primitive_egress/census_live.dag",
-        function,
-    )
-}
-
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. The primitive egress
-/// census labels and the required-lane resolution census share it; a new instrument of that
+/// wire exit to a Termination through the one classifier in `cli_run`. The required-lane
+/// resolution census shares it; a new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,

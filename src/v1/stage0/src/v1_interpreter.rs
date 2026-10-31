@@ -16979,66 +16979,6 @@ fn resolved_call_edge_census_value(
     }
 }
 
-fn primitive_callee_identity_value(
-    callee: crate::cli_run::PrimitiveCalleeIdentity,
-    ctx: &InterpContext,
-) -> Value {
-    use crate::cli_run::PrimitiveCalleeIdentity;
-    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
-        type_name: ctx.sym("PrimitiveCalleeIdentity"),
-        variant_name: ctx.sym(name),
-        fields: Rc::new(sorted_fields(fields)),
-    };
-    match callee {
-        PrimitiveCalleeIdentity::RuntimePrimitive {
-            primitive_name,
-            projected_from_module,
-            projected_from_decl,
-        } => variant(
-            "RuntimePrimitiveCallee",
-            vec![
-                (ctx.sym("primitive_name"), str_value(primitive_name)),
-                (
-                    ctx.sym("projected_from_module"),
-                    match projected_from_module {
-                        Some(m) => optional_present(str_value(m), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-                (
-                    ctx.sym("projected_from_decl"),
-                    match projected_from_decl {
-                        Some(d) => optional_present(str_value(d), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-            ],
-        ),
-        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
-            "AlgebraMethodCallee",
-            vec![(ctx.sym("template_name"), str_value(template_name))],
-        ),
-        PrimitiveCalleeIdentity::ServiceOperation {
-            service_name,
-            operation,
-        } => variant(
-            "ServiceOperationCallee",
-            vec![
-                (ctx.sym("service_name"), str_value(service_name)),
-                (ctx.sym("operation"), str_value(operation)),
-            ],
-        ),
-        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
-            "PlainMethodCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
-            "UndeterminedFreeCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-    }
-}
-
 /// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
 /// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
 /// population could not be established -- never an empty list standing for a refusal.
@@ -17059,78 +16999,6 @@ fn module_identity_population_value(
                 ctx.sym("modules"),
                 list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
             )])),
-        },
-    }
-}
-
-fn primitive_call_edge_census_value(
-    census: crate::cli_run::PrimitiveCallEdgeCensus,
-    ctx: &InterpContext,
-) -> Value {
-    match census {
-        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
-            entries_resolved,
-            entries_refused,
-            edges,
-        } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
-            fields: Rc::new(sorted_fields(vec![
-                (
-                    ctx.sym("entries_resolved"),
-                    list_value(
-                        entries_resolved
-                            .into_iter()
-                            .map(str_value)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("entries_refused"),
-                    list_value(
-                        entries_refused
-                            .into_iter()
-                            .map(|r| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("entry"), str_value(r.entry)),
-                                    (ctx.sym("cause"), str_value(r.cause)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("edges"),
-                    list_value(
-                        edges
-                            .into_iter()
-                            .map(|edge| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEdge"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
-                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
-                                    (
-                                        ctx.sym("authored_spelling"),
-                                        str_value(edge.authored_spelling),
-                                    ),
-                                    (
-                                        ctx.sym("callee"),
-                                        primitive_callee_identity_value(edge.callee, ctx),
-                                    ),
-                                    (ctx.sym("span_file"), str_value(edge.span_file)),
-                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-            ])),
         },
     }
 }
@@ -25169,15 +25037,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
-                Ok(Some(list_value(
-                    crate::cli_run::builtin_function_registry_keys()
-                        .into_iter()
-                        .map(str_value)
-                        .collect::<Vec<_>>(),
-                )))
-            },
-
             arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let service = expect_str($positional.get(1).copied(), $name)?;
@@ -25188,16 +25047,6 @@ macro_rules! v1_builtin_arms {
                     ))),
                     Err(msg) => Err(InterpError::TypeError { msg }),
                 }
-            },
-
-            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
-                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
-                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
-                Ok(Some(primitive_call_edge_census_value(
-                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
-                    $ctx,
-                )))
             },
 
             arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
