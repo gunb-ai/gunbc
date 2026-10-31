@@ -9468,9 +9468,6 @@ fn expected_type_is_open_variable(exp: Node) -> Bool {
   }
 }
 
-// Peel Optional/Outcome wrappers and resolve type-alias RHS so empty_map/empty_set
-// classify the collection they inhabit (review 79806). Concrete non-collection
-// expected types stay at the surface and keep the keyed/Set refusal.
 // The three collection carriers a collection literal's expected type may be, by roster algebra.
 fn spelling_is_collection_carrier(name: String) -> Bool {
   container_spelling_is_algebra(name: name, algebra: "FreeMonoid")
@@ -9478,6 +9475,9 @@ fn spelling_is_collection_carrier(name: String) -> Bool {
     || container_spelling_is_algebra(name: name, algebra: "FinitelySupportedFunction")
 }
 
+// Peel Optional/Outcome wrappers and resolve type-alias RHS so empty_map/empty_set
+// classify the collection they inhabit (review 79806). Concrete non-collection
+// expected types stay at the surface and keep the keyed/Set refusal.
 fn expected_collection_surface(exp: Node, scope: InferScope, fuel: Int) -> Node {
   if fuel <= 0 {
     exp
@@ -9597,7 +9597,7 @@ fn expected_type_is_keyed_collection(exp: Node, scope: InferScope) -> Bool {
     if node_is_keyed_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction") || ((core.children |> count) == 2 && core.name == "Map")
+      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction") || ((core.children |> count) == 2 && container_spelling_is_algebra(name: core.name, algebra: "FinitelySupportedFunction"))
     }
   }
 }
@@ -9612,7 +9612,7 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
         if node_is_set_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet") || ((core.children |> count) == 1 && core.name == "Set")
+      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet") || ((core.children |> count) == 1 && container_spelling_is_algebra(name: core.name, algebra: "FinitePowerSet"))
     }
   }
 }
