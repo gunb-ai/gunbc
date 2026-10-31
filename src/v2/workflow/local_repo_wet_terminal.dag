@@ -3625,6 +3625,60 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "a_woken_attempt_with_its_worktree_reaped_refuses_its_own_continuation" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "a_woken_attempt_with_its_worktree_reaped_refuses_its_own_continuation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "the_wake_entry_restores_before_it_reads_the_continuation" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "the_wake_entry_restores_before_it_reads_the_continuation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "the_continuation_read_after_the_step_names_the_woken_attempt" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "the_continuation_read_after_the_step_names_the_woken_attempt",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "a_wake_naming_another_attempt_key_is_refused_after_the_step" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "a_wake_naming_another_attempt_key_is_refused_after_the_step",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "an_unnamed_attempt_in_the_identical_state_is_not_selected_by_the_step" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "an_unnamed_attempt_in_the_identical_state_is_not_selected_by_the_step",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "the_unnamed_attempt_is_never_restored_at_the_wake_and_its_claim_slot_is_unchanged" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "the_unnamed_attempt_is_never_restored_at_the_wake_and_its_claim_slot_is_unchanged",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "the_named_attempt_is_restored_and_its_claim_slot_is_reopened" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "the_named_attempt_is_restored_and_its_claim_slot_is_reopened",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "a_spawn_fresh_only_node_is_refused_and_starts_nothing" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "a_spawn_fresh_only_node_is_refused_and_starts_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_redeliver_wake_restore_wet_witness", function: "a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_nothing" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_redeliver_wake_restore_wet_witness.dag",
+      function: "a_foreign_row_ahead_of_the_named_attempt_selects_nothing_and_restores_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.belt_capture_intent_wet_witness", function: "a_kill_after_the_scm_save_does_not_double_capture" },
       entry: "dag/test/claim/roadmap/belt_capture_intent_wet_witness.dag",
       function: "a_kill_after_the_scm_save_does_not_double_capture",
