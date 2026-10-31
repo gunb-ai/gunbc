@@ -980,13 +980,17 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
         empty: [],
         cons: fn(acc, path) { list_append(acc, roster_plan_path(sides: sides, companions: companions, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures)) }
       )
-      let refusals = fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_refusal_rows(plan: plan) })
-      if refusals == "" {
-        fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_commit(held: held, plan: plan) })
-      } else {
-        refusals
-      }
+      roster_apply_plans(held: held, plans: plans)
     }
+  }
+}
+
+fn roster_apply_plans(held: RosterHeldLock, plans: List<RosterPlan>) -> String {
+  let refusals = fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_refusal_rows(plan: plan) })
+  if refusals == "" {
+    fold_list(xs: plans, empty: "", cons: fn(acc, plan) { acc + roster_plan_commit(held: held, plan: plan) })
+  } else {
+    refusals
   }
 }
 
@@ -1599,6 +1603,13 @@ fn roster_leg_gates(home: QualifiedName, rows: RosterRowSelection, path: String,
 // There is NO FALLBACK TO SPELLING: in an active run, a site of the gated call passes ONLY if a key of the selection
 // names this file and matches the site's derived key. A file the selection names no key of has the gated row ACT AS
 // ABSENT there (its gated-call sites allow nothing: no import, no rename) -- it is never swept by spelling.
+fn roster_gate_is_present(gate: Optional<RosterSiteGate>) -> Bool {
+  match gate {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn roster_gate_allows_site(gate: Optional<RosterSiteGate>, st: ScopedReferenceSite, spans: SpanIndex) -> Bool {
   match gate {
     Absent => true
@@ -1940,7 +1951,13 @@ fn roster_rename_plan(
     // INNERMOST FIRST: a pipe whose left operand holds another of this row's selected calls waits for the next pass, after
     // the inner call is rewritten (a chain `a |> f() |> join(s)` converges stage by stage). The pipe read rides the selection
     // into the rename fold below, so each head is read off the index once, not once per pass over the head.
-    fold_list(xs: roster_heads_innermost_first(pipe_index: pipe_index, spans: spans, heads: heads), empty: LabelsSelected { edits: [] }, cons: fn(acc, selected) {
+    let innermost = roster_heads_innermost_first(pipe_index: pipe_index, spans: spans, heads: heads)
+    // A KEYED SITE IS REWRITTEN OR THE RUN REFUSES: the next pass reads the shifted text, where a census key no longer names
+    // the deferred site, so under a key gate a deferred pipe is a silent skip and refuses instead (an unkeyed sweep converges).
+    if length(xs: innermost) != length(xs: heads) && roster_gate_is_present(gate: roster_gate_for(gates: gates, row: row)) {
+      LabelsRenameRefused { reason: RefusalRenamePipeOperandUnclean { call: row.call } }
+    } else {
+    fold_list(xs: innermost, empty: LabelsSelected { edits: [] }, cons: fn(acc, selected) {
       match acc {
         LabelsSelected { edits: es } =>
           match roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional) {
@@ -1952,6 +1969,7 @@ fn roster_rename_plan(
         other => other
       }
     })
+    }
   }
 }
 
@@ -3078,11 +3096,11 @@ fn roster_occ_expect_text(name: String, before: String, keys: List<String>, afte
   }
 }
 
-// A KEYED SITE IS REWRITTEN OR THE RUN REFUSES: an import landing with the keyed call head unchanged is the silent skip.
-fn roster_occ_expect_rewrite_or_refuse(name: String, before: String, keys: List<String>, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_applied(before: before, outcome: roster_occ_outcome(text: before, keys: keys, prepared: prepared, lex: lex)) {
-    RosterApplyRefused { reason: _ } => ""
-    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+// A KEYED SITE THE PLAN CANNOT REWRITE THIS PASS REFUSES: any outcome but a refusal leaves the deferred site to a pass whose text has moved.
+fn roster_occ_expect_refused(name: String, text: String, keys: List<String>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_occ_outcome(text: text, keys: keys, prepared: prepared, lex: lex) {
+    RosterRefused { reason: _ } => ""
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
   }
 }
 
@@ -3105,6 +3123,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
   let bound = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(k: String) -> String {\n  let map_get = k\n  map_get\n}\n"
   let pipe_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k)\n}\n"
   let pipe_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n"
+  let chain_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String, j: String) -> Optional<String> {\n  m |> map_get(k) |> map_get(j)\n}\n"
   let not_src = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(m |> map_get(k))\n}\n"
   let not_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  !(map_lookup(m: m, key: k))\n}\n"
   [
@@ -3126,7 +3145,8 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control()),
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites-or-refuses", fail: roster_occ_expect_rewrite_or_refuse(name: "occurrences-keyed-negated-pipe-site-rewrites-or-refuses", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex))
+    roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex))
   ]
 }
 
@@ -4145,6 +4165,30 @@ fn roster_lock_controls_report(root_dir: String) -> String {
     + roster_control_contend(root_dir: root_dir)
     + roster_control_traversal(root_dir: root_dir)
     + roster_control_spellings(root_dir: root_dir)
+    + roster_control_all_or_nothing(root_dir: root_dir)
+}
+
+// ALL-OR-NOTHING: one planned write beside one refused plan writes nothing, and reports the refusal.
+fn roster_control_all_or_nothing(root_dir: String) -> String {
+  let before = roster_control_source(module_name: "c.aon")
+  let target = ".roster_control_aon.dag"
+  match roster_lock_take(root_dir: root_dir) {
+    RosterLockRefused { reason: reason } => "CONTROL-FAIL all-or-nothing: acquire refused " + roster_refusal_text(reason: reason) + "\n"
+    RosterLockAcquired { held: held } =>
+      if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
+        "CONTROL-FAIL all-or-nothing: scratch target could not be created\n" + (if roster_lock_release(held: held) { "" } else { "CONTROL-FAIL all-or-nothing: release failed\n" })
+      } else {
+        let refused = roster_refuse_row(path: "other.dag", reason: RefusalUnreadable)
+        let report = roster_apply_plans(held: held, plans: [RosterPlanWrite { path: target, before: before, content: before + "x" }, RosterPlanRefused { row: refused }])
+        let after = Filesystem.Read(path: root_dir + "/" + target)
+        let removed = Filesystem.Delete(path: root_dir + "/" + target)
+        let released = roster_lock_release(held: held)
+        if report != refused { "CONTROL-FAIL all-or-nothing: reported " + report }
+        else if !after.success || after.content != before { "CONTROL-FAIL all-or-nothing: a refused run still wrote the other file\n" }
+        else if !removed.success || !released { "CONTROL-FAIL all-or-nothing: scratch not cleaned\n" }
+        else { "" }
+      }
+  }
 }
 
 fn roster_control_unheld(root_dir: String) -> String {
