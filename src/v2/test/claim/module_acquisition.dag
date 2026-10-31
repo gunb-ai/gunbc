@@ -1,7 +1,6 @@
 module v2.test.claim.module_acquisition
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
-import std.algebra { string_contains }
 import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
@@ -9,7 +8,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
-import std.algebra { length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
+import std.algebra { string_contains, length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
 import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
