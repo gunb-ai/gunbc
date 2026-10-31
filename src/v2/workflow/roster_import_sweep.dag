@@ -2065,10 +2065,7 @@ fn roster_arm_at_key(path: String, starts: List<Int>, spans: SpanIndex, caps: Li
 fn roster_arm_tag(cap: Node) -> String {
   match roster_arm_pattern(cap: cap) {
     Present { value: left } =>
-      match roster_pattern_authored_atoms(pattern: left) {
-        [t, ..] => t
-        [] => ""
-      }
+      fold_list(xs: roster_pattern_authored_atoms(pattern: left), empty: "", cons: fn(acc, t) { if acc == "" { t } else { acc } })
     Absent => ""
   }
 }
