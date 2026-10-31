@@ -36,9 +36,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // a recording owes none ONCE recording_capture runs, which is why the replay executor takes recordings and nothing else.
 //
 // DECLARED FRONTIER: recording_capture has no executing consumer on the production path in this change; until it
-// does, a recording can only be written by hand and the 'owes none' claim above is NOT yet established. The
-// tracking authority is the frontier row below (dispatch_replay_recording_frontier_rows), read by
-// gunbc.census_closure_frontier; until it dissolves, the lab operator captures a recording with the entry
+// does, a recording can only be written by hand and the 'owes none' claim above is NOT yet established. The row
+// below (dispatch_replay_recording_frontier_rows) states that gap with its dissolution trigger. NOTHING EXECUTES
+// THE ROW: the repository-wide closure census was retired (#15428) and no replacement instrument is owed, so it is
+// a declared unconsumed frontier rather than a tracked gap. Until it dissolves, the lab operator captures a
+// recording with the entry
 // gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli, which reads one completed attempt's own records.
 //
 // WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
