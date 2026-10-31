@@ -1,0 +1,23 @@
+module test.manual.call_depth_bytes_probe
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { Int }
+
+// Non-tail interpreted recursion whose every frame holds a deeply nested expression, so a frame
+// costs host bytes far beyond one call. CALL_DEPTH counts calls; the question this probe asks is
+// whether the process aborts (rc 134) before the count reaches CALL_DEPTH_LIMIT.
+fn nested_depth(n: Int) -> Int {
+  if n == 0 {
+    0
+  } else {
+    1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + nested_depth(n: n - 1))))))))
+  }
+}
+
+fn call_depth_bytes_probe_control() -> ProcessExit {
+  if nested_depth(n: 10000) == 80000 { ExitSuccess } else { exit_failure(reason: "nested_depth returned the wrong sum") }
+}
+
+fn call_depth_bytes_probe_near_limit() -> ProcessExit {
+  if nested_depth(n: 99000) == 792000 { ExitSuccess } else { exit_failure(reason: "nested_depth returned the wrong sum") }
+}
