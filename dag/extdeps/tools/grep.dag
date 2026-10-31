@@ -64,3 +64,10 @@ fn grep_nonempty_lines_in_tree_argv(file_names: List<NonEmptyStr>, root: NonEmpt
 fn grep_files_with_fixed_strings_argv(patterns: List<NonEmptyStr>, paths: List<NonEmptyStr>) -> List<String> {
   concat(concat(["grep", "-l", "-F"], list_flat_map(patterns, p => ["-e", p as String])), concat(["--"], map(paths, p => p as String)))
 }
+
+// THE LINES, NOT JUST THE FILE NAMES, of every file that holds a fixed string. `-H` forces the file-name
+// prefix even for one operand, `-e` takes the pattern so one beginning with `-` is not an option, and
+// exit 1 (no match) is a normal answer for a caller asking whether a row exists.
+fn grep_fixed_string_lines_in_files_argv(pattern: NonEmptyStr, paths: List<NonEmptyStr>) -> List<String> {
+  concat(["grep", "-H", "-F", "-e", pattern as String, "--"], map(paths, p => p as String))
+}

@@ -453,7 +453,7 @@ data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
-data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_gate into the enrolment store's Filesystem.Read (gunbc.auth.approval_device_redemption observe_google_enrolment over approval_device_store_root), which has no mock_response. The route takes no store as a parameter, so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
+data excl_local_repo_wet_device_route_store_read_reason: String = "real host-effect execution witness over the App Attest device routes whose one claim is the gate's discriminating control: under a bound realization the read proceeds past device_crypto_gate into the device store's mint (gunbc.auth.approval_device_redemption approval_device_store over gunbc.host_state_root host_state_tree(): a Filesystem.List of its derived directory, then observe_google_enrolment's Filesystem.Read on a Ready store), neither of which has a mock_response. The route takes no store as a parameter -- it mints the sealed ApprovalDeviceStore from the production host-state tree itself; only the store-level operations below it take the store -- so the store cannot be supplied at the claim's interface. The effect is READ-ONLY: nothing is written, no network is reached, and the claim asserts only that the answer is not the realization reason, which holds whether the slot is absent, unreadable or present. So excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
 
 // THE OUTSIDE-DISCOVERY-ROOTS CENSUS's reads. NAMED AS ITS OWN ADMITTED EFFECT rather than folded into a
 // neighbour, which is this corpus's convention (see excl_local_repo_wet_bash_materialized_reason and
@@ -487,7 +487,7 @@ data excl_local_repo_wet_outside_roots_census_reason: String = "real host-read e
 data excl_local_repo_wet_outside_roots_census_dissolve: DissolutionCondition = unbound_dissolution(description: "response coverage lands for shell.Exec.RunArgv over the two git reads (ls-files and grep -E -l of the claim declaration shape), so the listing and the marker answer can be asserted against a fixed recorded answer while a separate route still checks them against a real index; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Filesystem or git mock coverage that stops short of these two argv responses cannot discharge this trigger.")
 
 
-data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.Read sufficient for observe_google_enrolment to be driven under a fixed store, OR the device read routes take their store observation as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness, drops off local_repo_wet_schedule, and this row deletes")
+data excl_local_repo_wet_device_route_store_read_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for Filesystem.List and Filesystem.Read sufficient for approval_device_store and observe_google_enrolment to be driven under a fixed store, OR the device read routes take their sealed ApprovalDeviceStore reading as a supplied value; then the control re-enrolls as an ordinary hermetic discovery row in test.claim.approval_device_routes_witness, drops off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.Dir and Filesystem.Write, sufficient for sha256sum_verify_via_shell to be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
@@ -1178,6 +1178,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "login_transaction_consume_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "auth_record_store_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},

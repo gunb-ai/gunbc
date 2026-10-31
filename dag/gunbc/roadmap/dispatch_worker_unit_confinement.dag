@@ -104,20 +104,6 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
   join([instance.repo_root as String, "/.git/worktrees/", dispatch_worktree_entry_name(attempt_worktree: attempt_worktree)], "")
 }
 
-fn dispatch_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
-    "/",
-    node_id as String,
-    "-a",
-    attempt_key,
-  ], "")
-}
-
 // WHICH DIRECTORY THE ATTEMPT PANE STANDS IN, and it is a PROVIDER fact rather than an attempt
 // fact. A vendor CLI is handed the attempt as its WORKING DIRECTORY -- that is how claude and codex
 // are told which tree to edit, so for them the pane cwd IS the subject and must stay the worktree.
@@ -157,25 +143,10 @@ fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
 // stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
 // speaks the schema.
 // THE WORKER-OWNED CHILD OF THE ATTEMPT DIRECTORY. Owner-side records (request-binding.json,
-// launch-identity.json, attempt-key, admission) stay in dispatch_attempt_state_path_for_instance
+// launch-identity.json, attempt-key, admission) stay in roadmap_attempt_state_store AttemptDirectoryRoot
 // itself, which is read-only to the unit. The log path is the single producer of that child:
 // ReadWritePaths scratch is path_parent_directory of stdout, and events/request scratch follow
 // this same parent. Do not add a parallel worker-dir function.
-fn dispatch_attempt_worker_log_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/worker/worker-stdout.log",
-  ], "")
-}
-
 // THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
 // setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
 // reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles

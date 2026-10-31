@@ -3,6 +3,7 @@ module test.claim.fleet.fleet_intent_network_witness
 import std.live_tree { LiveTreeDisposition }
 import extdeps.dhcp.v4 { Active }
 import extdeps.network.ipv4 { ipv4_address }
+import extdeps.network.mac { mac_address, mac_addresses_are_equal }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv10, operator_host_srv11, operator_host_srv9,
@@ -156,13 +157,19 @@ test fn w_the_printer_endpoint_names_the_registered_printer_asset() -> Bool {
 }
 
 test fn w_both_printer_addresses_are_active_static_mac_bound_reservations() -> Bool {
-  printer_01_lan_reservation.mac_address == "68:EE:8F:66:2A:28" as MacAddress
+  mac_addresses_are_equal(
+      left: printer_01_lan_reservation.mac_address,
+      right: mac_address(octet1: 104, octet2: 238, octet3: 143, octet4: 102, octet5: 42, octet6: 40),
+    )
     && printer_01_lan_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 234)
     && printer_01_lan_reservation.lease == StaticDhcpReservation {
          reservation_label: "printer-01" as NonEmptyStr,
          status: Active,
        }
-    && printer_02_lan_reservation.mac_address == "68:EE:8F:60:AC:14" as MacAddress
+    && mac_addresses_are_equal(
+      left: printer_02_lan_reservation.mac_address,
+      right: mac_address(octet1: 104, octet2: 238, octet3: 143, octet4: 96, octet5: 172, octet6: 20),
+    )
     && printer_02_lan_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 235)
     && printer_02_lan_reservation.lease == StaticDhcpReservation {
          reservation_label: "printer-02" as NonEmptyStr,

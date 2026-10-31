@@ -45,8 +45,10 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // DECLARED FRONTIERS: neither producer has a consumer on the production path in this change. capture has no belt
 // step calling it yet, so the 'owes none' claim above is NOT YET ESTABLISHED in production; prepare is invoked only
 // by an operator entry, which is its intended consumer for as long as the post-model path needs qualifying. Both
-// gaps are tracked as rows below (dispatch_replay_recording_frontier_rows), read by gunbc.census_closure_frontier;
-// until they dissolve, the lab operator mints a recording with the entries in gunbc.dispatch_replay_capture
+// gaps are stated as rows below (dispatch_replay_recording_frontier_rows), each with its dissolution trigger.
+// NOTHING EXECUTES THOSE ROWS: the repository-wide closure census was retired (#15428) and no replacement instrument
+// is owed, so they are the declared statement of what is unconsumed rather than a tracked gap. Until they dissolve,
+// the lab operator mints a recording with the entries in gunbc.dispatch_replay_capture
 // (srv1_lab_recording_capture_cli, or srv1_lab_recording_prepare_cli) -- declared operations over durable state,
 // which is what keeps requirement 2 standing when a recording was not captured from an attempt.
 //
@@ -383,13 +385,6 @@ type RecordingPreparedEndAdmission
 // 0 ends 'success' and any other admitted status ends 'exit-code' -- the only pairs recorded_end_of admits, asked
 // of the status alone. A signaled or otherwise unreplayable end is not expressible here, which is intended: prepare
 // replays what it can reproduce by exiting, and nothing more.
-// THE FRONTIER AUTHORITY READS NAMES, SO THE NAMES ARE PROJECTED HERE rather than re-derived at each reader
-// (gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli and srv1_lab_recording_prepare_cli are the declared
-// consumer entries for the two rows).
-fn dispatch_replay_recording_frontier_decl_names() -> List<String> {
-  [recording_producer_capture_name, recording_producer_prepare_name]
-}
-
 fn recorded_end_of_status(status: Int) -> RecordingPreparedEndAdmission {
   match recorded_end_of(status: status, result: if status == 0 { ServiceResultSuccess } else { ServiceResultExitCode }) {
     RecordedEndRefused { cause } => RecordingPreparedEndRefused { cause: cause }

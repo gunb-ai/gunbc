@@ -1,18 +1,19 @@
 module test.claim.auth.gcp_operation_wait_witness
 
 import std.types { Bool, Int, String }
-import std.measure { second }
+import std.measure { second, second_count }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestRefusal, RestTransportRefused }
 import extdeps.cloud.gcp.gcp {
-  GoogleRpcStatus, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
+  gcp_access_change_propagation_documented_max, GoogleRpcStatus, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
   WifPoolOperation, WifProviderOperation, WifOperationNamed, WifOperationNameMismatch, wif_operation_name_parse,
 }
 import gunbc.auth.gcp_operation_wait {
   OperationRead, OperationUnreadable, OperationWaitReturn, OperationWaitSleepAndContinue,
   OperationWaitDone, OperationWaitFailed, OperationWaitBudgetSpent, OperationWaitUnreadable, OperationWaitIdentityMismatch, OperationWaitPacingRefused, operation_wait_after_pace,
   IamDenyOperationNamed, IamDenyOperationNameMismatch, iam_deny_operation_name_parse,
+  gcp_access_change_propagation_attempts, iam_converge_token_lifetime,
   operation_wait_step, gcp_quota_wait_fits_actuation_allowance, gcp_operation_poll_ticks, gcp_operation_budget_fits_actuation_allowance,
 }
 
@@ -91,4 +92,12 @@ test fn a_deny_operation_not_done_is_never_done_and_done_true_is_done() -> Bool 
 // A derived quota wait beyond the actuation allowance refuses (RED, a daily window); one within it fits.
 test fn a_derived_quota_wait_beyond_the_actuation_allowance_does_not_fit() -> Bool {
   gcp_quota_wait_fits_actuation_allowance(wait: second(count: 50)) && !gcp_quota_wait_fits_actuation_allowance(wait: second(count: 86390))
+}
+
+// THE 403 PROPAGATION RETRY IS DERIVED FROM GOOGLE'S DOCUMENTED FIGURE: 420s over the 5s cadence, plus the
+// one the admission predicate spends. It fits the impersonated token's lifetime (RED if the figure grew
+// past it), so a retry loop can never outlive the token it retries with.
+test fn the_access_change_retry_attempts_derive_from_the_documented_propagation_figure() -> Bool {
+  gcp_access_change_propagation_attempts() == 85
+    && second_count(s: gcp_access_change_propagation_documented_max) < second_count(s: iam_converge_token_lifetime)
 }

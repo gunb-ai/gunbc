@@ -1926,6 +1926,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_traversal_enrolment_id_is_refused_by_the_store_before_any_read" },
+      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
+      function: "a_traversal_enrolment_id_is_refused_by_the_store_before_any_read",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store" },
+      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
+      function: "a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.approval_device_routes_wet_witness", function: "a_bound_realization_passes_the_read_past_the_gate" },
       entry: "dag/test/claim/approval_device_routes_wet_witness.dag",
       function: "a_bound_realization_passes_the_read_past_the_gate",
@@ -3237,6 +3249,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.auth.login_callback_hold_wet_witness", function: "foreign_browser_cannot_consume_and_cached_replay_cannot_exchange" },
       entry: "dag/test/claim/auth/login_callback_hold_wet_witness.dag",
       function: "foreign_browser_cannot_consume_and_cached_replay_cannot_exchange",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_session_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_session_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_profile_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_profile_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "every_auth_record_store_mint_refuses_a_directory_that_does_not_list" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "every_auth_record_store_mint_refuses_a_directory_that_does_not_list",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

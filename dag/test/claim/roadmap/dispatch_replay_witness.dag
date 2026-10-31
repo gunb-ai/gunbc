@@ -13,18 +13,15 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   decode_dispatch_executor_request, ExecutorDefault, ExecutorVendor, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown, ExecutorReplay,
 }
 import gunbc.dispatch_replay_recording {
-  RecordingId, recording_id_text, dispatch_replay_recording_frontier_rows, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
+  RecordingId, recording_id_text, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
   recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
   RecordedSuccess, RecordedExitCode, recorded_end_of, RecordedEndAdmitted, RecordedEndRefused,
   RecordedEndPairNotReproducible, RecordedEndOutOfRange, RecordedEndCollidesWithReplayRefusal, recording_object_hex,
   RecordingProvenance, CapturedFromAttempt, PreparedByOperator, recording_provenance_word, recording_ref_of,
-  dispatch_replay_recording_frontier_decl_names,
   recording_ref_prefix, recording_prepared_ref_prefix, recorded_end_of_status, RecordingPreparedEndAdmitted, RecordingPreparedEndRefused,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.dispatch_replay_capture { recording_prepare_cli }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.roster_frontier { frontier_subject_eq, DeclSubject, PathSubject }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultExitCode, ServiceResultOomKill }
 
 data base_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -157,9 +154,6 @@ test fn decode_refuses_an_unreplayable_exit_status_or_pair() -> Bool {
     && (match recording_id_decode(text: join([b, ".", t, ".0.success.captured"], "")) { RecordingIdDecoded { id: _ } => true  RecordingIdMalformed { text: _, reason: _ } => false })
 }
 
-// THE CAPTURE FRONTIER IS TRACKED IN THE CORPUS: its row is read by the closure census, so the dissolution trigger is
-// a citable fact and not a note. Mutation: drop dispatch_replay_recording_frontier_rows from
-// census_closure_frontier_row_groups and this goes red.
 // The exit facts a refusal claim needs, read from the same two arms ProcessExit has.
 fn prepare_exit_code(exit: ProcessExit) -> Int {
   match exit {
@@ -200,16 +194,6 @@ test fn the_prepare_entry_refuses_on_the_live_instance_and_never_mints_there() -
     && !string_contains(s: prepare_exit_reason(exit: live), pattern: "recording capture refused")
     && prepare_exit_code(exit: unknown) != 0
     && string_contains(s: prepare_exit_reason(exit: unknown), pattern: "no declared dashboard instance")
-}
-
-test fn the_capture_frontier_is_enrolled_in_the_closure_census() -> Bool {
-  // Two rows: the capture operation and the prepare operation, each with no production caller.
-  count(dispatch_replay_recording_frontier_rows) == 2
-    && all(
-      dispatch_replay_recording_frontier_rows,
-      row => any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject)),
-    )
-    && all(dispatch_replay_recording_frontier_decl_names(), name => any(dispatch_replay_recording_frontier_rows, row => match row.subject { DeclSubject { ref } => ref.decl_name as String == name  PathSubject { path: _ } => false }))
 }
 
 // PROVENANCE IS TYPED, NOT A PLACE IT IS FILED. Two arms, no default; the arm picks the namespace, so an id can

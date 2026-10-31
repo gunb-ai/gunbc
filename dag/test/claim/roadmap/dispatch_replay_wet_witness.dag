@@ -30,7 +30,7 @@ import std.logic { Bool }
 import std.types { String, FilePath, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemWritten, FilesystemWriteRefused, FilesystemWriteOutcome }
 import extdeps.systemd.service_exec { ServiceResultExitCode }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap.roadmap_belt_actuate { belt_exec, ExecOk, ExecFailed, ExecRefused }
@@ -47,13 +47,13 @@ import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_dashboard_lab_id,
 }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptCommitOutcomeLast, AttemptSpawnOrigin, attempt_state_provision, attempt_state_write_at,
+}
 import gunbc.roadmap.roadmap_belt_actuate {
-  belt_commit_outcome_receipt_json, belt_commit_outcome_receipt, belt_commit_outcome_last_basename, CommitRecorded, CommitDeferred, BeltCommitOutcome,
+  belt_commit_outcome_receipt_json, belt_commit_outcome_receipt, CommitRecorded, CommitDeferred, BeltCommitOutcome,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_spool_prepare, attempt_exit_record_put_worker_exited, AttemptExitRecordPutOk, AttemptExitRecordPutFailed }
-import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import extdeps.languages.json.emit { serialize_json }
 
 fn git_out(dir: String, args: List<String>) -> String {
@@ -341,14 +341,34 @@ fn capture_instance(root: String) -> HostDashboardInstance {
   )
 }
 
+fn written(o: FilesystemWriteOutcome) -> Bool {
+  match o {
+    FilesystemWritten { path: _ } => true
+    FilesystemWriteRefused { path: _, error: _ } => false
+  }
+}
+
 fn capture_records_written(instance: HostDashboardInstance, base: String, outcome: BeltCommitOutcome, head: String) -> Bool {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: capture_node as RoadmapNodeId, attempt_key: capture_attempt)
-  shell.Mkdir.Parents(path: dir as FilePath).success
-    && Filesystem.Write(path: join([dir, "/", dispatch_spawn_origin_basename], ""), content: join(["{\"base_sha\":\"", base, "\"}"], "")).success
-    && Filesystem.Write(
-      path: join([dir, "/", belt_commit_outcome_last_basename as String], ""),
-      content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: outcome, attempt_key: capture_attempt, settled_head: Present { value: head }))),
-    ).success
+  let provision = attempt_state_provision(instance: instance, node: capture_node, attempt_key: capture_attempt)
+  shell.Mkdir.Parents(path: provision.directory as FilePath).success
+    && written(
+      attempt_state_write_at(
+        instance: instance,
+        node: capture_node,
+        attempt_key: capture_attempt,
+        member: AttemptSpawnOrigin,
+        content: join(["{\"base_sha\":\"", base, "\"}"], ""),
+      )
+    )
+    && written(
+      attempt_state_write_at(
+        instance: instance,
+        node: capture_node,
+        attempt_key: capture_attempt,
+        member: AttemptCommitOutcomeLast,
+        content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: outcome, attempt_key: capture_attempt, settled_head: Present { value: head }))),
+      )
+    )
 }
 
 fn capture_over(root: String) -> Bool {

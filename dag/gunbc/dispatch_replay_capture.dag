@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptCommitOutcomeLast, attempt_state_observe_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -18,13 +18,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceIdUnknown,
   srv1_dashboard_lab_id,
 }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_replay_instance_admission, ReplayAdmittedOnInstance, ReplayRefusedOffLab }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_base_sha_observe,
   BaseShaObserved,
   BaseShaUnobserved,
-  belt_commit_outcome_last_basename,
   belt_commit_record_decode,
   CommitRecordDecoded,
   CommitRecordPredatesHead,
@@ -72,11 +70,7 @@ type ReplayCaptureInputs
   | ReplayCaptureInputsRefused { reason: String }
 
 fn replay_capture_result_commit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ReplayCaptureInputs {
-  let path = join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-    "/", belt_commit_outcome_last_basename as String,
-  ], "")
-  match filesystem_file_observation_of_path(path: path) {
+  match attempt_state_observe_at(instance: instance, node: node_id, attempt_key: attempt_key, member: AttemptCommitOutcomeLast) {
     FilesystemFileAbsent(_) => ReplayCaptureInputsRefused { reason: "the belt's commit step has not run for this attempt, so it has no result commit" }
     FilesystemFileIndeterminate { cause } => ReplayCaptureInputsRefused { reason: join(["the commit step's record could not be read: ", cause], "") }
     FilesystemFileObservationsDisagree { path: _, cause } => ReplayCaptureInputsRefused { reason: join(["the commit step's record could not be read: ", cause], "") }
