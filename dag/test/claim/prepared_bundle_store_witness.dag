@@ -118,5 +118,3 @@ test fn w_an_extra_bundle_file_refuses_corrupt() -> Bool {
   let reading = match prepared_bundle_published(tree: tree_in(dir: dir), plan_text: "plan-h") { PreparedBundleCorrupt { detail: _ } => true PreparedBundleReady { bundle: _ } => false PreparedBundleNotPrepared { residue: _ } => false PreparedBundleAmbiguous { published: _, notice: _ } => false PreparedBundleUnready { detail: _ } => false }
   made && added && reading
 }
-  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
-}
