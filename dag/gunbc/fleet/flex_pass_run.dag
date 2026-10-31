@@ -41,7 +41,7 @@ import product.fabric.flex_vast_shadow {
 import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable }
 import product.fabric.flex_vast_loop {
   FlexPassInput, FlexPassObservation, FlexWetGates, FlexKeyStanding, FlexKeyLive, FlexKeyNotLive, FlexKeyFromSecretManager,
-  FlexCreateIntent, FlexPlacementUnread, FlexPassOutcome, flex_run_pass, flex_vast_template_hashes,
+  FlexCreateIntent, FlexPlacementUnread, flex_placement_unread_obligation, FlexPassOutcome, flex_run_pass, flex_vast_template_hashes,
   flex_pass_outcome_wire, flex_create_walls, flex_wet_gate_wall, FlexCreateRefusal, flex_create_refusal_wire,
   FlexRentCooldown,
 }
@@ -216,7 +216,7 @@ fn flex_member_intent(s: FlexScreenedOffer) -> FlexCreateIntent? {
           entry: s.entry,
           quote: s.quote,
           admission: admission,
-          placement: FlexPlacementUnread { obligation: "the card, host and route of a Vast rental are read from the instance the create yields, never supplied before it" as NonEmptyStr },
+          placement: FlexPlacementUnread { obligation: flex_placement_unread_obligation() },
         },
       }
   }

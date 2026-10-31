@@ -31,7 +31,7 @@ import product.fabric.flex_vast_shadow { FlexInstancesUnobserved,
   FlexRosterCardsBuilt,
 }
 import product.fabric.flex_vast_loop { flex_vast_destroy_target, flex_vast_rented_instance,
-  FlexWetGates, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
+  FlexWetGates, flex_placement_unread_obligation, FlexPlacementSupplied, FlexPlacementUnread, FlexRefusedPlacementUnread, FlexPassObservation, FlexAllocationPlacement, FlexCreateIntent, FlexRentCooldown,
   FlexPassInput, FlexCreateRequest, FlexTemplateHashRow, FlexPassPlan,
   FlexPlanRefused, FlexPlanIdle, FlexPlanDryCreate, FlexPlanDryDestroy, FlexPlanCreate, FlexPlanDestroy,
   FlexPassRefusal, FlexPassRosterNotComplete, FlexPassCreateRefused, FlexPassNoAllocationForCard, FlexPassCooldownActive,
@@ -497,6 +497,22 @@ test fn the_wet_gates_start_closed_and_stop_a_create_that_cleared_every_wall() -
     }
 }
 
+// The red control: an unread placement refuses the create and the receipt NAMES the missing fields and the read
+// that owes them, not only that something is unread.
+test fn an_unread_placement_refusal_names_card_host_route_and_the_instance_read() -> Bool {
+  match w_placement_refusal() {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedPlacementUnread { obligation: o } } } => w_obligation_names_the_fields(text: o as String)
+    _ => false
+  }
+}
+
+fn w_obligation_names_the_fields(text: String) -> Bool {
+  string_contains(s: text, pattern: "card, host and route")
+    && string_contains(s: text, pattern: "instance read")
+    && string_contains(s: text, pattern: "never from the search offer")
+    && string_contains(s: text, pattern: "UNSUPPLIED")
+}
+
 // ---- STOP AT THE FIRST FAILURE: with every wall standing the pass names the FIRST and plans no write.
 test fn the_pass_stops_at_the_first_typed_failure_and_plans_no_write() -> Bool {
   let p = flex_plan_pass(input: w_input(mode: Apply, gates: w_closed, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_estimated(member: true), admitted: false) }))
@@ -746,7 +762,7 @@ test fn the_release_binding_passes_the_policy_actuation_to_the_s5_receipt() -> B
 
 fn w_placement_refusal() -> FlexPassRefusal? {
   let i = w_intent(entry: w_established(), admitted: true)
-  let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: i.quote, admission: i.admission, placement: FlexPlacementUnread { obligation: "host and route unread" as NonEmptyStr } }
+  let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: i.quote, admission: i.admission, placement: FlexPlacementUnread { obligation: flex_placement_unread_obligation() } }
   w_refusal_of(p: flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: intent })))
 }
 

@@ -117,6 +117,13 @@ data flex_select_supply_consumer_frontier: DissolutionCondition = unbound_dissol
 // names the type, which is how a missing producer looks from the consumer side.
 data flex_release_inputs_producer_frontier: DissolutionCondition = unbound_dissolution(description: "The release route has its consumer wired (flex_pass_step runs the release fold when a wet destroy is planned) and no producer: nothing in the repository constructs RentedReleaseReadings, so the entry cannot build FlexReleaseInputs and passes none. TRIGGER: the entry supplies FlexReleaseInputs built from the serving recipe's store roots and protected paths PLUS a RentedReleaseReadings read of the host and instance under the allocation the pass plans to destroy (the rented_* carriers, S5). SUFFICIENT FOR deleting this row: a wet destroy that reads the host and instance under it before releasing, instead of stopping at FlexPassReleaseReadingsUnread.")
 
+// THE CREATE PLACEMENT HAS NO PRODUCER IN PRODUCTION. flex_member_intent (gunbc.fleet.flex_pass_run) passes
+// FlexPlacementUnread for every member, so flex_placement_wall refuses EVERY create: the placement is UNSUPPLIED.
+// What exists: the consumers (flex_placement_wall, flex_created_outcome, flex_acquired_allocation) and a supplied
+// placement exercised in-file by the witness (w_placement). What is missing: card, host and route, which only the
+// instance read yields, and a standing type that can carry the declared half (end, engine, artifact) before it.
+data flex_placement_producer_frontier: DissolutionCondition = unbound_dissolution(description: "No production code builds a FlexPlacementSupplied: the srv1 entry passes FlexPlacementUnread with flex_placement_unread_obligation, so every create refuses at flex_placement_wall. card, host and route are read from the instance the create yields (extdeps.cloud.vast_ai GET /api/v0/instances/<id>/, behind the Vast credential lane), never from the search offer, whose hostip and gpu are a bid target and not the rented instance. end, engine and artifact are declarations, but FlexPlacementStanding has no partial arm, so they have no consumer yet. TRIGGER: a production read of the created instance yields RentedGpuDevice, RentedHostAccessDeclaration and RentedAccessRoute and the entry supplies FlexPlacementSupplied with the producing DeclarationRef (the S3 placement slice, #14109). PAIRING OBLIGATION: one inhabitance claim that this real producer emits the FlexAllocationPlacement shape w_placement supplies, asserting the route and not only the answer. SUFFICIENT FOR deleting this row.")
+
 data flex_rented_allocation_enrollment_frontier: DissolutionCondition = unbound_dissolution(description: "The allocation join stops at constructing RentedServingAllocation; handing it to rented_allocation_enrollment (startup, key binding, enroll-and-seat) is deep-bear-539's S-plan (S3 #14109, S4), not this loop. TRIGGER: rented_allocation_enrollment has a production caller that receives the allocation from flex_created_outcome or flex_reconciled_allocation. SUFFICIENT FOR deleting this row.")
 
 // The Secret read from the host copy by the entry. It is named only by reference here.
@@ -191,6 +198,13 @@ type FlexAllocationPlacement {
   artifact: NinferModelRow
   host: RentedHostAccessDeclaration
   route: RentedAccessRoute
+}
+
+// The one sentence every unread placement carries: it names the fields owed and the read that owes them, so a
+// refusal receipt says what is missing rather than that something is. Production (gunbc.fleet.flex_pass_run)
+// and the witnesses take it from here.
+fn flex_placement_unread_obligation() -> NonEmptyStr {
+  "placement UNSUPPLIED: card, host and route are facts of the instance the create yields and are missing; they come from the instance read of that instance (extdeps.cloud.vast_ai GET /api/v0/instances/<id>/, which needs the Vast credential), never from the search offer. end, engine and artifact are declarations, but FlexPlacementStanding carries no partial placement, so they are not supplied alone" as NonEmptyStr
 }
 
 // The ask the pass would make: the offer, its screened standing, its quote, the bid admission the
