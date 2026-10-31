@@ -1,0 +1,152 @@
+module test.claim.spool_queue_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.spool_queue {
+  EntryPending, EntryClaimed, EntryAmbiguous, RolePending, RoleClaimed,
+  ClaimEligible, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
+  spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
+  ClaimantObservedDead, ClaimantUnobservable,
+}
+
+// THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue) IS A MODEL; ITS EFFECT LAYER IS NOT
+// BUILT. Two kinds of claim live here and are labelled by name.
+//
+// GREEN NOW (the model): the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, the lawful
+// mint is admitted, and the pure decisions refuse the way the contract says (a lost election is AlreadyClaimed, two
+// stages is a refusal never a pick, an unobservable claimant is not dead).
+//
+// EXPECTING-RED (the implementation): each `_today` claim asserts the state that must stop holding. The four
+// operations and the mint do not exist as effects (importing them is a MissingExport today), and the three spools'
+// raw stage-path functions are still importable. When the implementation lands the first group FLIPS to
+// "exists" and the second to MissingExport; the claims then stay enrolled as permanent regression controls
+// (DESIGN section 4b, dissolution on climb).
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data baseline_source: String = "module probe_spool_queue_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data forged_literal_source: String = "module probe_spool_queue_forged_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess }\nfn f(n: NonEmptyStr) -> SpoolEntryKey {\n  SpoolEntryKey { kind: SpoolAttemptExit, name: n }\n}\n"
+
+data forged_cast_source: String = "module probe_spool_queue_forged_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess }\nfn f(n: NonEmptyStr) -> SpoolEntryKey {\n  n as SpoolEntryKey\n}\n"
+
+data lawful_mint_source: String = "module probe_spool_queue_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { SpoolEntryKey, SpoolKind, SpoolAttemptExit, spool_entry_key, spool_claim_assess, SpoolKeyMinted, SpoolKeyRefused }\nfn f() -> String {\n  match spool_entry_key(kind: SpoolAttemptExit, parts: [\"a\"]) {\n    SpoolKeyMinted { key: _ } => \"minted\"\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
+
+data probe_enqueue_source: String = "module probe_spool_queue_enqueue\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_enqueue }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data probe_claim_source: String = "module probe_spool_queue_claim\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_claim }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data probe_complete_source: String = "module probe_spool_queue_complete\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_complete }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data probe_observe_source: String = "module probe_spool_queue_observe\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_queue_observe }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data probe_open_source: String = "module probe_spool_queue_open\nimport std.types { NonEmptyStr, String }\nimport gunbc.spool_queue { spool_open }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data raw_unit_claimed_source: String = "module probe_spool_queue_raw_attempt_unit_spool_claimed_dir\nimport std.types { NonEmptyStr }\nimport gunbc.host.host_layout { attempt_unit_spool_claimed_dir }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data raw_exit_stage_source: String = "module probe_spool_queue_raw_attempt_exit_spool_stage_dir\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_spool_stage_dir }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data raw_publication_source: String = "module probe_spool_queue_raw_publication_request_dir\nimport std.types { NonEmptyStr }\nimport gunbc.host.host_layout { publication_request_dir }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+test fn a_forged_entry_key_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_literal_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_entry_key_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_cast_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_entry_key_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_mint_source, safe: baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
+  match spool_claim_assess(observed: EntryPending) {
+    ClaimEligible => ExitSuccess
+    ClaimAlreadyClaimed => exit_failure(reason: "a pending entry reads as already claimed")
+    ClaimAbsent => exit_failure(reason: "a pending entry reads as absent")
+    ClaimTerminal { state: _ } => exit_failure(reason: "a pending entry reads as terminal")
+    ClaimRefused { detail: _ } => exit_failure(reason: "a pending entry is refused")
+  }
+}
+
+test fn a_lost_election_is_already_claimed_not_absent() -> ProcessExit {
+  match spool_claim_assess(observed: EntryClaimed) {
+    ClaimAlreadyClaimed => ExitSuccess
+    ClaimEligible => exit_failure(reason: "a claimed entry is claimable again")
+    ClaimAbsent => exit_failure(reason: "a claimed entry reads as absent")
+    ClaimTerminal { state: _ } => exit_failure(reason: "a claimed entry reads as terminal")
+    ClaimRefused { detail: _ } => exit_failure(reason: "a claimed entry is refused")
+  }
+}
+
+test fn an_entry_in_two_stages_is_refused_never_picked() -> ProcessExit {
+  match spool_claim_assess(observed: EntryAmbiguous { roles: [RolePending, RoleClaimed] }) {
+    ClaimRefused { detail: _ } => ExitSuccess
+    ClaimEligible => exit_failure(reason: "an ambiguous entry was claimed")
+    ClaimAlreadyClaimed => exit_failure(reason: "an ambiguous entry was resolved to claimed")
+    ClaimAbsent => exit_failure(reason: "an ambiguous entry was resolved to absent")
+    ClaimTerminal { state: _ } => exit_failure(reason: "an ambiguous entry was resolved to terminal")
+  }
+}
+
+test fn an_unobservable_claimant_is_not_dead() -> ProcessExit {
+  match spool_stale_assess(observed: EntryClaimed, liveness: ClaimantUnobservable { cause: "no unit status" }) {
+    StaleRefused { cause: _ } => ExitSuccess
+    StaleStopTheLine { evidence: _ } => exit_failure(reason: "an unobservable claimant licensed the line stop")
+    StaleClaimantLive => exit_failure(reason: "an unobservable claimant read as live")
+    StaleNotApplicable { state: _ } => exit_failure(reason: "a claimed entry was not applicable")
+  }
+}
+
+test fn an_observed_dead_claimant_stops_the_line_and_is_not_reclaimed() -> ProcessExit {
+  match spool_stale_assess(observed: EntryClaimed, liveness: ClaimantObservedDead { evidence: "invocation gone" }) {
+    StaleStopTheLine { evidence: _ } => ExitSuccess
+    StaleRefused { cause: _ } => exit_failure(reason: "an observed-dead claimant was refused")
+    StaleClaimantLive => exit_failure(reason: "an observed-dead claimant read as live")
+    StaleNotApplicable { state: _ } => exit_failure(reason: "a claimed entry was not applicable")
+  }
+}
+
+test fn the_enqueue_effect_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_enqueue_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_enqueue"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_claim_effect_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_claim_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_claim"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_complete_effect_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_complete_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_complete"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_observe_effect_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_observe_source, wanted_class: "MissingExport", wanted_subject: "spool_queue_observe"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_instance_keyed_mint_does_not_exist_today() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: probe_open_source, wanted_class: "MissingExport", wanted_subject: "spool_open"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_unit_spool_claimed_dir_is_importable_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_unit_claimed_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_exit_spool_stage_dir_is_importable_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_exit_stage_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_publication_request_dir_is_importable_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: raw_publication_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
