@@ -6,11 +6,12 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
-import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_committed_hpm_read_release }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
 import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MediaImageListed,
@@ -1545,15 +1546,17 @@ fn seeded_stems_recognise(stems: FreeSemigroup<NonEmptyStr>, image_name: String)
   (non_empty_to_list(xs: stems) |> filter(st => match ubuntu_seeded_install_media_name_digest_prefix(image_stem: st, image_name: image_name) { Absent => false  Present { value: _ } => true }) |> count) > 0
 }
 
-// THE EVIDENCED RELEASE FOR A STOP: the identity the committed hpm capture DERIVES
-// (extdeps.bmc.megarac megarac_committed_hpm_read_release -- the same release the capability row's own
-// derived export names, pinned equal by
+// THE EVIDENCED RELEASE FOR A STOP: the release this unit's committed hpm read ESTABLISHES -- the
+// observing layer's answer, gunbc.host.bmc_release_capability_catalog
+// megarac_committed_hpm_check_identity, which walks the retained stdout and keeps the refusal causes. NOT
+// the vendor's page label "0.45.3": the label is what the vendor's page calls this build, and no boot ever
+// carries it, so binding the exception to it would bind it to an identity nothing reads. The vendor table
+// keys its 0.45 arm on the release the controller REPORTS (extdeps.bmc.megarac
+// megarac_firmware_0_45_reported); that this unit's read lands on that release is a claim --
 // test.claim.machine_intake.megarac_media_0_45_3_witness
-// w_the_media_table_key_and_the_capability_row_derive_the_same_release), NOT the vendor's page label
-// "0.45.3": the label is what the vendor's page calls this build, and no boot ever carries it, so binding
-// the exception to it would bind it to an identity nothing reads. Absent -- the capture cannot be parsed --
-// means no evidenced release, and the exception does not fire.
-fn evidenced_release_of_a_stop() -> BmcFirmwareReleaseIdentity? = megarac_committed_hpm_read_release
+// w_the_committed_read_lands_on_the_release_the_media_table_catalogues -- not something this file assumes.
+// Absent -- no established read -- means no evidenced release, and the exception does not fire.
+fn evidenced_release_of_a_stop() -> BmcFirmwareReleaseIdentity? = megarac_committed_hpm_check_identity
 
 // THE STOP EXCEPTION IS BOUND TO THE BUILD THE COMMITTED READ NAMES (side-chat HOLD on gunbc#14959): an
 // unread CODE on the build whose catalogue the executed runs ground -- boot run 38789347052's session read
