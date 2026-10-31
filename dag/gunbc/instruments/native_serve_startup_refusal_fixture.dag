@@ -41,6 +41,6 @@ fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<Devi
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_application_json, body: "unreachable\n", headers: [] }
 }

@@ -1,0 +1,86 @@
+module gunbc.durable_handoff_rest
+
+import std.types { String, NonEmptyStr, Int }
+import std.error_primitives { Result, Ok, Err }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import extdeps.http.server { ServeWireResponse }
+import extdeps.uri_path {
+  parse_path_template, ParsedPathTemplate, MalformedPathTemplate,
+  match_path_template, PathMatched, PathNotMatched, path_param_value,
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, json_object, json_kv, json_string, serialize_json }
+import gunbc.durable_handoff_host {
+  HostAcceptedRequest, HostRequestAccepted, HostRequestRejected, UserBusy, HostRequestAcceptanceUnknown,
+  HostRequestPresent, HostRequestNotObserved, HostRequestObservationUnknown,
+  HostRequestResultPending, HostRequestResultReady, HostRequestResultUnknown,
+  host_request_submit, host_request_observe, host_request_result,
+}
+
+// HTTP is a projection of shared acceptance/readback, not a second queue.
+// The enclosing service authenticates the principal and supplies its payload
+// admission/codec. This handler neither accepts arbitrary commands nor launches
+// workers. Results are published by the admitted consumer, not by a REST caller.
+// Only PUT and GET exist; GET cannot enqueue, retry or cancel anything.
+fn host_request_response(status: Int, request_id: String, standing: String, detail: String, result: JsonValue) -> ServeWireResponse {
+  ServeWireResponse {
+    status: status, content_type_label: "application/json; charset=utf-8", headers: [],
+    body: serialize_json(v: json_object(members: [
+      json_kv(key: "request_id", value: json_string(s: request_id)),
+      json_kv(key: "status", value: json_string(s: standing)),
+      json_kv(key: "detail", value: json_string(s: detail)),
+      json_kv(key: "result", value: result),
+    ])),
+  }
+}
+
+fn host_request_status_response(request: HostAcceptedRequest) -> ServeWireResponse {
+  let id = request.identity.key as String
+  match host_request_result(request: request) {
+    HostRequestResultPending => host_request_response(status: 200, request_id: id, standing: "accepted", detail: "no terminal result published", result: JsonNull)
+    HostRequestResultReady { result: r } => host_request_response(status: 200, request_id: id, standing: "cleanup-pending", detail: "result recorded; stopped-and-cleaned settlement not yet confirmed", result: r)
+    HostRequestResultUnknown { detail: d } => host_request_response(status: 503, request_id: id, standing: "unknown", detail: d, result: JsonNull)
+  }
+}
+
+fn host_request_rest_at(
+  root: NonEmptyStr, principal: NonEmptyStr, request_id: NonEmptyStr,
+  method: String, body: String, admit_payload: fn(String) -> Result<NonEmptyStr, String>,
+) -> ServeWireResponse {
+  let identity = FabricIdentity { principal: principal, key: request_id as DemandKey }
+  let id = request_id as String
+  if method == "GET" {
+    match host_request_observe(root: root, identity: identity) {
+      HostRequestPresent { request: r } => host_request_status_response(request: r)
+      // Absence is not an authoritative rejection of an earlier submission.
+      HostRequestNotObserved => host_request_response(status: 404, request_id: id, standing: "unknown", detail: "request not observed", result: JsonNull)
+      HostRequestObservationUnknown { detail: d } => host_request_response(status: 503, request_id: id, standing: "unknown", detail: d, result: JsonNull)
+    }
+  } else if method == "PUT" {
+    match admit_payload(body) {
+      Err { value: reason } => host_request_response(status: 400, request_id: id, standing: "rejected", detail: reason, result: JsonNull)
+      Ok { value: payload } => match host_request_submit(root: root, identity: identity, payload: payload) {
+        HostRequestAccepted { request: _ } => host_request_response(status: 202, request_id: id, standing: "accepted", detail: "durable acceptance confirmed; not an execution verdict", result: JsonNull)
+        UserBusy { existing_request: existing } => host_request_response(status: 409, request_id: id, standing: "UserBusy", detail: existing as String, result: JsonNull)
+        HostRequestRejected { reason: r } => host_request_response(status: 409, request_id: id, standing: "rejected", detail: r, result: JsonNull)
+        HostRequestAcceptanceUnknown { detail: d } => host_request_response(status: 503, request_id: id, standing: "unknown", detail: d, result: JsonNull)
+      }
+    }
+  } else { host_request_response(status: 405, request_id: id, standing: "rejected", detail: "only PUT and GET are admitted", result: JsonNull) }
+}
+
+fn host_request_rest(
+  root: NonEmptyStr, principal: NonEmptyStr, method: String, path: String, body: String,
+  admit_payload: fn(String) -> Result<NonEmptyStr, String>,
+) -> ServeWireResponse {
+  match parse_path_template(raw: "/requests/\{id\}") {
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } => host_request_response(status: 503, request_id: "", standing: "unknown", detail: "request route is malformed", result: JsonNull)
+    ParsedPathTemplate { template: t } => match match_path_template(template: t, path: path) {
+      PathNotMatched => host_request_response(status: 404, request_id: "", standing: "rejected", detail: "request route not found", result: JsonNull)
+      PathMatched { params: ps } => {
+        let id = path_param_value(params: ps, name: "id")
+        if id == "" { host_request_response(status: 400, request_id: "", standing: "rejected", detail: "request id is empty", result: JsonNull) }
+        else { host_request_rest_at(root: root, principal: principal, request_id: id as NonEmptyStr, method: method, body: body, admit_payload: admit_payload) }
+      }
+    }
+  }
+}

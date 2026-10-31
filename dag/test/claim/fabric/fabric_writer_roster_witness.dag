@@ -9,10 +9,8 @@ import gunbc.fabric.fabric_storage_client { FabricStorageServed, FabricStorageLo
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric.fabric_writer_identity_observe { FabricWriterIdentityReceipt }
-import gunbc.fabric.fabric_writer_roster {
-  FabricWriterIdentityObservation, fabric_served_writer_roster_of, fabric_served_writer_roster,
-  fabric_door_writer_admission_over, fabric_door_principal_of, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused,
-}
+import gunbc.fabric.fabric_writer_roster { FabricWriterIdentityObservation, fabric_served_writer_roster_of, fabric_served_writer_roster, fabric_door_principal_of, fabric_door_local_roster }
+import gunbc.fabric.fabric_writer_admission { fabric_door_writer_admission_over, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory, fabric_storage_store_root, fabric_storage_door_directory }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.managed_directory { ManagedDirectory, managed_directory_permissions, dependent_class_of, OwnerClass, GroupClass, OtherClass }
@@ -49,7 +47,7 @@ test fn the_served_roster_holds_exactly_the_observed_logins_once() -> Bool {
   length(roster) == 1 && match first(roster) { Present { value: l } => (l as String) == "writer@example.ts.net"  Absent => false }
 }
 
-fn admitted(a: gunbc.fabric.fabric_writer_roster.FabricDoorWriterAdmission) -> Bool {
+fn admitted(a: gunbc.fabric.fabric_writer_admission.FabricDoorWriterAdmission) -> Bool {
   match a { FabricDoorWriterAdmitted { principal: _ } => true  FabricDoorWriterRefused { refusal: _ } => false }
 }
 

@@ -1,0 +1,351 @@
+module test.claim.durable_handoff_request_witness
+
+import gunbc.auth.request_api_key { RequestApiKeyUser, request_api_key_digest, request_api_key_read }
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.auth.request_api_key_store { RequestApiKeyStanding, ApiKeyActive, ApiKeyRevoked, request_api_key_standing_parse, request_api_key_standing_wire, RequestApiKeyStore, request_api_key_store, request_api_key_store_path, request_api_key_store_read, request_api_key_store_commit }
+import gunbc.runner.runner_revision_request_context { revision_request_context, revision_request_store_path }
+import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
+import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, CasReadableAbsent, ExpectSlotAbsent, ExpectSlotGeneration }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_string, serialize_json }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import gunbc.durable_handoff_rest { host_request_rest }
+import gunbc.durable_handoff_host {
+  host_request_submit, host_request_observe, host_request_publish_reply, host_request_result,
+  host_request_path, host_request_reply_path, host_request_directories,
+  host_request_stage, host_request_publish_staged, host_request_pending_dir, host_request_pending_path,
+  host_request_history_observe, UserBusy,
+  HostRequestAccepted, HostRequestPresent, HostRequestReplyPublished, HostRequestReplyConflict,
+  HostRequestResultReady, HostRequestResultUnknown, HostRequestNotObserved,
+}
+
+fn request_fixture_prepare_root(root: NonEmptyStr) -> Bool {
+  host_request_directories(root: root).map(path => shell.Mkdir.Parents(path: path as FilePath).success).all(ok => ok)
+}
+
+fn payload(text: String) -> Result<NonEmptyStr, String> {
+  if text == "" { Err { value: "empty payload" } } else { Ok { value: text as NonEmptyStr } }
+}
+
+fn identity(principal: NonEmptyStr) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: principal, key: "request-1" as DemandKey }
+}
+
+// Same handler and same durable primitives as the service: no mock storage.
+test fn acceptance_is_idempotent_conflicts_refuse_and_principals_do_not_alias() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let duplicate = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let conflict = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "two", admit_payload: payload)
+  let other = host_request_rest(root: root, principal: "bob", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let readback = match host_request_observe(root: root, identity: identity(principal: "alice")) {
+    HostRequestPresent { request: r } => (r.payload as String) == "one"
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  first.status == 202 && duplicate.status == 202 && conflict.status == 409 && other.status == 404 && readback && removed.success
+}
+
+test fn get_does_not_enqueue_and_rejection_is_distinct_from_storage_uncertainty() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let absent = host_request_rest(root: root, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let untouched = match host_request_observe(root: root, identity: identity(principal: "alice")) { HostRequestNotObserved => true _ => false }
+  let invalid = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "", admit_payload: payload)
+  let blocked = Filesystem.Write(path: concat(root as String, "/file"), content: "not a directory")
+  let unavailable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let unreadable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  absent.status == 404 && untouched && invalid.status == 400 && blocked.success && unavailable.status == 503 && unreadable.status == 503 && removed.success
+}
+
+test fn results_are_bound_to_the_accepted_request_and_never_overwritten() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let ok = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
+    HostRequestAccepted { request: request } => {
+      let published = match host_request_publish_reply(request: request, result: json_string(s: "failed")) { HostRequestReplyPublished => true _ => false }
+      let duplicate = match host_request_publish_reply(request: request, result: json_string(s: "failed")) { HostRequestReplyPublished => true _ => false }
+      let conflict = match host_request_publish_reply(request: request, result: json_string(s: "passed")) { HostRequestReplyConflict => true _ => false }
+      let observed = host_request_rest(root: root, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+      let kept = match host_request_result(request: request) { HostRequestResultReady { result: r } => serialize_json(v: r) == serialize_json(v: json_string(s: "failed")) _ => false }
+      // A malformed/corrupted result must not become pending or a passing result.
+      let corrupt = Filesystem.Write(path: host_request_reply_path(request: request), content: "not JSON")
+      let refused = match host_request_result(request: request) { HostRequestResultUnknown { detail: _ } => true _ => false }
+      published && duplicate && conflict && observed.status == 200 && kept && corrupt.success && refused
+    }
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  ok && removed.success
+}
+
+// Served only by the process-restart acceptance harness on a loopback listener.
+// This supplies the test principal/codec; production authenticates at the door.
+fn request_fixture_root() -> NonEmptyStr? {
+  match shell.Env.Get(name: "GUNBC_HANDOFF_TEST_ROOT").value {
+    Present { value: r } => if r == "" { none } else { Present { value: r as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn request_fixture_handle(method: String, path: String, body: String) -> extdeps.http.server.ServeWireResponse {
+  match request_fixture_root() {
+    Absent => gunbc.durable_handoff_rest.host_request_response(status: 503, request_id: "", standing: "unknown", detail: "test root unset", result: extdeps.languages.json.emit.JsonNull)
+    Present { value: root } => host_request_rest(root: root, principal: "alice", method: method, path: path, body: body, admit_payload: payload)
+  }
+}
+
+// A different process publishes a fixture result after the first server dies.
+// Its accepted token must come from disk, not from the former server's memory.
+fn request_fixture_publish_after_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => match host_request_observe(root: root, identity: identity(principal: "alice")) {
+      HostRequestPresent { request: r } => match host_request_publish_reply(request: r, result: json_string(s: "fixture-result")) {
+        HostRequestReplyPublished => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+fn request_fixture_submit_before_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => {
+      if !request_fixture_prepare_root(root: root) { return false }
+      let reply = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "first-payload", admit_payload: payload)
+      reply.status == 202
+    }
+  }
+}
+
+fn request_fixture_read_after_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => {
+      let duplicate = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "first-payload", admit_payload: payload)
+      let conflict = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "changed-payload", admit_payload: payload)
+      let result = match host_request_observe(root: root, identity: identity(principal: "alice")) {
+        HostRequestPresent { request: r } => match host_request_result(request: r) {
+          HostRequestResultReady { result: value } => serialize_json(v: value) == serialize_json(v: json_string(s: "fixture-result"))
+          _ => false
+        }
+        _ => false
+      }
+      duplicate.status == 202 && conflict.status == 409 && result
+    }
+  }
+}
+
+test fn another_request_of_the_same_user_is_busy_but_another_user_is_not() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
+  let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+  let retry = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/first", body: "one", admit_payload: payload)
+  let other = host_request_rest(root: root, principal: "bob", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  first.status == 202 && busy.status == 409 && retry.status == 202 && other.status == 202 && removed.success
+}
+
+test fn a_published_result_alone_does_not_release_the_user_slot() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-cap.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let held = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
+    HostRequestAccepted { request: request } => {
+      let result = host_request_publish_reply(request: request, result: json_string(s: "completed but cleanup pending"))
+      let busy = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/second", body: "two", admit_payload: payload)
+      (match result { HostRequestReplyPublished => true _ => false }) && busy.status == 409
+    }
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  held && removed.success
+}
+
+fn request_api_key_fixture_put_in(tree: HostStateTree, digest: NonEmptyStr,
+  user: NonEmptyStr, state: RequestApiKeyStanding) -> Bool {
+  let store = match request_api_key_store(tree: tree) { Err { value: _ } => { return false } Ok { value: store } => store }
+  let expected = match request_api_key_store_read(store: store, digest: digest) {
+    CasObservedReadable { readable: CasReadableAbsent } => ExpectSlotAbsent
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => ExpectSlotGeneration { generation: version.generation }
+    _ => { return false }
+  }
+  match request_api_key_store_commit(store: store, digest: digest, expected: expected, user: user, state: state) {
+    Ok { value: _ } => true
+    Err { value: _ } => false
+  }
+}
+
+fn request_api_key_fixture_prepare_in(tree: HostStateTree) -> Bool {
+  let keys = shell.Mkdir.Parents(path: request_api_key_store_path(tree: tree) as String as FilePath)
+  let requests = shell.Mkdir.Parents(path: revision_request_store_path(tree: tree) as String as FilePath)
+  keys.success && requests.success && request_fixture_prepare_root(root: revision_request_store_path(tree: tree))
+}
+
+fn request_api_key_fixture_tree() -> HostStateTree? {
+  match shell.Env.Get(name: "GUNBC_HANDOFF_TEST_TREE").value {
+    Absent => none
+    Present { value: root } => if root == "" { none } else { Present { value: isolated_host_state_tree(dir: root as NonEmptyStr) } }
+  }
+}
+
+fn request_api_key_fixture_prepare() -> Bool {
+  match request_api_key_fixture_tree() { Absent => false Present { value: tree } => request_api_key_fixture_prepare_in(tree: tree) }
+}
+
+// The command receives a digest, never a bearer credential in argv or logs.
+fn request_api_key_fixture_put(digest: NonEmptyStr, user: NonEmptyStr, state: NonEmptyStr) -> Bool {
+  match request_api_key_fixture_tree() {
+    Absent => false
+    Present { value: tree } => match request_api_key_standing_parse(wire: state as String) {
+      Err { value: _ } => false
+      Ok { value: standing } => request_api_key_fixture_put_in(tree: tree, digest: digest, user: user, state: standing)
+    }
+  }
+}
+
+test fn key_rotation_preserves_user_identity_and_revocation_is_reread() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-keys.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let tree = isolated_host_state_tree(dir: root)
+  let prepared = request_api_key_fixture_prepare_in(tree: tree)
+  let a = match request_api_key_digest(authorization: "Bearer fixture-key-a") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let b = match request_api_key_digest(authorization: "Bearer fixture-key-b") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let first = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: ApiKeyActive)
+  let second = request_api_key_fixture_put_in(tree: tree, digest: b, user: "alice", state: ApiKeyActive)
+  let store = match request_api_key_store(tree: tree) { Err { value: _ } => { return false } Ok { value: store } => store }
+  let same = match request_api_key_read(store: store, authorization: "Bearer fixture-key-a") {
+    Err { value: _ } => false
+    Ok { value: one } => match request_api_key_read(store: store, authorization: "Bearer fixture-key-b") {
+      Err { value: _ } => false
+      Ok { value: two } => one.user == "alice" && one.user == two.user
+    }
+  }
+  let revoked = request_api_key_fixture_put_in(tree: tree, digest: a, user: "alice", state: ApiKeyRevoked)
+  let refused = match request_api_key_read(store: store, authorization: "Bearer fixture-key-a") { Err { value: _ } => true _ => false }
+  let kept = match request_api_key_read(store: store, authorization: "Bearer fixture-key-b") { Ok { value: user } => user.user == "alice" _ => false }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  prepared && first && second && same && revoked && refused && kept && removed.success
+}
+
+test fn a_verified_user_cannot_cross_key_store_placements() -> Bool {
+  let one = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-one.XXXXXX").path as NonEmptyStr
+  let two = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-two.XXXXXX").path as NonEmptyStr
+  let a = isolated_host_state_tree(dir: one)
+  let b = isolated_host_state_tree(dir: two)
+  let prepared_a = request_api_key_fixture_prepare_in(tree: a)
+  let prepared_b = request_api_key_fixture_prepare_in(tree: b)
+  let digest = match request_api_key_digest(authorization: "Bearer fixture-bound-key") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let put = request_api_key_fixture_put_in(tree: a, digest: digest, user: "alice", state: ApiKeyActive)
+  let context_a = match revision_request_context(tree: a) { Err { value: _ } => { return false } Ok { value: value } => value }
+  let context_b = match revision_request_context(tree: b) { Err { value: _ } => { return false } Ok { value: value } => value }
+  let verified = match request_api_key_read(store: context_a.keys, authorization: "Bearer fixture-bound-key") { Err { value: _ } => { return false } Ok { value: value } => value }
+  let refused = revision_job_request_respond(context: context_b, permitted_users: ["alice"], verified: verified, method: "GET", path: "/requests/none", body: "")
+  let same = revision_job_request_respond(context: context_a, permitted_users: ["alice"], verified: verified, method: "GET", path: "/requests/none", body: "")
+  let clean_a = shell.Remove.RecursiveForce(path: one as String)
+  let clean_b = shell.Remove.RecursiveForce(path: two as String)
+  prepared_a && prepared_b && put && refused.status == 401 && same.status == 404 && clean_a.success && clean_b.success
+}
+
+test fn unlisted_api_key_root_cannot_mint_a_store() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-unlisted.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let tree = isolated_host_state_tree(dir: root)
+  let refused = match request_api_key_store(tree: tree) { Err { value: _ } => true _ => false }
+  let prepared = request_api_key_fixture_prepare_in(tree: tree)
+  let admitted = match request_api_key_store(tree: tree) { Ok { value: _ } => true _ => false }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  refused && prepared && admitted && removed.success
+}
+
+// Qualification-only publication from a separate process. It observes the sealed
+// accepted token from disk; no HTTP endpoint can publish a result.
+fn request_fixture_publish_named(principal: NonEmptyStr, request_id: NonEmptyStr) -> Bool {
+  match request_api_key_fixture_tree() {
+    Absent => false
+    Present { value: tree } => match host_request_observe(root: revision_request_store_path(tree: tree),
+      identity: FabricIdentity { principal: principal, key: request_id as DemandKey }) {
+      HostRequestPresent { request: request } => match host_request_publish_reply(request: request,
+        result: json_string(s: "fixture-result")) {
+        HostRequestReplyPublished => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+// The two producers have both finished staging before either competes for the
+// same principal name. An unwatched stage (including a crashed producer's stage)
+// is not acceptance and cannot make the path unit's pending level nonempty.
+test fn staging_is_not_acceptance_and_only_one_link_can_win() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-link.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let first_id = identity(principal: "alice")
+  let second_id = FabricIdentity { principal: "alice", key: "request-2" as NonEmptyStr as DemandKey }
+  let a = match host_request_stage(root: root, identity: first_id, payload: "first") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let b = match host_request_stage(root: root, identity: second_id, payload: "second") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let pending = Filesystem.List(path: host_request_pending_dir(root: root))
+  let not_accepted = (match host_request_observe(root: root, identity: first_id) { HostRequestNotObserved => true _ => false })
+  let first = match host_request_publish_staged(stage: a) {
+    HostRequestAccepted { request: request } => request.identity == first_id && request.payload == "first"
+    _ => false
+  }
+  let second = host_request_publish_staged(stage: b) == UserBusy { existing_request: first_id.key }
+  let retry = match host_request_submit(root: root, identity: first_id, payload: "first") {
+    HostRequestAccepted { request: _ } => true _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  pending.success && pending.entries == "" && not_accepted && first && second && retry && removed.success
+}
+
+// Crash cut: link has committed acceptance, but neither immutable history nor
+// stage cleanup has happened. A later process's same-id retry repairs history.
+test fn acceptance_before_history_is_recovered_from_pending() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request-crash.XXXXXX").path as NonEmptyStr
+  if !request_fixture_prepare_root(root: root) { return false }
+  let id = identity(principal: "alice")
+  let staged = match host_request_stage(root: root, identity: id, payload: "retained") {
+    Err { value: _ } => { return false } Ok { value: value } => value
+  }
+  let linked = Filesystem.LinkCreateNew(source: staged.path as String,
+    path: host_request_pending_path(root: root, principal: id.principal))
+  let history_absent = (match host_request_history_observe(root: root, identity: id) { HostRequestNotObserved => true _ => false })
+  let observed = match host_request_observe(root: root, identity: id) {
+    HostRequestPresent { request: request } => request.payload == "retained" _ => false
+  }
+  let retry = match host_request_submit(root: root, identity: id, payload: "retained") {
+    HostRequestAccepted { request: _ } => true _ => false
+  }
+  let repaired = match host_request_history_observe(root: root, identity: id) {
+    HostRequestPresent { request: request } => request.payload == "retained" _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  linked.success && history_absent && observed && retry && repaired && removed.success
+}
+
+
+test fn api_key_standing_wire_is_closed_and_round_trips() -> Bool {
+  (match request_api_key_standing_parse(wire: request_api_key_standing_wire(standing: ApiKeyActive)) {
+    Ok { value: ApiKeyActive } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: request_api_key_standing_wire(standing: ApiKeyRevoked)) {
+    Ok { value: ApiKeyRevoked } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: "revokd") {
+    Err { value: _ } => true _ => false
+  }) && (match request_api_key_standing_parse(wire: "") {
+    Err { value: _ } => true _ => false
+  })
+}

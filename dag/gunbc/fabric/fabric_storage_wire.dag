@@ -1,5 +1,6 @@
 module gunbc.fabric.fabric_storage_wire
 
+import gunbc.auth.request_api_key { RequestApiKeyUser }
 import std.types { String, NonEmptyStr, Int, List }
 import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted, CasUnreadableSlot,
@@ -134,6 +135,7 @@ fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
 type FabricDoorPrincipal
   = DoorProxied { identity: TailnetIdentity }
   | DoorLocalPeer { user: NonEmptyStr }
+  | DoorApiKeyUser { verified: RequestApiKeyUser }
   | DoorUnattested
 
 fn fabric_storage_wire_identity(principal: FabricDoorPrincipal) -> String {
@@ -144,6 +146,8 @@ fn fabric_storage_wire_identity(principal: FabricDoorPrincipal) -> String {
         TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
       }
     DoorLocalPeer { user: u } => wire_line(words: ["identity", "local", u as String])
+    // Request-only API credentials are never forwarded as fabric-storage authority.
+    DoorApiKeyUser { verified: _ } => wire_line(words: ["identity", "unattested"])
     DoorUnattested => wire_line(words: ["identity", "unattested"])
   }
 }

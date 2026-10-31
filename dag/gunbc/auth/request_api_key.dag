@@ -1,0 +1,52 @@
+module gunbc.auth.request_api_key
+
+import std.algebra { skip, trim }
+import std.types { String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { sha256_hex_of_text }
+import std.optional { Present, Absent }
+import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store_read, request_api_key_standing_parse, ApiKeyActive, ApiKeyRevoked }
+import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead }
+
+// Operator-owned key records contain only a digest-addressed stable user and
+// active/revoked state. The key is never a user identifier, URL component or
+// diagnostic. Every request re-reads standing, so revocation survives restart
+// and is not hidden by an in-process credential cache.
+type RequestApiKeyUser sole_constructor {
+  user: NonEmptyStr
+  store: RequestApiKeyStore
+}
+
+fn request_api_key_digest(authorization: String) -> Result<NonEmptyStr, String> {
+  let words = split(s: authorization, delimiter: " ")
+  if count(words) != 2 { return Err { value: "Bearer credential required" } }
+  let scheme = match first(words) { Present { value: v } => v Absent => "" }
+  let token = match first(skip(words, n: 1)) { Present { value: v } => v Absent => "" }
+  if (scheme != "Bearer" || token == "" || trim(s: token) != token) {
+    return Err { value: "Bearer credential required" }
+  }
+  Ok { value: sha256_hex_of_text(text: token) as NonEmptyStr }
+}
+
+fn request_api_key_read(store: RequestApiKeyStore, authorization: String) -> Result<RequestApiKeyUser, String> {
+  let digest = match request_api_key_digest(authorization: authorization) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let raw = match request_api_key_store_read(store: store, digest: digest) {
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => version.value as String
+    _ => { return Err { value: "API key not admitted" } }
+  }
+  let record = match parse_json_document(s: raw) {
+    JsonDocumentParsed { value: value } => value
+    _ => { return Err { value: "API key not admitted" } }
+  }
+  let user = match json_field_string(obj: record, key: "user") { FieldRead { value: value } => value _ => "" }
+  let state = match json_field_string(obj: record, key: "state") { FieldRead { value: value } => value _ => "" }
+  if user == "" { Err { value: "API key not admitted" } }
+  else { match request_api_key_standing_parse(wire: state) {
+    Err { value: _ } => Err { value: "API key not admitted" }
+    Ok { value: ApiKeyRevoked } => Err { value: "API key not admitted" }
+    Ok { value: ApiKeyActive } => Ok { value: RequestApiKeyUser { user: user as NonEmptyStr, store: store } }
+  } }
+}

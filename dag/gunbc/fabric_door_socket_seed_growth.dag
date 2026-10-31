@@ -13,7 +13,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // WHAT DECIDES NOTHING HERE. The seed hands the handler the peer's account name as a value and
 // stops: which peer is the proxy, which accounts are rostered and every refusal are .dag
-// (gunbc.fabric.fabric_writer_roster fabric_door_principal_of, fabric_door_writer_admission_over). An
+// (gunbc.fabric.fabric_writer_roster fabric_door_principal_of;
+// gunbc.fabric.fabric_writer_admission fabric_door_writer_admission_over). An
 // unresolvable peer is dropped at accept, before any request exists -- no host-side admission.
 //
 // HAND-ITEM DELTA: +6 citable declarations (serve_handler_args added by the peer_user repair, gunbc#12627) in v1_compiler.cli_run (a trait, an enum, a record and two
