@@ -1,0 +1,64 @@
+module v2.compiler.uses_row_restatement
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName }
+import v2.compiler.dependency_demand { DemandDerived, DemandUndecided, DependencyDemand, DependencyDemandRow, UndecidedCause, resource_set_has }
+
+// THE CONSUMER OF DERIVED DEPENDENCY DEMAND AT AN AUTHORED `uses` ROW (D13 / USES-0). For one authored
+// row -- the row identity USES-0 defined: the owning fn, the alias, the resource declaration the
+// authored type resolves to -- it answers whether v2.compiler.dependency_demand DependencyDemand
+// proves the row a RESTATEMENT of what the fn's body derives. It reads the carrier directly: it does
+// not read the census (v2.compiler.dependency_demand_census), whose strip and reading it takes as
+// SUPPLIED values.
+//
+// THE STANDING IS PER AUTHORED ROW, by membership of the row's resource in the fn's derived set,
+// never by equality of the whole set: a fn-level agreement must not license deleting another of the
+// fn's rows (gunbc#12992). Only UsesRowRestates licenses a deletion. A derived demand that lacks the
+// resource is NOT a restatement (the row asserts what no reachable operation declares: a binder,
+// policy or stale row), and an undecided demand carries its cause and never reads as empty.
+
+// What the authored row could be read as. The reader is supplied; this module judges its output.
+type UsesRowReading
+  = UsesRowResolved { resource: QualifiedName }
+  | UsesRowTypeUnresolved
+  | UsesRowAliasUnestablished
+
+type UsesRowStanding
+  = UsesRowRestates { resource: QualifiedName }
+  | UsesRowNotRestated { resource: QualifiedName }
+  | UsesRowUndecided { resource: QualifiedName, cause: UndecidedCause }
+  | UsesRowUnobserved
+
+fn uses_row_demand_of(rows: List<DependencyDemandRow>, function: QualifiedName) -> Optional<DependencyDemand> {
+  fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
+    if r.function == function { optional_present(value: r.demand) } else { acc }
+  })
+}
+
+fn uses_row_standing(rows: List<DependencyDemandRow>, function: QualifiedName, reading: UsesRowReading) -> UsesRowStanding {
+  match reading {
+    UsesRowTypeUnresolved => UsesRowUnobserved
+    UsesRowAliasUnestablished => UsesRowUnobserved
+    UsesRowResolved { resource: p } =>
+      match uses_row_demand_of(rows: rows, function: function) {
+        Absent => UsesRowUnobserved
+        Present { value: d } =>
+          match d {
+            DemandUndecided { cause: c } => UsesRowUndecided { resource: p, cause: c }
+            DemandDerived { resources: rs } =>
+              if resource_set_has(set: rs, path: p) { UsesRowRestates { resource: p } } else { UsesRowNotRestated { resource: p } }
+          }
+      }
+  }
+}
+
+fn uses_row_deletable(s: UsesRowStanding) -> Bool {
+  match s {
+    UsesRowRestates { resource: _ } => true
+    UsesRowNotRestated { resource: _ } => false
+    UsesRowUndecided { resource: _, cause: _ } => false
+    UsesRowUnobserved => false
+  }
+}
