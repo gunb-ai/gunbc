@@ -236,8 +236,8 @@ fn google_enrolment_refusal_json(reason: String, kind: GoogleEnrolmentRefusalWir
 
 // ── Request bodies ───────────────────────────────────────────────────────────────────────────
 // The JSON bodies of the device routes. Their encoders and strict decoders are in "The HTTP wire"
-// below; the server's route handlers (approval_device_routes_frontier) are the decoders' consumer
-// in production, and the envelope fixtures and witnesses exercise them now.
+// below; the server's route handlers (gunbc.auth.approval_device_routes) are the decoders' consumer
+// in production, and the envelope fixtures and witnesses exercise them too.
 // Push registration is SEPARATE from enrolment: a token rotates (reinstall, restore, APNs 410)
 // without changing who is enrolled or which key decides, and revoking an enrolment must end its
 // authority whatever push tokens still exist.

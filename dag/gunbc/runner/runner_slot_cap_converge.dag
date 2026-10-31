@@ -148,8 +148,10 @@ fn slot_cap_standing_readable(live: SlotCapLive, desired: RunnerSlotDesired) -> 
 
 // WHICH UNITS OWE A RELOAD, AND WHY WE KNOW (or do not). Owed: the unit's own NeedDaemonReload is not no.
 // Unobserved: no complete show block came back for it, which proves nothing about what a reload would load.
+// OwedInertUntilActivated: owed, but the unit is masked, inactive and has no cgroup, so a reload loads
+// nothing onto it; it stops being inert only when the cap bracket's activation unmasks and starts it.
 // A population that could not be listed at all is its own arm, never a unit.
-type PendingReloadKind = PendingReloadOwed | PendingReloadUnobserved
+type PendingReloadKind = PendingReloadOwed | PendingReloadUnobserved | PendingReloadOwedInertUntilActivated
 
 type UnitPendingReload {
   unit: NonEmptyStr
@@ -161,7 +163,27 @@ type HostPendingReloads
   | HostReloadsPending { units: FreeSemigroup<UnitPendingReload> }
   | HostPopulationUnobserved { reason: String }
 
-fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
+// A reload reaches a running slot when any pending unit is not inert (or could not be read), or the
+// population itself was not read. An inert unit's pending change reaches nothing until it is activated.
+fn host_pending_reloads_reach_running(p: HostPendingReloads) -> Bool {
+  match p {
+    HostNoReloadPending => false
+    HostReloadsPending { units: us } => any(non_empty_to_list(xs: us), u => pending_reload_kind_reaches_running(kind: u.kind))
+    HostPopulationUnobserved { reason: _ } => true
+  }
+}
+
+fn pending_reload_kind_reaches_running(kind: PendingReloadKind) -> Bool {
+  match kind {
+    PendingReloadOwed => true
+    PendingReloadUnobserved => true
+    PendingReloadOwedInertUntilActivated => false
+  }
+}
+
+// Any pending unit at all, inert ones included: what the bracket must not run over, since its activation
+// unmasks and starts every unit in its set.
+fn host_pending_reloads_any(p: HostPendingReloads) -> Bool {
   match p {
     HostNoReloadPending => false
     HostReloadsPending { units: _ } => true
@@ -172,7 +194,7 @@ fn host_pending_reloads_owed(p: HostPendingReloads) -> Bool {
 fn host_pending_reloads_wire(p: HostPendingReloads) -> String {
   match p {
     HostNoReloadPending => "none"
-    HostReloadsPending { units: us } => join(map(non_empty_to_list(xs: us), u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" }], "")), "; ")
+    HostReloadsPending { units: us } => join(map(non_empty_to_list(xs: us), u => join([u.unit as String, match u.kind { PendingReloadOwed => " reload=owed (NeedDaemonReload is not no)" PendingReloadUnobserved => " reload=unobserved (systemctl show returned no complete block for it)" PendingReloadOwedInertUntilActivated => " reload=owed-inert (masked, inactive, no cgroup; the bracket's activation would load it)" }], "")), "; ")
     HostPopulationUnobserved { reason: r } => concat("the slot population was not observed: ", r)
   }
 }
@@ -180,9 +202,12 @@ fn host_pending_reloads_wire(p: HostPendingReloads) -> String {
 // THE HOST PLAN, PURE: one decision for the whole host from every slot's standing and the idle gate.
 // Unread or disagreeing readings withhold (nothing is known well enough to touch); all at desired leaves
 // the caps in place; a differing cap runs only when every slot is idle, and the write+reload is then
-// bracketed by drain_and_mask and activate on every slot.
+// bracketed by drain_and_mask and activate on every slot. A managed cap FILE that differs while every
+// slot's live caps already read at desired is written in place, unbracketed (HostCapsWriteInPlace):
+// a reload then loads a value every slot already holds.
 type HostCapPlan
   = HostCapsLeaveInPlace
+  | HostCapsWriteInPlace { paths: FreeSemigroup<NonEmptyStr> }
   | HostCapsDrainWriteRestart
   | HostCapsWithheld { cause: String }
 
@@ -214,10 +239,18 @@ type SlotCapUnitStanding {
 // THE CAP FILES' OWN STANDING, observed through the existing file route. A file plan that could not be
 // made (HostFileActionRefused) is Unreadable, never a difference: an unread file must not authorise a
 // drain, write and reload.
+// A difference carries the managed paths that differ, so a plan that acts on it or withholds over it can name them.
 type CapFilesState
   = CapFilesSettled
-  | CapFilesDiffer
+  | CapFilesDiffer { paths: FreeSemigroup<NonEmptyStr> }
   | CapFilesUnreadable { cause: String }
+
+// WHAT DIFFERS, named for a cause string: each differing managed file, and each slot whose live caps differ with its reading.
+fn host_cap_differences_wire(standings: List<SlotCapUnitStanding>, differing_files: FreeSemigroup<NonEmptyStr>?) -> String {
+  let files = match differing_files { Absent => [] Present { value: ps } => map(non_empty_to_list(xs: ps), p => concat("file ", p as String)) }
+  let units = map(filter(standings, x => host_cap_standing_differs(s: x.standing)), x => join([x.unit as String, ": ", match x.standing { SlotCapsNeedRestart { detail: d } => d SlotCapsAtDesired => "" SlotCapsReadingsDisagree { detail: _ } => "" SlotCapsUnread { cause: _ } => "" SlotCapsStopped => "" }], ""))
+  join(concat(files, units), "; ")
+}
 
 // THE STEPS THE BRACKET SENDS, as typed steps from the same constructors the actuator renders its argv
 // from: the drain's mask and stop, the activation's unmask, enable and start, and the route's one
@@ -239,13 +272,19 @@ fn host_cap_bracket_reloads(unit: NonEmptyStr) -> Bool {
   any(host_cap_bracket_steps(unit: unit), step => host_cap_step_reloads(step: step))
 }
 
-// WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap differs AND every
+// WHEN THE PHASE PROCEEDS (ruling of clever-crane-830, narrow scope): a cap VALUE differs AND every
 // precondition holds -- every cap-file observation readable, no incomplete retiree, no loaded extra, no
-// pending unit-file change (NeedDaemonReload on any observed instance; an instance reports the template's
-// drop-ins), the host is then drained by gunbc.runner.runner_host_cap_bracket (admission closed first, live jobs waited out inside a declared bound), never judged idle with admission open. Then one bracket drains every slot (the mask reloads are harmless
+// pending unit-file change (NeedDaemonReload on any observed instance, an inert one in the bracket's set
+// included; an instance reports the template's drop-ins), the host is then drained by gunbc.runner.runner_host_cap_bracket (admission closed first, live jobs waited out inside a declared bound), never judged idle with admission open. Then one bracket drains every slot (the mask reloads are harmless
 // because nothing is pending), writes, reloads once, activates and reads back. Everything else that is
 // not already at desired is Withheld, typed and named, and a withheld host BARS every other reload site:
 // a stale or hand-placed lower-cap file would otherwise load through an unrelated reload.
+// THE IN-PLACE ARM (parent decision of 2026-10-29, beside that ruling): only managed FILES differ, every
+// slot's live caps (unit view, and cgroup where it runs) read at desired in this run, nothing pending
+// reaches a running slot, and no retiree is incomplete. The write sets values every slot already holds,
+// so it needs no drain; the apply reads the loaded drop-ins first and refuses if a later-sorting one sets a
+// key the write sets (gunbc.runner.runner_host_file_converge read_cap_dropin_override_over), then writes,
+// reloads and reads every slot back.
 // `pending_reloads` locates every instance that owes a reload or was not read, as a typed carrier rendered only into the Withheld cause.
 fn host_cap_plan(standings: List<SlotCapUnitStanding>, files: CapFilesState, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
   let problems = filter(map(standings, x => match host_cap_standing_problem(unit: x.unit, s: x.standing) { Present { value: v } => v Absent => "" }), v => v != "")
@@ -254,21 +293,41 @@ fn host_cap_plan(standings: List<SlotCapUnitStanding>, files: CapFilesState, ext
   } else {
     match files {
       CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: concat("the cap files could not be observed: ", c) }
-      CapFilesSettled => host_cap_plan_settled_files(standings: standings, files_differ: false, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
-      CapFilesDiffer => host_cap_plan_settled_files(standings: standings, files_differ: true, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesSettled => host_cap_plan_settled_files(standings: standings, differing_files: none, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
+      CapFilesDiffer { paths: ps } => host_cap_plan_settled_files(standings: standings, differing_files: Present { value: ps }, extras: extras, pending_reloads: pending_reloads, retirement_cause: retirement_cause)
     }
   }
 }
 
-fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, files_differ: Bool, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
-  // PENDING IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN ACTIVATION, THE LEAVE-IN-PLACE ARM
-  // INCLUDED. "Nothing differs" covers only the managed files and the current values; a reload applies
-  // every source the manager has pending (a hand-placed instance drop-in with a lower MemoryMax among
-  // them), so a pending or unknown reload withholds whatever the managed files say.
-  if host_pending_reloads_owed(p: pending_reloads) && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, differing_files: FreeSemigroup<NonEmptyStr>?, extras: List<NonEmptyStr>, pending_reloads: HostPendingReloads, retirement_cause: String?) -> HostCapPlan {
+  // PENDING THAT REACHES A RUNNING SLOT IS CHECKED FIRST, BEFORE ANY ARM THAT OPENS A RELOAD OR AN
+  // ACTIVATION, THE LEAVE-IN-PLACE ARM INCLUDED. "Nothing differs" covers only the managed files and the
+  // current values; a reload applies every source the manager has pending (a hand-placed instance drop-in
+  // with a lower MemoryMax among them), so a pending or unknown reload withholds whatever the managed files
+  // say. A pending change on an inert unit (masked, inactive, no cgroup) reaches no running slot through a
+  // reload; only the bracket's activation would start it, so it withholds the bracket arm alone, below.
+  if host_pending_reloads_reach_running(p: pending_reloads) && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
     HostCapsWithheld { cause: join(["a unit-file change is pending reload (or an instance could not be read), and a reload applies every pending source to every running slot, undrained: the managed cap files settling does not cover it. pending: ", host_pending_reloads_wire(p: pending_reloads)], "") }
-  } else if !files_differ && !any(standings, x => host_cap_standing_differs(s: x.standing)) {
-    HostCapsLeaveInPlace
+  } else if !any(standings, x => host_cap_standing_differs(s: x.standing)) {
+    match differing_files {
+      Absent => HostCapsLeaveInPlace
+      Present { value: ps } =>
+        match retirement_cause {
+          Present { value: why } => HostCapsWithheld { cause: join(["a surplus slot has not retired, so its live caps were not read and an in-place write could reach it: ", why, ". differing: ", host_cap_differences_wire(standings: standings, differing_files: differing_files)], "") }
+          Absent => {
+            // The template reload reaches every loaded extra too, so an extra whose live caps were not read
+            // in this run is not vouched for by the standings and withholds the write, by name.
+            let unread_extras = filter(extras, e => !any(standings, x => (x.unit as String) == (e as String)))
+            if length(unread_extras) > 0 {
+              HostCapsWithheld { cause: join(["loaded runner instances outside the declared sets would receive the in-place write's reload and their live caps were not read: ", join(map(unread_extras, x => x as String), " "), ". differing: ", host_cap_differences_wire(standings: standings, differing_files: differing_files)], "") }
+            } else {
+              HostCapsWriteInPlace { paths: ps }
+            }
+          }
+        }
+    }
+  } else if host_pending_reloads_any(p: pending_reloads) && any(map(standings, x => x.unit), u => host_cap_bracket_reloads(unit: u)) {
+    HostCapsWithheld { cause: join(["a live cap value differs (", host_cap_differences_wire(standings: standings, differing_files: differing_files), ") and the bracket would unmask and start a unit whose unit-file change is pending reload, loading that pending source onto a live cgroup. pending: ", host_pending_reloads_wire(p: pending_reloads)], "") }
   } else {
     match retirement_cause {
       Present { value: why } => HostCapsWithheld { cause: concat("a surplus slot has not retired, so the host is not quiescent: ", why) }

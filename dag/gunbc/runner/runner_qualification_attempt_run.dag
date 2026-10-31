@@ -1,9 +1,9 @@
 module gunbc.runner.runner_qualification_attempt_run
 
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
-import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -16,7 +16,7 @@ import extdeps.systemd.systemd_run {
   systemd_service_result_wire,
 }
 import product.host_identity { HostIdentity }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt_label }
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused,
@@ -33,7 +33,7 @@ import gunbc.github_effect_perform {
 }
 import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
+  HostUnitSlot, ListenerOwnLifetime, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
   host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt,
 }
 import gunbc.runner.runner_jit_mint_binding {
@@ -72,7 +72,7 @@ data qualification_attempt_receipt_path: String = "artifacts/qualification-attem
 // ONE ATTEMPT LABEL PER RUN AND RUN ATTEMPT, a single ref segment (gunbc.runner.runner_qualification_ref_pin
 // qualification_branch_name refuses anything else).
 fn qualification_attempt_label(run_id: String, run_attempt: String) -> NonEmptyStr? {
-  if trim(s: run_id) == "" || trim(s: run_attempt) == "" { none } else { Present { value: join(["q-", trim(s: run_id), "-", trim(s: run_attempt)], "") as NonEmptyStr } }
+  actions_run_attempt_label(prefix: "q", run_id: run_id, run_attempt: run_attempt)
 }
 
 // ── THE LAUNCH, AND THE EXIT IT MAY CLAIM ───────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ fn attempt_listener_run_of(launcher: SystemdSummaryPrintingWait, version_line: S
 fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: HostUnitSlot, credential: EncodedJitConfig) -> ListenerRun
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_bound")]
 {
-  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit)) {
+  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit), lifetime: ListenerOwnLifetime) {
     HostUnitListenerUnbuilt { cause: c } => ListenerNotLaunched { cause: c }
     HostUnitListenerReady { wait: w } => {
       let version_line = match systemd_run_version_command() {
@@ -284,7 +284,7 @@ fn qualification_attempt_held(
   match qualification_branch_name(attempt: attempt) {
     QualificationBranchNameRefused { attempt: _, cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
     QualificationBranchNamed { name: n } =>
-      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch)) {
+      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch), receipt: runner_user_session_receipt_observed(host: host)) {
         HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
         HostUnitSlotBound { slot: slot } =>
           match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {

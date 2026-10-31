@@ -6,7 +6,7 @@ import std.nat { Nat }
 import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.toolchain.types { Architecture }
 
@@ -46,14 +46,14 @@ type SystemNetworkPort {
   bandwidth: Bandwidth?
 }
 
-// A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuModelCatalogRow assumes a PCIe-attached card. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuModelCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
+// A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuBoardCatalogRow assumes a card or module attached to a host. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuDeviceCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
 type IntegratedComputeSystemCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
   soc_model: NonEmptyStr
   cpu_architecture: Architecture
   cpu_core_clusters: List<CpuCoreCluster>
-  gpu: GpuModelCatalogRow
+  gpu: GpuDeviceCatalogRow
   memory: MemoryFacts
   memory_bus_width: BitWidth
   memory_data_rate: Hertz
@@ -81,7 +81,7 @@ fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogR
 // The chip-to-chip link is carried PER DIRECTION, because the vendor headline is the bidirectional
 // aggregate and a reader comparing it to a one-way memory bandwidth would double it.
 //
-// The GPU tier is the nested GpuModelCatalogRow (memory + memory_bandwidth), so it is not restated.
+// The GPU tier is the nested GpuDeviceCatalogRow (memory + memory_bandwidth), so it is not restated.
 // figure_standing is ON the row rather than beside it so no consumer can read a figure without also
 // reading whether it was cited -- the extdeps.external_authority CitedFigureStanding coproduct.
 type CoherentMemoryTier {
@@ -97,7 +97,7 @@ type CoherentSuperchipCatalogRow {
   board_designation: NonEmptyStr?
   cpu_architecture: Architecture
   cpu_core_clusters: List<CpuCoreCluster>
-  gpu: GpuModelCatalogRow
+  gpu: GpuDeviceCatalogRow
   cpu_memory: CoherentMemoryTier
   chip_to_chip_bandwidth_per_direction: Bandwidth
   module_power_floor: Watt

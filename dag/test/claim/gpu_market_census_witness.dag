@@ -1,9 +1,10 @@
 module test.claim.gpu_market_census_witness
 
 // THE CENSUS ANSWERS EVERY SOURCE ROW ONCE, AND EACH ANSWER IS THE RULE'S. Supplied rows exercise each
-// arm of gunbc.gpu_market.census census_decide; the real pinned pages are read for the inhabitance half:
-// that the fold runs over every row they carry, that every judgment still names the row it judges, and
-// that named cards come out with the figures their rows state.
+// arm of gunbc.gpu_market.census census_dispose; the real pinned pages are read for the inhabitance half:
+// that the fold runs over every row they carry, that every judgment and alias still names the row it is
+// about, and that named rows come out with the disposition and figures their cells state. The workload
+// tiers (gunbc.gpu_market.workload_tier) are read over the same real cards.
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { bandwidth, bandwidth_count, byte_size_count, milliwatt, milliwatt_count }
@@ -11,6 +12,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
 import extdeps.wikipedia.gpu_spec_table {
   WikipediaGpuSpecPage,
   WikipediaGpuSpecRow,
@@ -27,21 +29,46 @@ import gunbc.gpu_market.census {
   CensusSourcePage,
   CensusRowRef,
   CensusCard,
-  CensusDecision,
+  CensusDisposition,
   CensusIncluded,
+  CensusAliasOf,
+  CensusPartitioned,
   CensusExcluded,
-  CoveredByAnotherSource,
-  Judged,
-  LaunchBeforeCutoff,
-  BelowMemoryFloor,
-  NotADiscreteCard,
+  CensusUnresolved,
+  MobileGpuCensus,
+  MobileModuleCensus,
+  WholeSystemCensus,
+  EmbeddedCensus,
+  PartitionMarked,
+  PartitionJudged,
+  RowStatesNoModel,
+  RepeatedHeaderRow,
+  NeverReleased,
+  LaunchNotYetAnnounced,
+  MemoryCellUnread,
+  ModelCellIsAMultiplier,
   GpuCountAmbiguous,
+  AliasTargetMissing,
   census_sources,
   census_judged_rows,
   census_coverage,
-  census_decide,
-  census_decisions,
+  census_dispose,
+  census_dispositions,
+  census_disposition_row,
   census_row_ref_eq,
+}
+import gunbc.gpu_market.workload_tier {
+  GpuTierVerdict,
+  GpuTiered,
+  GpuTierRefused,
+  LongContextTier,
+  ExperimentalSmallTier,
+  SmallModelOnlyTier,
+  BelowWorkloadFloor,
+  TierLaunchUnread,
+  TierLaunchBeforeCutoff,
+  warm_agent_tier_policy,
+  gpu_workload_tier,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,35 +84,28 @@ fn spec_row_count(page: WikipediaGpuSpecPage) -> Nat {
   })
 }
 
-fn decision_row(d: CensusDecision) -> CensusRowRef {
-  match d {
-    CensusIncluded { row: r, cards: _ } => r
-    CensusExcluded { row: r, reason: _ } => r
+// The fold yields one disposition per row the pages declare. census_page_dispositions maps over the rows,
+// so a row cannot get two; together with the pages' own completeness
+// (test.claim.wikipedia_gpu_spec_pages_witness) a source row deleted from a page module, or a disposition
+// lost from the fold, makes a count disagree.
+test fn w_census_disposes_every_declared_source_row() -> Bool {
+  count(census_dispositions()) == fold(census_sources, init: no_rows, f: (acc, s) => acc + spec_row_count(page: s.page))
+}
+
+fn source_row(ref: CensusRowRef) -> WikipediaGpuSpecRow? {
+  match first(census_sources |> filter(s => s.page.revision == ref.revision)) {
+    Absent => none
+    Present { value: s } => first(s.page.tables |> flat_map(t => match t {
+      WikipediaSpecTable { ordinal: o, heading: _, row_count: _, rows: rs } => if o == ref.table { rs |> filter(r => r.ordinal == ref.row) } else { [] }
+      WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => []
+    }))
   }
 }
 
-// The fold yields one decision per row the pages declare. Together with the pages' own completeness
-// (test.claim.wikipedia_gpu_spec_pages_witness) a dropped source row is a dropped decision.
-test fn w_census_decides_every_declared_source_row() -> Bool {
-  count(census_decisions()) == fold(census_sources, init: no_rows, f: (acc, s) => acc + spec_row_count(page: s.page))
-}
-
 fn source_row_model(ref: CensusRowRef) -> String? {
-  match first(census_sources |> filter(s => s.page.revision == ref.revision)) {
+  match source_row(ref: ref) {
+    Present { value: r } => r.model
     Absent => none
-    Present { value: s } => match first(s.page.tables |> filter(t => match t {
-      WikipediaSpecTable { ordinal: o, heading: _, row_count: _, rows: _ } => o == ref.table
-      WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => false
-    })) {
-      Absent => none
-      Present { value: t } => match t {
-        WikipediaSpecTable { ordinal: _, heading: _, row_count: _, rows: rs } => match first(rs |> filter(r => r.ordinal == ref.row)) {
-          Present { value: r } => r.model
-          Absent => none
-        }
-        WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => none
-      }
-    }
   }
 }
 
@@ -104,11 +124,49 @@ test fn w_coverage_rules_join_two_census_sources() -> Bool {
       && count(census_sources |> filter(s => s.page.revision == c.covered_by)) == 1)
 }
 
-fn decision_at(revision: ExternalAuthority, table: Nat, row: Nat) -> CensusDecision? {
-  first(census_decisions() |> filter(d => census_row_ref_eq(a: decision_row(d: d), b: CensusRowRef { revision: revision, table: table, row: row })))
+fn disposition_at_ref(ref: CensusRowRef) -> CensusDisposition? {
+  first(census_dispositions() |> filter(d => census_row_ref_eq(a: census_disposition_row(d: d), b: ref)))
 }
 
-fn only_card(d: CensusDecision?) -> CensusCard? {
+fn disposition_at(revision: ExternalAuthority, table: Nat, row: Nat) -> CensusDisposition? {
+  disposition_at_ref(ref: CensusRowRef { revision: revision, table: table, row: row })
+}
+
+// AN ALIAS NAMES A ROW THAT EXISTS, STATES THE SAME MODEL, AND IS NOT ITSELF AN ALIAS: the identity is
+// carried once, by a row whose own disposition governs it. Checked over every alias the fold yields, and
+// the population is not empty (the AMD list's Radeon Instinct tables repeat the Instinct article's rows).
+test fn w_every_alias_names_a_governing_row_of_the_same_model() -> Bool {
+  let aliases = census_dispositions() |> flat_map(d => match d {
+    CensusAliasOf { row: r, canonical: c } => [CensusAliasOf { row: r, canonical: c }]
+    _ => []
+  })
+  count(aliases) > 0 && aliases |> all(a => match a {
+    CensusAliasOf { row: r, canonical: c } =>
+      (match source_row_model(ref: r) {
+        Present { value: m } => match source_row_model(ref: c) {
+          Present { value: n } => m == n
+          Absent => false
+        }
+        Absent => false
+      })
+      && (match disposition_at_ref(ref: c) {
+        Present { value: CensusAliasOf { row: _, canonical: _ } } => false
+        Present { value: _ } => true
+        Absent => false
+      })
+    _ => false
+  })
+}
+
+test fn w_the_amd_list_copy_of_the_mi300x_is_an_alias_of_the_instinct_article_row() -> Bool {
+  match disposition_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 96, row: 5) {
+    Present { value: CensusAliasOf { row: _, canonical: c } } =>
+      census_row_ref_eq(a: c, b: CensusRowRef { revision: amd_instinct_page.revision, table: 1, row: 5 })
+    _ => false
+  }
+}
+
+fn only_card(d: CensusDisposition?) -> CensusCard? {
   match d {
     Present { value: CensusIncluded { row: _, cards: cs } } => if count(cs) == 1 { first(cs) } else { none }
     _ => none
@@ -116,9 +174,10 @@ fn only_card(d: CensusDecision?) -> CensusCard? {
 }
 
 fn gib(n: Nat) -> Nat { n * 1073741824 }
+fn mib(n: Nat) -> Nat { n * 1048576 }
 
 test fn w_p40_is_one_card_at_its_stated_figures() -> Bool {
-  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 29)) {
+  match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 29)) {
     Present { value: c } => c.model == "P40 GPU accelerator" && c.gpu_count == 1
       && byte_size_count(b: c.memory_per_gpu) == gib(n: 24)
       && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 345600000000, Absent => false }
@@ -129,7 +188,7 @@ test fn w_p40_is_one_card_at_its_stated_figures() -> Bool {
 
 // The K80 is ONE board of two GPUs: per-GPU memory and bandwidth, the board's 300 W once.
 test fn w_k80_is_one_board_of_two_gpus() -> Bool {
-  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 21)) {
+  match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 21)) {
     Present { value: c } => c.gpu_count == 2
       && byte_size_count(b: c.memory_per_gpu) == gib(n: 12)
       && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 240000000000, Absent => false }
@@ -140,50 +199,108 @@ test fn w_k80_is_one_board_of_two_gpus() -> Bool {
 
 // The column header states GB, so the cell "256" is 256 GiB, not 256 MiB.
 test fn w_mi325x_memory_is_read_in_the_column_unit() -> Bool {
-  match only_card(d: decision_at(revision: amd_instinct_page.revision, table: 1, row: 6)) {
+  match only_card(d: disposition_at(revision: amd_instinct_page.revision, table: 1, row: 6)) {
     Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 256)
     Absent => false
   }
 }
 
-test fn w_the_amd_list_copy_of_the_mi300x_is_covered_by_the_instinct_article() -> Bool {
-  match decision_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 96, row: 5) {
-    Present { value: CensusExcluded { row: _, reason: CoveredByAnotherSource { source: s } } } => s == amd_instinct_page.revision
-    _ => false
-  }
-}
-
 test fn w_the_desktop_max_q_workstation_card_is_a_card() -> Bool {
-  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 86, row: 5)) {
+  match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 86, row: 5)) {
     Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 96)
     Absent => false
   }
 }
 
-test fn w_a_mobile_quadro_named_by_its_m_suffix_is_not_a_card() -> Bool {
-  match decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 69, row: 6) {
-    Present { value: CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } } => (m as String) == "M"
-    _ => false
-  }
-}
-
-// The S7150 X2 row states 16 GB with no multiplier and "2x 160" GB/s: which grain is meant is not stated.
-test fn w_a_board_whose_cells_disagree_on_gpu_count_is_excluded() -> Bool {
-  match decision_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 4) {
-    Present { value: CensusExcluded { row: _, reason: GpuCountAmbiguous } } => true
-    _ => false
+// "OEM" ends in "M" too; a desktop card is not a mobile part for that.
+test fn w_a_desktop_oem_card_is_a_card() -> Bool {
+  match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 22, row: 3)) {
+    Present { value: c } => c.model == "GeForce RTX 3050 OEM" && byte_size_count(b: c.memory_per_gpu) == gib(n: 8)
+    Absent => false
   }
 }
 
 test fn w_arc_pro_b70_is_one_card_at_its_stated_figures() -> Bool {
-  match only_card(d: decision_at(revision: list_of_intel_graphics_processing_units_page.revision, table: 18, row: 3)) {
+  match only_card(d: disposition_at(revision: list_of_intel_graphics_processing_units_page.revision, table: 18, row: 3)) {
     Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 32)
       && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 608000000000, Absent => false }
     Absent => false
   }
 }
 
-// ── SUPPLIED ROWS, ONE PER ARM ──────────────────────────────────────────────────────────────────
+// NO THRESHOLD AT THE SOURCE: a 4 GB card from 2014 and a 512 MB card from 2010 are cards of this census.
+// Which of them a workload can use is the tier projection's question, below.
+test fn w_a_small_card_and_an_old_card_are_cards() -> Bool {
+  (match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 17, row: 7)) {
+    Present { value: c } => c.model == "GeForce GTX 980" && byte_size_count(b: c.memory_per_gpu) == gib(n: 4)
+    Absent => false
+  })
+    && (match only_card(d: disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 13, row: 5)) {
+      Present { value: c } => c.model == "GeForce GT 430" && byte_size_count(b: c.memory_per_gpu) == mib(n: 512)
+        && match c.launch_year { Present { value: y } => y == 2010, Absent => false }
+      Absent => false
+    })
+}
+
+// ── REAL ROWS, ONE PER NON-INCLUDED ARM THE PAGES INHABIT ────────────────────────────────────────
+
+test fn w_a_mobile_quadro_named_by_its_m_suffix_is_partitioned_to_the_mobile_census() -> Bool {
+  match disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 69, row: 6) {
+    Present { value: CensusPartitioned { row: _, partition: MobileGpuCensus, cause: PartitionMarked { marker: m } } } => (m as String) == "0M"
+    _ => false
+  }
+}
+
+// A chipset's integrated GPU in a desktop table: its memory is the system's, so it is a whole system's.
+test fn w_a_chipset_igp_in_a_desktop_table_is_partitioned_to_the_whole_system_census() -> Bool {
+  match disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 6, row: 0) {
+    Present { value: CensusPartitioned { row: _, partition: WholeSystemCensus, cause: PartitionMarked { marker: m } } } => (m as String) == "System shared"
+    _ => false
+  }
+}
+
+test fn w_the_judged_mxm_module_is_partitioned_to_the_module_census() -> Bool {
+  match disposition_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 2) {
+    Present { value: CensusPartitioned { row: _, partition: MobileModuleCensus, cause: PartitionJudged { judgment: _ } } } => true
+    _ => false
+  }
+}
+
+test fn w_a_repeated_header_row_and_an_empty_row_name_no_product() -> Bool {
+  (match disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 4, row: 24) {
+    Present { value: CensusExcluded { row: _, reason: RepeatedHeaderRow { model_as_stated: m } } } => m == "Model"
+    _ => false
+  })
+    && (match disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 0, row: 14) {
+      Present { value: CensusExcluded { row: _, reason: RowStatesNoModel } } => true
+      _ => false
+    })
+}
+
+test fn w_the_never_released_b100_is_excluded() -> Bool {
+  match disposition_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 51) {
+    Present { value: CensusExcluded { row: _, reason: NeverReleased { launch_as_stated: l } } } => l == "Never Released"
+    _ => false
+  }
+}
+
+// The S7150 X2 row states 16 GB with no multiplier and "2x 160" GB/s: which grain is meant is not stated.
+test fn w_a_board_whose_cells_disagree_on_gpu_count_is_unresolved() -> Bool {
+  match disposition_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 4) {
+    Present { value: CensusUnresolved { row: _, obligation: GpuCountAmbiguous { memory_gpu_count: m, bandwidth_gpu_count: b } } } => m == 1 && b == 2
+    _ => false
+  }
+}
+
+// A dual-GPU board's second line: the model cell is the multiplier and the cells are shifted.
+test fn w_a_row_whose_model_cell_is_a_multiplier_is_unresolved() -> Bool {
+  match disposition_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 69, row: 1) {
+    Present { value: CensusUnresolved { row: _, obligation: ModelCellIsAMultiplier { model_as_stated: m } } } => m == "2×"
+    _ => false
+  }
+}
+
+// ── SUPPLIED ROWS, ONE PER ARM THE PAGES DO NOT INHABIT TODAY ────────────────────────────────────
 
 data fixture_revision: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "en.wikipedia.org/w/index.php?title=Fixture&oldid=1" }
@@ -194,9 +311,15 @@ data fixture_source: CensusSourcePage = CensusSourcePage {
   page: WikipediaGpuSpecPage { revision: fixture_revision, html_sha256: "fixture", table_count: 0, tables: [] },
 }
 
-fn fixture_row(model: String, year: Nat, gpus: Nat, sizes_mib: List<Nat>, bw_gpus: Nat, rates: List<Nat>, power_mw: List<Nat>) -> WikipediaGpuSpecRow {
+// A source whose revision is the AMD list's, so the Radeon Instinct coverage rule applies to its rows.
+data fixture_covered_source: CensusSourcePage = CensusSourcePage {
+  vendor: amd,
+  page: WikipediaGpuSpecPage { revision: list_of_amd_graphics_processing_units_page.revision, html_sha256: "fixture", table_count: 0, tables: [] },
+}
+
+fn fixture_row(model: String, launch: String?, year: Nat?, gpus: Nat, sizes_mib: List<Nat>, bw_gpus: Nat, rates: List<Nat>, power_mw: List<Nat>) -> WikipediaGpuSpecRow {
   WikipediaGpuSpecRow {
-    ordinal: 0, model: Present { value: model }, launch_cell: none, launch_year: Present { value: year },
+    ordinal: 0, model: Present { value: model }, launch_cell: launch, launch_year: year,
     memory_cell: none, memory: Present { value: WikipediaMemoryCell { gpu_count: gpus, sizes_mib: sizes_mib } },
     memory_type_cell: none, bandwidth_cell: none,
     bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: bw_gpus, rates: rates |> map(r => bandwidth(count: r)) } },
@@ -204,34 +327,51 @@ fn fixture_row(model: String, year: Nat, gpus: Nat, sizes_mib: List<Nat>, bw_gpu
   }
 }
 
-fn decide(heading: NonEmptyStr, row: WikipediaGpuSpecRow) -> CensusDecision {
-  census_decide(src: fixture_source, table: 0, heading: heading, row: row)
+fn card_row(model: String, year: Nat, sizes_mib: List<Nat>) -> WikipediaGpuSpecRow {
+  fixture_row(model: model, launch: none, year: Present { value: year }, gpus: 1, sizes_mib: sizes_mib, bw_gpus: 1, rates: [1], power_mw: [1])
 }
 
-test fn w_arm_a_row_launched_before_the_cutoff_is_excluded() -> Bool {
-  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2010, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
-    CensusExcluded { row: _, reason: LaunchBeforeCutoff { year: y } } => y == 2010
+fn dispose(heading: NonEmptyStr, row: WikipediaGpuSpecRow) -> CensusDisposition {
+  census_dispose(src: fixture_source, table: 0, heading: heading, row: row)
+}
+
+test fn w_arm_a_row_in_a_mobile_section_is_partitioned() -> Bool {
+  match dispose(heading: "Mobile GPUs > GeForce 40 series", row: card_row(model: "Card", year: 2020, sizes_mib: [16384])) {
+    CensusPartitioned { row: _, partition: MobileGpuCensus, cause: PartitionMarked { marker: m } } => (m as String) == "Mobile GPUs"
     _ => false
   }
 }
 
-test fn w_arm_a_row_below_the_memory_floor_is_excluded() -> Bool {
-  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [4096, 6144], bw_gpus: 1, rates: [1], power_mw: [1])) {
-    CensusExcluded { row: _, reason: BelowMemoryFloor { largest_mib: m } } => m == 6144
+test fn w_arm_a_row_in_an_embedded_section_is_partitioned() -> Bool {
+  match dispose(heading: "Embedded GPUs", row: card_row(model: "Card", year: 2020, sizes_mib: [16384])) {
+    CensusPartitioned { row: _, partition: EmbeddedCensus, cause: _ } => true
     _ => false
   }
 }
 
-test fn w_arm_a_row_in_a_mobile_section_is_excluded() -> Bool {
-  match decide(heading: "Mobile GPUs > GeForce 40 series", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
-    CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } => (m as String) == "Mobile GPUs"
+test fn w_arm_a_launch_not_yet_announced_is_unresolved() -> Bool {
+  match dispose(heading: "Desktop GPUs", row: fixture_row(model: "Card", launch: Present { value: "TBA" }, year: none, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
+    CensusUnresolved { row: _, obligation: LaunchNotYetAnnounced { launch_as_stated: l } } => l == "TBA"
     _ => false
   }
 }
 
-test fn w_arm_a_board_whose_cells_disagree_on_gpu_count_is_excluded() -> Bool {
-  match decide(heading: "Server GPUs", row: fixture_row(model: "Board", year: 2020, gpus: 1, sizes_mib: [16384], bw_gpus: 2, rates: [1], power_mw: [1])) {
-    CensusExcluded { row: _, reason: GpuCountAmbiguous } => true
+test fn w_arm_a_row_with_no_memory_reading_is_unresolved() -> Bool {
+  let row = card_row(model: "Card", year: 2020, sizes_mib: [16384])
+  match dispose(heading: "Desktop GPUs", row: WikipediaGpuSpecRow {
+      ordinal: row.ordinal, model: row.model, launch_cell: row.launch_cell, launch_year: row.launch_year,
+      memory_cell: Present { value: "1024, 2048" }, memory: none, memory_type_cell: row.memory_type_cell,
+      bandwidth_cell: row.bandwidth_cell, bandwidth: row.bandwidth, power_cell: row.power_cell, power: row.power,
+      bus_cell: row.bus_cell, bus: row.bus,
+    }) {
+    CensusUnresolved { row: _, obligation: MemoryCellUnread { memory_as_stated: Present { value: m } } } => m == "1024, 2048"
+    _ => false
+  }
+}
+
+test fn w_arm_a_covered_row_the_covering_source_does_not_state_is_unresolved() -> Bool {
+  match census_dispose(src: fixture_covered_source, table: 96, heading: "Server GPUs > Radeon Instinct", row: card_row(model: "Radeon Instinct MI999", year: 2030, sizes_mib: [16384])) {
+    CensusUnresolved { row: _, obligation: AliasTargetMissing { covered_by: by } } => by == amd_instinct_page.revision
     _ => false
   }
 }
@@ -239,7 +379,7 @@ test fn w_arm_a_board_whose_cells_disagree_on_gpu_count_is_excluded() -> Bool {
 // A row stating two memory sizes is two cards; a row stating two rates or two powers gives each card
 // neither, rather than picking one.
 test fn w_arm_two_sizes_two_cards_and_two_rates_no_rate() -> Bool {
-  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [8192, 16384], bw_gpus: 1, rates: [1, 2], power_mw: [1, 2])) {
+  match dispose(heading: "Desktop GPUs", row: fixture_row(model: "Card", launch: none, year: Present { value: 2020 }, gpus: 1, sizes_mib: [8192, 16384], bw_gpus: 1, rates: [1, 2], power_mw: [1, 2])) {
     CensusIncluded { row: _, cards: cs } => count(cs) == 2
       && cs |> all(c => match c.bandwidth_per_gpu { Present { value: _ } => false, Absent => true })
       && cs |> all(c => match c.board_power { Present { value: _ } => false, Absent => true })
@@ -248,9 +388,47 @@ test fn w_arm_two_sizes_two_cards_and_two_rates_no_rate() -> Bool {
 }
 
 test fn w_arm_a_board_of_four_carries_one_board_power() -> Bool {
-  match decide(heading: "Data center GPUs", row: fixture_row(model: "Board", year: 2021, gpus: 4, sizes_mib: [16384], bw_gpus: 4, rates: [200000000000], power_mw: [250000])) {
+  match dispose(heading: "Data center GPUs", row: fixture_row(model: "Board", launch: none, year: Present { value: 2021 }, gpus: 4, sizes_mib: [16384], bw_gpus: 4, rates: [200000000000], power_mw: [250000])) {
     CensusIncluded { row: _, cards: cs } => count(cs) == 1 && cs |> all(c => c.gpu_count == 4
       && match c.board_power { Present { value: p } => milliwatt_count(w: p) == 250000, Absent => false })
     _ => false
   }
+}
+
+// ── THE WORKLOAD TIERS, OVER REAL CARDS ─────────────────────────────────────────────────────────
+
+fn tier_of_card_at(revision: ExternalAuthority, table: Nat, row: Nat) -> GpuTierVerdict? {
+  match only_card(d: disposition_at(revision: revision, table: table, row: row)) {
+    Present { value: c } => Present { value: gpu_workload_tier(policy: warm_agent_tier_policy, card: c) }
+    Absent => none
+  }
+}
+
+test fn w_tiers_follow_per_gpu_memory() -> Bool {
+  let nv = list_of_nvidia_graphics_processing_units_page.revision
+  (match tier_of_card_at(revision: nv, table: 89, row: 29) { Present { value: GpuTiered { card: _, tier: LongContextTier } } => true  _ => false })
+    && (match tier_of_card_at(revision: nv, table: 22, row: 3) { Present { value: GpuTiered { card: _, tier: ExperimentalSmallTier } } => true  _ => false })
+    && (match tier_of_card_at(revision: nv, table: 18, row: 13) { Present { value: GpuTiered { card: _, tier: SmallModelOnlyTier } } => true  _ => false })
+    && (match tier_of_card_at(revision: nv, table: 17, row: 7) { Present { value: GpuTiered { card: _, tier: BelowWorkloadFloor } } => true  _ => false })
+    // The K80 is two 12 GB GPUs: its tier is a 12 GB GPU's, not a 24 GB board's.
+    && (match tier_of_card_at(revision: nv, table: 89, row: 21) { Present { value: GpuTiered { card: _, tier: ExperimentalSmallTier } } => true  _ => false })
+}
+
+test fn w_the_launch_cutoff_refuses_rather_than_tiers() -> Bool {
+  (match tier_of_card_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 13, row: 5) {
+    Present { value: GpuTierRefused { card: _, refusal: TierLaunchBeforeCutoff { year: y } } } => y == 2010
+    _ => false
+  })
+    && (match dispose(heading: "Desktop GPUs", row: fixture_row(model: "Card", launch: none, year: none, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
+      CensusIncluded { row: _, cards: cs } => count(cs) == 1 && cs |> all(c => match gpu_workload_tier(policy: warm_agent_tier_policy, card: c) {
+        GpuTierRefused { card: _, refusal: TierLaunchUnread } => true
+        _ => false
+      })
+      _ => false
+    })
+}
+
+test fn w_the_live_policy_floors_descend() -> Bool {
+  byte_size_count(b: warm_agent_tier_policy.long_context_floor) >= byte_size_count(b: warm_agent_tier_policy.experimental_floor)
+    && byte_size_count(b: warm_agent_tier_policy.experimental_floor) >= byte_size_count(b: warm_agent_tier_policy.small_model_floor)
 }

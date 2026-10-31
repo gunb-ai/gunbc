@@ -1,0 +1,35 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system/Memory/dimm6",
+  "@odata.type": "#Memory.v1_11_0.Memory",
+  "AllowedSpeedsMHz": [],
+  "BaseModuleType": "RDIMM",
+  "BusWidthBits": 0,
+  "CapacityMiB": 0,
+  "DataWidthBits": 65535,
+  "ErrorCorrection": "MultiBitECC",
+  "FirmwareRevision": "0",
+  "Id": "dimm6",
+  "Location": {
+    "PartLocation": {
+      "ServiceLabel": "Bank 7 DDR4_G1"
+    }
+  },
+  "Manufacturer": "Array 1 Manufacturer 13",
+  "MemoryLocation": {
+    "Channel": 0,
+    "MemoryController": 0,
+    "Slot": 0,
+    "Socket": 0
+  },
+  "Model": "",
+  "Name": "DIMM Slot",
+  "OperatingSpeedMhz": 0,
+  "PartNumber": "Array 1 Part Number 13",
+  "RankCount": 0,
+  "SerialNumber": "Array 1 Serial Number 13",
+  "SparePartNumber": "",
+  "Status": {
+    "Health": "OK",
+    "State": "Absent"
+  }
+}

@@ -4,11 +4,12 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::collection_concat_shape;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
 use crate::std_syntax::BodyKind::{
-    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
+    AliasBody, BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
 use crate::std_syntax::ItemFormKind::{
     EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
@@ -18,6 +19,7 @@ pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
     PostfixOperatorSpec, PrefixOperatorSpec, SyntaxSpec,
 };
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

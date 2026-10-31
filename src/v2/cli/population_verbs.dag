@@ -9,6 +9,10 @@ import gunbc.parse_population_refusals { RefusalClass, parse_population_declared
 import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
   Reused,
+  MissIdentityAbsent,
+  MissIdentityMismatch,
+  MissEntryAbsent,
+  MissDigestUnseen,
   MissDeclaredRefused,
   parse_verdict_standing,
   parse_verdict_stored_accepted_line,
@@ -276,7 +280,17 @@ fn population_parse_judged(tally: PopulationParse, key: String) -> Map<String, B
 
 // A member the walk judged: exactly as declared (consumes its declaration), declared for another cause
 // (consumes it and contradicts it), or not declared at all (a refusal of its own).
-fn population_parse_refused(tally: PopulationParse, key: String, cause: String) -> PopulationParse {
+// WHERE THE REFUSAL POINTS, appended after the cause so a reader of the population report goes straight to
+// the line (v2.compiler.module_acquisition acquisition_refusal_at); nothing to append when the parse stage
+// located nothing.
+fn population_at_suffix(at: Optional<String>) -> String {
+  match at {
+    Present { value: locus } => concat(" at ", locus)
+    Absent => ""
+  }
+}
+
+fn population_parse_refused(tally: PopulationParse, key: String, cause: String, at: Optional<String>) -> PopulationParse {
   match roster_cause(roster: tally.roster, key: key) {
     Present { value: declared_cause } =>
       if declared_cause == cause {
@@ -297,7 +311,7 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           roster: tally.roster,
           judged: population_parse_judged(tally: tally, key: key),
           refusals: Cons {
-            head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause),
+            head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause, population_at_suffix(at: at)),
             tail: tally.refusals
           },
           accepted_receipts: tally.accepted_receipts,
@@ -311,7 +325,7 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals },
+        refusals: Cons { head: concat(key, ": ", cause, population_at_suffix(at: at)), tail: tally.refusals },
         accepted_receipts: tally.accepted_receipts,
         compiler: tally.compiler,
         reuse: tally.reuse
@@ -374,7 +388,11 @@ fn population_parse_standing(tally: PopulationParse, key: String, source_digest:
                 Present { value: _ } => Present { value: MissDeclaredRefused }
                 Absent => Present { value: Reused }
               }
-            miss => Present { value: miss }
+            MissIdentityAbsent => Present { value: MissIdentityAbsent }
+            MissIdentityMismatch => Present { value: MissIdentityMismatch }
+            MissEntryAbsent => Present { value: MissEntryAbsent }
+            MissDigestUnseen => Present { value: MissDigestUnseen }
+            MissDeclaredRefused => Present { value: MissDeclaredRefused }
           }
       }
   }
@@ -420,7 +438,7 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         _ =>
           match acquisition_parse(env: env, file: member.file, content: member.content) {
             MemberParses => population_parse_accepted(tally: counted, key: key, source_digest: source_digest)
-            MemberParseRefused { cause: cause } => population_parse_refused(tally: counted, key: key, cause: cause)
+            MemberParseRefused { cause: cause, at: at } => population_parse_refused(tally: counted, key: key, cause: cause, at: at)
           }
       }
     }

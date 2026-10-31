@@ -1,0 +1,39 @@
+module gunbc.rung_drop.convergence_fetch_window_fixture_interposition
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-10-24 beside the removal of the two witnesses it cites, so the loss has a row and not a
+// gap. The first claim `cas_race_is_observed_after_fetch` (repository_convergence_wet_witness) asserted that
+// repository_converge_wet refuses with "base ref moved" when the base ref changes between its fetch
+// and its compare-and-set. Its only interposition point was a script configured as
+// remote.origin.uploadpack. Since #12279 the production fetch passes --upload-pack explicitly
+// (convergence_fetch_upload_pack), which overrides that config, so the hook never ran and the claim
+// was red on main. The second, `reset_refusal_after_successful_cas_is_nonzero`, asserted a
+// PARTIAL TRANSITION refusal when the reset fails after a successful CAS; it injected index.lock through
+// the same hook, and a lock planted before the run is refused earlier by the pre-state observation (a
+// different cause), so it needs the same interposition point. No fixture can interpose between the fetch and the CAS through the modeled route.
+//
+// WHAT THE PREVIOUS RUNG WAS, precisely: the class was intended as mechanically preventable, a witness
+// executing the refusal. It had in fact stopped executing at #12279, so the rung it held in evidence
+// was already lower; this row records the rung it was declared at and the rung the evidence supports.
+// The CAS refusal itself remains in production as a typed outcome, which is why the temporary rung is
+// mitigation and not outside the ladder.
+
+data convergence_fetch_window_fixture_interposition: RungDrop = RungDrop {
+  identity: "convergence_fetch_window_fixture_interposition" as NonEmptyStr,
+
+  subject: "repository_converge_wet refusing with a moved base ref between its fetch and its base-ref compare-and-set and a failing reset after a successful base-ref compare-and-set have no executing witness, because no fixture can interpose between the pre-state observation, the fetch, the compare-and-set and the reset",
+
+  declared: "2026-10-24",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "test.claim.repository_convergence_wet_witness.cas_race_is_observed_after_fetch", tail: ["test.claim.repository_convergence_wet_witness.reset_refusal_after_successful_cas_is_nonzero"] } },
+    restoration_trigger: "THE CAPABILITY: the fetch used by repository convergence is a typed effect that admits a DECLARED interposition point between the object fetch and the base-ref compare-and-set, so a fixture can move the base ref at exactly that point through the modeled route. SUFFICIENT FOR: an executed claim in which the base ref is moved at that declared point and repository_converge_wet refuses with a moved-base-ref cause, another in which the reset fails after the compare-and-set and the refusal is the partial-transition cause, plus a RED in which not moving it lets the convergence succeed. Nothing smaller retires this row: restoring a remote.origin.uploadpack hook does not, because the production fetch overrides it, and a seam added to repository_converge_wet only for tests is a second path beside the modeled route.",
+  } }
+}

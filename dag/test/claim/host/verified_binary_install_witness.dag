@@ -156,6 +156,16 @@ fn line_at_exists_and_contains(lines: List<String>, index: Int, pattern: String)
   }
 }
 
+// THE EXTRACT LEAVES THE ROOT IT EXTRACTS INTO AS IT IS. The sccache install extracts with -C /tmp, a
+// directory whose 1777 the host relies on; under tar's default an archive entry naming the root would
+// restore its own mode onto /tmp (gunbc.recurring_failure_mode
+// an_archive_extract_reapplies_its_directory_mode_to_the_destination). RED: the default extract argv.
+test fn the_extract_preserves_the_extract_roots_own_metadata() -> Bool {
+  let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
+  let lines = map(verified_binary_install_install_steps(p: p), c => join(argv_words(command: c), " "))
+  length(filter(lines, l => string_contains(s: l, pattern: "xf ") && string_contains(s: l, pattern: concat("-C ", p.extract_root)) && ends_with(s: l, suffix: "--no-overwrite-dir"))) == 1
+}
+
 // POSITIVE CONTROL. The same fold the RED runs, on a matching digest: admitted, and the plan is the
 // install body. If this fails, nothing below it means anything.
 test fn positive_control_a_matching_digest_admits_the_install() -> Bool {

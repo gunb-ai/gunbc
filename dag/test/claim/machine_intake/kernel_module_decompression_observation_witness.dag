@@ -9,7 +9,10 @@ import gunbc.machine_intake.kernel_module_decompression_observation {
   KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded,
   RefusalIdentityUnread, RefusalIdentityCandidates, ModuleInsertFailure, DriverPrintedLater, DriverNotSeenInCapture,
 }
-import gunbc.host.boot_attempt { ConsoleRetained, CaptureContents }
+import gunbc.host.boot_console_observation {
+  ConsoleRetained,
+  CaptureContents,
+}
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_console_reading }
 
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }

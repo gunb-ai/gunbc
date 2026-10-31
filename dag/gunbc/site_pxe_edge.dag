@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.list { first_where }
 import extdeps.uri { Uri, Tftp }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -19,7 +19,11 @@ import extdeps.formats.dnsmasq {
   DnsmasqDhcpRangeProxy,
   DnsmasqDhcpMatchSet,
   DnsmasqDhcpHostSetTag,
+  DnsmasqDhcpMacSetTag,
   DnsmasqPxeServiceTags,
+  DnsmasqTagMatch,
+  DnsmasqTagSet,
+  DnsmasqTagNotSet,
   DnsmasqLogDhcp,
   DnsmasqEnableTftp,
   DnsmasqTftpRoot,
@@ -191,24 +195,34 @@ type SiteEdgeServedMember {
   digest: ContentHash
 }
 
-// ONE SERVED CHAIN, for one architecture. The client class is DERIVED from the architecture by the UEFI
-// projection, never authored beside it, and the constructor refuses an architecture UEFI PXE delivery
-// does not admit, so a served chain for an unadmitted class has no spelling. citation is the upstream the
-// chain's layout comes from, rendered as the chain's comment line in the config.
+// WHICH KNOWN CLIENTS OF A CLASS A CHAIN IS OFFERED TO. EveryKnownClient is the class's default chain;
+// InstallBoundClients is offered only to a client whose MAC an install binding names, and when a class has
+// both, the default chain is withheld from exactly those clients. So one architecture can keep a
+// default chain that installs nothing (the arm64 iPXE row) beside an install chain (the arm64 Ubuntu
+// signed chain), and an unbound client never reaches the install chain.
+type SiteEdgeChainAudience
+  = EveryKnownClient
+  | InstallBoundClients
+
+// ONE SERVED CHAIN, for one architecture and audience. The client class is DERIVED from the architecture
+// by the UEFI projection, never authored beside it, and the constructor refuses an architecture UEFI PXE
+// delivery does not admit, so a served chain for an unadmitted class has no spelling. citation is the
+// upstream the chain's layout comes from, rendered as the chain's comment line in the config.
 type SiteEdgeServedChain sole_constructor {
   architecture: Architecture
   client: DhcpProcessorArchitecture
+  audience: SiteEdgeChainAudience
   members: FreeSemigroup<SiteEdgeServedMember>
   citation: NonEmptyStr
 }
 
-fn site_edge_served_chain(architecture: Architecture, members: FreeSemigroup<SiteEdgeServedMember>, citation: NonEmptyStr) -> SiteEdgeServedChain? {
+fn site_edge_served_chain(architecture: Architecture, audience: SiteEdgeChainAudience, members: FreeSemigroup<SiteEdgeServedMember>, citation: NonEmptyStr) -> SiteEdgeServedChain? {
   if architecture_admitted_for_delivery(arch: architecture) == false {
     Absent
   } else {
     match uefi_processor_architecture(arch: architecture) {
       Absent => Absent
-      Present { value: c } => Present { value: SiteEdgeServedChain { architecture: architecture, client: c, members: members, citation: citation } }
+      Present { value: c } => Present { value: SiteEdgeServedChain { architecture: architecture, client: c, audience: audience, members: members, citation: citation } }
     }
   }
 }
@@ -225,34 +239,50 @@ fn site_edge_served_loader_chain(chain: SiteEdgeServedChain) -> NetworkBootLoade
 // this list gets no admitted boot even with the right architecture. The roster carries only
 // what the edge AUTHORS; discovery and reachability are never authored here, they are derived
 // from the observations beside them. Which architectures it admits is read off served_chains.
+// install_client_macs are the known clients an install binding names: they alone are offered a
+// class's InstallBoundClients chain.
 type SiteEdgeRoster {
   site: SiteIdentity
   served_chains: FreeSemigroup<SiteEdgeServedChain>
   tftp_server_name: NonEmptyStr
   tftp_server_address: Ipv4Address
   known_client_macs: List<Eui48Address>
+  install_client_macs: List<Eui48Address>
 }
 
 fn site_edge_roster_chains(roster: SiteEdgeRoster) -> List<SiteEdgeServedChain> {
   non_empty_to_list(xs: roster.served_chains)
 }
 
-fn site_edge_chain_for_class(roster: SiteEdgeRoster, client: DhcpProcessorArchitecture) -> SiteEdgeServedChain? {
-  first_where(xs: site_edge_roster_chains(roster: roster), keep: c => c.client == client)
+fn client_is_install_bound(roster: SiteEdgeRoster, mac: Eui48Address) -> Bool {
+  roster.install_client_macs |> any(m => m == mac)
 }
 
-// TWO CHAINS ON ONE TFTP ROOT MAY NOT CLAIM ONE PATH: the second would overwrite the first's member and
-// boot the wrong bytes for one of them. The served paths of every chain, and each path claimed twice.
-fn site_edge_served_paths(roster: SiteEdgeRoster) -> List<NonEmptyStr> {
-  flat_map(site_edge_roster_chains(roster: roster), c => map(site_edge_served_members(chain: c), m => m.member.served_path))
+fn site_edge_class_has_install_chain(roster: SiteEdgeRoster, client: DhcpProcessorArchitecture) -> Bool {
+  any(site_edge_roster_chains(roster: roster), c => c.client == client && c.audience == InstallBoundClients)
+}
+
+// THE CHAIN ONE CLIENT IS OFFERED: its class's install chain when an install binding names its MAC and the
+// class has one, otherwise the class's default chain. The same rule renders the pxe-service tags below.
+fn site_edge_chain_for_client(roster: SiteEdgeRoster, client: DhcpProcessorArchitecture, mac: Eui48Address) -> SiteEdgeServedChain? {
+  let wanted = if client_is_install_bound(roster: roster, mac: mac) && site_edge_class_has_install_chain(roster: roster, client: client) { InstallBoundClients } else { EveryKnownClient }
+  first_where(xs: site_edge_roster_chains(roster: roster), keep: c => c.client == client && c.audience == wanted)
+}
+
+// TWO CHAINS ON ONE TFTP ROOT MAY NOT CLAIM ONE PATH WITH DIFFERENT BYTES: the second would overwrite the
+// first's member and boot the wrong bytes for one of them. Two chains whose GRUB reads one fallback
+// grub/grub.cfg share that file when its digest is the same in both; sharing identical bytes overwrites
+// nothing. The served members of every chain, and each path claimed with two different digests.
+fn site_edge_served_member_list(roster: SiteEdgeRoster) -> List<SiteEdgeServedMember> {
+  flat_map(site_edge_roster_chains(roster: roster), c => site_edge_served_members(chain: c))
 }
 
 fn site_edge_served_path_collisions(roster: SiteEdgeRoster) -> List<NonEmptyStr> {
-  let paths = site_edge_served_paths(roster: roster)
+  let members = site_edge_served_member_list(roster: roster)
   fold(
-    filter(paths, p => length(filter(paths, q => (q as String) == (p as String))) > 1),
+    filter(members, m => any(members, n => (n.member.served_path as String) == (m.member.served_path as String) && content_hash_equal(left: n.digest, right: m.digest) == false)),
     init: [],
-    f: (acc, p) => if any(acc, q => (q as String) == (p as String)) { acc } else { acc + [p] },
+    f: (acc, m) => if any(acc, q => (q as String) == (m.member.served_path as String)) { acc } else { acc + [m.member.served_path] },
   )
 }
 
@@ -317,7 +347,7 @@ fn site_edge_client_admission(roster: SiteEdgeRoster, observed: SiteEdgeObservat
   match dhcp_processor_architecture_from_code(code: request.arch_code) {
     Absent => SiteEdgeUnknownArchitectureRefused { arch_code: request.arch_code }
     Present { value: class } =>
-      match site_edge_chain_for_class(roster: roster, client: class) {
+      match site_edge_chain_for_client(roster: roster, client: class, mac: request.mac) {
         Absent => SiteEdgeClientClassNotServed { client: class }
         Present { value: chain } =>
           if client_is_known(roster: roster, mac: request.mac) == false {
@@ -362,16 +392,43 @@ fn site_edge_client_class_tag(client: DhcpProcessorArchitecture) -> String {
 
 data site_edge_known_tag: String = "onboarding-known"
 
+data site_edge_install_tag: String = "onboarding-install"
+
+// WHICH TAGS A CHAIN'S pxe-service REQUIRES beyond its class: every chain requires a known machine; an install
+// chain also requires the install tag; a default chain whose class also has an install chain requires the
+// install tag to be UNSET, so the two lines are exclusive and an install-bound client is offered one chain.
+fn site_edge_chain_tag_matches(roster: SiteEdgeRoster, chain: SiteEdgeServedChain) -> List<DnsmasqTagMatch> {
+  [DnsmasqTagSet { tag: site_edge_known_tag }] + match chain.audience {
+    InstallBoundClients => [DnsmasqTagSet { tag: site_edge_install_tag }]
+    EveryKnownClient => if site_edge_class_has_install_chain(roster: roster, client: chain.client) { [DnsmasqTagNotSet { tag: site_edge_install_tag }] } else { [] }
+  }
+}
+
+fn site_edge_chain_audience_word(audience: SiteEdgeChainAudience) -> String {
+  match audience {
+    EveryKnownClient => ""
+    InstallBoundClients => " install"
+  }
+}
+
+// ONE dhcp-match PER CLIENT CLASS, however many chains the class has.
+fn site_edge_served_classes(roster: SiteEdgeRoster) -> List<DhcpProcessorArchitecture> {
+  fold(site_edge_roster_chains(roster: roster), init: [], f: (acc, c) => if any(acc, k => k == c.client) { acc } else { acc + [c.client] })
+}
+
+fn site_edge_class_match_directive(client: DhcpProcessorArchitecture) -> DnsmasqDirective {
+  DnsmasqDhcpMatchSet { tag: site_edge_client_class_tag(client: client), option: "option:client-arch", value: to_string(dhcp_processor_architecture_code(a: client)) }
+}
+
 fn site_edge_chain_directives(roster: SiteEdgeRoster, chain: SiteEdgeServedChain) -> List<DnsmasqDirective> {
   let tag = site_edge_client_class_tag(client: chain.client)
   [
-    DnsmasqComment { text: join([tag, ": ", chain.citation as String], "") },
-    DnsmasqDhcpMatchSet { tag: tag, option: "option:client-arch", value: to_string(dhcp_processor_architecture_code(a: chain.client)) },
+    DnsmasqComment { text: join([tag, site_edge_chain_audience_word(audience: chain.audience), ": ", chain.citation as String], "") },
     DnsmasqPxeServiceTags {
       first_tag: tag,
-      more_tags: [site_edge_known_tag],
+      more_tags: site_edge_chain_tag_matches(roster: roster, chain: chain),
       client_system_type: dhcp_processor_architecture_code(a: chain.client),
-      menu_text: concat("gunbc ", tag),
+      menu_text: concat(concat("gunbc ", tag), site_edge_chain_audience_word(audience: chain.audience)),
       basename: chain.members.head.member.served_path as String,
       server_address: render_ipv4_address(addr: roster.tftp_server_address) as String,
     },
@@ -387,10 +444,14 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
         DnsmasqLogDhcp,
         DnsmasqDhcpRangeProxy { network_address: render_ipv4_address(addr: network_address) as String },
       ],
-      flat_map(site_edge_roster_chains(roster: roster), c => site_edge_chain_directives(roster: roster, chain: c)),
+      concat(
+        map(site_edge_served_classes(roster: roster), k => site_edge_class_match_directive(client: k)),
+        flat_map(site_edge_roster_chains(roster: roster), c => site_edge_chain_directives(roster: roster, chain: c)),
+      ),
     ),
     concat(
-      map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
+      map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag })
+        + map(roster.install_client_macs, m => DnsmasqDhcpMacSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_install_tag }),
       [
         DnsmasqEnableTftp,
         DnsmasqTftpRoot { path: tftp_directory as String },
@@ -408,10 +469,12 @@ fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRos
   serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster, tftp_directory: tftp_directory))
 }
 
-// The first onboarding segment's only known client, parsed from the measured observation's wire text
-// rather than re-authored as octets, so the roster and the observation cannot disagree. A parse
-// failure is a MacParseFailed every consumer must refuse on, never an empty roster.
-data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
+// The first onboarding segment's only known client, taken from the measured observation's Eui48Address
+// and rendered by the carrier's OWN render_mac_address -- never re-authored as octets or a literal here,
+// so the roster and the observation cannot disagree. It is still carried as a MacParseResult, because the
+// converge gate must be able to REFUSE a malformed client rather than serve a roster without it: a parse
+// failure is a MacParseFailed every consumer refuses on, never an empty roster.
+data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: render_mac_address(addr: mtcollins1_host_nic_mac))
 
 // The production routes this module provides and nothing yet executes, as counted
 // rows (enrolled in gunbc.census_closure_frontier) rather than prose.

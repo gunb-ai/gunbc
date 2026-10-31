@@ -50,6 +50,9 @@ import std.effects {
 // unit gunbc-microvm-slot@.service, and a daemon-reload -- additive, starting no instance. It carries
 // no DeploymentSpec because the controller is not a member of the dashboard deployment: its locus
 // root and owner are gunbc.runner.runner_microvm_slot_unit's, which is the one section 3b divergence.
+// It carries the transport its ELEVATED legs run over: the fold runs where the job runs, and every
+// sudo leg goes to a principal that holds root without the job user holding it
+// (gunbc.host.host_effect_realize HostEffectElevationRoute).
 type HostEffect =
     RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
@@ -80,7 +83,7 @@ type HostEffect =
   | LiveDeployApply { warrant: AdmittedLiveDeployApply }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
-  | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
+  | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease, elevated: HostEffectTransport }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int, expected_digest: Fnv1a64Structural }
   | LiveDeployServeRoute { endpoint: TailscaleServeEndpoint, enabled: Bool }

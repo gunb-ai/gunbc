@@ -1,0 +1,194 @@
+module gunbc.machine_intake.bmc_write_controller
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import extdeps.board_authority { BoardAuthorityRef, board_authority_ref_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, bmc_controller_of_endpoint }
+import gunbc.fleet.fleet_intent { srv13_baseboard, srv15_baseboard }
+import gunbc.machine_intake.mtjade1_access_observation { sol_session_controller, mtjade1_smbios_sol_attribution }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv13, operator_host_srv15 }
+import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment, assessment_holds }
+
+// ── WHICH CONTROLLERS A BMC ACCOUNT WRITE MAY TARGET, AND BY WHICH DISCHARGE ─────────────────────────
+//
+// A BMC account write is discharged either by a STANDING operator grant (the live-ops standing ruling's
+// StandingBmcSecureAccountWrite arm) or by a PER-WRITE approval from gunbc.auth.approval_gate, whose
+// subject is the exact controller, build and request (gunbc.machine_intake.bmc_rotation_route
+// BmcAccountWriteApproval). Which of the two a controller admits, and whether it admits any write at all,
+// is a fact about that controller, so it is a row here and not a branch at the discharge.
+//
+// A controller with no row admits no write. The discharge
+// (gunbc.machine_intake.arrival_converge discharge_bmc_secure_apply) refuses both routes for it.
+//
+// Constraints from merry-fox-82 (2026-10-28):
+// - mtjade1 is held, for both routes and in dry and wet runs alike, until mtcollins1 serves CI. The hold
+//   is released by a value, not by editing this file: see BmcWriteHoldRelease.
+// - srv13 has a standing write restriction: no write without an approval naming srv13. The per-write
+//   approval's subject already names the controller, so the row refuses the standing-grant route for it.
+
+type BmcWriteDischarge
+  = PerWriteApprovalOnly
+  | StandingGrantOrPerWriteApproval
+
+// WHAT RELEASES A HOLD. UntilRunnerQualified is released only by presenting the sealed throughput
+// assessment (gunbc.runner.runner_throughput_qualification RunnerThroughputAssessment, minted only by
+// assess_runner_throughput) for the named host, and only one that holds (assessment_holds). No producer
+// feeds a real run into that assessment yet (gunbc.runner.runner_throughput_qualification
+// qualification_run_producer_frontier), so today nothing can release the hold: it is fail-closed.
+type BmcWriteHoldRelease
+  = UntilRunnerQualified { host: HostIdentity }
+
+type BmcWriteAdmission
+  = WritesAdmitted { discharge: BmcWriteDischarge }
+  | WritesHeld { reason: NonEmptyStr, until: BmcWriteHoldRelease, discharge_on_release: BmcWriteDischarge }
+
+// board is the controller's board as its baseboard row declares it (the same row its endpoint is read
+// from), Absent where no baseboard row exists. It is half of the credential-policy key a reading of this
+// controller is judged under (gunbc.machine_intake.bmc_credential_policy BmcCredentialPolicyKey), so the
+// selection refuses a reading that names another board.
+type BmcWriteControllerRow {
+  host: HostIdentity
+  endpoint: BmcControllerEndpoint
+  board: BoardAuthorityRef?
+  admission: BmcWriteAdmission
+}
+
+// ── ROWS ──────────────────────────────────────────────────────────────────────────────────────────
+
+// mtjade1's controller is the one its committed SMBIOS read was attributed to (gunbc.machine_intake
+// mtjade1_access_observation mtjade1_smbios_sol_attribution, 2026-10-04): the controller that
+// arrival_converge bound_host_owns_this_controller used to hard-wire.
+data mtjade1_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
+  host: operator_host_mtjade1,
+  endpoint: sol_session_controller(a: mtjade1_smbios_sol_attribution),
+  board: none,
+  admission: WritesHeld {
+    reason: "merry-fox-82, 2026-10-28: mtjade1 stays off and untouched until mtcollins1 serves CI" as NonEmptyStr,
+    until: UntilRunnerQualified { host: operator_host_mtcollins1 },
+    discharge_on_release: StandingGrantOrPerWriteApproval,
+  },
+}
+
+// srv13 (bmc-altrad8ud-1l2t-5, gunbc.fleet.fleet_intent srv13_baseboard).
+data srv13_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
+  host: operator_host_srv13,
+  endpoint: bmc_controller_of_endpoint(endpoint: srv13_baseboard.bmc),
+  board: Present { value: srv13_baseboard.catalog.model },
+  admission: WritesAdmitted { discharge: PerWriteApprovalOnly },
+}
+
+// srv15 (box 2, bmc-altrad8ud-1l2t-7, gunbc.fleet.fleet_intent srv15_baseboard): factory state, first target
+// of the approval-app rotation. Only an unauthenticated read has landed, so nothing but the dry world
+// exercises this row until the live read does (merry-fox-82, 2026-10-28); no live write path exists yet.
+data srv15_bmc_write_controller: BmcWriteControllerRow = BmcWriteControllerRow {
+  host: operator_host_srv15,
+  endpoint: bmc_controller_of_endpoint(endpoint: srv15_baseboard.bmc),
+  board: Present { value: srv15_baseboard.catalog.model },
+  admission: WritesAdmitted { discharge: PerWriteApprovalOnly },
+}
+
+data bmc_write_controllers: List<BmcWriteControllerRow> = [
+  mtjade1_bmc_write_controller,
+  srv13_bmc_write_controller,
+  srv15_bmc_write_controller,
+]
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────────────────────────
+
+type BmcWriteRoute
+  = ByStandingGrant
+  | ByPerWriteApproval
+
+type BmcWriteControllerRefusal
+  = NoControllerRowForHost { host: HostIdentity }
+  | ControllerRowIsAnotherEndpoint { host: HostIdentity, row_endpoint: BmcControllerEndpoint, target: BmcControllerEndpoint }
+  | ControllerRowIsAnotherBoard { host: HostIdentity, row_board: BoardAuthorityRef?, read_board: BoardAuthorityRef? }
+  | ControllerWritesHeld { host: HostIdentity, reason: NonEmptyStr, until: BmcWriteHoldRelease }
+  | StandingGrantNotAdmittedForController { host: HostIdentity }
+
+type BmcWriteControllerSelection
+  = BmcWriteControllerSelected { row: BmcWriteControllerRow }
+  | BmcWriteControllerRefused { cause: BmcWriteControllerRefusal }
+
+fn bmc_write_controller_row(host: HostIdentity) -> BmcWriteControllerRow? {
+  let none_yet: BmcWriteControllerRow? = none
+  fold(bmc_write_controllers, init: none_yet, f: (acc, row) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if host_identity_eq(a: row.host, b: host) { Present { value: row } } else { acc }
+    })
+}
+
+// Whether `release` releases `until`: an assessment for the named host that recorded no refusal.
+fn hold_released(until: BmcWriteHoldRelease, qualification: RunnerThroughputAssessment<HostIdentity>?) -> Bool {
+  match qualification {
+    Absent => false
+    Present { value: a } =>
+      match until {
+        UntilRunnerQualified { host: h } => host_identity_eq(a: a.host, b: h) && assessment_holds(a: a)
+      }
+  }
+}
+
+fn discharge_admits(discharge: BmcWriteDischarge, route: BmcWriteRoute) -> Bool {
+  match discharge {
+    StandingGrantOrPerWriteApproval => true
+    PerWriteApprovalOnly =>
+      match route {
+        ByPerWriteApproval => true
+        ByStandingGrant => false
+      }
+  }
+}
+
+fn admitted_by(row: BmcWriteControllerRow, route: BmcWriteRoute, qualification: RunnerThroughputAssessment<HostIdentity>?) -> BmcWriteControllerSelection {
+  match row.admission {
+    WritesAdmitted { discharge: d } =>
+      if discharge_admits(discharge: d, route: route) {
+        BmcWriteControllerSelected { row: row }
+      } else {
+        BmcWriteControllerRefused { cause: StandingGrantNotAdmittedForController { host: row.host } }
+      }
+    WritesHeld { reason: r, until: u, discharge_on_release: d } =>
+      if !hold_released(until: u, qualification: qualification) {
+        BmcWriteControllerRefused { cause: ControllerWritesHeld { host: row.host, reason: r, until: u } }
+      } else {
+        if discharge_admits(discharge: d, route: route) {
+          BmcWriteControllerSelected { row: row }
+        } else {
+          BmcWriteControllerRefused { cause: StandingGrantNotAdmittedForController { host: row.host } }
+        }
+      }
+  }
+}
+
+// Whether two optional boards name the same board; both undeclared is the same (no row was claimed).
+fn same_declared_board(a: BoardAuthorityRef?, b: BoardAuthorityRef?) -> Bool {
+  match a {
+    Absent => match b { Absent => true  Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false  Present { value: y } => board_authority_ref_eq(a: x, b: y) }
+  }
+}
+
+// THE SELECTION. The bound host's row, at the endpoint the write targets and the board its reading names,
+// admitting the route the write is discharged by.
+fn select_bmc_write_controller(
+  host: HostIdentity,
+  target: BmcControllerEndpoint,
+  board: BoardAuthorityRef?,
+  route: BmcWriteRoute,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
+) -> BmcWriteControllerSelection {
+  match bmc_write_controller_row(host: host) {
+    Absent => BmcWriteControllerRefused { cause: NoControllerRowForHost { host: host } }
+    Present { value: row } =>
+      if (row.endpoint.host as String) != (target.host as String) {
+        BmcWriteControllerRefused { cause: ControllerRowIsAnotherEndpoint { host: host, row_endpoint: row.endpoint, target: target } }
+      } else if !same_declared_board(a: row.board, b: board) {
+        BmcWriteControllerRefused { cause: ControllerRowIsAnotherBoard { host: host, row_board: row.board, read_board: board } }
+      } else {
+        admitted_by(row: row, route: route, qualification: qualification)
+      }
+  }
+}
