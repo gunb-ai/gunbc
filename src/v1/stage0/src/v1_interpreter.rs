@@ -1396,6 +1396,54 @@ pub struct Env {
     parent: Option<Rc<Env>>,
 }
 
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
+}
+
 impl Env {
     pub fn empty() -> Rc<Self> {
         Rc::new(Env {
