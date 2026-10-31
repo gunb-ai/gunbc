@@ -55,8 +55,8 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr, qualified_last_segment, Connective, ContainerSpellingVerdict,
-    InferredNode, NewlineIndex, Node,
+    item_generic_param_names, param_node_type_expr, qualified_last_segment, Connective,
+    ContainerSpellingVerdict, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2042,10 +2042,7 @@ pub fn v1_item_own_set_affected_param_names(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     v1_set_element_params(
-        crate::v1_compiler_emit_rust::item_generic_param_names(
-            item.clone(),
-            source_indices.clone(),
-        ),
+        crate::v1_std_core::item_generic_param_names(item.clone(), source_indices.clone()),
         v1_item_field_type_exprs(item.clone(), source_indices.clone()),
         source_indices.clone(),
     )
