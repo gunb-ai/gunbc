@@ -38,9 +38,9 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  dependency_demand_census_label, self_host_frontier_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
-  ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
+  roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import gunbc.instruments.serving_benchmark_run { serving_benchmark_run_plan }
@@ -206,7 +206,7 @@ data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unb
 fn instrument_dispatch_labels() -> List<Label> {
   [
     dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(),
-    v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
+    regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     // The known-red derivation is dispatchable for the same reason the whole-tree censuses are: its
@@ -223,10 +223,6 @@ fn instrument_dispatch_labels() -> List<Label> {
     // One serving-benchmark run needs the cell's GPUs and a GPU-capable docker daemon, which no per-change
     // lane declares; it is dispatched on the fleet when the cell's operator books the window.
     serving_benchmark_run_label(),
-    // The ambient-name census is the whole-tree binding census the NAMESPACE-XL waves and the generated import sweep
-    // read (v2.compiler.occurrence_resolution_census): the emitted compiler's census-infer over dag + src/v2, which outlives
-    // the free remote runner's cap, so it is run on purpose here and never as a merge gate.
-    ambient_name_census_label(),
     // The import sweep's controls (v2.workflow.roster_import_sweep roster_controls_report) run the sweep's fixture controls
     // in the interpreter, past the free remote runner's cap; a fixture run, so it carries no memory row.
     roster_import_sweep_controls_label(),
@@ -293,7 +289,6 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
-    InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
     // class as the whole-tree censuses, and it shares their row rather than inventing a number of its
     // own (DESIGN §3 meaning fork). Its own receipt: a pooled 502-claim wet child peaked at 9.1 GiB
@@ -302,8 +297,6 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // One fn_arrow_decl_facts_live pass over the pool plus the resolve of ci_spec's closure: measured RSS 12-13.6 GB
     // on srv1 (sleek-owl-397, 2026-10-22), the whole-tree row's class, not a number of its own (DESIGN §3).
     InstrumentDispatchMemoryDemand { label: roster_reach_inhabitance_label(), demand: instrument_dispatch_whole_tree_memory_demand },
-    // census-infer over the whole tree: the same price class as the v2-native census it shares a driver with.
-    InstrumentDispatchMemoryDemand { label: ambient_name_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
 }
 

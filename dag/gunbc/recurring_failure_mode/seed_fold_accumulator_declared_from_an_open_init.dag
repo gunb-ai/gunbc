@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.seed_fold_accumulator_declared_from_an_open_init
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data seed_fold_accumulator_declared_from_an_open_init: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_fold_accumulator_declared_from_an_open_init" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the v2 native compiler emits the closures that contain these folds instead of the v1 seed" } },
+
+  receipts: [
+    "INVALID STATE: a fold whose init is open (`none`, `[]`, `empty_map()`) and whose step reaches an effect is emitted by the seed as `let mut __fold_acc = None;` with no type, because the effectful loop has no closure for rustc to infer the payload from. HARM: E0282 at cargo build of the emitted crate (gunbc_durable_cas_file_store.rs:510:20, cas_observe_window, calm-crab-645 q-58d6eab), blocking #15310; loud, but only after emission.",
+    "REPAIR AT THE BOUNDARY (stated limit, not fixed): the v1 seed has no unifier and mints no type variable, so a nullary generic with no expected type (`none`, `[]`, `empty_map()`) is typed as its bare declaration and the emitter can only leave the accumulator undeclared. v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing), so the authored source supplies the type: gunbc.durable_cas_file_store cas_observe_window folds from `init: cas_no_observation()`, a function declared to return CasSlotProbe? (a `let` annotation on the fold result, tried at e047b9835501, does not reach the seed's fold init either: E0282 persisted, observed on srv1). Control: native_emission_controls open_init_fold_declared_result_absent_reads_answer_absent builds the declared form.",
+    "RUNG FOUND AT: 1 (mitigatable: loud at rustc, E0282, never silent). CEILING: 3. NEXT TRIGGER (can climb after one grounding): the v2 native compiler emitting these closures instead of the seed. The untyped form is not kept as a fixture: a refusal-expected case cannot share a build with the controls, so the harness for an expected build refusal is the missing piece.",
+    "EXECUTED (srv1, calm-crab-645, 1afd2b326ac4): native-emission-controls exit 0 incl. open_init_fold_declared_result_absent_reads_answer_absent; #15310 58d6eab52569 + local merge of 1afd2b3: the cas_observe_window E0282 is gone (the emitted crate then fails elsewhere, unrelated).",
+    "RECOGNITION RULE: E0282 `type annotations needed` on `let mut __fold_acc`; source `fold(xs, init: <none|[]|empty_map()>, f: ...)` with an effectful step."
+  ],
+
+  evidence: [],
+}
