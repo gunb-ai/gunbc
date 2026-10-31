@@ -3,7 +3,7 @@ module v2.test.claim.compiler.uses_row_restatement
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.types { Bool, List }
 import v2.compiler.dependency_demand { FunctionFact, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, dependency_demand_of }
-import v2.compiler.uses_row_restatement { UsesRowAliasUnestablished, UsesRowNotRestated, UsesRowResolved, UsesRowRestates, UsesRowTypeUnresolved, UsesRowUndecided, UsesRowUnobserved, uses_row_deletable, uses_row_standing }
+import v2.compiler.uses_row_restatement { UsesRowAliasUnestablished, UsesRowNotRestated, UsesRowReading, UsesRowResolved, UsesRowRestates, UsesRowStanding, UsesRowTypeUnresolved, UsesRowUndecided, UsesRowUnobserved, uses_row_deletable, uses_row_standing }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 
 // The fold's interface is the carrier rows and the authored-row reading, so each claim SUPPLIES them

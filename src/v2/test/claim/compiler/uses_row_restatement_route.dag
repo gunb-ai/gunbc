@@ -1,19 +1,186 @@
 module v2.test.claim.compiler.uses_row_restatement_route
 
-import std.algebra { fold_list, length }
+import std.algebra { Empty, fold_list, length, list_snoc_item }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, List }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact }
+import v2.compiler.dependency_demand_facts {
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  AuthoredUsesFunction,
+  demand_facts_authored_readings,
+  demand_facts_module_facts
+}
+import v2.compiler.name_resolve { resolution_context_namespace }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
+import v2.compiler.resolve { ResolveContext, resolve_ctx_init }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.source_root_eval { native_demand_census_report }
-import v2.compiler.uses_row_restatement { UsesRowNotRestated, UsesRowRestates, UsesRowStanding, UsesRowUndecided, UsesRowUnobserved, uses_row_deletable }
-import v2.compiler.uses_row_restatement_route { UsesRowRestatementEntry, uses_row_restatement_of_report }
-import v2.test.claim.compiler.dependency_demand_census { ddc_report }
+import v2.compiler.source_root_eval {
+  NativeDemandFactsFoldState,
+  NativeTestContext,
+  native_demand_facts_read,
+  native_test_context_finish,
+  native_test_context_state_empty,
+  native_test_front_end_prepare,
+  native_test_module_admission,
+  native_test_resolve_module
+}
+import v2.compiler.uses_row_restatement {
+  UsesRowNotRestated,
+  UsesRowStanding,
+  UsesRowUndecided,
+  uses_row_deletable
+}
+import v2.compiler.uses_row_restatement_route {
+  UsesRowAuthoredRows,
+  UsesRowRestatementEntry,
+  uses_row_restatement_of
+}
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.text { String }
+
+// THE ROUTE CLAIM: the consumer's fold, over the FACT WALK and the AUTHORED-ROW READER, on the REAL front
+// end -- the same strip-and-fold read the surviving driver in v2.compiler.source_root_eval performs
+// (native_demand_facts_read), then native_test_resolve_module and demand_facts_module_facts per module,
+// then demand_facts_authored_readings for each authored fn in the module's root scope.
+//
+// WHY THE CLAIM OWNS THIS HARNESS. The pairing of an authored fn with its readings used to come free
+// from a census report; the report is retired, so the consumer assembles it here, bounded to one closed
+// ingest of four modules. It is a witness on the real path, not a measurement of a population: the claim
+// names the modules and the rows it expects, and an unobserved module makes the harness report itself
+// rather than quietly emptying the lists the REDs read.
+
+type UrrWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  authored: List<UsesRowAuthoredRows>
+  unobserved_modules: Int
+}
+
+// The authored fn's own path, the row identity USES-0 defines: owner plus the declared name.
+fn urr_authored_path(a: AuthoredUsesFunction) -> QualifiedName {
+  match a.name {
+    Present { value: n } => qualified_name_snoc(qn: a.owner, segment: n)
+    Absent => a.owner
+  }
+}
+
+// The module's root scope, as resolution itself built it for the module just resolved: the namespace
+// provider answers from its cache, so this produces no second namespace. Without it the authored type is
+// never lowered and resolved, and every row would read Unobserved -- which is exactly the standing that
+// must NOT be reachable by a harness mistake.
+fn urr_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: admitted, diagnostics: _ } =>
+          optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
+      }
+  }
+}
+
+// A module with no readable root scope still reports its rows, all unreadable, so the fold cannot turn a
+// missing scope into a missing row.
+fn urr_readings(ctx: Optional<ResolveContext>, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match ctx {
+    Present { value: c } => demand_facts_authored_readings(ctx: c, authored: authored)
+    Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
+  }
+}
+
+fn urr_walk_module(w: UrrWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> UrrWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => UrrWalk {
+      context: w.context,
+      functions: w.functions,
+      operations: w.operations,
+      authored: w.authored,
+      unobserved_modules: w.unobserved_modules + 1
+    }
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) {
+        if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc }
+      })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: _ } => UrrWalk {
+          context: step.context,
+          functions: w.functions,
+          operations: w.operations,
+          authored: w.authored,
+          unobserved_modules: w.unobserved_modules + 1
+        }
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_facts_module_facts(resolved: resolved, module_qn: module_qn)
+          let ctx = urr_module_ctx(context: step.context, module_qn: module_qn)
+          UrrWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            authored: fold_list(xs: mine, empty: w.authored, cons: fn(acc, a) {
+              list_snoc_item(xs: acc, item: UsesRowAuthoredRows {
+                function: urr_authored_path(a: a),
+                readings: urr_readings(ctx: ctx, authored: a)
+              })
+            }),
+            unobserved_modules: w.unobserved_modules
+          }
+      }
+  }
+}
+
+// THE ENTRY THE CLAIMS READ: no report, no census claim -- an ingest in, the consumer's entries out.
+// Absent says the front end itself refused, which is never a pass for any claim here.
+fn urr_entries(ingest: SourceRootIngest) -> Optional<List<UsesRowRestatementEntry>> {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: scope, diagnostics: _ } =>
+          let folded = fold_list(
+            xs: ingest,
+            empty: NativeDemandFactsFoldState {
+              context: native_test_context_state_empty(),
+              authored: Empty,
+              file_refused: Empty,
+              unreadable: Empty
+            },
+            cons: fn(state, read) { native_demand_facts_read(state: state, read: read, front: front, scope: scope) }
+          )
+          let walked = fold_list(
+            xs: folded.context.roots,
+            empty: UrrWalk {
+              context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+              functions: Empty,
+              operations: Empty,
+              authored: Empty,
+              unobserved_modules: 0
+            },
+            cons: fn(w, root) { urr_walk_module(w: w, root: root, authored: folded.authored) }
+          )
+          if walked.unobserved_modules > 0 {
+            optional_absent()
+          } else {
+            optional_present(value: uses_row_restatement_of(
+              functions: walked.functions,
+              operations: walked.operations,
+              authored: walked.authored
+            ))
+          }
+      }
+  }
+}
 
 fn urr_standings(entries: List<UsesRowRestatementEntry>, function: String) -> List<UsesRowStanding> {
   fold_list(xs: entries, empty: [], cons: fn(acc, e) {
@@ -21,71 +188,47 @@ fn urr_standings(entries: List<UsesRowRestatementEntry>, function: String) -> Li
   })
 }
 
-fn urr_entries() -> List<UsesRowRestatementEntry> {
-  match ddc_report() {
-    Rejected { diagnostics: _ } => []
-    Accepted { value: r, diagnostics: _ } => uses_row_restatement_of_report(r: r)
+fn urr_cut_standings(ingest: SourceRootIngest, function: String) -> List<UsesRowStanding> {
+  match urr_entries(ingest: ingest) {
+    Absent => []
+    Present { value: entries } => urr_standings(entries: entries, function: function)
   }
 }
 
-fn urr_only_standing_deletable(function: String) -> Bool {
-  let sts = urr_standings(entries: urr_entries(), function: function)
-  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) { any || uses_row_deletable(s: s) })
+fn urr_only_standing_deletable(standings: List<UsesRowStanding>) -> Bool {
+  (length(xs: standings) == 1) && fold_list(xs: standings, empty: false, cons: fn(any, s) { any || uses_row_deletable(s: s) })
 }
 
-fn urr_only_standing_not_restated(function: String) -> Bool {
-  let sts = urr_standings(entries: urr_entries(), function: function)
-  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) {
-    match s {
-      UsesRowNotRestated { resource: _ } => true
-      UsesRowRestates { resource: _ } => false
-      UsesRowUndecided { resource: _, cause: _ } => false
-      UsesRowUnobserved => false
-    }
+fn urr_only_standing_not_restated(standings: List<UsesRowStanding>) -> Bool {
+  (length(xs: standings) == 1) && fold_list(xs: standings, empty: false, cons: fn(any, s) {
+    any || (match s {
+      UsesRowNotRestated { resource: _ } => !uses_row_deletable(s: s)
+      _ => false
+    })
   })
 }
 
-fn urr_only_standing_undecided(function: String) -> Bool {
-  let sts = urr_standings(entries: urr_entries(), function: function)
-  (length(xs: sts) == 1) && fold_list(xs: sts, empty: false, cons: fn(any, s) {
-    match s {
-      UsesRowUndecided { resource: _, cause: _ } => true
-      UsesRowRestates { resource: _ } => false
-      UsesRowNotRestated { resource: _ } => false
-      UsesRowUnobserved => false
-    }
+fn urr_only_standing_undecided(standings: List<UsesRowStanding>) -> Bool {
+  (length(xs: standings) == 1) && fold_list(xs: standings, empty: false, cons: fn(any, s) {
+    any || (match s {
+      UsesRowUndecided { resource: _, cause: _ } => !uses_row_deletable(s: s)
+      _ => false
+    })
   })
 }
 
-// INHABITANCE (DESIGN section 3 pairing): the REAL front end, resolver and reducer, over the census fixture, emit
-// Network for a corpus-shaped fn, and the route's standing for its authored row is Restates. Asserts the route.
-test fn a_fn_calling_a_network_operation_has_its_row_restated_by_the_real_route_holds() -> Bool {
-  urr_only_standing_deletable(function: "t.app.restates")
-}
+// THE FIXTURE, authored here because the report that used to carry it is retired. One closed ingest:
+// two std modules, a service whose operations declare their requirements, and the app whose fns carry
+// the `uses` rows the consumer judges.
+data urr_types_source: String = "module std.types\n\ntype Bool = True | False\n"
 
-test fn a_transitive_network_fn_has_its_row_restated_holds() -> Bool {
-  urr_only_standing_deletable(function: "t.app.transitive")
-}
+data urr_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n"
 
-test fn an_over_claiming_row_is_not_restated_by_the_real_route_RED() -> Bool {
-  urr_only_standing_not_restated(function: "t.app.over_claims") && !urr_only_standing_deletable(function: "t.app.over_claims")
-}
+data urr_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n}\n"
 
-test fn an_opaque_reaching_row_is_undecided_never_deletable_by_the_real_route_RED() -> Bool {
-  urr_only_standing_undecided(function: "t.app.opaque_reach") && !urr_only_standing_deletable(function: "t.app.opaque_reach")
-}
+data urr_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn via_bare_service(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Ping()\n  p\n}\n"
 
-// CARRIER BOUNDARY: the same fn shape over an operation that no longer declares `requires Network`. Removing the
-// operation's Network edge drops Network from the fn's derived demand, so its row is no longer a restatement.
-data urr_cut_resources: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n"
-
-data urr_cut_types: String = "module std.types\n\ntype Bool = True | False\n"
-
-data urr_cut_http: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires none\n  }\n}\n"
-
-data urr_cut_app: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n"
-
-fn urr_cut_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+fn urr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: id, file_path: path },
@@ -94,20 +237,74 @@ fn urr_cut_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSo
   }
 }
 
-data urr_cut_ingest: SourceRootIngest = [
-  urr_cut_read(source: urr_cut_types, id: ^urr_cut_types_artifact, unit: ^urr_cut_types_cu, path: "dag/std/types.dag"),
-  urr_cut_read(source: urr_cut_resources, id: ^urr_cut_resources_artifact, unit: ^urr_cut_resources_cu, path: "dag/std/resources.dag"),
-  urr_cut_read(source: urr_cut_http, id: ^urr_cut_http_artifact, unit: ^urr_cut_http_cu, path: "dag/t/http.dag"),
-  urr_cut_read(source: urr_cut_app, id: ^urr_cut_app_artifact, unit: ^urr_cut_app_cu, path: "dag/t/app.dag")
+data urr_ingest: SourceRootIngest = [
+  urr_read(source: urr_types_source, id: ^urr_types_artifact, unit: ^urr_types_cu, path: "dag/std/types.dag"),
+  urr_read(source: urr_resources_source, id: ^urr_resources_artifact, unit: ^urr_resources_cu, path: "dag/std/resources.dag"),
+  urr_read(source: urr_http_source, id: ^urr_http_artifact, unit: ^urr_http_cu, path: "dag/t/http.dag"),
+  urr_read(source: urr_app_source, id: ^urr_app_artifact, unit: ^urr_app_cu, path: "dag/t/app.dag")
 ]
 
-test fn removing_the_operations_network_edge_removes_the_restatement_RED() -> Bool {
-  match native_demand_census_report(ingest: urr_cut_ingest) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } =>
-      {
-        let sts = urr_standings(entries: uses_row_restatement_of_report(r: r), function: "t.app.restates")
-        (length(xs: sts) == 1) && !fold_list(xs: sts, empty: false, cons: fn(any, s) { any || uses_row_deletable(s: s) })
-      }
+// THE SAME SHAPE OVER AN OPERATION THAT NO LONGER DECLARES `requires Network`: the carrier edge is gone,
+// so the row is no longer a restatement. This is the carrier-boundary RED, and it is what says the
+// standing tracks the carrier rather than the authored text. Only Get's declaration changes; every other
+// module, and the app source with its `uses` row, is byte-identical to the ingested corpus above.
+data urr_cut_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires none\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n}\n"
+
+data urr_cut_ingest: SourceRootIngest = [
+  urr_read(source: urr_types_source, id: ^urr_cut_types_artifact, unit: ^urr_cut_types_cu, path: "dag/std/types.dag"),
+  urr_read(source: urr_resources_source, id: ^urr_cut_resources_artifact, unit: ^urr_cut_resources_cu, path: "dag/std/resources.dag"),
+  urr_read(source: urr_cut_http_source, id: ^urr_cut_http_artifact, unit: ^urr_cut_http_cu, path: "dag/t/http.dag"),
+  urr_read(source: urr_app_source, id: ^urr_cut_app_artifact, unit: ^urr_cut_app_cu, path: "dag/t/app.dag")
+]
+
+// HARNESS SOUNDNESS (not the claim): the walk resolved every module of the ingest and produced one entry
+// per authored fn. Without this, a harness that produced nothing would make every absence-claim below
+// pass vacuously.
+test fn the_route_owes_one_entry_per_authored_fn_and_no_unobserved_module_holds() -> Bool {
+  match urr_entries(ingest: urr_ingest) {
+    Absent => false
+    Present { value: entries } =>
+      (length(xs: entries) == 5) &&
+      (length(xs: urr_standings(entries: entries, function: "t.app.restates")) == 1) &&
+      (length(xs: urr_standings(entries: entries, function: "t.app.transitive")) == 1) &&
+      (length(xs: urr_standings(entries: entries, function: "t.app.over_claims")) == 1) &&
+      (length(xs: urr_standings(entries: entries, function: "t.app.opaque_reach")) == 1) &&
+      (length(xs: urr_standings(entries: entries, function: "t.app.via_bare_service")) == 1)
   }
+}
+
+// INHABITANCE: the real front end, resolver, strip, fact walk and reader, then the consumer's fold -- a fn
+// calling an operation declared `requires Network` has its row read as a restatement, and it is the only
+// deletable standing.
+test fn a_fn_calling_a_network_operation_has_its_row_restated_by_the_real_route_holds() -> Bool {
+  urr_only_standing_deletable(standings: urr_cut_standings(ingest: urr_ingest, function: "t.app.restates"))
+}
+
+// THROUGH A CALLEE: the transitive fn never calls the operation itself; the demand is a join over the
+// callees it reaches, so its row is still a restatement.
+test fn a_transitive_network_fn_has_its_row_restated_holds() -> Bool {
+  urr_only_standing_deletable(standings: urr_cut_standings(ingest: urr_ingest, function: "t.app.transitive"))
+}
+
+// OVER-CLAIM: the row asserts Network the body never reaches -> NotRestated, never deletable.
+test fn an_over_claiming_row_is_not_restated_by_the_real_route_RED() -> Bool {
+  urr_only_standing_not_restated(standings: urr_cut_standings(ingest: urr_ingest, function: "t.app.over_claims"))
+}
+
+// A SERVICE CALL IS NOT A NETWORK REQUIREMENT: Ping is declared `requires none`, so reaching it derives
+// nothing and the row stays NotRestated.
+test fn a_service_call_that_requires_nothing_does_not_restate_network_RED() -> Bool {
+  urr_only_standing_not_restated(standings: urr_cut_standings(ingest: urr_ingest, function: "t.app.via_bare_service"))
+}
+
+// OPAQUE REACH: the callee's operation declares an opaque requirement, so membership cannot be decided;
+// the row is Undecided and never deletable -- the consumer refuses rather than guessing.
+test fn reaching_an_opaque_operation_leaves_the_row_undecided_RED() -> Bool {
+  urr_only_standing_undecided(standings: urr_cut_standings(ingest: urr_ingest, function: "t.app.opaque_reach"))
+}
+
+// THE CARRIER BOUNDARY: with Get's `requires Network` declaration removed -- same source, same authored
+// row, same call -- nothing licenses deleting the row. The standing follows the carrier, not the text.
+test fn a_row_over_an_operation_that_no_longer_declares_network_is_not_deletable_RED() -> Bool {
+  urr_only_standing_not_restated(standings: urr_cut_standings(ingest: urr_cut_ingest, function: "t.app.restates"))
 }
