@@ -154,6 +154,7 @@ type WorkspaceRecordedActor
   = RecordedActorAbsent
   | RecordedActorInvocation { generation: CasGeneration, run: UnitRunIdentity }
   | RecordedActorCancelled { generation: CasGeneration }
+  | RecordedActorLegacyBareId { generation: CasGeneration, invocation_id: SystemdInvocationId }
   | RecordedActorUnreadable { reason: NonEmptyStr }
 
 fn workspace_recorded_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan) -> WorkspaceRecordedActor {
@@ -169,7 +170,10 @@ fn workspace_recorded_actor_decode(generation: CasGeneration, wire: String) -> W
     JsonDocumentUnreadable { gap: _ } => RecordedActorUnreadable { reason: "acquisition actor record is not JSON" }
     JsonDocumentParsed { value: record } => match json_field_value(r: json_field_string(obj: record, key: "invocation")) {
       Present { value: invocation } => match unit_run_of_wire(wire: invocation) {
-        Absent => RecordedActorUnreadable { reason: "acquisition actor names no observed unit run (empty, or a bare pre-carrier InvocationID)" }
+        Absent => match systemd_invocation_id_of(text: invocation) {
+          Present { value: bare } => RecordedActorLegacyBareId { generation: generation, invocation_id: bare }
+          Absent => RecordedActorUnreadable { reason: "acquisition actor names no unit run and no InvocationID" }
+        }
         Present { value: run } => RecordedActorInvocation { generation: generation, run: run }
       }
       Absent => match json_field_value(r: json_field_string(obj: record, key: "cancelled_before_actor")) {
@@ -229,11 +233,11 @@ fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReserv
 
 // Cancel a terminal actor of a retired acquisition, fenced the same way; the tombstone names the
 // invocation it ended so a late reader can attribute the cancellation.
-fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior: UnitRunIdentity) -> Bool
+fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior_wire: NonEmptyStr) -> Bool
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
-  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: unit_run_wire(run: prior)))])) as NonEmptyStr
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: prior_wire))])) as NonEmptyStr
   workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
 }
 

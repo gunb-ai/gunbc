@@ -12,7 +12,7 @@ import gunbc.workspace_allocation_plan {
   ActorIntentAcquire, ActorIntentRetire,
 }
 import gunbc.workspace_acquisition_invocation {
-  workspace_prior_actor_standing,
+  workspace_prior_actor_standing, workspace_recorded_actor_decode, RecordedActorLegacyBareId, RecordedActorUnreadable,
   WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
 }
 import gunbc.systemd_unit_invocation_liveness { SystemManager, UnitRunIdentity, UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, unit_invocation_observation, unit_run_wire }
@@ -60,7 +60,24 @@ test fn terminal_actor_without_hold_rearms_wanted_and_cancels_retired() -> Bool 
 test fn live_or_unobservable_actor_is_never_replaced() -> Bool {
   is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: false))
   && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: true))
-  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "fixture" }, retire: true))
+  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "fixture" }, retire: false))
+}
+
+// The operator's release (desired=Retired) admits an UNOBSERVABLE holder for cancellation, whatever the
+// cause (a legacy bare-id record maps to the same standing); a LIVE holder is refused even then, and
+// without the release the unobservable holder still refuses.
+test fn operator_release_admits_unobservable_and_never_a_live_holder() -> Bool {
+  is_cancel(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "legacy" }, retire: true))
+  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "legacy" }, retire: false))
+  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: true))
+}
+
+// A bare pre-carrier InvocationID is its own typed reading, never a run and never garbage.
+test fn legacy_bare_actor_record_decodes_to_its_own_reading() -> Bool {
+  let bare = serialize_json(v: json_object(members: [json_kv(key: "invocation", value: json_string(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))]))
+  let junk = serialize_json(v: json_object(members: [json_kv(key: "invocation", value: json_string(s: "not-an-id"))]))
+  (match workspace_recorded_actor_decode(generation: cas_generation_first(), wire: bare) { RecordedActorLegacyBareId { generation: _, invocation_id: _ } => true _ => false })
+  && (match workspace_recorded_actor_decode(generation: cas_generation_first(), wire: junk) { RecordedActorUnreadable { reason: _ } => true _ => false })
 }
 
 // An unreadable hold retains the obligation even when the actor is known dead.

@@ -9,9 +9,12 @@ import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_actor_admits, workspace_cancel_unelected_actor, workspace_establish_actor_protocol,
-  workspace_recorded_actor, RecordedActorAbsent, RecordedActorInvocation, RecordedActorCancelled, RecordedActorUnreadable,
+  workspace_recorded_actor, RecordedActorAbsent, RecordedActorInvocation, RecordedActorCancelled, RecordedActorLegacyBareId, RecordedActorUnreadable,
   UnitInvocationObservation, workspace_slot_invocation_reading, workspace_prior_actor_standing,
+  WorkspacePriorActorStanding, PriorActorUnobservable,
   workspace_rearm_actor, workspace_cancel_elected_actor, workspace_current_acquisition_invocation, workspace_acquisition_store }
+import gunbc.systemd_unit_invocation_liveness { unit_run_wire }
+import std.durable_compare_and_set { CasGeneration }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_plan {
@@ -147,22 +150,26 @@ fn workspace_take_over_actor(store: FabricStorageBinding, cells: FabricAllocatio
       ActorIntentAcquire => TakeoverRefused { reason: "acquisition actor was cancelled" }
     }
     RecordedActorUnreadable { reason } => TakeoverRefused { reason: reason }
-    RecordedActorInvocation { generation, run } => {
-      let prior = workspace_prior_actor_standing(recorded: run, slot: slot)
-      let hold = workspace_reservation_hold_observation(cells: cells, plan: plan)
-      match workspace_actor_takeover_decision(plan: plan, hold: hold, prior: prior, intent: intent) {
-        TakeoverRecoverHeld { reservation } => TakeoverRecovered { reservation: reservation }
-        TakeoverRetain { reason } => TakeoverRefused { reason: reason }
-        TakeoverCancelActor => if workspace_cancel_elected_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, prior: run) { TakeoverCancelled }
-          else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
-        TakeoverRearmActor => match workspace_current_acquisition_invocation(plan: plan) {
-          Absent => TakeoverRefused { reason: "this controller cannot attest its own invocation" }
-          Present { value: current } => if workspace_rearm_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, invocation: current) { TakeoverRearmed }
-            else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
-        }
-      }
-    }
+    RecordedActorInvocation { generation, run } => workspace_take_over_recorded(store: store, cells: cells, plan: plan, intent: intent, generation: generation, prior: workspace_prior_actor_standing(recorded: run, slot: slot), prior_wire: unit_run_wire(run: run) as NonEmptyStr)
+    RecordedActorLegacyBareId { generation, invocation_id } => workspace_take_over_recorded(store: store, cells: cells, plan: plan, intent: intent, generation: generation, prior: PriorActorUnobservable { reason: "the acquisition actor record is a pre-carrier bare InvocationID; its unit run cannot be observed" }, prior_wire: invocation_id as String as NonEmptyStr)
   } }
+}
+
+// Retired intent is the operator's release (workspace_request_release_at records desired=Retired): an
+// UNOBSERVABLE holder (any cause) is then admitted for cancellation, while a LIVE one never is.
+fn workspace_take_over_recorded(store: FabricStorageBinding, cells: FabricAllocationStore, plan: WorkspaceReservationPlan, intent: WorkspaceActorIntent, generation: CasGeneration, prior: WorkspacePriorActorStanding, prior_wire: NonEmptyStr) -> WorkspaceActorTakeoverOutcome {
+  let hold = workspace_reservation_hold_observation(cells: cells, plan: plan)
+  match workspace_actor_takeover_decision(plan: plan, hold: hold, prior: prior, intent: intent) {
+    TakeoverRecoverHeld { reservation } => TakeoverRecovered { reservation: reservation }
+    TakeoverRetain { reason } => TakeoverRefused { reason: reason }
+    TakeoverCancelActor => if workspace_cancel_elected_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, prior_wire: prior_wire) { TakeoverCancelled }
+      else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
+    TakeoverRearmActor => match workspace_current_acquisition_invocation(plan: plan) {
+      Absent => TakeoverRefused { reason: "this controller cannot attest its own invocation" }
+      Present { value: current } => if workspace_rearm_actor(store: workspace_acquisition_store(binding: store), plan: plan, generation: generation, invocation: current) { TakeoverRearmed }
+        else { TakeoverRefused { reason: "another reader replaced the terminal actor first" } }
+    }
+  }
 }
 
 fn workspace_retirement_took_over_actor(store: FabricStorageBinding, cells: FabricAllocationStore, plan: WorkspaceReservationPlan, slot: UnitInvocationObservation) -> Bool {
