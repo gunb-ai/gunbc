@@ -51,6 +51,7 @@ import extdeps.bmc.megarac {
   MegaRacMediaAddressFieldProbe,
   megarac_media_address_field_probe_set,
   megarac_redirection_status_of_wire,
+  megarac_release_is_the_committed_hpm_read,
   RedirectionStatusKnown,
   RedirectionStatusFirmwareUncatalogued,
 }
@@ -119,6 +120,8 @@ import gunbc.host.host_name_resolution {
   AddressIsNotAName,
   NeedsLanNameSpace,
   RefusedByConsumerFirmware,
+  ConsumerFirmwareUnevidenced,
+  MediaShareConsumerRule,
   NamesAnotherHost,
   ShareNameUnresolved,
   Usable,
@@ -767,28 +770,120 @@ test fn the_floor_is_necessary_and_not_sufficient() -> Bool {
   )
 }
 
-// THE KEY IS A KEY, NOT A COMMENT: the release this rule was read from has to be a release the corpus
-// already catalogues at firmware grain, or the key is a label that matches nothing and the firmware field is
-// decoration. The test is the corpus's other firmware-keyed vendor table — the redirection-status rows —
-// resolving under the SAME identity. Retype the key to a release nobody read and that lookup refuses
-// `FirmwareUncatalogued`, and this goes red.
+// THE KEY IS A KEY, NOT A COMMENT. The release these verdicts were read from has to be a release the corpus
+// can EVIDENCE, at the grain the boot reaches, or the key is a label that matches nothing and the firmware
+// field on the rule is decoration. Two claims, because the two halves can break independently: the key is
+// the release the committed hpm-check capture derives (asked through the corpus's own test of that fact),
+// and that same key resolves in the release-keyed redirection table the media-attach stop consults.
 //
-// WHY NOT THE RELEASE CAPABILITY CATALOG, which is the lookup a reader would reach for first. That catalog
-// (gunbc.host.bmc_release_capability_catalog) is keyed by an identity DERIVED from a committed artifact, and
-// for this release the machine read derives the wire "0.45" — the HPM.1 auxiliary bytes are deliberately not
-// folded into a patch number — while the family-grain identity here carries the vendor page label "0.45.3".
-// The corpus states plainly that nothing asserts those are the same release-name, and this row does not
-// quietly equate them either: asking that catalog for this key answers `Uncatalogued`, which is a fact about
-// the two grains, not a defect here. Closing that gap means a machine read whose wire IS the label, and when
-// one lands this claim should be re-pointed at it.
-test fn the_rule_is_keyed_to_a_release_the_corpus_already_catalogues() -> Bool {
-  match megarac_redirection_status_of_wire(
-    firmware: megarac_media_address_field_probe_set.firmware,
-    wire: 0,
-  ) {
-    RedirectionStatusKnown { firmware: f, status: _ } =>
-      bmc_firmware_release_identity_eq(a: f, b: megarac_media_address_field_probe_set.firmware)
-    RedirectionStatusFirmwareUncatalogued { firmware: _, } => false
+// WHY THE KEY MOVED OFF THE VENDOR PAGE LABEL. The label ("0.45.3", the wording on the vendor's own update
+// page) is a key of nothing in production: the redirection table, the media-attach stop and the release
+// capability catalog all key on an identity DERIVED from a committed artifact, whose wire for this release
+// is "0.45" with the HPM.1 auxiliary bytes deliberately not folded into a patch number. Nothing asserts
+// "0.45.3" equals that derived identity, and this file does not quietly equate them either -- it keys on the
+// derived identity itself, which is the grain the boot can reach. A caller that carried the label would
+// inherit nothing, and the corpus already pins that (test.claim.machine_intake.megarac_media_0_45_3_witness
+// the_vendor_page_label_is_not_a_key_of_the_redirection_table); these two claims pin the other side: that
+// THIS rule's key is on the grain that does resolve. Retype the key to a label or to a release nobody read
+// and both go red.
+test fn the_rule_is_keyed_to_a_release_the_committed_read_evidences() -> Bool {
+  match megarac_media_address_field_probe_set.firmware {
+    // THE CAPTURE EXISTS IN THIS CORPUS. An Absent here would mean the committed hpm-check read went
+    // missing, and then NOTHING in this file is evidenced about any build -- which is exactly the state the
+    // gate's `ConsumerFirmwareUnevidenced` arm exists to refuse, so a green that stopped checking the key
+    // would be the red this claim is guarding.
+    Absent => false
+    // ASKED THROUGH THE CORPUS'S OWN TEST, not by re-deriving a version string here: the key and the
+    // media-attach stop must name the same release, and the only honest way to say that is to ask the one
+    // function that answers it (`megarac_release_is_the_committed_hpm_read`).
+    Present { value: key } => megarac_release_is_the_committed_hpm_read(firmware: key)
+  }
+}
+
+// THE SAME KEY RESOLVES IN THE RELEASE-KEYED TABLE. The naming rule and the media-attach stop were moved to
+// one grain; a key that resolves nowhere in the table the stop consults would mean they drifted apart again,
+// and the drift would be invisible from either side alone. Wire 1, because that is the code catalogued on
+// the release this unit runs.
+test fn the_redirection_table_resolves_under_the_rule_key() -> Bool {
+  match megarac_media_address_field_probe_set.firmware {
+    Absent => false
+    Present { value: key } =>
+      match megarac_redirection_status_of_wire(firmware: key, wire: 1) {
+        RedirectionStatusKnown { firmware: f, status: _ } => bmc_firmware_release_identity_eq(a: f, b: key)
+        RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => false
+      }
+  }
+}
+
+// NO EVIDENCED RELEASE REFUSES, AND REFUSES AS ITS OWN FACT. The key is a machine read, so a corpus without
+// the capture has no build these verdicts describe, and a floor of unknown provenance is not a floor. This
+// is the OPPOSITE default from the media-attach stop's release-keyed exception -- there, an unevidenced
+// capture leaves the exception UNFIRED, because firing an exception on unevidenced grounds would fabricate a
+// licence to write; here, writing a name whose accepting build nobody evidenced IS the failure the key
+// exists to prevent. The two must not be harmonized, and this claim is what keeps the difference honest:
+// if someone "unifies" the defaults, the arm stops being produced and this goes red.
+//
+// THE DIFFERENTIAL IS THE POINT. Same share spelling, same row, same reach -- only the rule's key differs.
+// With the key the corpus evidences, the same name reaches `Usable`; with no key, it is refused before any
+// floor is applied. So the refusal is about the PROVENANCE of the rule, not about the spelling.
+test fn a_rule_with_no_evidenced_release_refuses_before_the_floor_is_applied() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_space() {
+        Absent => false
+        Present { value: space } =>
+          match filed_row(name: n, space: space, answer: answered(addrs: one_address())) {
+            Absent => false
+            Present { value: row } =>
+              match media_share_address_gate(
+                share_server: srv2_lan_fqdn as NonEmptyStr,
+                row: row,
+                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                rule: MediaShareConsumerRule {
+                  consumer: megarac_media_address_rule.consumer,
+                  member: megarac_media_address_rule.member,
+                  // THE ONLY DIFFERENCE: no committed capture, so no release these verdicts describe.
+                  firmware: Absent,
+                  minimum_labels: megarac_media_address_rule.minimum_labels,
+                  evidence: megarac_media_address_rule.evidence,
+                },
+                ask: fn(_s, _nm) { answered(addrs: one_address()) },
+              ) {
+                ConsumerFirmwareUnevidenced { consumer: c } =>
+                  declaration_ref_eq(a: c, b: megarac_media_address_rule.consumer)
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE CONTROL FOR THE CLAIM ABOVE: the same spelling, the same row, the rule AS THE CORPUS FILES IT, and the
+// gate goes on to act. Without this, the arm above could be produced by any change that broke the gate for
+// every input, and the pair would prove nothing.
+test fn the_evidenced_rule_lets_the_same_name_through_to_the_live_answer() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_space() {
+        Absent => false
+        Present { value: space } =>
+          match filed_row(name: n, space: space, answer: answered(addrs: one_address())) {
+            Absent => false
+            Present { value: row } =>
+              match media_share_address_gate(
+                share_server: srv2_lan_fqdn as NonEmptyStr,
+                row: row,
+                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                rule: megarac_media_address_rule,
+                ask: fn(_s, _nm) { answered(addrs: one_address()) },
+              ) {
+                Usable { host: _, name: _, address: a } => ipv4_address_eq(a: a, b: srv2_lan_ipv4)
+                _ => false
+              }
+          }
+      }
   }
 }
 

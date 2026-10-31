@@ -761,6 +761,11 @@ type MediaShareAddressStanding
   // because the remedy quotes the offending spelling back to whoever edits the row.
   = AddressIsNotAName { raw: NonEmptyStr, refusal: ResolvableNameRefusal }
   | NeedsLanNameSpace { host: HostIdentity, space: NameSpace }
+  // THE CONSUMER'S FIRMWARE HAS NO EVIDENCED RELEASE, so the floor in the rule belongs to no known build
+  // and cannot be applied. Distinct from RefusedByConsumerFirmware, which is the firmware's own kind of
+  // answer on a release we DID read: "we do not know what this build would say" is a different fact, and
+  // it needs its own name (§3 meaning-fork rule).
+  | ConsumerFirmwareUnevidenced { consumer: DeclarationRef }
   | RefusedByConsumerFirmware { host: HostIdentity, name: ResolvableName, firmware: BmcFirmwareReleaseIdentity, minimum_labels: Int }
   // The two spellings that disagree, carried as the VALUES rather than as renderings of them: the share's
   // own authored spelling, and the row's admitted name. Rendering both to compare or to display is the
@@ -810,8 +815,9 @@ type MediaShareConsumerRule {
   member: NonEmptyStr
   // THE RELEASE THE RULE WAS READ FROM, as a key and not as prose: a rule with no release is a rule that
   // silently outlives the build it came from. Taken from the probe set rather than restated, so the key
-  // has one source (§3).
-  firmware: BmcFirmwareReleaseIdentity
+  // has one source (§3), and Optional because the key IS a machine read: if the committed capture is
+  // missing, no build is evidenced, and the gate refuses rather than assuming one.
+  firmware: BmcFirmwareReleaseIdentity?
   minimum_labels: Int
   // THE VENDOR ROWS THIS NUMBER CAME FROM, carried rather than paraphrased, so the generalization and its
   // evidence travel together and a claim can hold one against the other.
@@ -844,36 +850,48 @@ fn media_share_address_gate(
   match resolvable_name_admit(spelling: share_server as String) {
     ResolvableNameRefused { refusal: r } => not_a_name_standing(raw: share_server, refusal: r)
     ResolvableNameAdmitted { name: share_name } =>
-      // FIRST the consumer's own field rule, then the row's agreement, then resolvability: the two cheap
-      // refusals before the one that needs an answer.
-      if resolvable_name_label_count(name: share_name) < rule.minimum_labels {
-        RefusedByConsumerFirmware { host: row.host, name: share_name, firmware: rule.firmware, minimum_labels: rule.minimum_labels }
-      } else if !names_are_the_same_name(a: share_name, b: row.name) {
-        NamesAnotherHost { host: row.host, share: share_server, row: row.name }
-      } else {
-        match reachable_space_for(reach: reach, space: row.space) {
-          Absent => NeedsLanNameSpace { host: row.host, space: row.space }
-          Present { value: _ } =>
-            match resolve_name(name: share_name, resolver: reach.resolver, ask: ask) {
-              // `addresses` is a FreeSemigroup, so there is always one to hand back and this arm cannot
-              // invent a failure: no fallback cause, no placeholder, no "shouldn't happen" branch (§5).
-              Resolved { name: _, addresses: addrs } =>
-                match citations_disagree_with_live(name: share_name, reach: reach, row: row, live: addrs) {
-                  // A citation this gate is holding says the name answered something else. Do not attach.
-                  Present { value: c } => AnswerMovedUnderName {
-                    host: row.host,
-                    name: share_name,
-                    cited: c,
-                    live: non_empty_to_list(xs: addrs),
+      // THE RULE IS ONLY APPLICABLE IF ITS RELEASE IS EVIDENCED. The probe verdicts the floor rests on
+      // are keyed to the machine-read release (extdeps.bmc.megarac.megarac_committed_hpm_read_release);
+      // when that capture is missing there is no build these verdicts describe, and a floor of unknown
+      // provenance is not a floor. This REFUSES where the media-attach stop does the OPPOSITE -- there an
+      // unevidenced capture leaves the release-keyed exception UNFIRED, because firing an exception on
+      // unevidenced grounds would fabricate a licence to write. The two defaults look inconsistent and
+      // MUST NOT be harmonized: here, writing a name whose accepting build nobody evidenced IS the failure
+      // the key exists to prevent.
+      match rule.firmware {
+        Absent => ConsumerFirmwareUnevidenced { consumer: rule.consumer }
+        Present { value: read_release } =>
+        // FIRST the consumer's own field rule, then the row's agreement, then resolvability: the two cheap
+        // refusals before the one that needs an answer.
+        if resolvable_name_label_count(name: share_name) < rule.minimum_labels {
+          RefusedByConsumerFirmware { host: row.host, name: share_name, firmware: read_release, minimum_labels: rule.minimum_labels }
+        } else if !names_are_the_same_name(a: share_name, b: row.name) {
+          NamesAnotherHost { host: row.host, share: share_server, row: row.name }
+        } else {
+          match reachable_space_for(reach: reach, space: row.space) {
+            Absent => NeedsLanNameSpace { host: row.host, space: row.space }
+            Present { value: _ } =>
+              match resolve_name(name: share_name, resolver: reach.resolver, ask: ask) {
+                // `addresses` is a FreeSemigroup, so there is always one to hand back and this arm cannot
+                // invent a failure: no fallback cause, no placeholder, no "shouldn't happen" branch (§5).
+                Resolved { name: _, addresses: addrs } =>
+                  match citations_disagree_with_live(name: share_name, reach: reach, row: row, live: addrs) {
+                    // A citation this gate is holding says the name answered something else. Do not attach.
+                    Present { value: c } => AnswerMovedUnderName {
+                      host: row.host,
+                      name: share_name,
+                      cited: c,
+                      live: non_empty_to_list(xs: addrs),
+                    }
+                    // Either every citation agrees, or this name has never been cited — in which case the
+                    // live reply is the only evidence there is, and the boot proceeds on it. Deliberately ONE
+                    // arm: a consumer acts identically on both, and splitting them would be modelling a
+                    // distinction nothing reads (§2).
+                    Absent => Usable { host: row.host, name: share_name, address: addrs.head }
                   }
-                  // Either every citation agrees, or this name has never been cited — in which case the
-                  // live reply is the only evidence there is, and the boot proceeds on it. Deliberately ONE
-                  // arm: a consumer acts identically on both, and splitting them would be modelling a
-                  // distinction nothing reads (§2).
-                  Absent => Usable { host: row.host, name: share_name, address: addrs.head }
-                }
-              Unresolved { name: _, cause: c } => ShareNameUnresolved { host: row.host, cause: c }
-            }
+                Unresolved { name: _, cause: c } => ShareNameUnresolved { host: row.host, cause: c }
+              }
+          }
         }
       }
   }
@@ -1050,7 +1068,9 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
 // performs (`share_binding_standing`'s ShareMismatch), so flipping it before the BMC's own
 // `cd_remote_server_address` is repointed would turn a gate that passes today into a refusal mid-boot — the
 // exact failure this lane exists to close, reintroduced by the fix. The cut-over therefore lands PAIRED with
-// the firmware write and never before it.
+// the firmware write and never before it, and with the gate wired into the attach path in the same change:
+// a name-typed row plus a firmware write with nothing asking the gate is the same unexamined attach wearing
+// better types.
 //
 // TRIGGER, in order — the three conditions are named below as fields, not as prose:
 //   (1) the boot that must not be disturbed has run, so no gate is being changed under a live attach;
@@ -1060,8 +1080,10 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
 //   (3) the operator has given the go for the one-time media/general PUT, and this session owns pairing that
 //       PUT with the row change, so the two cannot land apart.
 // WHAT DOES *NOT* SATISFY IT: the witness going green (it already does, and it is refusing the row); the row
-// moving without the paired firmware write; or the tailnet name being written into the share, which the
-// NeedsLanNameSpace arm exists to refuse.
+// moving without the paired firmware write; the row and the write landing while the gate still has no
+// production caller (that is the third leg, and it is why the gate's undangled-ness is declared here rather
+// than argued); or the tailnet name being written into the share, which the NeedsLanNameSpace arm exists to
+// refuse.
 type MediaShareNameCutover {
   // THE ROW THAT STILL SPELLS AN ADDRESS, located rather than described: a real DeclarationRef into the
   // module that owns it, so a tool can resolve it and a reader cannot drift it away from the row.
@@ -1070,6 +1092,16 @@ type MediaShareNameCutover {
   // is what makes "paired" checkable: the two refs are comparable, and a cutover merged without a write to
   // this operation is visible as such.
   paired_write: DeclarationRef
+  // THE GATE WIRING THAT MUST LAND WITH THEM. A row typed as a name and a firmware write that carries it
+  // are still unsafe if nothing ASKS the gate before attaching: the .188 boot attached an address nobody
+  // re-checked, and the gate that would have refused it has no production caller. So the caller is a leg of
+  // the same cut-over, not a later nicety — three things move together or none moves.
+  //
+  // THE NAME BELOW IS THE COMMITMENT, chosen here so the leg is checkable rather than descriptive: the leg
+  // is discharged when a production declaration in the boot module consults `media_share_address_gate`
+  // before attach. If the implementer chooses a different name, this ref must be re-pointed in the same
+  // change, and a diff that renames it without re-pointing this is visible as one.
+  paired_caller: DissolutionCondition
   // THE TRIGGER, in the carrier the corpus already folds. `DeclarationAppears` is the FORWARD shape — the
   // obligation is discharged by a declaration that does not exist yet being built, which is precisely a
   // name-typed share row. Bound, not `UnboundDissolution { description: ... }`: a description would be the
@@ -1084,6 +1116,15 @@ data media_share_name_cutover: MediaShareNameCutover = MediaShareNameCutover {
     field_name: "server_address",
   ),
   paired_write: decl_ref(module_path: "extdeps.bmc.megarac", decl_name: "megarac_op_media_config"),
+  // The gate call whose APPEARANCE is the wiring: a boot-side declaration that asks the gate and acts on
+  // its standing. Pending today, exactly like the row leg — and the witness's own green says nothing about
+  // it, because the only caller `media_share_address_gate` has is this PR's witness.
+  paired_caller: bound_dissolution(
+    decl_ref(
+      module_path: "gunbc.machine_intake.mtcollins1_boot_run",
+      decl_name: "mtcollins1_media_share_address_standing",
+    ),
+  ),
   // The declaration whose APPEARANCE is the cutover: a name-typed share row in the boot module, admitted
   // through `resolvable_name_admit`, which does not exist yet. This is the FORWARD trigger shape and it is
   // the honest one here — the obligation is discharged by BUILDING something new, not by deleting anything.

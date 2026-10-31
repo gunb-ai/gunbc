@@ -40,8 +40,12 @@ is observed behaviour, not reading:
 | `255.255.255.0` | **REFUSED** |
 
 These verdicts are carried in the corpus as data, keyed to the release they were read from:
-`extdeps.bmc.megarac.megarac_media_address_field_probe_set` (key `megarac_firmware_0_45_3`, the build the
-device has run since the 2026-10-02 reflash). The generalization this repo draws from them — a label floor —
+`extdeps.bmc.megarac.megarac_media_address_field_probe_set`, keyed by
+`extdeps.bmc.megarac.megarac_committed_hpm_read_release` -- the release identity DERIVED from the committed
+`ipmitool hpm-check` capture (boot run 40082618814), the build the device has run since the 2026-10-02
+reflash. The key is that derived identity and not the vendor page label "0.45.3", because production keys
+nothing on the label: the redirection table, the media-attach stop and the release capability catalog all key
+on the derived grain, and nothing asserts the label names it. The generalization this repo draws from them — a label floor —
 is a separate row, `gunbc.host.host_name_resolution.megarac_media_address_rule`, and the witness claims
 `the_floor_refuses_nothing_the_firmware_accepted`, `the_floor_is_above_at_least_one_refused_name` and
 `the_floor_is_necessary_and_not_sufficient` hold that inference against these rows rather than against the
