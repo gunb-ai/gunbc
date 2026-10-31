@@ -27,6 +27,8 @@ data a_declared_container_type_is_checked_by_head_only: RecurringFailureMode = R
 
     "NEXT-RUNG TRIGGER: v1.compiler.types application_arguments_verdict consumed at v1.compiler.infer declared_type_conformance_diags_core, with the discriminating REDs and paired controls in test.claim.declared_container_argument_witness executed against a seed built from that change. The row is read at the ceiling only once those execute.",
 
+    "NAMED FOLLOW-UP (deferred with a stated reason, DESIGN 6b): v1.compiler.types applied_argument_declared_agrees stays inside node_type_compatible, which also serves symmetric joins, so lifting its alias handling out would change join behavior beyond this fix. Trigger: node_type_compatible declared-vs-produced callers routed onto the inhabitance relation (the Q5/Q6 path).",
+
     "REVIEW TELL: a declared-type judgment that reads `children |> first`, peels exactly one level, or excludes a collection kind by name and returns an empty diagnostic list for what it excluded.",
   ],
 
