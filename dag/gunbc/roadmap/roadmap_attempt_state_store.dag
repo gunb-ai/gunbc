@@ -156,6 +156,20 @@ fn attempt_log_member_path(store: AttemptState, member: AttemptLogMember) -> Str
   join([attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member)), "/", attempt_log_member_name(member: member)], "")
 }
 
+// Log-lane mirrors of the top-level path helpers, so consumers that read a log member's path (metering, unit
+// launch, the belt's external events read) address it through the log lane instead of the plain write type.
+fn attempt_log_provision_path(provision: AttemptStateProvision, member: AttemptLogMember) -> String {
+  join([attempt_state_provision_directory(provision: provision, directory: attempt_log_member_directory(member: member)), "/", attempt_log_member_name(member: member)], "")
+}
+
+fn attempt_log_member_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: AttemptLogMember) -> String {
+  attempt_log_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), member: member)
+}
+
+fn attempt_log_external_path(store: AttemptState, member: AttemptLogMember) -> String {
+  attempt_log_member_path(store: store, member: member)
+}
+
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
