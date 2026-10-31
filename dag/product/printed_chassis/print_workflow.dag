@@ -25,7 +25,7 @@ import product.printing.print_recipe {PrintRecipe,print_recipe_from_wire}
 import product.printing.slicer_acquisition {acquire_orca_archive,SlicerArchiveReady,SlicerArchiveRefused}
 import product.printed_chassis.cad_check_run {check_printable_cad}
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
-import std.content_hash {sha256_hex_digest,Sha256Digest}
+import std.content_hash {sha256_hex_digest,sha256_hex_of_text,Sha256Digest}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory, cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready }
@@ -100,10 +100,12 @@ fn run_staged(plan_text:String,staging:PreparedBundleStaging,recipe:String,sourc
  if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
  let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
  match prepared_bundle_stage_queues(staging:staging,content:receipt) {PreparedQueuesWritten=>{} PreparedQueuesRefused {cause:c}=>return exit_failure(reason:c)}
- let archive_sha=match digest_file(path:appimage) {Present {value:d}=>d.hex as String Absent=>return exit_failure(reason:"Cannot digest the pinned slicer archive")}
+ let archive_sha=match digest_file(path:appimage) {Present {value:d}=>d Absent=>return exit_failure(reason:"Cannot digest the pinned slicer archive")}
  let profile_shas=map([profiles.machine,profiles.filament,profiles.process],f=>match digest_file(path:f) {Present {value:d}=>d.hex as String Absent=>""})
  if any(profile_shas,d=>d=="") {return exit_failure(reason:"Cannot digest the staged profiles")}
- let inputs=PreparationInputs {recipe:recipe,source_revision:source_revision,assembly_root:root,runtime_receipt_sha256:print_runtime_receipt_sha256(r:runtime),slicer_archive_sha256:archive_sha,profiles_sha256:join(profile_shas,",")}
+ let profiles_digest=match sha256_hex_digest(hex:sha256_hex_of_text(text:join(profile_shas,","))) {Present {value:d}=>d Absent=>return exit_failure(reason:"Cannot digest the staged profile set")}
+ let receipt_digest=match sha256_hex_digest(hex:print_runtime_receipt_sha256(r:runtime)) {Present {value:d}=>d Absent=>return exit_failure(reason:"The print runtime receipt digest is not a sha256")}
+ let inputs=PreparationInputs {recipe:recipe,source_revision:source_revision,assembly_root:root,runtime_receipt_sha256:receipt_digest,slicer_archive_sha256:archive_sha,profiles_sha256:profiles_digest}
  match prepared_bundle_publish(staging:staging,inputs:inputs) {PreparedPublished=>ExitSuccess PreparedPublishRefused {cause:c}=>exit_failure(reason:c)}
 }
 

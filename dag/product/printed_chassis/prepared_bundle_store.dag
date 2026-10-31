@@ -1,7 +1,7 @@
 module product.printed_chassis.prepared_bundle_store
 
 import std.types { String, NonEmptyStr, FilePath, List, Bool }
-import std.content_hash { sha256_hex_of_text }
+import std.content_hash { sha256_hex_of_text, Sha256Digest }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
@@ -59,9 +59,9 @@ type PreparationInputs {
   recipe: String
   source_revision: String
   assembly_root: String
-  runtime_receipt_sha256: String
-  slicer_archive_sha256: String
-  profiles_sha256: String
+  runtime_receipt_sha256: Sha256Digest
+  slicer_archive_sha256: Sha256Digest
+  profiles_sha256: Sha256Digest
 }
 
 type PreparedBundleStaging sole_constructor { index: NonEmptyStr, root: NonEmptyStr }
@@ -155,9 +155,9 @@ fn inputs_text(inputs: PreparationInputs) -> String {
     json_kv(key: "recipe", value: json_string(s: inputs.recipe)),
     json_kv(key: "source_revision", value: json_string(s: inputs.source_revision)),
     json_kv(key: "assembly_root", value: json_string(s: inputs.assembly_root)),
-    json_kv(key: "runtime_receipt_sha256", value: json_string(s: inputs.runtime_receipt_sha256)),
-    json_kv(key: "slicer_archive_sha256", value: json_string(s: inputs.slicer_archive_sha256)),
-    json_kv(key: "profiles_sha256", value: json_string(s: inputs.profiles_sha256)),
+    json_kv(key: "runtime_receipt_sha256", value: json_string(s: inputs.runtime_receipt_sha256.hex as String)),
+    json_kv(key: "slicer_archive_sha256", value: json_string(s: inputs.slicer_archive_sha256.hex as String)),
+    json_kv(key: "profiles_sha256", value: json_string(s: inputs.profiles_sha256.hex as String)),
   ]))
 }
 
@@ -192,8 +192,8 @@ type PreparedPublication = PreparedPublished | PreparedPublishRefused { cause: S
 // PUBLICATION: every bundle file is enumerated and digested, and the receipt naming the attempt, the identity and
 // every digest is created once and read back byte-equal. A receipt for the same identity already published refuses.
 fn prepared_bundle_publish(staging: PreparedBundleStaging, inputs: PreparationInputs) -> PreparedPublication {
-  if inputs.recipe == "" || inputs.source_revision == "" || inputs.assembly_root == "" || inputs.runtime_receipt_sha256 == "" || inputs.slicer_archive_sha256 == "" || inputs.profiles_sha256 == "" {
-    return PreparedPublishRefused { cause: "A preparation identity needs every input; one is empty" }
+  if inputs.recipe == "" || inputs.source_revision == "" || inputs.assembly_root == "" {
+    return PreparedPublishRefused { cause: "A preparation identity needs every text input; one is empty" }
   }
   let index = staging.index as String
   let root = staging.root as String

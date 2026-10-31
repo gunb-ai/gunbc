@@ -10,6 +10,9 @@ import gunbc.fleet.print_record_stores { print_request_directory_target, print_c
 import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
 
 // THE PRINTER STATE TREE'S LAYOUT: what directories a printer pass demands (printer_state_directories) and the one
 // step that carries the flat layout the printer-starts directory held until 2026-10-30 onto the per-store members
@@ -35,6 +38,19 @@ import product.printed_chassis.assembly_inventory_store { cassette_inventory_dir
 data legacy_claimed_suffix: String = ".claimed"
 data legacy_claim_evidence_marker: String = ".claimed."
 data legacy_inventory_prefix: String = "cassette-prototype-inventory."
+
+// THE MOVE IS ADMITTED DEBT WITH AN END: printer_state_move runs on every print pass only while some printing host may
+// still hold a flat printer-starts entry. Its trigger is the typed drain evidence (every printing host's legacy
+// inventory read as clean), which does not exist yet; when it does, the move, legacy_target, retire_hold and the
+// store mints' permanent legacy refusals are deleted together. Until then it is not removed, because a host with
+// a legacy entry would then refuse permanently with nothing to carry it forward.
+data printer_state_move_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_move"),
+    reason: "the one-time carry of the flat printer-starts layout onto per-store members runs on every print pass with no end condition until every printing host's legacy inventory is read as drained",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_hosts_drained"))
+  )
+]
 
 type PrinterStateMove = PrinterStateMoved | PrinterStateMoveRefused { cause: String }
 

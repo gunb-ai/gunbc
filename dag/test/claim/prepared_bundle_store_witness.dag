@@ -2,6 +2,7 @@ module test.claim.prepared_bundle_store_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.algebra { string_contains }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
@@ -11,7 +12,7 @@ import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready, prepared_bundle_directory }
 
 fn inputs(recipe: String, revision: String) -> PreparationInputs {
-  PreparationInputs { recipe: recipe, source_revision: revision, assembly_root: "residential-cassette", runtime_receipt_sha256: "r1", slicer_archive_sha256: "s1", profiles_sha256: "p1" }
+  PreparationInputs { recipe: recipe, source_revision: revision, assembly_root: "residential-cassette", runtime_receipt_sha256: Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex }, slicer_archive_sha256: Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex }, profiles_sha256: Sha256Digest { hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex } }
 }
 
 fn tree_in(dir: String) -> HostStateTree { isolated_host_state_tree(dir: dir as NonEmptyStr) }
@@ -122,5 +123,10 @@ test fn w_an_extra_bundle_file_refuses_corrupt() -> Bool {
 // The retirement frontier row is present in the aggregate, keyed by its subject declaration and not by a count.
 test fn w_the_retirement_frontier_row_is_in_the_census_aggregate() -> Bool {
   let want = DeclSubject { ref: decl_ref(module_path: "product.printed_chassis.prepared_bundle_store", decl_name: "prepared_bundle_published") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_layout_move_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_move") }
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
 }
