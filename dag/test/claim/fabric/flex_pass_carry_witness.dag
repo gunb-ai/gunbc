@@ -1,26 +1,27 @@
 module test.claim.fabric.flex_pass_carry_witness
 
 // WITNESSES FOR THE PASS'S CARRY (gunbc.fleet.flex_pass_run). The flex pass is stateless by construction,
-// but two of its inputs are NOT on the Vast wire -- the age of a loading card (GET /api/v1/instances/ has
-// no time field) and the standing of the last create ask (its answer can be lost) -- so the pass keeps a
-// carry file for the next pass. These tests cover the WIRE and the RULES, not the file: flex_carry_read is
-// a three-line wrapper over Filesystem.Read whose only branch is "unreadable means a first pass", and a
-// witness that touched the real Filesystem service would be a wet-only witness CI does not run (see
-// test.claim.artifact_store_fs_witness's coverage note). The round-trip here is render -> split -> parse,
-// which is the part that can silently corrupt state between passes.
+// but two of its inputs are NOT on the Vast wire -- the LOWER BOUND on how long a card has been loading
+// (GET /api/v1/instances/ has no time field) and the standing of the last create ask (its answer can be
+// lost) -- so the pass keeps a carry file for the next pass. These tests cover the WIRE and the RULES, not
+// the file: flex_carry_read is a wrapper over Filesystem.Read whose only branch is "unreadable means an
+// unread carry", and a witness that touched the real Filesystem service would be a wet-only witness CI does
+// not run (see test.claim.artifact_store_fs_witness's coverage note). The round-trip here is
+// render -> split -> parse, which is the part that can silently corrupt state between passes.
 import gunbc.fleet.flex_pass_run {
   FlexCarry, flex_carry_render, flex_carry_line, flex_carry_after, flex_cards_list, flex_cards_wire,
   flex_reconcile_wire, FlexCarryCooldown, FlexCarryLoading, FlexCarryAnswered, FlexCarryLost,
-  FlexCarryRefused, FlexCarryLineUnread,
-  FlexCarryReading, FlexCarryLoaded, FlexCarryUnread, flex_carry_wire,
+  FlexCarryRefused, FlexCarryLineUnread, FlexCarrySightingsBasis,
+  FlexCarryReading, FlexCarryLoaded, FlexCarryUnread, flex_carry_wire, flex_carry_basis_word,
   flex_carry_cooldown, flex_carry_sightings, flex_carry_standing,
 }
 import product.fabric.flex_vast_loop {
   FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated,
 }
 import product.fabric.flex_vast_shadow {
-  FlexLoadingSighting, FlexSightingsUnread, FlexCreateStanding, FlexCreateAnswered, FlexCreateLost, FlexCreateRefused,
-  FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable, FlexRosterCards,
+  FlexLoadingSighting, FlexSightingsUnread, FlexSightingsKnown, FlexSightingsBaselineComplete,
+  FlexSightingsBaselineIncomplete, FlexCreateStanding, FlexCreateAnswered, FlexCreateLost,
+  FlexCreateRefused, FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable, FlexRosterCards,
   FlexRosterCardsBuilt, FlexRosterCardsUnreadable, FlexRosterCardsNeedsExhaustedRoster,
 }
 import test.claim.fabric.flex_vast_shadow_witness { exhausted, our_running_row }
@@ -28,25 +29,23 @@ import std.types { EpochMs }
 
 data w_now: EpochMs = 1792008000000
 
-fn w_carry_line_texts(carry: FlexCarry) -> List<String> {
-  split(s: flex_carry_render(carry: carry), delimiter: "\n")
-}
-
-// THE WIRE ROUND-TRIPS. What the pass writes is what the next pass reads, unchanged: a cooldown, two
-// loading sightings with their FIRST-sighting instants, and the standing of an answered ask. A drift here
-// silently ages the wrong cards, which is how a pass destroys a card that is still inside its launch
+// THE WIRE ROUND-TRIPS. What the pass writes is what the next pass reads, unchanged: a complete baseline, a
+// cooldown, two loading sightings with their FIRST-sighting instants, and the standing of an answered ask.
+// A drift here silently ages the wrong cards, which is how a pass destroys a card still inside its launch
 // envelope.
-test fn the_carry_wire_round_trips_a_cooldown_two_sightings_and_an_answered_ask() -> Bool {
+test fn the_carry_wire_round_trips_a_baseline_a_cooldown_two_sightings_and_an_answered_ask() -> Bool {
   let carry = FlexCarry {
     cooldown: Present { value: FlexRentCooldown { asked_at: w_now, until: w_now + 900000 } },
+    basis: FlexSightingsBaselineComplete,
     sightings: [
       FlexLoadingSighting { instance_id: 57968351, first_seen_ms: w_now - 7200000 },
       FlexLoadingSighting { instance_id: 57968352, first_seen_ms: w_now },
     ],
     standing: Present { value: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 7 } },
   }
-  let lines = map(w_carry_line_texts(carry: carry), l => flex_carry_line(line: l))
-  length(lines) == 5
+  let lines = map(split(s: flex_carry_render(carry: carry), delimiter: "\n"), l => flex_carry_line(line: l))
+  length(lines) == 6
+    && any(lines, l => match l { FlexCarrySightingsBasis { basis: FlexSightingsBaselineComplete } => true  _ => false })
     && any(lines, l => match l { FlexCarryCooldown { asked_at: a, until: u } => a == w_now && u == w_now + 900000  _ => false })
     && any(lines, l => match l { FlexCarryLoading { instance_id: 57968351, first_seen_ms: at } => at == w_now - 7200000  _ => false })
     && any(lines, l => match l { FlexCarryLoading { instance_id: 57968352, first_seen_ms: at } => at == w_now  _ => false })
@@ -56,16 +55,52 @@ test fn the_carry_wire_round_trips_a_cooldown_two_sightings_and_an_answered_ask(
        })
 }
 
+// THE BASELINE IS WRITTEN AND READ AS ITS OWN LINE. "sightings incomplete" is what makes the next pass read
+// UNREAD bounds for every loading id absent from the carry: the premise that would let it say "at least 0"
+// -- the previous pass read the whole account -- is exactly what an unfinished walk cannot claim.
+test fn an_incomplete_baseline_round_trips_and_makes_absent_ids_read_unread() -> Bool {
+  match flex_carry_line(line: "sightings incomplete") {
+    FlexCarrySightingsBasis { basis: FlexSightingsBaselineIncomplete } =>
+      match flex_carry_sightings(
+        reading: FlexCarryLoaded {
+          carry: FlexCarry {
+            cooldown: none,
+            basis: FlexSightingsBaselineIncomplete,
+            sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 7200000 }],
+            standing: none,
+          }
+        },
+      ) {
+        FlexSightingsUnread { reason: _ } =>
+          match flex_carry_sightings(
+            reading: FlexCarryLoaded {
+              carry: FlexCarry {
+                cooldown: none,
+                basis: FlexSightingsBaselineComplete,
+                sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 7200000 }],
+                standing: none,
+              }
+            },
+          ) {
+            FlexSightingsKnown { sightings: known } => length(known) == 1
+            FlexSightingsUnread { reason: _ } => false
+          }
+        FlexSightingsKnown { sightings: _ } => false
+      }
+    _ => false
+  }
+}
+
 // A LINE THE PASS CANNOT READ IS REPORTED UNREAD, NEVER GUESSED AT. A truncated sighting line, a junk
-// line, and the header itself all read as unread; the header is not a record and is skipped, which is
-// what makes the format versionable.
+// line, and the header itself all read as unread; the header is not a record and is skipped, which is what
+// makes the format versionable.
 test fn a_carry_line_the_pass_cannot_read_is_reported_unread_and_never_guessed_at() -> Bool {
   let lines = map(["flex-carry v1", "loading 42", "not-a-record 1 2 3", "cooldown x 5"], l => flex_carry_line(line: l))
   length(lines) == 4 && length(filter(lines, l => match l { FlexCarryLineUnread { text: _ } => true  _ => false })) == 4
 }
 
-// A MISSING INTEGER IS A MISSING RECORD, NOT A ZERO. "loading 42" has an id and no instant: the sighting
-// is dropped rather than read as first_seen 0, which would make the card instantly dead.
+// A MISSING INTEGER IS A MISSING RECORD, NOT A ZERO. "loading 42" has an id and no instant: the sighting is
+// dropped rather than read as first_seen 0, which would make the card instantly dead.
 test fn a_sighting_line_missing_its_instant_is_dropped_rather_than_read_as_aged_to_zero() -> Bool {
   match flex_carry_line(line: "loading 42") {
     FlexCarryLineUnread { text: _ } => true
@@ -79,13 +114,14 @@ test fn a_sighting_line_missing_its_instant_is_dropped_rather_than_read_as_aged_
 test fn a_create_performed_this_pass_supersedes_the_ask_carried_in() -> Bool {
   let prior = FlexCarryLoaded { carry: FlexCarry {
     cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
+    basis: FlexSightingsBaselineComplete,
     sightings: [],
     standing: Present { value: FlexCreateLost { ask_id: 7, machine_id: 404472 } },
   } }
   let after = flex_carry_after(
     prior: prior,
     roster: exhausted(rows: []),
-    sightings: [],
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
     outcome: FlexPassCreated {
       standing: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 9 },
       cooldown: FlexRentCooldown { asked_at: w_now, until: w_now + 900000 },
@@ -109,10 +145,17 @@ test fn a_create_performed_this_pass_supersedes_the_ask_carried_in() -> Bool {
 test fn a_refused_ask_with_nothing_on_its_machine_is_retired_and_an_expired_cooldown_is_dropped() -> Bool {
   let prior = FlexCarryLoaded { carry: FlexCarry {
     cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
+    basis: FlexSightingsBaselineComplete,
     sightings: [],
     standing: Present { value: FlexCreateRefused { ask_id: 7, machine_id: 1 } },
   } }
-  let after = flex_carry_after(prior: prior, roster: exhausted(rows: []), sightings: [], outcome: FlexPassIdle, now: w_now)
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
   match after.standing { Absent => true  Present { value: _ } => false }
     && match after.cooldown { Absent => true  Present { value: _ } => false }
 }
@@ -124,10 +167,17 @@ test fn a_refused_ask_with_nothing_on_its_machine_is_retired_and_an_expired_cool
 test fn an_answered_ask_whose_contract_the_account_does_not_show_is_still_carried() -> Bool {
   let prior = FlexCarryLoaded { carry: FlexCarry {
     cooldown: none,
+    basis: FlexSightingsBaselineComplete,
     sightings: [],
     standing: Present { value: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } },
   } }
-  let after = flex_carry_after(prior: prior, roster: exhausted(rows: []), sightings: [], outcome: FlexPassIdle, now: w_now)
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
   match after.standing {
     Present { value: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } } => true
     _ => false
@@ -140,13 +190,14 @@ test fn an_answered_ask_whose_contract_the_account_does_not_show_is_still_carrie
 test fn an_ask_the_account_does_show_stays_carried_until_the_allocation_slice_reads_it() -> Bool {
   let prior = FlexCarryLoaded { carry: FlexCarry {
     cooldown: none,
+    basis: FlexSightingsBaselineComplete,
     sightings: [],
     standing: Present { value: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
   } }
   let after = flex_carry_after(
     prior: prior,
     roster: exhausted(rows: [our_running_row(id: 1001)]),
-    sightings: [],
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
     outcome: FlexPassIdle,
     now: w_now,
   )
@@ -156,47 +207,57 @@ test fn an_ask_the_account_does_show_stays_carried_until_the_allocation_slice_re
   }
 }
 
-// A PARTIAL ACCOUNT CONCLUDES NOTHING, so the ask stays carried: the walk did not finish, and a create
-// that is not in the part we read is not evidence that it did not land.
+// A PARTIAL ACCOUNT CONCLUDES NOTHING, so the ask stays carried: the walk did not finish, and a create that
+// is not in the part we read is not evidence that it did not land.
 test fn a_partial_account_concludes_nothing_and_keeps_the_ask_carried() -> Bool {
   let prior = FlexCarryLoaded { carry: FlexCarry {
     cooldown: none,
+    basis: FlexSightingsBaselineComplete,
     sightings: [],
     standing: Present { value: FlexCreateLost { ask_id: 7, machine_id: 2001 } },
   } }
   let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
-  let after = flex_carry_after(prior: prior, roster: partial, sightings: [], outcome: FlexPassIdle, now: w_now)
+  let after = flex_carry_after(
+    prior: prior,
+    roster: partial,
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
   match after.standing {
     Present { value: FlexCreateLost { ask_id: 7, machine_id: 2001 } } => true
     _ => false
   }
 }
 
-// AN UNREAD CARRY CLAIMS NOTHING. No cooldown (the pass does not know it asked), no standing (nothing to
-// reconcile), and the sightings input is FlexSightingsUnread -- which is what makes the loading cut unable
-// to fire, because the age of every loading card comes back UNREAD rather than zero. The receipt says so in
-// words, because an operator reading a pass that destroyed nothing needs to know WHY it destroyed nothing.
-test fn an_unread_carry_claims_no_cooldown_no_standing_and_says_so_on_the_receipt() -> Bool {
-  let unread = FlexCarryUnread { reason: "the carry file could not be read" as NonEmptyStr }
-  match flex_carry_cooldown(reading: unread) { Absent => true  Present { value: _ } => false }
-    && match flex_carry_standing(reading: unread) { Absent => true  Present { value: _ } => false }
-    && match flex_carry_sightings(reading: unread) { FlexSightingsUnread { reason: _ } => true  _ => false }
-    && string_contains(s: flex_carry_wire(reading: unread), pattern: "carry=UNREAD")
-    && string_contains(s: flex_carry_wire(reading: unread), pattern: "loading cut cannot fire")
-}
-
-// A READ CARRY SAYS WHAT IT READ. The receipt line names how many sightings came in and whether a create
-// standing came with them, because those two numbers are what the next pass's ageing and reconcile turn on.
-test fn a_read_carry_reports_the_sightings_and_the_standing_it_holds() -> Bool {
-  let read = FlexCarryLoaded {
-    carry: FlexCarry {
-      cooldown: none,
-      sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now }],
-      standing: none,
-    }
+// THE BASIS THE PASS WROTE IS THE BASIS THE NEXT PASS READS: a pass whose walk did not finish writes an
+// incomplete baseline, and the receipt says so in words rather than leaving the next pass to infer it.
+test fn an_incomplete_walk_writes_an_incomplete_baseline_and_says_so() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: none,
+    basis: FlexSightingsBaselineComplete,
+    sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 3600000 }],
+    standing: none,
+  } }
+  let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: partial,
+    carried: flex_loading_sightings_after(
+      ours: flex_owner_label_gunbc_flex,
+      roster: partial,
+      prior: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now - 3600000 }],
+      now: w_now,
+    ),
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.basis {
+    FlexSightingsBaselineIncomplete =>
+      length(after.sightings) == 1
+        && string_contains(s: flex_carry_basis_word(carry: after), pattern: "basis=INCOMPLETE")
+    FlexSightingsBaselineComplete => false
   }
-  string_contains(s: flex_carry_wire(reading: read), pattern: "carry=read sightings=1")
-    && string_contains(s: flex_carry_wire(reading: read), pattern: "standing=no")
 }
 
 // A ROSTER THAT CANNOT BE READ BUILDS NO CARDS, and the receipt says which kind of cannot it is: an
@@ -209,11 +270,43 @@ test fn a_roster_that_cannot_be_read_builds_no_cards_and_says_which_kind_of_cann
     && string_contains(s: flex_cards_wire(c: FlexRosterCardsNeedsExhaustedRoster), pattern: "partial")
     && string_contains(
       s: flex_reconcile_wire(
-        reading: FlexCarryLoaded { carry: FlexCarry { cooldown: none, sightings: [], standing: none } },
+        reading: FlexCarryLoaded {
+          carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: none }
+        },
         roster: exhausted(rows: []),
       ),
       pattern: "no-ask",
     )
+}
+
+// AN UNREAD CARRY CLAIMS NOTHING. No cooldown (the pass does not know it asked), no standing (nothing to
+// reconcile), and the sightings input is FlexSightingsUnread -- which is what makes the loading cut unable
+// to fire, because the bound of every loading card comes back UNREAD rather than zero. The receipt says so
+// in words, because an operator reading a pass that destroyed nothing needs to know WHY it destroyed
+// nothing.
+test fn an_unread_carry_claims_no_cooldown_no_standing_and_says_so_on_the_receipt() -> Bool {
+  let unread = FlexCarryUnread { reason: "the carry file could not be read" as NonEmptyStr }
+  match flex_carry_cooldown(reading: unread) { Absent => true  Present { value: _ } => false }
+    && match flex_carry_standing(reading: unread) { Absent => true  Present { value: _ } => false }
+    && match flex_carry_sightings(reading: unread) { FlexSightingsUnread { reason: _ } => true  _ => false }
+    && string_contains(s: flex_carry_wire(reading: unread), pattern: "carry=UNREAD")
+    && string_contains(s: flex_carry_wire(reading: unread), pattern: "loading cut cannot fire")
+}
+
+// A READ CARRY SAYS WHAT IT READ: the baseline it stands on, how many sightings came in, and whether a
+// create standing came with them, because those are what the next pass's ageing and reconcile turn on.
+test fn a_read_carry_reports_the_baseline_the_sightings_and_the_standing_it_holds() -> Bool {
+  let read = FlexCarryLoaded {
+    carry: FlexCarry {
+      cooldown: none,
+      basis: FlexSightingsBaselineComplete,
+      sightings: [FlexLoadingSighting { instance_id: 5, first_seen_ms: w_now }],
+      standing: none,
+    }
+  }
+  string_contains(s: flex_carry_wire(reading: read), pattern: "carry=read sightings=1")
+    && string_contains(s: flex_carry_wire(reading: read), pattern: "basis=complete")
+    && string_contains(s: flex_carry_wire(reading: read), pattern: "standing=no")
 }
 
 // THE RECEIPT NAMES THE RECONCILE IT DID. An ask the account shows is reported already-held with the
@@ -224,6 +317,7 @@ test fn the_receipt_names_the_reconcile_it_did() -> Bool {
       reading: FlexCarryLoaded {
         carry: FlexCarry {
           cooldown: none,
+          basis: FlexSightingsBaselineComplete,
           sightings: [],
           standing: Present { value: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
         }

@@ -68,6 +68,7 @@ import product.fabric.flex_vast_shadow {
   FlexLoadingSighting, flex_cards_from_roster, flex_loading_sightings_after,
   FlexRosterCardsBuilt, FlexRosterCardsNeedsExhaustedRoster, FlexRosterCardUnread,
   FlexLoadingSightings, FlexSightingsKnown, FlexSightingsUnread, flex_loading_age,
+  FlexSightingsBasis, FlexSightingsBaselineComplete, FlexSightingsBaselineIncomplete, FlexSightingsCarried,
   FlexRosterCardStatusUnread, FlexRosterCardRateUnconverted, FlexRosterCardVramUnread,
   flex_search_offers_inhabitance_frontier, flex_trial_fleet_rate_cap_authority,
   flex_record_pass,
@@ -1170,7 +1171,7 @@ test fn a_running_row_we_label_becomes_a_running_card_we_hold() -> Bool {
             && !c.loading
             && c.held
             && !c.outbid
-            && match c.loading_age { Present { value: a } => second_count(s: a) == 0  Absent => false }
+            && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false }
             && byte_size_count(b: c.vram) == 98304 * 1048576
         )
     _ => false
@@ -1223,8 +1224,8 @@ test fn a_loading_card_ages_from_the_sighting_an_earlier_pass_left_and_from_noth
   ) {
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
       length(cards) == 2
-        && any(cards, c => c.loading && match c.loading_age { Present { value: a } => second_count(s: a) == 7200  Absent => false })
-        && any(cards, c => c.loading && match c.loading_age { Present { value: a } => second_count(s: a) == 0  Absent => false })
+        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 7200  Absent => false })
+        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false })
     _ => false
   }
 }
@@ -1245,13 +1246,14 @@ test fn a_row_that_cannot_be_priced_or_sized_is_refused_rather_than_priced_at_ze
   }
 }
 
-// THE AGE IS UNREAD WHEN THE CARRY IS UNREAD, NOT ZERO. The carry file is durable state in a build
+// THE BOUND IS UNREAD WHEN THE CARRY IS UNREAD, NOT ZERO. The carry file is durable state in a build
 // directory: a cargo clean, a fresh worktree or a different runner loses it. In that state every loading
-// card's age is Absent, so the loading cut cannot fire at all -- the pass keeps a card it cannot age rather
-// than restarting its clock and pretending it just started. Inside a KNOWN sighting set, an id with no
-// sighting IS age 0, and that is a fact: the previous pass read a complete roster in which this id was not
-// loading.
-test fn an_unread_carry_leaves_every_loading_age_unread_and_a_known_one_leaves_it_zero_or_aged() -> Bool {
+// card's bound is Absent, so the loading cut cannot fire at all -- the pass keeps a card it cannot age
+// rather than restarting its clock and pretending it just started. Inside a KNOWN set -- which only a
+// COMPLETE baseline is -- an id with no sighting is a bound of AT LEAST 0: loading began at some instant
+// after the previous pass finished its complete walk, which is a lower bound and not an age, and an
+// underestimate only ever delays the cut.
+test fn an_unread_carry_leaves_every_loading_bound_unread_and_a_known_one_leaves_at_least_zero() -> Bool {
   let now = 1761638400000
   match flex_loading_age(
     sightings: FlexSightingsUnread { reason: "the carry file could not be read" as NonEmptyStr },
@@ -1299,7 +1301,7 @@ test fn a_partial_roster_builds_no_cards() -> Bool {
 test fn the_sightings_a_pass_leaves_keep_the_first_time_a_card_was_seen_loading() -> Bool {
   let now = 1761638400000
   let roster = exhausted([our_loading_row(id: 10), our_loading_row(id: 11), our_running_row(id: 12)])
-  let left = flex_loading_sightings_after(
+  let carried = flex_loading_sightings_after(
     ours: flex_owner_label_gunbc_flex,
     roster: roster,
     prior: [
@@ -1308,14 +1310,30 @@ test fn the_sightings_a_pass_leaves_keep_the_first_time_a_card_was_seen_loading(
     ],
     now: now,
   )
-  length(left) == 2
-    && any(left, s => s.instance_id == 10 && s.first_seen_ms == now - 3600000)
-    && any(left, s => s.instance_id == 11 && s.first_seen_ms == now)
+  match carried.basis {
+    FlexSightingsBaselineComplete =>
+      length(carried.sightings) == 2
+        && any(carried.sightings, x => x.instance_id == 10 && x.first_seen_ms == now - 3600000)
+        && any(carried.sightings, x => x.instance_id == 11 && x.first_seen_ms == now)
+    FlexSightingsBaselineIncomplete => false
+  }
 }
 
-// A pass that could not finish its walk writes NO carry: an age built on a partial walk is an age built
-// on a roster that under-counts what we hold.
-test fn a_partial_roster_leaves_no_sightings_to_carry() -> Bool {
+// A pass that could not finish its walk marks the baseline INCOMPLETE and keeps the prior sightings
+// unchanged: an age built on a partial walk is an age built on a roster that under-counts what we hold,
+// and the next pass reads that basis as UNREAD rather than as a bound of zero.
+test fn a_partial_roster_marks_the_baseline_incomplete_and_keeps_the_prior_sightings() -> Bool {
+  let now = 1761638400000
   let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [our_loading_row(id: 13)], total: 2 }
-  length(flex_loading_sightings_after(ours: flex_owner_label_gunbc_flex, roster: partial, prior: [], now: 1761638400000)) == 0
+  let carried = flex_loading_sightings_after(
+    ours: flex_owner_label_gunbc_flex,
+    roster: partial,
+    prior: [FlexLoadingSighting { instance_id: 10, first_seen_ms: now - 3600000 }],
+    now: now,
+  )
+  match carried.basis {
+    FlexSightingsBaselineIncomplete =>
+      length(carried.sightings) == 1 && length(filter(carried.sightings, x => x.instance_id == 10)) == 1
+    FlexSightingsBaselineComplete => false
+  }
 }

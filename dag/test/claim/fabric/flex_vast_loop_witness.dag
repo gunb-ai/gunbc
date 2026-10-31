@@ -311,7 +311,7 @@ test fn a_loading_card_the_pass_cannot_age_is_left_alone() -> Bool {
   ) {
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
       length(cards) == 1
-        && length(filter(cards, c => match c.loading_age { Absent => true  Present { value: _ } => false })) == 1
+        && length(filter(cards, c => match c.loading_age_at_least { Absent => true  Present { value: _ } => false })) == 1
         && match flex_plan_pass(input: FlexPassInput {
           policy: w_input(mode: Plan, gates: w_open, roster: roster, charges: w_charges(units: 1), intent: none).policy,
           gates: w_open, now: now, cooldown: none,
@@ -340,7 +340,7 @@ fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
     owner: flex_owner_label_gunbc_flex, id: "1001" as NonEmptyStr,
     vram: byte_size(count: 51539607552),
     rate: usd_hour(amount: money_amount_micro(count: 2000000)),
-    held: true, running: false, loading: true, outbid: outbid, loading_age: Present { value: second(count: loading_age) },
+    held: true, running: false, loading: true, outbid: outbid, loading_age_at_least: Present { value: second(count: loading_age) },
   }
   FlexPassInput {
     policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
@@ -354,7 +354,7 @@ fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
 fn w_card(owner: String, id: NonEmptyStr) -> FlexOwnedCard {  FlexOwnedCard {
     owner: owner as FlexOwnerLabel, id: id, vram: byte_size(count: 51539607552),
     rate: usd_hour(amount: money_amount_micro(count: 2000000)),
-    held: true, running: true, loading: false, outbid: false, loading_age: Present { value: second(count: 0) },
+    held: true, running: true, loading: false, outbid: false, loading_age_at_least: Present { value: second(count: 0) },
   }
 }
 

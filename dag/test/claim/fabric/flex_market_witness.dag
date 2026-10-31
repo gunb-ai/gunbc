@@ -259,7 +259,7 @@ fn owned(
     running: running,
     loading: loading,
     outbid: outbid,
-    loading_age: Present { value: second(count: age) },
+    loading_age_at_least: Present { value: second(count: age) },
   }
 }
 
@@ -290,7 +290,7 @@ test fn an_unread_loading_age_is_never_dead_by_the_loading_cut() -> Bool {
     running: false,
     loading: true,
     outbid: false,
-    loading_age: none,
+    loading_age_at_least: none,
   }
   let outbid_unaged = FlexOwnedCard {
     owner: flex_owner_label_gunbc_flex,
@@ -301,7 +301,7 @@ test fn an_unread_loading_age_is_never_dead_by_the_loading_cut() -> Bool {
     running: false,
     loading: true,
     outbid: true,
-    loading_age: none,
+    loading_age_at_least: none,
   }
   !flex_card_dead(card: unaged)
     && flex_card_dead(card: outbid_unaged)
@@ -318,7 +318,7 @@ test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
     running: false,
     loading: false,
     outbid: true,
-    loading_age: Present { value: second(count: 0) },
+    loading_age_at_least: Present { value: second(count: 0) },
   }
   let actions = flex_cleanup_dead(
     cards: [

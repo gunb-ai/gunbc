@@ -32,6 +32,7 @@ import product.fabric.flex_vast_shadow {
   FlexRosterCards, FlexRosterCardsBuilt, FlexRosterCardsUnobserved, FlexRosterCardsUnreadable,
   FlexRosterCardsNeedsExhaustedRoster, FlexCreateStanding, FlexCreateAnswered, FlexCreateLost,
   FlexCreateRefused, flex_reconcile_acquisition, FlexLoadingSightings, FlexSightingsKnown, FlexSightingsUnread,
+  FlexSightingsBasis, FlexSightingsBaselineComplete, FlexSightingsBaselineIncomplete, FlexSightingsCarried,
 }
 import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable }
 import product.fabric.flex_vast_loop {
@@ -286,10 +287,12 @@ fn flex_charges_wire(s: FlexChargesStanding) -> String {
 fn flex_member_line(m: FlexMemberWalls) -> String {
   join([
     flex_screened_line(s: m.screened),
-    // The bracket, not a parenthesis, is load-bearing: a string literal whose FIRST character is ')'
-    // followed by text does not parse (the parser reports "expected RParen, found RBrace" at the closing
-    // brace of the enclosing match, several lines below the string, and never names the literal). Filed as
-    // a gunbc.recurring_failure_mode row; until that is fixed, receipt strings in this lane close with ']'.
+    // The bracket here is cosmetic. What this site actually taught is the OTHER thing: an argument list
+    // left open reports 'expected RParen, found RBrace' at the CLOSING BRACE OF THE ENCLOSING BLOCK --
+    // several lines below the call, naming no call and no argument -- and the reported line MOVES as you
+    // edit above it. That is how a single missing ')' here cost an hour of hand-bisection and produced a
+    // wrong theory about the lexer before the real cause was found. Filed as
+    // gunbc.recurring_failure_mode.an_unclosed_call_reports_at_the_enclosing_blocks_closing_brace.
     if m.admission_built {
       concat(" walls=[", concat(join(map(m.walls, w => flex_create_refusal_wire(r: w)), ", "), "]"))
     } else {
@@ -317,6 +320,8 @@ fn flex_member_line(m: FlexMemberWalls) -> String {
 data flex_pass_carry_path: String = "target/flex-pass-carry.txt"
 
 data flex_carry_header: String = "flex-carry v1"
+data flex_carry_prefix_sightings_complete: String = "sightings complete"
+data flex_carry_prefix_sightings_incomplete: String = "sightings incomplete"
 data flex_carry_prefix_cooldown: String = "cooldown "
 data flex_carry_prefix_loading: String = "loading "
 data flex_carry_prefix_answered: String = "create answered "
@@ -325,12 +330,17 @@ data flex_carry_prefix_refused: String = "create refused "
 
 type FlexCarry {
   cooldown: FlexRentCooldown?
+  // The sightings AND the basis they were taken on. "complete" means the walk that wrote them read the
+  // WHOLE account, which is the only premise under which a loading id absent from them may be read as "at
+  // least 0 seconds old". Anything less, and every absent id reads UNREAD.
+  basis: FlexSightingsBasis
   sightings: List<FlexLoadingSighting>
   standing: FlexCreateStanding?
 }
 
 type FlexCarryLine
-  = FlexCarryCooldown { asked_at: EpochMs, until: EpochMs }
+  = FlexCarrySightingsBasis { basis: FlexSightingsBasis }
+  | FlexCarryCooldown { asked_at: EpochMs, until: EpochMs }
   | FlexCarryLoading { instance_id: Int, first_seen_ms: EpochMs }
   | FlexCarryAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
   | FlexCarryLost { machine_id: Int, ask_id: Int }
@@ -367,7 +377,11 @@ fn flex_carry_nums(line: String) -> FlexCarryNums {
 
 fn flex_carry_line(line: String) -> FlexCarryLine {
   let nums = flex_carry_nums(line: line)
-  if starts_with(s: line, prefix: flex_carry_prefix_cooldown) {
+  if starts_with(s: line, prefix: flex_carry_prefix_sightings_complete) {
+    FlexCarrySightingsBasis { basis: FlexSightingsBaselineComplete }
+  } else if starts_with(s: line, prefix: flex_carry_prefix_sightings_incomplete) {
+    FlexCarrySightingsBasis { basis: FlexSightingsBaselineIncomplete }
+  } else if starts_with(s: line, prefix: flex_carry_prefix_cooldown) {
     match nums.first {
       Absent => FlexCarryLineUnread { text: line }
       Present { value: asked } =>
@@ -449,9 +463,17 @@ fn flex_carry_cooldown(reading: FlexCarryReading) -> FlexRentCooldown? {
   }
 }
 
+// The basis is CHECKED, not assumed: a carry whose sightings were written from a partial or unreadable
+// walk yields UNREAD bounds, because the premise that makes "absent means at least 0" true -- the previous
+// pass read the whole account -- does not hold for it.
 fn flex_carry_sightings(reading: FlexCarryReading) -> FlexLoadingSightings {
   match reading {
-    FlexCarryLoaded { carry: c } => FlexSightingsKnown { sightings: c.sightings }
+    FlexCarryLoaded { carry: c } =>
+      match c.basis {
+        FlexSightingsBaselineComplete => FlexSightingsKnown { sightings: c.sightings }
+        FlexSightingsBaselineIncomplete =>
+          FlexSightingsUnread { reason: "the sightings baseline was not taken from a complete roster walk" as NonEmptyStr }
+      }
     FlexCarryUnread { reason: r } => FlexSightingsUnread { reason: r }
   }
 }
@@ -460,6 +482,13 @@ fn flex_carry_standing(reading: FlexCarryReading) -> FlexCreateStanding? {
   match reading {
     FlexCarryLoaded { carry: c } => c.standing
     FlexCarryUnread { reason: _ } => none
+  }
+}
+
+fn flex_carry_basis_word(carry: FlexCarry) -> String {
+  match carry.basis {
+    FlexSightingsBaselineComplete => " basis=complete"
+    FlexSightingsBaselineIncomplete => " basis=INCOMPLETE (absent loading ids read UNREAD, not 0)"
   }
 }
 
@@ -475,10 +504,11 @@ fn flex_carry_wire(reading: FlexCarryReading) -> String {
     FlexCarryLoaded { carry: c } =>
       concat(
         concat("carry=read sightings=", int_to_decimal_string(value: length(c.sightings))),
-        flex_carry_standing_word(carry: c),
+        concat(flex_carry_basis_word(carry: c), flex_carry_standing_word(carry: c)),
       )
-    // " ) --" with the leading space, not "): ": a string literal beginning with ')' does not parse (see
-    // the note on flex_member_line above, and the gunbc.recurring_failure_mode row filed for it).
+    // The leading space in " ) --" is cosmetic, not a workaround: the parse failure this site went through
+    // was an argument list left open, which the parser locates at the enclosing block's closing brace and
+    // not at the call (see the note on flex_member_line and the recurring_failure_mode row filed for it).
     FlexCarryUnread { reason: r } =>
       concat("carry=UNREAD (", concat(r, " ) -- loading ages unread, the loading cut cannot fire, no cooldown claimed"))
   }
@@ -492,39 +522,51 @@ fn flex_carry_read(path: String) -> FlexCarryReading {
     FlexCarryLoaded {
       carry: fold(
         split(s: read.content, delimiter: "\n"),
-        init: FlexCarry { cooldown: none, sightings: [], standing: none },
+        init: FlexCarry {
+          cooldown: none,
+          basis: FlexSightingsBaselineIncomplete,
+          sightings: [],
+          standing: none,
+        },
         f: (acc, line) =>
-        match flex_carry_line(line: line) {
-          FlexCarryCooldown { asked_at: asked_at, until: until } =>
-            FlexCarry {
-              cooldown: Present { value: FlexRentCooldown { asked_at: asked_at, until: until } },
-              sightings: acc.sightings,
-              standing: acc.standing,
-            }
-          FlexCarryLoading { instance_id: instance_id, first_seen_ms: first_seen_ms } =>
-            FlexCarry {
-              cooldown: acc.cooldown,
-              sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_seen_ms: first_seen_ms }]),
-              standing: acc.standing,
-            }
-          FlexCarryAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } =>
-            FlexCarry {
-              cooldown: acc.cooldown,
-              sightings: acc.sightings,
-              standing: Present { value: FlexCreateAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } },
-            }
-          FlexCarryLost { machine_id: machine_id, ask_id: ask_id } =>
-            FlexCarry {
-              cooldown: acc.cooldown,
-              sightings: acc.sightings,
-              standing: Present { value: FlexCreateLost { ask_id: ask_id, machine_id: machine_id } },
-            }
-          FlexCarryRefused { machine_id: machine_id, ask_id: ask_id } =>
-            FlexCarry {
-              cooldown: acc.cooldown,
-              sightings: acc.sightings,
-              standing: Present { value: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
-            }
+          match flex_carry_line(line: line) {
+            FlexCarrySightingsBasis { basis: basis } =>
+              FlexCarry { cooldown: acc.cooldown, basis: basis, sightings: acc.sightings, standing: acc.standing }
+            FlexCarryCooldown { asked_at: asked_at, until: until } =>
+              FlexCarry {
+                cooldown: Present { value: FlexRentCooldown { asked_at: asked_at, until: until } },
+                basis: acc.basis,
+                sightings: acc.sightings,
+                standing: acc.standing,
+              }
+            FlexCarryLoading { instance_id: instance_id, first_seen_ms: first_seen_ms } =>
+              FlexCarry {
+                cooldown: acc.cooldown,
+                basis: acc.basis,
+                sightings: concat(acc.sightings, [FlexLoadingSighting { instance_id: instance_id, first_seen_ms: first_seen_ms }]),
+                standing: acc.standing,
+              }
+            FlexCarryAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } =>
+              FlexCarry {
+                cooldown: acc.cooldown,
+                basis: acc.basis,
+                sightings: acc.sightings,
+                standing: Present { value: FlexCreateAnswered { instance_id: instance_id, machine_id: machine_id, ask_id: ask_id } },
+              }
+            FlexCarryLost { machine_id: machine_id, ask_id: ask_id } =>
+              FlexCarry {
+                cooldown: acc.cooldown,
+                basis: acc.basis,
+                sightings: acc.sightings,
+                standing: Present { value: FlexCreateLost { ask_id: ask_id, machine_id: machine_id } },
+              }
+            FlexCarryRefused { machine_id: machine_id, ask_id: ask_id } =>
+              FlexCarry {
+                cooldown: acc.cooldown,
+                basis: acc.basis,
+                sightings: acc.sightings,
+                standing: Present { value: FlexCreateRefused { ask_id: ask_id, machine_id: machine_id } },
+              }
             FlexCarryLineUnread { text: _ } => acc
           },
       ),
@@ -533,6 +575,10 @@ fn flex_carry_read(path: String) -> FlexCarryReading {
 }
 
 fn flex_carry_render(carry: FlexCarry) -> String {
+  let basis_line = match carry.basis {
+    FlexSightingsBaselineComplete => [flex_carry_prefix_sightings_complete]
+    FlexSightingsBaselineIncomplete => [flex_carry_prefix_sightings_incomplete]
+  }
   let cooldown_lines = match carry.cooldown {
     Absent => []
     Present { value: c } =>
@@ -549,7 +595,10 @@ fn flex_carry_render(carry: FlexCarry) -> String {
     Present { value: FlexCreateRefused { ask_id: ask, machine_id: machine } } =>
       [concat(concat(flex_carry_prefix_refused, int_to_decimal_string(value: machine)), concat(" ", int_to_decimal_string(value: ask)))]
   }
-  join(concat([flex_carry_header], concat(cooldown_lines, concat(loading_lines, standing_lines))), "\n")
+  join(
+    concat([flex_carry_header], concat(basis_line, concat(cooldown_lines, concat(loading_lines, standing_lines)))),
+    "\n",
+  )
 }
 
 // WHAT THE NEXT PASS READS. A create this pass PERFORMED supersedes the standing carried in: there is
@@ -562,13 +611,14 @@ fn flex_carry_render(carry: FlexCarry) -> String {
 fn flex_carry_after(
   prior: FlexCarryReading,
   roster: FlexInstancesStanding,
-  sightings: List<FlexLoadingSighting>,
+  carried: FlexSightingsCarried,
   outcome: FlexPassOutcome,
   now: EpochMs,
 ) -> FlexCarry {
   let known = match prior {
     FlexCarryLoaded { carry: c } => c
-    FlexCarryUnread { reason: _ } => FlexCarry { cooldown: none, sightings: [], standing: none }
+    FlexCarryUnread { reason: _ } =>
+      FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: [], standing: none }
   }
   let standing = match outcome {
     FlexPassCreated { standing: s, cooldown: _, allocation: _ } => Present { value: s }
@@ -590,7 +640,7 @@ fn flex_carry_after(
         Present { value: c } => if (c.until > now) { Present { value: c } } else { none }
       }
   }
-  FlexCarry { cooldown: cooldown, sightings: sightings, standing: standing }
+  FlexCarry { cooldown: cooldown, basis: carried.basis, sightings: carried.sightings, standing: standing }
 }
 
 fn flex_cards_list(c: FlexRosterCards) -> List<FlexOwnedCard> {
@@ -684,7 +734,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
       let carry_out = flex_carry_after(
         prior: carry,
         roster: instances,
-        sightings: flex_loading_sightings_after(
+        carried: flex_loading_sightings_after(
           ours: flex_owner_label_gunbc_flex,
           roster: instances,
           prior: prior_sightings,
