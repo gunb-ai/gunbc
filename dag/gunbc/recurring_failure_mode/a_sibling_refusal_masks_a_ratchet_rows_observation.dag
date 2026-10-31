@@ -24,7 +24,6 @@ data a_sibling_refusal_masks_a_ratchet_rows_observation: RecurringFailureMode = 
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "established_resource_binding", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.emit_stage_blocking_population_census", decl_name: "census_run_invocation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "established_resource_binding", field: WholeDeclaration }
   ],
 }
