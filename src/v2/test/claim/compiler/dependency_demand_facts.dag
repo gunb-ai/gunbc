@@ -1,0 +1,35 @@
+module v2.test.claim.compiler.dependency_demand_facts
+
+import v2.compiler.dependency_demand_facts { demand_facts_unbound_locus_from_diagnostics, demand_facts_unbound_site_text }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Conj, Node, TypeNode, node_with_occurrence_id }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// NO PATH WAS DERIVED, AND THAT IS ABSENT, not an empty name (review 80092). A conj with no
+// children is a composite mention; shaped-reference lookup answers Absent, so the renderer must
+// print unbound_kind=conj rather than unbound_ref=.
+fn ddf_kind_only_node() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+test fn a_shaped_unbound_without_a_path_renders_kind_RED() -> Bool {
+  demand_facts_unbound_site_text(u: demand_facts_unbound_locus_from_diagnostics(d: diagnostics_singleton(d: Diagnostic {
+    reason: ^resolve_reason_unbound_symbol,
+    at: node_locus(node: ddf_kind_only_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }))) == "unbound_kind=conj"
+}

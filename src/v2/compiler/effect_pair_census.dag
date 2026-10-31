@@ -14,10 +14,9 @@ import v2.compiler.value_use_dependency {
   NotDerivedReason, NotDerivedStanding, RecordAbsent, ValuedBinderNotLocated, ValuedBinderSiteUnkeyed,
   ValuedUseNotLocated, ValueUseDependencies, ValueUseNotDerived, ValueUseRelation
 }
-import v2.compiler.primitive_execution_semantics { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, effect_demand_operation_classifications }
-import std.primitive_projection { primitive_projection_roster }
+import v2.std.operation_declaration { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, operation_declaration_for_path, operation_declaration_row_count_for, operation_declaration_ambiguous_row_count }
 import v2.compiler.activation_dependency { ActivationNotDerivedReason, BranchNotConditionThenElse, MatchScrutineeAbsent, MatchArmMalformed }
-import v2.compiler.dependency_demand_census { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
+import v2.compiler.dependency_demand_facts { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
   FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources,
@@ -596,10 +595,11 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
 // exactly when some call chain from it reaches one, an opaque or undeclared operation, a function
 // value or a callee outside the closure. No second call graph.
 // An operation reaches when D13 does not declare it RequiresNone, OR when it is RequiresNone but its
-// PrimitiveExecutionSemantics (v2.compiler.effect_demand) is ObservesHost, ActuatesHost or Unknown. An
-// operation with no semantics row is Unknown and reaches: it is also COUNTED (`unclassified`), because
-// treating it as pure would be the under-count D16 forbids and treating it as reaching silently would
-// hide how much of the population is unclassified.
+// declared PrimitiveExecutionSemantics (v2.std.operation_declaration, keyed by the operation's
+// DECLARATION PATH -- the same key D13 joins requirements by) is ObservesHost, ActuatesHost or
+// Unknown. An operation with no declaration row is Unknown and reaches: it is also COUNTED
+// (`unclassified`), because treating it as pure would be the under-count D16 forbids and treating it
+// as reaching silently would hide how much of the population is unclassified.
 type EffectReachTable {
   reasons: Map<QualifiedName, ReachReason>
   known: Map<QualifiedName, Bool>
@@ -607,51 +607,14 @@ type EffectReachTable {
   ambiguous_rows: Int
 }
 
-// The semantics join: operation declaration -> primitive slug (std.primitive_projection roster) ->
-// semantics (effect_demand classifications). Both maps are built once per table, never per operation.
-type OperationSemanticsIndex {
-  slug_of_declaration: Map<String, String>
-  semantics_of_slug: Map<String, PrimitiveExecutionSemantics>
-  ambiguous: Map<String, Bool>
-  ambiguous_rows: Int
-}
-
-// Both keys are DECLARED rows compared by exact identity: the roster row's declaration path
-// (module_path.decl_name) and the classification's PrimitiveIdentity slug. A key declared by more than
-// one row is AMBIGUOUS: it is promoted to nothing (the operation stays Unknown) and is counted.
-fn operation_semantics_index() -> OperationSemanticsIndex {
-  let by_declaration = fold_list(xs: primitive_projection_roster(), empty: OperationSemanticsIndex { slug_of_declaration: empty_map(), semantics_of_slug: empty_map(), ambiguous: empty_map(), ambiguous_rows: 0 }, cons: fn(ix, row) {
-    let key = concat(row.declaration.module_path as String, ".", row.declaration.decl_name as String)
-    match map_lookup(m: ix.slug_of_declaration, key: key) {
-      Present { value: _ } => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: ix.semantics_of_slug, ambiguous: map_insert(m: ix.ambiguous, key: key, value: true), ambiguous_rows: ix.ambiguous_rows + 1 }
-      Absent => OperationSemanticsIndex { slug_of_declaration: map_insert(m: ix.slug_of_declaration, key: key, value: row.primitive.slug as String), semantics_of_slug: ix.semantics_of_slug, ambiguous: ix.ambiguous, ambiguous_rows: ix.ambiguous_rows }
-    }
-  })
-  fold_list(xs: effect_demand_operation_classifications, empty: by_declaration, cons: fn(ix, c) {
-    let key = c.operation.slug as String
-    match map_lookup(m: ix.semantics_of_slug, key: key) {
-      Present { value: _ } => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: ix.semantics_of_slug, ambiguous: map_insert(m: ix.ambiguous, key: key, value: true), ambiguous_rows: ix.ambiguous_rows + 1 }
-      Absent => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: map_insert(m: ix.semantics_of_slug, key: key, value: c.semantics), ambiguous: ix.ambiguous, ambiguous_rows: ix.ambiguous_rows }
-    }
-  })
-}
-
-fn operation_semantics(index: OperationSemanticsIndex, path: QualifiedName) -> Optional<PrimitiveExecutionSemantics> {
-  let key = qualified_name_to_dotted_string(qn: path)
-  match map_lookup(m: index.ambiguous, key: key) {
-    Present { value: _ } => Absent
-    Absent =>
-      match map_lookup(m: index.slug_of_declaration, key: key) {
-        Absent => Absent
-        Present { value: slug } =>
-          match map_lookup(m: index.ambiguous, key: slug) {
-            Present { value: _ } => Absent
-            Absent => map_lookup(m: index.semantics_of_slug, key: slug)
-          }
-      }
-  }
-}
-
+// THE DECLARATION JOIN, by declaration path (M2V two-keyings, closed). The deleted
+// OperationSemanticsIndex keyed a Map by the primitive-identity SLUG and looked operations up by
+// their stringified path: two keyings of one concept, and on a real module walk the slug key never
+// matched a module-qualified path -- the index matched NOTHING the corpus produced. Now the reach
+// reads the operation's v2.std.operation_declaration row at the operation's own QualifiedName
+// (declaration_ref_of_qualified_name converts once, identically for census and reach). A key
+// declared by more than one row is AMBIGUOUS -- promoted to nothing (the operation stays Unknown),
+// counted, never silently picked.
 fn reach_reason_of_semantics(s: PrimitiveExecutionSemantics) -> Optional<ReachReason> {
   match s {
     Pure => Absent
@@ -662,10 +625,22 @@ fn reach_reason_of_semantics(s: PrimitiveExecutionSemantics) -> Optional<ReachRe
   }
 }
 
-fn reach_operation_reason(index: OperationSemanticsIndex, op: OperationFact) -> Optional<ReachReason> {
+fn reach_operation_semantics(op: OperationFact) -> Optional<PrimitiveExecutionSemantics> {
+  match operation_declaration_for_path(path: op.path) {
+    Absent => Absent
+    Present { value: row } =>
+      if operation_declaration_row_count_for(declaration: row.declaration) > 1 {
+        Absent
+      } else {
+        Present { value: row.semantics }
+      }
+  }
+}
+
+fn reach_operation_reason(op: OperationFact) -> Optional<ReachReason> {
   match op.requirement {
     RequiresNone =>
-      match operation_semantics(index: index, path: op.path) {
+      match reach_operation_semantics(op: op) {
         Present { value: s } => reach_reason_of_semantics(s: s)
         Absent => Present { value: ReachesExecutionSemanticsUnknown }
       }
@@ -675,9 +650,9 @@ fn reach_operation_reason(index: OperationSemanticsIndex, op: OperationFact) -> 
   }
 }
 
-fn reach_operation_table(index: OperationSemanticsIndex, operations: List<OperationFact>) -> List<OperationFact> {
+fn reach_operation_table(operations: List<OperationFact>) -> List<OperationFact> {
   fold_list(xs: operations, empty: Empty, cons: fn(acc, op) {
-    match reach_operation_reason(index: index, op: op) {
+    match reach_operation_reason(op: op) {
       Absent => list_snoc_item(xs: acc, item: op)
       Present { value: _ } =>
         match op.requirement {
@@ -699,8 +674,7 @@ fn reach_reason_of_cause(cause: UndecidedCause) -> ReachReason {
 }
 
 fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationFact>) -> EffectReachTable {
-  let index = operation_semantics_index()
-  let rows = dependency_demand_of(functions: functions, operations: reach_operation_table(index: index, operations: operations))
+  let rows = dependency_demand_of(functions: functions, operations: reach_operation_table(operations: operations))
   let from_functions = fold_list(xs: rows, empty: empty_map(), cons: fn(m, r) {
     match r.demand {
       DemandDerived { resources: _ } => m
@@ -708,7 +682,7 @@ fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationF
     }
   })
   let with_ops = fold_list(xs: operations, empty: from_functions, cons: fn(m, op) {
-    match reach_operation_reason(index: index, op: op) {
+    match reach_operation_reason(op: op) {
       Present { value: r } => map_insert(m: m, key: op.path, value: r)
       Absent => m
     }
@@ -716,12 +690,12 @@ fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationF
   let known_fns = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: true) })
   let known = fold_list(xs: operations, empty: known_fns, cons: fn(m, op) { map_insert(m: m, key: op.path, value: true) })
   let unclassified = fold_list(xs: operations, empty: Empty, cons: fn(acc, op) {
-    match operation_semantics(index: index, path: op.path) {
+    match reach_operation_semantics(op: op) {
       Present { value: _ } => acc
       Absent => list_snoc_item(xs: acc, item: op.path)
     }
   })
-  EffectReachTable { reasons: with_ops, known: known, unclassified: unclassified, ambiguous_rows: index.ambiguous_rows }
+  EffectReachTable { reasons: with_ops, known: known, unclassified: unclassified, ambiguous_rows: operation_declaration_ambiguous_row_count() }
 }
 
 // A callee with no fact row at all is outside the closure and reaches by definition.

@@ -1,0 +1,582 @@
+module v2.std.operation_declaration
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.types { Bool, List, Map }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, empty_map, fold_list, length, list_snoc_item, map_insert, map_lookup }
+import std.effects { EffectShape, KeySource, ReadEffect, ExecuteEffect }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
+import std.primitive_projection { primitive_projection_roster, HostRealizedSeam, ModeledProjection, DivergentProjection }
+import v2.compiler.dependency_demand { RequirementClass, RequiresNone, RequiresResources, RequiresOpaque, RequiresUndeclared }
+
+// ONE DECLARATION PER HOST-BOUNDARY OPERATION, keyed by its declaration path.
+//
+// THE MODELING OBLIGATION THIS DISCHARGES (demand_engine_program M2V, "Population and effects";
+// D16 part (1), RULED 2026-10-25). An operation's execution semantics and its access shape used to be
+// stated in v2.compiler.primitive_execution_semantics keyed by a PRIMITIVE-IDENTITY SLUG, while D13
+// (v2.compiler.dependency_demand) joins operations by DECLARATION PATH -- two keyings of one concept,
+// operation identity. The B0 census showed what that costs: its index is keyed by the slug string
+// while the corpus's OperationFact paths are module-qualified, so the index never matched a walked
+// corpus operation. The remedy named there is "that declaration, not a wider default": every fact
+// about an operation is declared AT ITS DECLARATION, keyed by the same path D13 already keys by.
+//
+// THE HOME. std.primitive_projection is the seed-consumed authority for "this declaration is
+// host-realized" (v1 imports it), and its import closure stops at std.decl_ref/std.types -- a shape
+// fact needs std.effects (whose closure reaches extdeps) and a requirement fact reaches
+// v2.compiler.dependency_demand's vocabulary, so NEITHER can live under that ceiling; the seed-safety
+// boundary refuses them. This module is the next home up that both the census and the claims can
+// read: it joins std.primitive_projection on the SAME key (std.decl_ref DeclarationRef) and adds the
+// facts that half cannot carry. PrimitiveExecutionSemantics and EffectOperationDisposition are
+// relocated HERE VERBATIM from v2.compiler.primitive_execution_semantics, which this change deletes:
+// this is that roster relocated and re-keyed, not a second one (DESIGN 2).
+//
+// WHO OWES A ROW (D13 section 2.4: a transparent body's facts are DERIVED from its closure; a second
+// statement of a derivable fact is the fork DESIGN 2 forbids). Rows are owed only at OPAQUE
+// operation boundaries: the declarations std.primitive_projection projects as HostRealizedSeam (and
+// the capability members the demand census synthesizes by path under std.resources). A row on a
+// TRANSPARENT fn carries no row: the claim every_declaration_row_is_a_projected_host_seam
+// (test.claim.compiler.operation_declaration_seam) holds every row's declaration to a
+// HostRealizedSeam projection, so a row on a transparent fn reddens it. That is a claim over the
+// live roster, not a refusal at construction; a data row cannot refuse, so the rung is
+// mechanically preventable, not structurally guaranteed.
+//
+// ABSENCE NEVER DEFAULTS. An operation projected host-realized with no row here answers
+// OperationDeclarationAbsent in every consumer, and that arm BLOCKS -- exactly as
+// ExecutionSemanticsUnknown blocked from the deleted roster (a row missing from the roster blocked
+// then; a row missing here blocks now). No consumer may read an absent row as Pure, as RequiresNone,
+// or as effect-free.
+
+// WHAT THE OPERATION DOES, kept strictly apart from what XL-1 intends to do about it. A boolean
+// effectful flag would have been the obvious carrier and is the wrong one: it conflates an operation
+// that must observe external state with one that merely happens to reach the host through its CURRENT
+// realization, and those two have opposite remedies -- the first earns a transport, the second earns
+// having its input bound or its consumer deleted. Pure and ReadsBoundInput are the arms that need no
+// host boundary at all; ObservesHost and ActuatesHost are separated because reading external state and
+// changing it carry different grants and different receipts, and a single arm would let an actuation
+// ride an observation's admission. ExecutionSemanticsUnknown is not a default -- it is the arm that
+// BLOCKS, and an operation sitting in it may not be implemented as a transport.
+// (RELOCATED VERBATIM from v2.compiler.primitive_execution_semantics, M2V two-keyings.)
+type PrimitiveExecutionSemantics
+  = Pure
+  | ReadsBoundInput { input_identity: Symbol }
+  | ObservesHost { operation_identity: Symbol }
+  | ActuatesHost { operation_identity: Symbol }
+  | ExecutionSemanticsUnknown
+
+// WHAT XL-1 WILL DO, which is a different subject from what the operation does and therefore a
+// different carrier. An operation whose semantics is ObservesHost today may still be dispositioned
+// BoundCompilerInput, because the semantics describes the realization that exists and the disposition
+// describes the one that will. Collapsing them would make the classification unable to say the most
+// useful thing it has to say: that six of the seven operations reach the host because of how they are
+// realized and not because their answer requires external state. OperationDispositionUnclassified
+// BLOCKS -- an operation in this arm is not implemented as a transport, which is the point of
+// classifying before building.
+// (RELOCATED VERBATIM from v2.compiler.primitive_execution_semantics, M2V two-keyings. The semantics/
+// disposition separation is load-bearing: the disposition, with its blocking_question, is where the
+// six corpus-fact operations carry the still-open question -- the semantics stays the TRUTH that
+// their bodies observe the host, so closing the question never requires un-declaring a known fact.)
+type EffectOperationDisposition
+  = BoundCompilerInput { input_identity: Symbol }
+  | NativeDerivedComputation { derived_from: Symbol }
+  | NativeHostObservation { operation_identity: Symbol }
+  | NativeHostActuation { operation_identity: Symbol }
+  | OperationRetired { consumer: DeclarationRef }
+  | OperationDispositionUnclassified { blocking_question: Symbol }
+
+// THE ACCESS SHAPE, keyed at the declaration beside the requirement and the semantics (D16 part (1)).
+// The shape AUTHORITY is std.effects.EffectShape and this only ever NAMES a shape from it -- a
+// declaration states which EffectShape arm the operation's body has; it never mints a shape (DESIGN
+// 3, no fork of the shape vocabulary; std.effect_grant keeps coarsening verbs from std.effects
+// alone). NoResourceAccess is the declaration of an operation that touches NO resource (a Pure
+// kernel seam, requirement RequiresNone): EffectShape has no arm for "no effect", and filling one
+// with ReadEffect would grant a Read verb to a pure operator, so the absence is stated here, on the
+// declaration, and is not an EffectShape. AccessShapeNotYetDeclared is NOT a default: like ExecutionSemanticsUnknown it BLOCKS, and
+// its reason says which obligation owes the arm. Two are named in the plan and neither is minted
+// here: the manifest/metadata read has no EffectShape arm (D16 part (3)'s ManifestPathRead /
+// DeclaredManifestRoots obligation -- the five corpus-scan fact operations sit in this arm for
+// exactly that reason), and ExecuteEffect's footprint is opaque (its resource_identifiers() is
+// Empty, so an actuation's containment is part (3)'s obligation too).
+type DeclaredAccessShape
+  = DeclaredShape { shape: EffectShape<KeySource> }
+  | NoResourceAccess
+  | AccessShapeNotYetDeclared { reason: Symbol }
+
+// THE DECLARATION ROW: one per host-boundary operation, keyed by its std.decl_ref DeclarationRef --
+// the same key std.primitive_projection's HostRealizedSeam rows use, so the two halves join without
+// a translation (and without a third identity). The requirement keeps D13's OWN vocabulary
+// (v2.compiler.dependency_demand.RequirementClass): this is the extension of the existing
+// requirement-declaration site D13 already reads, not a parallel table; RequiresUndeclared blocks
+// there and the whole absent row blocks here.
+type OperationDeclaration {
+  declaration: DeclarationRef
+  requirement: RequirementClass
+  semantics: PrimitiveExecutionSemantics
+  disposition: EffectOperationDisposition
+  shape: DeclaredAccessShape
+}
+
+fn operation_declaration_row(
+  module_path: String,
+  decl_name: String,
+  requirement: RequirementClass,
+  semantics: PrimitiveExecutionSemantics,
+  disposition: EffectOperationDisposition,
+  shape: DeclaredAccessShape
+) -> OperationDeclaration {
+  OperationDeclaration {
+    declaration: decl_ref(module_path: module_path, decl_name: decl_name),
+    requirement: requirement,
+    semantics: semantics,
+    disposition: disposition,
+    shape: shape
+  }
+}
+
+// THE ROSTER: the population std.primitive_projection projects as HostRealizedSeam -- the seam fns
+// this change adds for the six v1-builtin-only fact/read operations, plus the seam declarations that
+// already existed. The seven M2V operations are the six plus filesystem_read. Semantics and
+// disposition are copied from the deleted slug roster's rows verbatim (their identities moved, their
+// content did not); requirements name the resource the operation's own body reads.
+//
+// THE SIX CORPUS-FACT OPERATIONS answer RequiresResources{std.resources.Filesystem}: their bodies
+// walk the corpus tree from the roots they are handed. Their disposition is
+// OperationDispositionUnclassified with the blocking_question the census recorded verbatim -- the
+// open question "does lens execution bind a corpus snapshot" stays WHERE IT LIVES (the disposition),
+// and effect_demand's blocked/implementable rosters keep deriving from the disposition, never from
+// the semantics. Their shape is AccessShapeNotYetDeclared for the manifest-read reason above.
+//
+// THE PURE ARITHMETIC/TEXT SEAMS (map/list/string/algebra primitives under std.*) whose bodies are
+// self-calls to kernel operators answer RequiresNone: they take their inputs as arguments and bind
+// nothing outside them. That is a DERIVED-shaped fact stated at the boundary because the boundary is
+// opaque (there is no body to walk); it is not a default, and a row for one that later grows a real
+// host read must move, because the census reads THESE rows and not a fallback.
+data operation_declaration_roster: List<OperationDeclaration> = [
+  // -- THE SEVEN (M2V population: the read authority and the six corpus-fact seams) --
+  operation_declaration_row(
+    module_path: "v2.std.live_read",
+    decl_name: "filesystem_read",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "read_named_file") },
+    disposition: NativeHostObservation { operation_identity: symbol_intern_lexeme(lexeme: "read_named_file") },
+    shape: DeclaredShape { shape: ReadEffect }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.decl_index",
+    decl_name: "decl_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.lens.module_graph",
+    decl_name: "module_declaration_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.layer_import_scan",
+    decl_name: "layer_import_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.lens.module_graph",
+    decl_name: "import_resolution_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.lens.module_graph",
+    decl_name: "reference_resolution_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.lens.module_graph",
+    decl_name: "dependency_resolution_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  // -- THE EXISTING HOST-REALIZED SEAMS (std.primitive_projection HostRealizedSeam rows, same key) --
+  operation_declaration_row(
+    module_path: "std.error_primitives",
+    decl_name: "pure_dag_seam_unreachable",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "seam_sentinel_construction") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.host_text",
+    decl_name: "chars",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_decomposition") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.bytes",
+    decl_name: "bytes_octets",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "bytes_decomposition") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.bytes",
+    decl_name: "octets_bytes",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "octets_assembly") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.bytes",
+    decl_name: "utf8_encode_bytes",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "utf8_encoding") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.machine_word",
+    decl_name: "machine_word_native_operate",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "machine_word_algebra") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "list_push",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "list_assembly") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "string_contains",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "string_predication") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.content_hash",
+    decl_name: "sha256_hex_of_text",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_digest") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.operation_argv",
+    decl_name: "shell_materialize_operation_argv",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "read_extdeps_operation_declaration") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_argv_materialization_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "extdeps_module_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "gunbc.compile_diagnostic_census",
+    decl_name: "compile_dag_diagnostic_census",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "compile_source_against_corpus_index") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_diagnostic_census_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "corpus_index_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "empty_map_primitive_delegate",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_construction") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "map_insert_primitive_delegate",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_extension") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "map_lookup_primitive_delegate",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "map_selection") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
+    decl_name: "list_at_primitive_delegate",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "indexed_selection") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.decl_index",
+    decl_name: "decl_facts_at",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.decl_index",
+    decl_name: "export_signature_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.data_index",
+    decl_name: "data_init_decl_facts_live",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.concept_index",
+    decl_name: "concept_decl_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.concept_index",
+    decl_name: "concept_decl_facts_live",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.decl_index",
+    decl_name: "data_decl_type_facts",
+    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
+    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
+    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
+    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.node",
+    decl_name: "symbol_lexeme",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "symbol_decomposition") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "v2.std.node",
+    decl_name: "symbol_intern_lexeme",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "symbol_construction") },
+    shape: NoResourceAccess
+  ),
+    ]
+
+// THE INDEX, built once per module: rows grouped under their declaration path. Every lookup below is
+// a keyed read of this one value, so a reader asked about N operations does N keyed reads, never N
+// scans of the roster. The seed is a variable feeding a fold accumulator (the form the emitter
+// types), never `empty_map()` as a direct `map_lookup` argument.
+data operation_declaration_index: Map<QualifiedName, List<OperationDeclaration>> = fold_list(
+  xs: operation_declaration_roster,
+  empty: empty_map(),
+  cons: fn(m, row) {
+    map_insert(
+      m: m,
+      key: operation_declaration_path(declaration: row.declaration),
+      value: list_snoc_item(
+        xs: operation_declaration_rows_at(index: m, declaration: row.declaration),
+        item: row
+      )
+    )
+  }
+)
+
+// THE HOST-SEAM POPULATION, indexed once by declaration path: the paths std.primitive_projection
+// projects at HostRealizedSeam. D13's seam test is a keyed read of this value, so asking N walked
+// declarations costs N keyed reads, never N folds of the projection roster (DESIGN.md section 6).
+data host_seam_projection_index: Map<QualifiedName, DeclarationRef> = fold_list(
+  xs: primitive_projection_roster(),
+  empty: empty_map(),
+  cons: fn(m, row) {
+    match row.fidelity {
+      HostRealizedSeam => map_insert(m: m, key: operation_declaration_path(declaration: row.declaration), value: row.declaration)
+      ModeledProjection => m
+      DivergentProjection { divergence: _ } => m
+    }
+  }
+)
+
+fn operation_declaration_projected_host_seam_at(declaration: DeclarationRef) -> Optional<DeclarationRef> {
+  map_lookup(m: host_seam_projection_index, key: operation_declaration_path(declaration: declaration))
+}
+
+fn operation_declaration_rows_at(
+  index: Map<QualifiedName, List<OperationDeclaration>>,
+  declaration: DeclarationRef
+) -> List<OperationDeclaration> {
+  match map_lookup(m: index, key: operation_declaration_path(declaration: declaration)) {
+    Present { value: rows } => rows
+    Absent => Empty
+  }
+}
+
+fn operation_declaration_for(
+  declaration: DeclarationRef
+) -> Optional<OperationDeclaration> {
+  match operation_declaration_rows_at(index: operation_declaration_index, declaration: declaration) {
+    Cons { head: row, tail: _ } => Present { value: row }
+    Empty => Absent
+  }
+}
+
+// A key declared by more than one row is AMBIGUOUS: the B0 census promoted ambiguous keys to nothing
+// (the operation stayed Unknown and was counted) rather than pick; the same discipline holds here,
+// and the count is what the census reports. Ambiguity here can only be an authoring error -- keys
+// are declared paths, and one declaration is one operation.
+fn operation_declaration_row_count_for(
+  declaration: DeclarationRef
+) -> Int {
+  length(xs: operation_declaration_rows_at(index: operation_declaration_index, declaration: declaration))
+}
+
+fn operation_declaration_ambiguous_row_count() -> Int {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: 0,
+    cons: fn(n, row) {
+      if operation_declaration_row_count_for(declaration: row.declaration) > 1 { n + 1 } else { n }
+    }
+  )
+}
+
+// THE KEY THE WHOLE CHANGE TURNS ON: the declaration path as the join key D13 and the B0 census
+// already use. Kept here so a consumer never re-derives a QualifiedName from a string and the slug
+// join cannot come back.
+fn operation_declaration_path(
+  declaration: DeclarationRef
+) -> QualifiedName {
+  qualified_name_from_string_segments(segments: [declaration.module_path, declaration.decl_name])
+}
+
+// THE PATH-JOINED LOOKUP the census and the B0 reach use: a walked operation's QualifiedName becomes
+// the DeclarationRef (owning module segments -> module_path, last segment -> decl_name) and the row
+// is read by that key. This is the single join between the walked corpus and the declarations; the
+// deleted slug index did the same job by stringified path compared to a primitive slug, and matched
+// nothing a module walk produced.
+// An empty path names no declaration: the answer is Absent, never an invented key that could
+// collide with a row.
+fn declaration_ref_of_qualified_name(
+  path: QualifiedName
+) -> Optional<DeclarationRef> {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: decl_sym } =>
+      Present {
+        value: decl_ref(
+          module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
+          decl_name: symbol_lexeme(sym: decl_sym)
+        )
+      }
+    Absent => Absent
+  }
+}
+
+fn operation_declaration_for_path(
+  path: QualifiedName
+) -> Optional<OperationDeclaration> {
+  match declaration_ref_of_qualified_name(path: path) {
+    Present { value: declaration } => operation_declaration_for(declaration: declaration)
+    Absent => Absent
+  }
+}
+
+// THE M2V POPULATION, as a view over the roster: every declaration whose semantics OBSERVES or
+// ACTUATES the host. Membership is the row's own semantics, not a list of names: declaring a new
+// host-touching seam puts it in the population, and a Pure row cannot be in it. The full roster
+// (every projected seam) is what D13 opacity reads.
+fn operation_declaration_m2v_population() -> List<OperationDeclaration> {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.semantics {
+        ObservesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
+        ActuatesHost { operation_identity: _ } => list_snoc_item(xs: acc, item: row)
+        Pure => acc
+        ReadsBoundInput { input_identity: _ } => acc
+        ExecutionSemanticsUnknown => acc
+      }
+    }
+  )
+}
+
+// THE M2V CLASSIFICATION VIEW, the shape the M2V census reads. Same three facts the deleted roster
+// carried -- operation identity, semantics, disposition -- with operation identity moved from a
+// PRIMITIVE-IDENTITY SLUG to the DECLARATION. The census's derivations read row.disposition exactly
+// as before, so the blocked/implementable split is unchanged; what changed is that the key is the path
+// D13 joins by, making the two keyings of one concept into one. This is the deleted roster's data as a
+// view over operation_declaration_roster, not a second roster (DESIGN 2, delete-first).
+type EffectOperationClassification {
+  declaration: DeclarationRef
+  semantics: PrimitiveExecutionSemantics
+  disposition: EffectOperationDisposition
+}
+
+fn effect_demand_operation_classification(
+  module_path: String,
+  decl_name: String,
+  semantics: PrimitiveExecutionSemantics,
+  disposition: EffectOperationDisposition
+) -> EffectOperationClassification {
+  EffectOperationClassification {
+    declaration: decl_ref(module_path: module_path, decl_name: decl_name),
+    semantics: semantics,
+    disposition: disposition
+  }
+}
+
+fn effect_demand_operation_classifications() -> List<EffectOperationClassification> {
+  fold_list(
+    xs: operation_declaration_m2v_population(),
+    empty: [],
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: EffectOperationClassification {
+          declaration: row.declaration,
+          semantics: row.semantics,
+          disposition: row.disposition
+        }
+      )
+    }
+  )
+}
+
+// THE BIJECTION WITH std.primitive_projection is claimed, in both directions at identity grain, by
+// test/claim/compiler/operation_declaration_seam (every_declaration_row_is_a_projected_host_seam_holds
+// and every_host_realized_seam_carries_exactly_one_declaration_row_holds); no validator lives here.

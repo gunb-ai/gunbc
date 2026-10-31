@@ -8,7 +8,7 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_
 import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.compiler.effect_demand { AgreedDemand, ProjectedPrimitive, SeamEvidenceDerivedNotExercised, SeamRealizedByBridge, SeamRefusalObservedInClosure, SeamStanding, SeamUnrealizedNoProjectedPrimitive, SeamUnrealizedNoRegistryBinding, SeamUnrostered, effect_demand_seam_roster, effect_demand_seam_runtime_registry, SeamRuntimeBinding, seam_realization, seam_realization_for, SeamRuntimeBindingAmbiguous, seam_unrealized_without_executed_evidence, seam_unrostered_rows, seam_no_registry_binding_rows, DemandAgreement, DemandProducer, EffectRealizationKey, NativeExecute, NativeV2, RootSetEmpty, RootsResolvedNonEmpty, RootResolutionStanding, effect_demand_execute_origin_population, effect_demand_local_gate, EffectDemandEvidenceAdmitted, EffectDemandEvidenceRefused, effect_demand_realization_key, effect_demand_compiler_entry_module, effect_demand_compiler_origin_population, DemandReceipt, EmittedRealizationCensus, ModeledCallReachability, effect_demand_agreement, effect_demand_producers_agree, effect_demand_receipt_member_count, effect_demand_receipts_agree_on_membership, effect_demand_unmodeled_host_boundary, CompilerCore, DemandPopulation, PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured, effect_demand_blocked_operation_count, effect_demand_blocked_operations, effect_demand_implementable_operation_count, effect_demand_implementable_operations, effect_demand_population_rows, EffectDemandKey, EffectDemandRow, NativeCompileProduct, NativeV2, RequiredTest, RetiredWithConsumer, Unrealized, effect_demand_acceptance_holds, effect_demand_census, effect_demand_census_total_holds, effect_demand_key, effect_demand_unrealized_rows }
-import v2.compiler.primitive_execution_semantics { BoundCompilerInput, EffectOperationClassification, NativeHostObservation, ObservesHost, OperationDispositionUnclassified, effect_demand_operation_classification }
+import v2.std.operation_declaration { BoundCompilerInput, EffectOperationClassification, NativeHostObservation, ObservesHost, OperationDispositionUnclassified, effect_demand_operation_classification }
 import std.algebra { Empty, length }
 
 // THE ORACLE IS A CONTROLLED FIXTURE, not a measurement copied from the current tree (DESIGN section
@@ -291,19 +291,22 @@ test fn effect_demand_witness_lower_bound_admits_no_promotion() -> Bool {
 // disposition and semantics were one field this pair would be unwritable, which is the argument for
 // keeping them apart stated as an execution rather than as a comment.
 data effect_demand_probe_classified: EffectOperationClassification = effect_demand_operation_classification(
-  operation: "probe_operation",
+  module_path: "v2.probe",
+  decl_name: "probe_operation",
   semantics: ObservesHost { operation_identity: ^probe_host_read },
   disposition: NativeHostObservation { operation_identity: ^probe_host_read }
 )
 
 data effect_demand_probe_unclassified: EffectOperationClassification = effect_demand_operation_classification(
-  operation: "probe_operation",
+  module_path: "v2.probe",
+  decl_name: "probe_operation",
   semantics: ObservesHost { operation_identity: ^probe_host_read },
   disposition: OperationDispositionUnclassified { blocking_question: ^probe_open_question }
 )
 
 data effect_demand_probe_bound_input: EffectOperationClassification = effect_demand_operation_classification(
-  operation: "probe_operation",
+  module_path: "v2.probe",
+  decl_name: "probe_operation",
   semantics: ObservesHost { operation_identity: ^probe_host_read },
   disposition: BoundCompilerInput { input_identity: ^probe_bound_snapshot }
 )
@@ -332,13 +335,17 @@ test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -
     && (length(xs: effect_demand_implementable_operations(classifications: effect_demand_probe_classifications)) == 1)
 }
 
-// The one probe that reads the LIVE classification, asserting the split this slice measured: of the
-// seven operations the occupancy census found, exactly one is implementable and six are blocked on the
-// corpus-snapshot question. It is deliberately an identity-free count over a roster this module owns,
-// and it moves the day an operation is reclassified -- which is the intended signal, not a fragility.
-test fn effect_demand_witness_live_classification_splits_one_and_six() -> Bool {
+// The one probe that reads the LIVE classification: of the operations whose declared semantics
+// observes the host, exactly one is implementable and fourteen are blocked. The population was a
+// hand-listed seven (the read authority and six corpus-fact seams), so the expectation was one and
+// six. Membership now follows the declaration row's own semantics, which brings in the host-observing
+// seams that list never named -- the other corpus-fact seams (decl_facts_at, concept_decl_facts, ...)
+// and the two that read the corpus at run time (compile_dag_diagnostic_census,
+// shell_materialize_operation_argv). The old six rested on that omission, not on a fact about the
+// seams. It is an identity-free count over the roster and moves the day an operation is reclassified.
+test fn effect_demand_witness_live_classification_splits_one_and_fourteen() -> Bool {
   (effect_demand_implementable_operation_count() == 1)
-    && (effect_demand_blocked_operation_count() == 6)
+    && (effect_demand_blocked_operation_count() == 14)
 }
 
 // THE PRODUCER JOIN'S DISCRIMINATING TRIPLE. One world, three readings. The agreed pair must produce

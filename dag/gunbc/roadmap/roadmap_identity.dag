@@ -77,6 +77,19 @@ fn roadmap_tombstoned_identities() -> List<RoadmapIdentityRecord> {
       former_slug: "compiler-accepted-obligation-closure" as RoadmapNodeId,
       superseded_by: Present { value: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH" as RoadmapNodeIdentity },
     },
+    // THE ntfy PUBLISHER-TOKEN LANE, retired 2026-10-30 with the server it was about (the operator's
+    // GO, work item adhoc-7b7b9aef). This one has NO successor, and that is the difference between
+    // it and the nine above: each of those was split or recut into a node that carries the same
+    // obligation, while this node's subject -- the ntfy publisher token and the custody row that
+    // delivered it -- was REMOVED outright by gunbc.fleet.approval_ntfy_retirement rather than
+    // consolidated into the custody pattern the node described. The obligation did not move; it
+    // stopped existing. Naming a successor would invent a node to point at, and leaving the row out
+    // would let the identity be re-minted as if it were new.
+    TombstonedIdentity {
+      identity: "rn_6WDPNLJ4RQKZXC2VTH7BM9SYFG" as RoadmapNodeIdentity,
+      former_slug: "ntfy-publisher-token-onto-gcp-custody" as RoadmapNodeId,
+      superseded_by: none,
+    },
   ]
 }
 

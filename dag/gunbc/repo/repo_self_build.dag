@@ -385,6 +385,7 @@ fn repo_self_build_env_stmts() -> List<Node> {
       command(argv: ["export", "GUNBC_SEED_TARGET"]),
       command(argv: ["export", "GUNBC_SEED_CARGO_HOME"]),
       command(argv: ["export", "GUNBC_SEED_SYSROOT"]),
+      tracked_tree_dirty_assign_stmt(),
       tracked_tree_identity_stmt(),
     ],
     []
@@ -445,15 +446,16 @@ fn non_empty_test(name: String) -> Node {
 }
 
 // NAME=$SOURCE when SOURCE is set, NAME=<fallback> when it is not -- the grammar's spelling of a
-// parameter default.
+// parameter default. The two arms are STATEMENTS, so they go through the constructor that builds
+// the statement-list spine: passing a bare statement as a body is the shape the fold refuses.
 fn default_from(name: String, source: String, fallback: List<Node>) -> Node {
-  bash_build_if_else(
+  bash_build_if_else_from_stmts(
     cond: non_empty_test(name: source),
-    then_body: bash_build_assign(name: name, value: bash_build_word_var(name: source)),
-    else_body: bash_build_assign(
+    then_stmts: [bash_build_assign(name: name, value: bash_build_word_var(name: source))],
+    else_stmts: [bash_build_assign(
       name: name,
       value: bash_build_word_concat_from_nodes(parts: fallback)
-    )
+    )]
   )
 }
 
@@ -469,6 +471,27 @@ fn default_from(name: String, source: String, fallback: List<Node>) -> Node {
 // which names the build honestly as "this commit plus an edit that is in no commit". Refusing
 // instead would invent a new CI behavior for a case the suffix already describes, and a seed-build
 // step is not where an uncommitted edit gets adjudicated.
+// THE GUARD'S FIRST HALF: read the worktree's TRACKED state into a variable. It is its own
+// statement because the fold admits a statement list only as the spine it builds -- a nested list
+// node sitting in a statement slot has no production, and the whole emission is refused with
+// grammar_relation_production_not_found -- and because the value has to exist before the test that
+// reads it.
+fn tracked_tree_dirty_assign_stmt() -> Node {
+  assign_cmd(
+    name: "GUNBC_SEED_WORKTREE_DIRTY",
+    argv: ["git", "status", "--porcelain=1", "--untracked-files=no"]
+  )
+}
+
+// THE GUARD ITSELF, and the pinning it guards. THE TRACKED STATE IS READ ONCE, INTO A VARIABLE, AND
+// THE GUARD TESTS THE QUOTED VARIABLE. Substituting inside the bracket is the shape that breaks: an
+// unquoted command substitution undergoes word splitting AND pathname expansion, so a worktree with
+// two or more tracked edits makes the test error with "[: too many arguments" instead of evaluating
+// false. The guard still ends up taking the intended branch -- the error exits 2, the `&&` chain is
+// false, the identity is left unpinned -- but through a diagnostic that misdescribes what happened,
+// and a changed path containing `*`, `?` or a space would glob or split before the test ever saw it.
+// The grammar quotes a WORD VARIABLE (`"$NAME"`), so testing a variable is the shape that renders
+// correctly today; the substitution word kind's emitted spelling is bare `$(...)`.
 fn tracked_tree_identity_stmt() -> Node {
   bash_build_if(
     cond: bash_build_and_then(
@@ -478,7 +501,7 @@ fn tracked_tree_identity_stmt() -> Node {
       ]),
       right: bash_build_test_bracket(words: [
         bash_build_word_lit(text: "-z"),
-        bash_build_word_cmdsubst(body: command(argv: ["git", "status", "--porcelain=1", "--untracked-files=no"])),
+        bash_build_word_var(name: "GUNBC_SEED_WORKTREE_DIRTY"),
       ])
     ),
     body: bash_build_stmt_list_from_nodes(stmts: [

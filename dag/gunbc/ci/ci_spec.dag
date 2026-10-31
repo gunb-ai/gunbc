@@ -62,9 +62,9 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
-  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else,
+  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_else_from_stmts,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_with_redir, bash_build_with_redir_to_file, bash_build_negation,
-  bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
+  bash_build_subshell_from_stmts, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
 import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
@@ -1383,6 +1383,23 @@ data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunSt
   function: "microvm_controller_install_wet",
 }
 
+// THE ntfy RETIREMENT ON srv1 is invoked on the host-pinned runner, never through apply_dispatch,
+// like the dark install and the controller install beside it: its elevated legs run as the fleet
+// administrator over the SSH edge under the job's inherited root-mutation approval, and the fold
+// refuses to act at all when that approval is not admitted (gunbc.fleet.approval_ntfy_retirement
+// approval_ntfy_retire_wet). It mints no live-deploy transaction receipt: a retirement replaces no
+// running service, so there is no prior state for a transaction to bind against. What proves it is
+// the readback the fold writes itself -- every roster member read absent, once each.
+data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/approval_ntfy_retirement.dag",
+  function: "approval_ntfy_retire_wet",
+}
+
+data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "microvm_controller_install_admission_wet",
+}
+
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
   function: "rlm_launch_deployment_receipt_wet",
@@ -1575,6 +1592,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
     gunbc_ci_microvm_controller_install_target,
+    gunbc_ci_approval_ntfy_retire_target,
+    gunbc_ci_microvm_controller_install_admission_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1658,6 +1677,35 @@ fn gunbc_ci_microvm_controller_install_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_microvm_controller_install_target.entry,
     function: gunbc_ci_microvm_controller_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
+// install's annotation gives: the fold writes its own readback receipt to the step summary, and a
+// run-step receipt would be the installer asserting it retired.
+fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_approval_ntfy_retire_target.entry,
+    function: gunbc_ci_approval_ntfy_retire_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// THE INSTALL'S TENANCY ADMISSION READS THE ORG'S RUNNER GROUPS (gunbc.live_deploy.apply
+// microvm_controller_install_admission_wet), so its step mints the roster reader's installation token,
+// down-scoped at the mint to organization_self_hosted_runners read: the job reads the groups and can
+// change none of them. The mint reads the app key with the job's workload-identity token, which the
+// step's environment carries. The step holds no fleet key: it runs before the step that loads one.
+fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_install_admission_target.entry,
+    function: gunbc_ci_microvm_controller_install_admission_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -3630,7 +3678,7 @@ fn bappend(line: Node, path: Node) -> Node {
 
 fn bset(name: String, value: String) -> Node { bash_build_assign(name: name, value: bl(text: value)) }
 fn bif_else(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
-  bash_build_if_else(cond: cond, then_body: bash_build_stmt_list_from_nodes(stmts: then_stmts), else_body: bash_build_stmt_list_from_nodes(stmts: else_stmts))
+  bash_build_if_else_from_stmts(cond: cond, then_stmts: then_stmts, else_stmts: else_stmts)
 }
 fn bhold(script_var: String, label: String, record: Node) -> Node {
   bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
