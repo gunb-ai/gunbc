@@ -1,11 +1,8 @@
 module gunbc.serving.rented_ninfer_source
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
 import extdeps.ninfer.ninfer_serve { NinferSourceRevision, ninfer_qwen35_planner_revision }
 import extdeps.gpu.types { GpuComputeCapability }
@@ -161,29 +158,3 @@ fn rented_artifact_url(source: RentedArtifactSource) -> String {
   r2_object_url(locator: source.locator)
 }
 
-// DECLARED FRONTIER (DESIGN 3c): the executing consumers are not in this change. The verified placement leg
-// (S3a, over gunbc.host.verified_archive_install) reads the sources and the weights agreement, and the
-// rented_allocation_roster slice (S4) reads the engine release through RentedNinferEngine. Until those
-// declarations appear the witness test.claim.serving.rented_ninfer_source_witness is the only caller.
-data rented_ninfer_source_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_engine_source"),
-    reason: "no placement leg fetches the engine tarball from this source yet",
-    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the engine source to fetch the tarball; the row deletes when that leg's declaration consumes it"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_source"),
-    reason: "no placement leg fetches the weights container from this source yet",
-    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the weights source to fetch the container; the row deletes when that leg's declaration consumes it"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_pin_agreement"),
-    reason: "no placement leg reads back a placed weights digest to judge against the model row's pin yet",
-    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the placed weights' digest and size against the model row; the row deletes when that leg's declaration consumes it"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_artifact_url"),
-    reason: "no fetch leg renders the object address for a signed request yet",
-    dissolution: unbound_dissolution(description: "feature:rented-verified-placement-leg — S3a's placement leg over gunbc.host.verified_archive_install reads the object address to sign a request; the row deletes when that leg's declaration consumes it"),
-  ),
-]

@@ -3,9 +3,6 @@ module gunbc.provisioning.network_install_receipt
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
 import extdeps.ietf.http_semantics { http_status_is_success }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
 import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkDisk, LsblkPart, LsblkLvm, LsblkCrypt, LsblkLoop, LsblkRom, LsblkOtherType }
 import extdeps.toolchain.types { Architecture }
@@ -420,28 +417,3 @@ fn network_install_receipt(subject: NetworkInstallSubject, readings: NetworkInst
   }
 }
 
-// The production route this module provides and nothing yet executes, counted in
-// gunbc.census_closure_frontier.
-data network_install_receipt_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "network_install_receipt"),
-    reason: "no run reads the edge's dnsmasq and HTTP logs or the installed host for a real network install, so the fold is evaluated only by its witness over supplied readings",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the phase-3 network install run of gunbc.plans.network_install_architecture_rows reads the edge and the installed host on a real attempt and mints this receipt from those readings; a witness over supplied readings does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstalledRootRead"),
-    reason: "the receipt names the disk under the installed root (its lsblk chain and serial) but does not compare it with the disk the attempt selected, because the install binding's public seed uses the direct layout and carries no target-disk selection; on a multi-disk unit the installer's own choice is recorded, not checked",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the install binding carries the seed's target-disk selection (the generalized seed of #15246 binds one per attempt) and the receipt refuses a root whose disk is not that selection's"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstallerRecordRead"),
-    reason: "the installer's record ties the install to the attempt by the client MAC and the start-to-reading window only: the seed carries no identity minted per attempt (its instance-id is derived from the MAC), so the record cannot name the attempt that wrote it and two attempts on one unit inside one window are not told apart",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the install binding's seed carries an identity derived from the attempt that the installer leaves on the installed root, and the receipt refuses an installed host whose record names another attempt"
-    )
-  ),
-]

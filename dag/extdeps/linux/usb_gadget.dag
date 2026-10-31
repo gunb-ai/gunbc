@@ -2,8 +2,6 @@ module extdeps.linux.usb_gadget
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.algebra { list_append }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_into_directory_command, rm_force_command, rmdir_command }
@@ -125,59 +123,6 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
 type ConfigfsOpCommand
   = ConfigfsOpRunsArgv { command: ArgvCommand }
   | ConfigfsOpWritesAttr { path: NonEmptyStr, value: String }
-
-// DECLARED FRONTIER (DESIGN §3c) for the attribute-write arm, stated beside the declaration it
-// fronts (review 38602, finding 3): the arm is a typed write, not an argv command -- no argv
-// program carries a file write without a shell redirect, which is the exact text this migration
-// deletes -- so its realization is owed to a named later consumer rather than minted here.
-// The debt is a typed DissolutionCondition on the dissolution census roster, not a bare
-// commentary String (DESIGN §4c; review 72478 finding 1). UNBOUND, deliberately: the condition
-// is the ARRIVAL of a family the host-effect lane has not yet named anywhere in its plan, so a
-// bound forward ref would cite a symbol nobody declared -- the fabricated-citation class
-// std.dissolution refuses. The census reads this row as unmet until the paying change binds the
-// realization and deletes it.
-data configfs_attr_write_realization_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "ConfigfsOpWritesAttr"),
-    reason: "ConfigfsOpWritesAttr|realization:native-write-owed-to-host-effect-lane",
-    dissolution: unbound_dissolution(
-      description: "ConfigfsOpWritesAttr realizes as a native write(2) over the target's transport, and this change mints no realization for it. THE NAMED LATER CONSUMER: the host-effect lane's configfs effect family, the lane that owns host_effect_apply binding typed execution over machine transports. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, `gunbc.plans.host_effect_orchestration`). THE TRIGGER, stated beside the declaration: when that node's configfs effect family lands it consumes this typed write as its requirement and this frontier dissolves; until then the typed write stays the instruction, the witness gates it as a description, and nothing degrades it to a shell redirect.",
-    ),
-  ),
-]
-
-// DECLARED FRONTIER (DESIGN §3c), stated beside the operation it fronts (review on a28daf4844,
-// finding 3: the debt MOVED HERE from extdeps.tools.gnu_coreutils, whose plain rmdir correctly
-// models the coreutils operation -- there, an absent directory is an error, and "absent means
-// already converged" is configfs TEARDOWN policy, not a property of every rmdir invocation).
-// An already-removed configfs directory is a MODELED teardown outcome, not a suppressed error:
-// the old shell text carried `2>/dev/null || true` (absorbing-fallback, DESIGN §5), which this
-// migration deleted with the script, and the plain rmdir stays the instruction -- its nonzero on
-// an absent directory is not swallowed here. BOUNDED POPULATION, complete: the FIVE
-// ConfigfsRmdir operations of the gunbcvm gadget teardown -- functions/mass_storage.0,
-// configs/c.1/strings/0x409, configs/c.1, strings/0x409, and the gadget root itself -- and no
-// other consumer of rmdir_command anywhere in the closure. PREVIOUS RUNG: tolerated by an
-// unmodeled shell fallback -- silent absorption, which is below the ladder, not a rung on it.
-// TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the
-// staging as a description. REASON: absorbing-fallback shell text is forbidden, and modeling
-// absence without a state observer would fabricate a readback the described command cannot
-// supply. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which
-// observes the target's state and records an absent directory as already-converged instead of
-// re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node
-// rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, `gunbc.plans.host_effect_orchestration`).
-// THE TRIGGER, stated beside the declaration: when that node's effect family binds typed
-// execution it takes over the absent-directory outcome and this frontier dissolves; no `|| true`
-// re-enters.
-data configfs_rmdir_absent_as_converged_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "ConfigfsRmdir"),
-    reason: "ConfigfsRmdir|teardown-absent-as-converged:unmodeled-owed-to-host-effect-lane",
-    dissolution: unbound_dissolution(
-      description: "An already-removed configfs directory is a MODELED teardown outcome, not a suppressed error: the old shell text carried `2>/dev/null || true` (absorbing-fallback shell, DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. BOUNDED POPULATION, complete: the five ConfigfsRmdir operations of the gunbcvm gadget teardown -- functions/mass_storage.0, configs/c.1/strings/0x409, configs/c.1, strings/0x409, and the gadget root -- and no other consumer of rmdir_command in the closure. PREVIOUS RUNG: tolerated by an unmodeled shell fallback, silently. TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the staging as a description. REASON: absorbing-fallback shell is forbidden, and modeling absence without a state observer would fabricate a readback the described command cannot supply. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, `gunbc.plans.host_effect_orchestration`). THE TRIGGER, stated beside the declaration: when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves; no `|| true` re-enters.",
-    ),
-  ),
-]
-
 
 // ---- PATH CONTAINMENT (review on a28daf4844, finding 1) ----
 

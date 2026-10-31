@@ -1,6 +1,6 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, Bool, Unit, List }
+import std.types { NonEmptyStr, Bool, Unit }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -8,9 +8,6 @@ import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import std.algebra { trim }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -116,14 +113,6 @@ type Sha256VerifyVerdict
 // digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a
 // caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken
 // mktemp as a corrupted download.
-
-data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
-    reason: "Sha256VerifyVerdict|transport:shell-only",
-    dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
-  ),
-]
 
 // sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
 // THE READING, and its absence is a refusal rather than an empty digest. A digest that could not

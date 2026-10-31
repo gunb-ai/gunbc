@@ -14,21 +14,4 @@ module gunbc.site_segment_anchor_frontier
 // gunbc.machine_intake.bmc_recovery_route_frontier: the ref is the contract for what must be added.
 //
 // NOT satisfied by: a witness calling the anchor, or a module importing it without a call site.
-import std.types { NonEmptyStr, List }
-import std.decl_ref { decl_ref }
-import std.dissolution { bound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
 
-fn site_segment_anchor_consumer_frontier_rows() -> List<FrontierRow> {
-  frontier_rows_for_decls(
-    module_path: "gunbc.site_segment_anchor",
-    decl_names: ["host_interface_segment_anchor" as NonEmptyStr],
-    reason: "no production caller: git grep shows host_interface_segment_anchor is called only by test.claim.machine_intake.host_interface_segment_anchor_witness. Its consumer is S3 of gunbc.plans.site_segment_anchor_bmc_reach, the lookup that must place a controller on a segment before it can be reached",
-    dissolution: bound_dissolution(
-      ref: decl_ref(
-        module_path: "gunbc.site_segment_lookup",
-        decl_name: "site_segment_controller_lookup",
-      ),
-    ),
-  )
-}

@@ -1,9 +1,6 @@
 module gunbc.instruments.github_app_acquire
 
 import std.types { NonEmptyStr, String, Secret, List }
-import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
@@ -883,26 +880,6 @@ fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: Acquisitio
       join(["NEXT: ", intervention_text(intervention: app_key_supply_intervention(identity: census_app_identity))], "")
   }
 }
-
-data census_app_installation_route_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "census_app_installations_receipt"),
-    reason: "the route exists and cannot execute green yet: the census App has not been registered, so it has no installations, and the App JWT this endpoint requires is RS256-signed with the census App's private key, which is not custodied as a key file where this instrument runs -- the corpus signer (the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize) needs exactly that file. Measured live today it refuses twice and fabricates nothing -- the transport refuses with AuthDeclaredButUnwired when GITHUB_APP_JWT is absent, and GitHub answers 401 when it holds a value that is not a valid App JWT",
-    dissolution: unbound_dissolution(
-      description: "dissolves when this entry point returns ExitSuccess against a live GET /app/installations -- which needs BOTH the census App acquired through census_app_acquire_receipt AND a valid App JWT for it in GITHUB_APP_JWT -- signed either by an external step from the stored pem or by the corpus signer (the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize) once the census App's key is custodied as a file where this instrument runs. The ExitSuccess arm is REACHABLE WITHOUT EDITING THIS FUNCTION: a 200 whose records decode writes the report and returns it, so acquiring the App and exporting a valid JWT is sufficient and nothing else is required. That is stated because it was briefly false -- the successful path returned exit_failure to get its listing printed, which made this trigger dischargeable only by changing the code it describes (review 67504), and DESIGN 4b(3) rules a drop is retired by its trigger and by nothing else. A witness over supplied GitHubAppInstallationRecord values does not fire this; only a live green does"
-    )
-  )
-]
-
-data census_app_custody_handoff_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "persist_issued_credentials"),
-    reason: "the credentials are written to git-ignored files under .gunbc rather than to the SecretRef sites gunbc.github_app_acquisition declares, because gunbc.secret_provision_actuator reaches Secret Manager AddVersion through a WIF-authorized identity a local acquire run does not hold. The write EXECUTES and the key is durable before the readback runs; what is unfinished is the second hop, and the operator performs it by hand today",
-    dissolution: unbound_dissolution(
-      description: "dissolves when this function writes the issued pem, webhook secret and client secret through gunbc.secret_provision_actuator to census_app_private_key_custody, census_app_webhook_secret_custody and census_app_client_secret_custody, reading back the exact minted version and verifying payload identity, so no plaintext copy is written to the checkout at all. A run that writes the files and separately calls AddVersion does not fire this -- the row retires when the local hop is GONE, not when a second one is added beside it"
-    )
-  )
-]
 
 // THE EXECUTING RECEIPT FOR THE CUSTODY WRITE, and it exists because every other claim about
 // persist_issued_credentials would otherwise be a claim about values this repository authored. The
