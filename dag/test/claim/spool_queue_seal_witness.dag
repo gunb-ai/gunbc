@@ -10,7 +10,7 @@ import gunbc.spool_queue {
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
-  ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, CompleteRoleHasNoDirectory, SpoolOutcomeRefused, spool_role_dir, SpoolEntryFile, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
+  ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
@@ -146,7 +146,6 @@ test fn the_publication_spool_has_no_claim_and_refuses_one_typed() -> ProcessExi
 test fn the_unit_refusal_has_no_directory_so_completing_into_it_is_refused_typed() -> ProcessExit {
   match spool_complete_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }, outcome: SpoolOutcomeRefused { cause: "x" }) {
     CompleteRoleUndeclared { role: _ } => ExitSuccess
-    CompleteRoleHasNoDirectory { role: _ } => ExitSuccess
     _ => exit_failure(reason: "a refusal into a role with no directory was admitted")
   }
 }
@@ -159,10 +158,17 @@ test fn the_publication_refusal_retires_a_pending_request_in_place() -> ProcessE
 }
 
 test fn the_publication_entry_is_a_file_with_a_refused_directory_and_no_claimed_one() -> ProcessExit {
-  if (spool_declaration(kind: SpoolPublication).entry_kind == SpoolEntryFile) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleClaimed)) && spool_role_dir_present(kind: SpoolPublication, role: RoleRefused) {
+  if spool_entry_is_file(kind: SpoolPublication) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleClaimed)) && spool_role_dir_present(kind: SpoolPublication, role: RoleRefused) {
     ExitSuccess
   } else {
     exit_failure(reason: "the publication spool disk shape is misdeclared")
+  }
+}
+
+fn spool_entry_is_file(kind: SpoolKind) -> Bool {
+  match spool_declaration(kind: kind).entry_kind {
+    SpoolEntryDirectory => false
+    SpoolEntryFile { wire_suffix: _ } => true
   }
 }
 

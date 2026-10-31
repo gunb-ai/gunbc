@@ -61,10 +61,17 @@ type SpoolPrincipal
 // terminals: the roles an entry can finish in. A role in neither list is not declared for the spool.
 // entry_kind: what one entry IS on disk. The exit and unit spools are directory NAMES (payload-less, claimed by
 // shell.Move.NoReplaceDirectory); the publication spool holds FILES WITH BODIES (written create-new, retired by
-// Move.File). wire_suffix is the file extension an entry carries on disk ("" for a directory name).
+// Move.File). A file entry carries its extension on the variant; a directory name has none to carry.
 type SpoolEntryKind
   = SpoolEntryDirectory
-  | SpoolEntryFile
+  | SpoolEntryFile { wire_suffix: NonEmptyStr }
+
+// One declared stage of a spool: the role and the wire directory it stands in under the spool root. The stage list
+// IS the role set, so a role has a directory exactly when the spool declares it; there is no second answer.
+type SpoolStage {
+  role: SpoolRole
+  directory: NonEmptyStr
+}
 
 // HOW EXACTLY-ONE-CONSUMER IS ESTABLISHED for a spool. ExclusiveByRename: the claim rename elects one winner, so any
 // number of drainers is safe. ExclusiveByAgreement: no election exists; safety rests on a fact OUTSIDE the corpus
@@ -83,9 +90,8 @@ type SpoolExclusion
 type SpoolDeclaration {
   exclusion: SpoolExclusion
   entry_kind: SpoolEntryKind
-  wire_suffix: String
-  chain: List<SpoolRole>
-  terminals: List<SpoolRole>
+  chain: List<SpoolStage>
+  terminals: List<SpoolStage>
   enqueuer: SpoolPrincipal
   claimant: SpoolPrincipal
   key_separator: String
@@ -98,8 +104,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
     SpoolAttemptUnit => SpoolDeclaration {
       exclusion: ExclusiveByRename,
       entry_kind: SpoolEntryDirectory,
-      wire_suffix: "",
-      chain: [RolePending, RoleClaimed],
+      chain: [SpoolStage { role: RolePending, directory: "requests" }, SpoolStage { role: RoleClaimed, directory: "claimed" }],
       terminals: [],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
@@ -109,9 +114,8 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
     SpoolAttemptExit => SpoolDeclaration {
       exclusion: ExclusiveByRename,
       entry_kind: SpoolEntryDirectory,
-      wire_suffix: "",
-      chain: [RolePending, RoleHandedOff, RoleClaimed],
-      terminals: [RoleDone, RoleRefused],
+      chain: [SpoolStage { role: RolePending, directory: "inbox" }, SpoolStage { role: RoleHandedOff, directory: "queued" }, SpoolStage { role: RoleClaimed, directory: "running" }],
+      terminals: [SpoolStage { role: RoleDone, directory: "done" }, SpoolStage { role: RoleRefused, directory: "refused" }],
       enqueuer: PrincipalExternalHook,
       claimant: PrincipalDrainer,
       key_separator: "+",
@@ -119,10 +123,9 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
     }
     SpoolPublication => SpoolDeclaration {
       exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
-      entry_kind: SpoolEntryFile,
-      wire_suffix: ".json",
-      chain: [RolePending],
-      terminals: [RoleRefused],
+      entry_kind: SpoolEntryFile { wire_suffix: ".json" },
+      chain: [SpoolStage { role: RolePending, directory: "requests" }],
+      terminals: [SpoolStage { role: RoleRefused, directory: "requests-refused" }],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
@@ -132,36 +135,22 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
 }
 
 // THE DISK AS IT IS: the wire directory each role stands in, under the spool root (attempt-exit-spool,
-// attempt-unit-spool, publication-spool). Absent means the role has NO directory: the unit spool's refusal is an
-// answers/ file (out of scope, the answer-store frontier) and the publication helper works the request in place, so
-// it has no claimed directory. A move into a role with no directory is refused typed, never silent.
+// attempt-unit-spool, publication-spool), read off the declared stages. Absent means the spool does not declare the
+// role: the unit spool's refusal is an answers/ file (out of scope, the answer-store frontier) and the publication
+// helper works the request in place, so it has no claimed directory.
 fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
-  match kind {
-    SpoolAttemptExit =>
-      match role {
-        RolePending => Present { value: "inbox" }
-        RoleHandedOff => Present { value: "queued" }
-        RoleClaimed => Present { value: "running" }
-        RoleDone => Present { value: "done" }
-        RoleRefused => Present { value: "refused" }
-      }
-    SpoolAttemptUnit =>
-      match role {
-        RolePending => Present { value: "requests" }
-        RoleClaimed => Present { value: "claimed" }
-        RoleHandedOff => Absent
-        RoleDone => Absent
-        RoleRefused => Absent
-      }
-    SpoolPublication =>
-      match role {
-        RolePending => Present { value: "requests" }
-        RoleRefused => Present { value: "requests-refused" }
-        RoleClaimed => Absent
-        RoleHandedOff => Absent
-        RoleDone => Absent
+  match spool_stage_of(stages: spool_declaration(kind: kind).chain, role: role) {
+    Present { value: s } => Present { value: s.directory as String }
+    Absent =>
+      match spool_stage_of(stages: spool_declaration(kind: kind).terminals, role: role) {
+        Present { value: s } => Present { value: s.directory as String }
+        Absent => Absent
       }
   }
+}
+
+fn spool_stage_of(stages: List<SpoolStage>, role: SpoolRole) -> SpoolStage? {
+  stages |> filter(s => s.role == role) |> first()
 }
 
 // The assumption's trigger as a decision: an agreement-exclusive spool needs a claim stage the moment a second
@@ -176,7 +165,7 @@ fn spool_needs_claim_stage(kind: SpoolKind, drainers: Int) -> Bool {
 
 // A claim exists for a spool only if its chain has a step beyond the first role (exactly-one-consumer by rename).
 fn spool_claim_realized(kind: SpoolKind) -> Bool {
-  spool_declaration(kind: kind).chain |> any(r => spool_role_rank(role: r) > 0)
+  spool_declaration(kind: kind).chain |> any(s => spool_role_rank(role: s.role) > 0)
 }
 
 // THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer and the claimant
@@ -248,11 +237,18 @@ type SpoolEntryState
   | EntryObservationUnavailable { detail: String }
 
 fn spool_role_is_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
-  spool_declaration(kind: kind).chain |> any(r => r == role) || spool_role_is_terminal(kind: kind, role: role)
+  spool_role_dir_declared(kind: kind, role: role)
+}
+
+fn spool_role_dir_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
+  match spool_role_dir(kind: kind, role: role) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
-  spool_declaration(kind: kind).terminals |> any(r => r == role)
+  spool_declaration(kind: kind).terminals |> any(s => s.role == role)
 }
 
 // THE ONLY FORWARD STEP. The successor of a role is the first chain role of strictly greater rank; the LAST chain role (the claim
@@ -271,7 +267,7 @@ fn spool_role_rank(role: SpoolRole) -> Int {
 }
 
 fn spool_chain_successor(kind: SpoolKind, role: SpoolRole) -> SpoolRole? {
-  spool_declaration(kind: kind).chain |> filter(r => spool_role_rank(role: r) > spool_role_rank(role: role)) |> first()
+  spool_declaration(kind: kind).chain |> filter(s => spool_role_rank(role: s.role) > spool_role_rank(role: role)) |> map(s => s.role) |> first()
 }
 
 type SpoolEnqueueAssessment
@@ -336,7 +332,6 @@ type SpoolCompleteAssessment
   = CompleteEligible { into: SpoolRole }
   | CompleteNotClaimed { state: SpoolEntryState }
   | CompleteRoleUndeclared { role: SpoolRole }
-  | CompleteRoleHasNoDirectory { role: SpoolRole }
   | CompleteRefused { detail: String }
 
 fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
@@ -348,10 +343,7 @@ fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
 
 fn spool_complete_into(kind: SpoolKind, target: SpoolRole) -> SpoolCompleteAssessment {
   if spool_role_is_terminal(kind: kind, role: target) {
-    match spool_role_dir(kind: kind, role: target) {
-      Present { value: _ } => CompleteEligible { into: target }
-      Absent => CompleteRoleHasNoDirectory { role: target }
-    }
+    CompleteEligible { into: target }
   } else {
     CompleteRoleUndeclared { role: target }
   }
@@ -360,7 +352,7 @@ fn spool_complete_into(kind: SpoolKind, target: SpoolRole) -> SpoolCompleteAsses
 // The role a completion consumes from: the LAST chain role (claimed where a claim exists; the publication spool has
 // no claim, so its pending entry is retired in place).
 fn spool_role_is_last(kind: SpoolKind, role: SpoolRole) -> Bool {
-  if spool_declaration(kind: kind).chain |> any(c => c == role) {
+  if spool_declaration(kind: kind).chain |> any(c => c.role == role) {
     match spool_chain_successor(kind: kind, role: role) {
       Present { value: _ } => false
       Absent => true
@@ -432,7 +424,7 @@ type SpoolRequeueAssessment
   | RequeueRefused { cause: NonEmptyStr }
 
 fn spool_requeue_target(kind: SpoolKind) -> Optional<SpoolRole> {
-  spool_declaration(kind: kind).chain |> first()
+  spool_declaration(kind: kind).chain |> map(s => s.role) |> first()
 }
 
 fn spool_requeue_on_boots(kind: SpoolKind, claim_boot_id: NonEmptyStr, current_boot_id: NonEmptyStr) -> SpoolRequeueAssessment {
