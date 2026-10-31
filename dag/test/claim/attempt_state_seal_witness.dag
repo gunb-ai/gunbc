@@ -147,7 +147,7 @@ data ctl_create_entry_source: String = "module probe_attempt_state_ctl_create_en
 // THE OUTCOME-TO-SUCCESS EXPORT (lane sweep, row attempt_request_binding_commit_of) IS DELETED: importing it is a
 // MissingExport; the effect entry that now carries the decision imports clean.
 test fn attempt_request_record_no_longer_declares_the_commit_decision() -> ProcessExit {
-  census_exit(blocking_delta(hostile: ctl_commit_of_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: ctl_commit_of_source, wanted_class: "MissingExport", wanted_subject: "attempt_request_binding_commit_of"), holds: fn(n) { n == 1 }))
 }
 
 test fn attempt_request_record_declares_the_create_entry() -> ProcessExit {
@@ -161,11 +161,11 @@ data ctl_publish_receipt_source: String = "module probe_attempt_state_publish_re
 // THE BOOL-TAKING PUBLISH PROJECTION AND THE EMPTY-ON-REFUSAL MEMBER READ ARE DELETED: importing either is a
 // MissingExport; the entry that performs the write and matches its typed outcome imports clean.
 test fn belt_actuate_no_longer_declares_belt_publish_write_outcome() -> ProcessExit {
-  census_exit(blocking_delta(hostile: ctl_write_outcome_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: ctl_write_outcome_source, wanted_class: "MissingExport", wanted_subject: "belt_publish_write_outcome"), holds: fn(n) { n == 1 }))
 }
 
 test fn belt_actuate_no_longer_declares_belt_current_member_or_empty() -> ProcessExit {
-  census_exit(blocking_delta(hostile: ctl_current_or_empty_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: ctl_current_or_empty_source, wanted_class: "MissingExport", wanted_subject: "belt_current_member_or_empty"), holds: fn(n) { n == 1 }))
 }
 
 test fn belt_actuate_declares_the_publish_receipt_write() -> ProcessExit {
