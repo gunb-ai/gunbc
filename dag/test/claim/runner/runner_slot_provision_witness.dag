@@ -140,7 +140,10 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
   let names = runner_instance_names(deploy: wt_srv3_deploy())
   list_length(items: names) == wt_srv3_deploy().runner_count
-    && string_contains(s: names.first(), pattern: "srv3-01")
+    && match names.first() {
+      Absent => false
+      Present { value: item } => string_contains(s: item, pattern: "srv3-01")
+    }
     && list_length(items: names) > 1
     && roster_names_are_distinct(names: names)
 }
@@ -201,7 +204,10 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
       runner_slot_provision_has_width_increase(plan: plan)
         && list_length(items: plan.upsert_extract_scripts) == 4
         && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
-        && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
+        && match plan.upsert_extract_scripts.first() {
+      Absent => false
+      Present { value: item } => string_contains(s: item, pattern: "sha256sum -c")
+    }
     Absent => false
   }
 }
@@ -277,8 +283,14 @@ data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
 test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
   let names = runner_instance_names(deploy: authored_three_slot_deploy)
   list_length(items: names) == 3
-    && string_contains(s: names.first(), pattern: "fixture-host-01")
-    && string_contains(s: names.skip(n: 2).first(), pattern: "fixture-host-03")
+    && match names.first() {
+      Absent => false
+      Present { value: item } => string_contains(s: item, pattern: "fixture-host-01")
+    }
+    && match names.skip(n: 2).first() {
+      Absent => false
+      Present { value: item } => string_contains(s: item, pattern: "fixture-host-03")
+    }
     && roster_names_are_distinct(names: names)
 }
 

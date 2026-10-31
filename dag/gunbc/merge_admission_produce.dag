@@ -220,7 +220,10 @@ fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
 
 fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
   if length(lines) >= 5 {
-    parse_int(s: lines.skip(n: 4).first())
+    match lines.skip(n: 4).first() {
+      Absent => none
+      Present { value: line } => parse_int(s: line)
+    }
   } else {
     none
   }

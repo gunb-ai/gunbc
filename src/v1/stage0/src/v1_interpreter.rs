@@ -9679,12 +9679,12 @@ fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
     matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
 }
 
-/// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
-/// malformed and refuses rather than reading as absent.
+/// The present payload of an optional value, `None` when it is `Optional.Absent`. A value that is
+/// not an `Optional` variant (host null or a bare element) refuses: there is one representation.
+/// An `Optional.Present` without its `value` field is malformed and refuses rather than reading
+/// as absent.
 fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => Ok(None),
         Value::Variant {
             variant_name,
             fields,
@@ -9700,7 +9700,9 @@ fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<
                 }),
             }
         }
-        other => Ok(Some(other.clone())),
+        other => Err(InterpError::TypeError {
+            msg: format!("matched an Optional but the value is not an Optional variant: {other}"),
+        }),
     }
 }
 
@@ -13356,10 +13358,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
-            _ => Ok(base_val),
-        },
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val),
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
@@ -14397,12 +14396,12 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.front().cloned(), &$ctx))
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.last().cloned(), &$ctx))
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14497,7 +14496,7 @@ macro_rules! v1_algebra_method_arms {
                     raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(list_get_at_optional(&items, idx, &$ctx))
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
@@ -23811,12 +23810,12 @@ macro_rules! v1_builtin_arms {
             arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [Value::List(items), idx_val] => {
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
+                    Ok(Some(list_get_at_optional(items, idx, &$ctx)))
                 }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(list_get_at_optional(&items, idx, &$ctx)))
                 }
                 _ => Ok(None),
             },
@@ -26792,8 +26791,20 @@ mod slice_cost_tests {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// A list element read is the declared `Optional<T>` (v2 `list_at_optional` is the referent):
+/// `Present { value }` in range, `Absent` otherwise, never a bare element or host null.
+fn list_element_as_optional(element: Option<Value>, ctx: &InterpContext) -> Value {
+    match element {
+        Some(value) => optional_present(value, ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+fn list_get_at_optional(items: &RrbVector<Value>, idx: i64, ctx: &InterpContext) -> Value {
+    let element = usize::try_from(idx)
+        .ok()
+        .and_then(|i| items.get(i).cloned());
+    list_element_as_optional(element, ctx)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
