@@ -26,7 +26,7 @@ module gunbc.serving.serving_relocation
 
 import std.types { Int, Bool, NonEmptyStr, List, brand }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
@@ -280,6 +280,58 @@ fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, closed: Bo
 // A source over its retained-capacity promise is an obligation to reconcile, never "moving is free".
 fn note_source_over_retain_promise() -> RelocationDecision {
   ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
+}
+
+// ── THE RENDERED MOVE INTENT (the model's output; the router verifies it, never re-decides) ──────
+// The move intent that /router/relocate accepts is THIS module's output, never a hand-written command.
+// render_move_intent runs the real decision (decide_relocation -> select_realization) and renders the
+// intent that is posted to the router: conversation, current placement revision, destination, method,
+// authorization, bounded transition allowance, and the SelectionReceipt identities that tie the intent
+// to a real selection. The router verifies the intent's SHAPE and its PLACEMENT REVISION; it does not
+// re-decide (DESIGN 3d: one decision authority). Because the falsifier obtains this payload by calling
+// render_move_intent, deleting this module removes the payload and breaks the falsifier control that
+// posts it — supplying inputs never removes the last execution of the real path.
+type RenderedIntent = IntentPayload { payload: NonEmptyStr } | NoIntent { reason: NonEmptyStr }
+
+fn method_name(method: StateEstablishmentMethod) -> NonEmptyStr {
+  match method {
+    RestoreCompatibleSavedState => "restore" as NonEmptyStr
+    ReconstructFromCompleteRequest => "reconstruct" as NonEmptyStr
+  }
+}
+
+fn render_move_intent(
+  conversation: ConversationId,
+  from_launch: NonEmptyStr,
+  current_revision: PlacementRevision,
+  authorization: NonEmptyStr,
+  transition_allowance_micros: Int,
+  method: StateEstablishmentMethod,
+  field: List<ParetoEntry>,
+  closed: Bool,
+) -> RenderedIntent {
+  match decide_relocation(field: field, closed: closed) {
+    Move { destination_label: dest, receipt: r } =>
+      IntentPayload {
+        payload: join([
+          concat("conversation=" as NonEmptyStr, conversation),
+          concat("from=" as NonEmptyStr, from_launch),
+          concat("revision=" as NonEmptyStr, to_string(current_revision)),
+          concat("destination=" as NonEmptyStr, dest),
+          concat("method=" as NonEmptyStr, method_name(method: method)),
+          concat("authorization=" as NonEmptyStr, authorization),
+          concat("allowance_micros=" as NonEmptyStr, to_string(transition_allowance_micros)),
+          concat("receipt_selected=" as NonEmptyStr, declaration_ref_display_key(ref: r.selected_identity)),
+          concat("receipt_policy=" as NonEmptyStr, declaration_ref_display_key(ref: policy_identity_of(policy: r.applied_policy))),
+        ], ";" as NonEmptyStr),
+      }
+    Stay => NoIntent { reason: "stay preferred: no move intent" as NonEmptyStr }
+    NotEstablished { reason: reason } => NoIntent { reason: reason }
+    DeferredToPolicy => NoIntent { reason: "deferred: no runnable demand at this boundary" as NonEmptyStr }
+    NoAdmissibleTransition => NoIntent { reason: "no admissible transition" as NonEmptyStr }
+    Evacuate { destination_label: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
+    ReconciliationRequired { obligation: o } => NoIntent { reason: o }
+  }
 }
 
 // ── THE DURABLE HANDOFF, fenced on caller_backlog's rebinding spine ─────────────────────────────
