@@ -17,6 +17,8 @@ data a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_on
 
     "SECOND ODDITY, same specimen: within uri.dag itself the import landed but the keyed call site did not change and no refusal named it, so a site can be skipped silently while its file's import is written.",
 
+    "SECOND SPECIMEN, same worktree and head, row flat_map over dag/std/algebra.dag, dag/std/graph.dag, dag/std/roster_frontier.dag (keys algebra.dag:1209:8, graph.dag:242:28, roster_frontier.dag:136:3): rc=1 with `REFUSE dag/std/algebra.dag import-closes-cycle home=std.algebra module=std.algebra` (the home module cannot import itself, so that key was mine to omit). `git diff` showed roster_frontier.dag renamed (import and `list_flat_map(xs: groups, f: ...)`) but graph.dag with the import added and `edges |> flat_map(e => ...)` at 242:28 NOT renamed and not refused. Both skipped sites (uri.dag:123:15 and graph.dag:242:28) are pipe sites whose keys point at the call head (verified by byte read of the pinned blob); the one renamed site is a plain call.",
+
     "HARM: a tree that resolves differently from both the original and the intended edit; a later reader sees an unused import and a bare ambient call, and nothing records that an apply was interrupted.",
 
     "RUNG FOUND AT: silent wrongness, below the ladder (DESIGN section 5). Ceiling: structurally guaranteed by an apply that plans all files first and refuses before the first write. Next trigger: the roster sweep apply plans the edits of every named file and refuses before writing any. Discriminating RED to author: a two-file apply whose second file refuses must leave the first file byte-identical; today it does not. The repair is the sweep machinery's, not this row's.",
