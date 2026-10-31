@@ -5,6 +5,7 @@ import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evi
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
+import gunbc.roster_import_sweep_frontier { roster_import_sweep_frontier_rows }
 import gunbc.serving.router_proxy_scaffold { router_proxy_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
@@ -110,6 +111,7 @@ import gunbc.instruments.github_app_acquire {
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     resolver_cost_frontier_rows,
+    roster_import_sweep_frontier_rows,
     router_proxy_frontier_rows,
     review_sheet_whole_estate_consumer_frontier_rows,
     realization_census_sheet_frontier_rows,

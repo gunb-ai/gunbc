@@ -1,0 +1,20 @@
+module gunbc.roster_import_sweep_frontier
+
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+
+// THE ROSTER IMPORT SWEEP'S DECLARED FRONTIER: pipe sites (`x |> contains(y)`, `x |> flat_map(f)`) the keyed
+// apply does not rename (srv1 apply at wave/import-only-algebra-heads 82308725740f, one scratch worktree).
+// uri_path.dag was REFUSED, verbatim `rename-pipe-operand-unclean call=contains`; uri.dag and graph.dag got
+// their import with no rename and nothing refused (gunbc.recurring_failure_mode
+// a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_one). Keys (file:line:bytecolumn):
+// contains: dag/extdeps/uri.dag:123:15; dag/extdeps/uri_path.dag:82:15, 83:15, 103:18, 123:38, 123:65.
+// flat_map: dag/std/graph.dag:242:28. The contains row and its controls are the RED for the follow-up.
+data roster_import_sweep_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_head_rows"),
+    reason: "7 keyed pipe sites (6 contains in extdeps.uri and extdeps.uri_path, 1 flat_map in std.graph) are not renamed by the sweep apply: uri_path.dag is refused (rename-pipe-operand-unclean call=contains) and the uri.dag and graph.dag sites are skipped without a refusal",
+    dissolution: unbound_dissolution(description: "the sweep apply plans every named file and refuses before writing any (the repair named by gunbc.recurring_failure_mode a_multi_file_roster_apply_writes_an_earlier_file_before_refusing_a_later_one), and its clean-operand rule renames or refuses each pipe site, so these 7 sites are renamed without a hand edit"),
+  ),
+]
