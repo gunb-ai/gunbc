@@ -1,6 +1,6 @@
 module std.syntax
 
-import std.types { List }
+import std.types { List, Map }
 
 type BinOp
   = Add | Sub | Mul | Div | Mod
