@@ -60,8 +60,10 @@ test fn a_non_negative_literal_at_a_nat_parameter_is_accepted() -> Bool {
   ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "5")) == 0
 }
 
-// RED (literal arm): a NEGATIVE literal is outside Nat's range and must refuse, so the literal control above is
-// range-keyed rather than a blanket admission of literals.
+// RED: `-5` at a Nat parameter must refuse. `-5` is Neg(LitInt 5), not a negative LitInt (the tokenizer never
+// puts a minus in a ShLitInt; parse_prefix gives Neg), so this does not exercise E1b's literal typing. Q1e types
+// Neg as Int and E1 deletes the numeric shortcut, so the RED turns green at Q1e+E1 through the ordinary
+// Int-at-Nat refusal, not via E1b.
 test fn a_negative_literal_at_a_nat_parameter_must_refuse() -> Bool {
   ian_refusal_count(source: ian_source(parameter_type: "Int", argument: "-5")) >= 1
 }

@@ -9393,8 +9393,11 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
 // A KERNEL INTEGER LITERAL AT A GROUNDED CARRIER IS TYPED AS THAT CARRIER (Q1b E1b). The carrier's
 // std.literal_elaboration KernelGrounding row declares which integers are its values
 // (kernel_grounding_admits over the extent), so a literal in the extent denotes a value of the carrier
-// and one outside it (`-5` at std.nat Nat) denotes none and refuses. A destination with no row is not
-// decided here: the homomorphism path and the inhabitance judgment keep it, exactly as before.
+// and one outside it is not decided here (no refusal arm: no source form produces a negative LitInt at
+// Nat -- the tokenizer never puts a minus in a ShLitInt, parse_prefix turns `-5` into Neg over LitInt 5,
+// normalize and infer fold no Neg, and the only negative-LitInt constructor, grounded_signed_construct,
+// is typed at Int, never Nat). A destination with no row, or a value outside the extent, keeps the
+// homomorphism path and the inhabitance judgment, exactly as before.
 fn grounded_literal_boundary(lit: LiteralValue, destination: DeclarationRef, destination_type: Node) -> LiteralBoundary? {
   match lit {
     LitInt { value: n } =>
@@ -9402,9 +9405,7 @@ fn grounded_literal_boundary(lit: LiteralValue, destination: DeclarationRef, des
         KernelGroundingFound { row: row } =>
           if kernel_grounding_admits(row: row, value: n) {
             Present { value: LiteralBoundaryGrounded { destination_type: destination_type } }
-          } else {
-            Present { value: LiteralBoundaryRefused { message: concat("the integer literal ", to_string(value: n), " is not a value of ", declaration_ref_display_key(ref: destination)) } }
-          }
+          } else { none }
         KernelGroundingAbsent => none
         KernelGroundingAmbiguous { row_count: _ } => none
       }
