@@ -42,6 +42,13 @@ data one_serving_context_cap: DesignRuling = DesignRuling {
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 (ruling D3 on gunbc#15439, then at about 20:06Z \"get these all on the same page, 229k is fine\"): the serving pool holds ONE context cap of 229,376 tokens. The Strata engines on h11 and srv3 already launch with it, the router advertises it for srv1-vllm and ctrl-vast-pool, and srv1's vLLM launch moves from lil-serve's profile default of 262,144 to it. The value is held once, at gunbc.serving.serving_context_cap serving_fleet_context_cap; srv1 is not relaunched for it before the operator's srv1 DIMM decision.",
 }
 
+data installed_cards_converge_first: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "installed_cards_converge_first"),
+  decided: "2026-10-30",
+  section: "6",
+  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-10-30 for the serving consolidation rows of gunbc.plans.serving_fleet_program (gunbc#15439): the plan prefers incoming cards, but the cards already installed converge first, the A16 cards on h11 and the Blackwell card on srv1, before any card still to be installed.",
+}
+
 data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
   decided: "2026-10-30",
@@ -639,6 +646,7 @@ fn design_rulings() -> List<DesignRuling> {
     unread_catch_all_binder_refuses,
     bmc_secure_goes_live_per_controller_family,
     one_serving_context_cap,
+    installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
   ]
 }
