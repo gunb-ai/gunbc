@@ -59,7 +59,16 @@ type SpoolPrincipal
 
 // chain: the non-terminal roles in order. A claim advances an entry ONE step along it; there is no step back.
 // terminals: the roles an entry can finish in. A role in neither list is not declared for the spool.
+// entry_kind: what one entry IS on disk. The exit and unit spools are directory NAMES (payload-less, claimed by
+// shell.Move.NoReplaceDirectory); the publication spool holds FILES WITH BODIES (written create-new, retired by
+// Move.File). wire_suffix is the file extension an entry carries on disk ("" for a directory name).
+type SpoolEntryKind
+  = SpoolEntryDirectory
+  | SpoolEntryFile
+
 type SpoolDeclaration {
+  entry_kind: SpoolEntryKind
+  wire_suffix: String
   chain: List<SpoolRole>
   terminals: List<SpoolRole>
   enqueuer: SpoolPrincipal
@@ -72,14 +81,18 @@ type SpoolDeclaration {
 fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   match kind {
     SpoolAttemptUnit => SpoolDeclaration {
+      entry_kind: SpoolEntryDirectory,
+      wire_suffix: "",
       chain: [RolePending, RoleClaimed],
-      terminals: [RoleRefused],
+      terminals: [],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
       key_part_count: 2,
     }
     SpoolAttemptExit => SpoolDeclaration {
+      entry_kind: SpoolEntryDirectory,
+      wire_suffix: "",
       chain: [RolePending, RoleHandedOff, RoleClaimed],
       terminals: [RoleDone, RoleRefused],
       enqueuer: PrincipalExternalHook,
@@ -88,14 +101,61 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       key_part_count: 7,
     }
     SpoolPublication => SpoolDeclaration {
-      chain: [RolePending, RoleClaimed],
+      entry_kind: SpoolEntryFile,
+      wire_suffix: ".json",
+      chain: [RolePending],
       terminals: [RoleRefused],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
-      key_part_count: 2,
+      key_part_count: 1,
     }
   }
+}
+
+// THE DISK AS IT IS: the wire directory each role stands in, under the spool root (attempt-exit-spool,
+// attempt-unit-spool, publication-spool). Absent means the role has NO directory: the unit spool's refusal is an
+// answers/ file (out of scope, the answer-store frontier) and the publication helper works the request in place, so
+// it has no claimed directory. A move into a role with no directory is refused typed, never silent.
+fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
+  match kind {
+    SpoolAttemptExit =>
+      match role {
+        RolePending => Present { value: "inbox" }
+        RoleHandedOff => Present { value: "queued" }
+        RoleClaimed => Present { value: "running" }
+        RoleDone => Present { value: "done" }
+        RoleRefused => Present { value: "refused" }
+      }
+    SpoolAttemptUnit =>
+      match role {
+        RolePending => Present { value: "requests" }
+        RoleClaimed => Present { value: "claimed" }
+        RoleHandedOff => Absent
+        RoleDone => Absent
+        RoleRefused => Absent
+      }
+    SpoolPublication =>
+      match role {
+        RolePending => Present { value: "requests" }
+        RoleRefused => Present { value: "requests-refused" }
+        RoleClaimed => Absent
+        RoleHandedOff => Absent
+        RoleDone => Absent
+      }
+  }
+}
+
+fn spool_role_has_dir(kind: SpoolKind, role: SpoolRole) -> Bool {
+  match spool_role_dir(kind: kind, role: role) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A claim exists for a spool only if its chain has a step beyond the first role (exactly-one-consumer by rename).
+fn spool_claim_realized(kind: SpoolKind) -> Bool {
+  spool_declaration(kind: kind).chain |> any(r => spool_role_rank(role: r) > 0)
 }
 
 // THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer and the claimant
@@ -103,9 +163,17 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
 // every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each spool directory with the
 // ownership these principals imply instead of spelling it beside host_layout's path functions; that rewrite is
 // node://adhoc-ec4fbad6-dec. Requeue's writer is therefore IN this column, so the planned ownership cannot refuse it.
+fn spool_pending_writers(kind: SpoolKind) -> List<SpoolPrincipal> {
+  if spool_claim_realized(kind: kind) {
+    [spool_declaration(kind: kind).enqueuer, spool_declaration(kind: kind).claimant]
+  } else {
+    [spool_declaration(kind: kind).enqueuer]
+  }
+}
+
 fn spool_role_writers(kind: SpoolKind, role: SpoolRole) -> List<SpoolPrincipal> {
   match role {
-    RolePending => [spool_declaration(kind: kind).enqueuer, spool_declaration(kind: kind).claimant]
+    RolePending => spool_pending_writers(kind: kind)
     RoleHandedOff => [spool_declaration(kind: kind).claimant]
     RoleClaimed => [spool_declaration(kind: kind).claimant]
     RoleDone => [spool_declaration(kind: kind).claimant]
@@ -206,9 +274,18 @@ type SpoolClaimAssessment
   | ClaimAlreadyClaimed
   | ClaimTerminal { state: SpoolEntryState }
   | ClaimRoleUndeclared { role: SpoolRole }
+  | ClaimNotRealized
   | ClaimRefused { detail: String }
 
 fn spool_claim_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAssessment {
+  if spool_claim_realized(kind: kind) {
+    spool_claim_over(kind: kind, observed: observed)
+  } else {
+    ClaimNotRealized
+  }
+}
+
+fn spool_claim_over(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAssessment {
   match observed {
     EntryAbsent => ClaimAbsent
     EntryAmbiguous { roles: _ } => ClaimRefused { detail: "the entry stands in two stages" }
@@ -238,6 +315,7 @@ type SpoolCompleteAssessment
   = CompleteEligible { into: SpoolRole }
   | CompleteNotClaimed { state: SpoolEntryState }
   | CompleteRoleUndeclared { role: SpoolRole }
+  | CompleteRoleHasNoDirectory { role: SpoolRole }
   | CompleteRefused { detail: String }
 
 fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
@@ -249,9 +327,26 @@ fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
 
 fn spool_complete_into(kind: SpoolKind, target: SpoolRole) -> SpoolCompleteAssessment {
   if spool_role_is_terminal(kind: kind, role: target) {
-    CompleteEligible { into: target }
+    if spool_role_has_dir(kind: kind, role: target) {
+      CompleteEligible { into: target }
+    } else {
+      CompleteRoleHasNoDirectory { role: target }
+    }
   } else {
     CompleteRoleUndeclared { role: target }
+  }
+}
+
+// The role a completion consumes from: the LAST chain role (claimed where a claim exists; the publication spool has
+// no claim, so its pending entry is retired in place).
+fn spool_role_is_last(kind: SpoolKind, role: SpoolRole) -> Bool {
+  if spool_declaration(kind: kind).chain |> any(c => c == role) {
+    match spool_chain_successor(kind: kind, role: role) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  } else {
+    false
   }
 }
 
@@ -261,7 +356,7 @@ fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: Sp
     EntryAmbiguous { roles: _ } => CompleteRefused { detail: "the entry stands in two stages" }
     EntryObservationUnavailable { detail: d } => CompleteRefused { detail: d }
     EntryStanding { role: r } =>
-      if (r == RoleClaimed) {
+      if spool_role_is_last(kind: kind, role: r) {
         spool_complete_into(kind: kind, target: spool_outcome_role(outcome: outcome))
       } else {
         CompleteNotClaimed { state: observed }
@@ -334,7 +429,7 @@ fn spool_requeue_on_boots(kind: SpoolKind, claim_boot_id: NonEmptyStr, current_b
 fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: SpoolRequeueEvidence) -> SpoolRequeueAssessment {
   match observed {
     EntryStanding { role: r } =>
-      if (r == RoleClaimed) {
+      if (r == RoleClaimed) && spool_claim_realized(kind: kind) {
         match evidence {
           BootsObserved { claim_boot_id: c, current_boot_id: n } => spool_requeue_on_boots(kind: kind, claim_boot_id: c, current_boot_id: n)
           NoClaimantObservation { cause: m } => RequeueRefused { cause: m }

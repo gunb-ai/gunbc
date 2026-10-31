@@ -3,12 +3,13 @@ module test.claim.spool_queue_seal_witness
 import std.types { Bool, Int, String, List, NonEmptyStr }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spool_queue {
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
-  ClaimEligible, ClaimRoleUndeclared, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
+  ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, CompleteRoleHasNoDirectory, SpoolOutcomeRefused, spool_role_dir, SpoolEntryFile, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
@@ -87,6 +88,7 @@ test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
     ClaimTerminal { state: _ } => exit_failure(reason: "a pending entry reads as terminal")
     ClaimRefused { detail: _ } => exit_failure(reason: "a pending entry is refused")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "a pending entry reads as undeclared")
+    ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
   }
 }
 
@@ -133,6 +135,43 @@ test fn a_role_the_spool_never_declared_is_refused_not_elected() -> ProcessExit 
   }
 }
 
+test fn the_publication_spool_has_no_claim_and_refuses_one_typed() -> ProcessExit {
+  match spool_claim_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }) {
+    ClaimNotRealized => ExitSuccess
+    _ => exit_failure(reason: "a claim over the claimless publication spool was not refused")
+  }
+}
+
+test fn the_unit_refusal_has_no_directory_so_completing_into_it_is_refused_typed() -> ProcessExit {
+  match spool_complete_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }, outcome: SpoolOutcomeRefused { cause: "x" }) {
+    CompleteRoleUndeclared { role: _ } => ExitSuccess
+    CompleteRoleHasNoDirectory { role: _ } => ExitSuccess
+    _ => exit_failure(reason: "a refusal into a role with no directory was admitted")
+  }
+}
+
+test fn the_publication_refusal_retires_a_pending_request_in_place() -> ProcessExit {
+  match spool_complete_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }, outcome: SpoolOutcomeRefused { cause: "undecodable" }) {
+    CompleteEligible { into: _ } => ExitSuccess
+    _ => exit_failure(reason: "a pending publication request cannot be retired to requests-refused")
+  }
+}
+
+test fn the_publication_entry_is_a_file_with_a_refused_directory_and_no_claimed_one() -> ProcessExit {
+  if (spool_declaration(kind: SpoolPublication).entry_kind == SpoolEntryFile) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleClaimed)) && spool_role_dir_present(kind: SpoolPublication, role: RoleRefused) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the publication spool disk shape is misdeclared")
+  }
+}
+
+fn spool_role_dir_present(kind: SpoolKind, role: SpoolRole) -> Bool {
+  match spool_role_dir(kind: kind, role: role) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn a_lost_election_is_already_claimed_not_absent() -> ProcessExit {
   match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
     ClaimAlreadyClaimed => ExitSuccess
@@ -140,6 +179,7 @@ test fn a_lost_election_is_already_claimed_not_absent() -> ProcessExit {
     ClaimAbsent => exit_failure(reason: "a claimed entry reads as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "a claimed entry reads as terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: a claimed entry reads as terminal")
+    ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
     ClaimRefused { detail: _ } => exit_failure(reason: "a claimed entry is refused")
   }
 }
@@ -152,6 +192,7 @@ test fn an_entry_in_two_stages_is_refused_never_picked() -> ProcessExit {
     ClaimAbsent => exit_failure(reason: "an ambiguous entry was resolved to absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "an ambiguous entry was resolved to terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: an ambiguous entry was resolved to terminal")
+    ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
   }
 }
 
@@ -212,6 +253,7 @@ test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit
     ClaimAbsent => exit_failure(reason: "pending read as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "pending read as terminal")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: pending read as terminal")
+    ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
     ClaimRefused { detail: _ } => exit_failure(reason: "pending was refused")
   }
 }
@@ -224,6 +266,7 @@ test fn a_refused_entry_is_terminal_and_never_claimable_again() -> ProcessExit {
     ClaimAbsent => exit_failure(reason: "refused read as absent")
     ClaimRefused { detail: _ } => exit_failure(reason: "refused was refused")
     ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role")
+    ClaimNotRealized => exit_failure(reason: "claim reads as not realized")
   }
 }
 
