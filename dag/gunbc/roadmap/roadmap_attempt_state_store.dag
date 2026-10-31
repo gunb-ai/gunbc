@@ -15,7 +15,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem_listing_entry_names }
+import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem_listing_entry_names, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.durable_append_log_store {
   AppendLogParent, AppendLogStore, AppendLogSlot, AppendLogMinting, AppendLogReady, AppendLogUnready,
   AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
@@ -94,115 +94,81 @@ type AttemptStateMember
   | AttemptOracleRevision
   | AttemptOraclePinRefused
   | AttemptValidationReceipt
-  | AttemptWorkerLog
   | AttemptWorkerRequestScratch
-  | AttemptWorkerEvents
   | AttemptPublicationReceipt { head_sha: String }
   | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
   | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
   | AttemptVerificationSelection { head_sha: String }
   | AttemptReviewVerdict { head_sha: String, criterion_key: String }
-  | AttemptReviewEvents { criterion_key: String, head_sha: String }
   | AttemptReviewRequestScratch { criterion_key: String }
-  | AttemptReviewLog { criterion_key: String }
   | AttemptAuditVerdict { head_sha: String }
-  | AttemptAuditEvents { head_sha: String }
   | AttemptAuditRequestScratch
+  | AttemptSupervisorRequestScratch
+  | AttemptSupervisorVerdict
+
+// THE ATTEMPT-LOG MEMBERS ARE THEIR OWN CLOSED SET (decision A, #15471 seal move): the four `*Events` streams,
+// the four `*Log` stdout streams (the in-place `attempt-wire` record is a directory member reached through the
+// wire lane, not an AttemptStateMember). They are NOT values of AttemptStateMember, so the generic
+// single-shot attempt_state_write -- which takes AttemptStateMember -- can never be handed one: a caller that
+// tries is refused by the type checker on the real acceptance path (the claim), while plain members stay
+// accepted. They are reached only through gunbc.durable_append_log_store, whose owning store mints each
+// member's writer window and the sandboxed worker appends under it. The census in that store is the single
+// authority for the split. Where a site genuinely needs either set, wrap both in
+// gunbc.durable_append_log_store.AttemptStateOrLogMember.
+type AttemptLogMember
+  = AttemptWorkerLog
+  | AttemptWorkerEvents
+  | AttemptReviewEvents { criterion_key: String, head_sha: String }
+  | AttemptReviewLog { criterion_key: String }
+  | AttemptAuditEvents { head_sha: String }
   | AttemptAuditLog
   | AttemptSupervisorEvents { turn: Int }
-  | AttemptSupervisorRequestScratch
   | AttemptSupervisorLog
-  | AttemptSupervisorVerdict
 
-// THE GENERIC WRITE'S CLOSED ACCEPTANCE SET. The nine attempt-log members (the four `*Events` streams, the
-// four `*Log` stdout streams and the `attempt-wire` in-place record) are NOT in this set: they are reached only
-// through gunbc.durable_append_log_store -- the owning store mints each member's writer window through
-// append_log_store_mint and the sandboxed worker appends under that window -- so the generic single-shot
-// attempt_state_write can never write them. `attempt_state_write` takes THIS type, not AttemptStateMember; a
-// hostile or careless caller passing a log member is refused at compile time by the type checker, and the
-// members stay importable through AttemptStateMember for their read-only external-consumer path producers.
-// The census gunbc.durable_append_log_store.append_log_census_slots is the single authority for that split.
-type AttemptStatePlainMember
-  = AttemptKeyRecord
-  | AttemptProcessFingerprint
-  | AttemptContinuationTurn
-  | AttemptAlignmentBinding
-  | AttemptEnvironmentAdmission
-  | AttemptLaunchIdentity
-  | AttemptSpawnOrigin
-  | AttemptVerificationRecord
-  | AttemptSpawnFailure
-  | AttemptRequestBindingFile
-  | AttemptCommitOutcomeLast
-  | AttemptOracleIdentity
-  | AttemptOracleRevision
-  | AttemptOraclePinRefused
-  | AttemptValidationReceipt
-  | AttemptWorkerRequestScratch
-  | AttemptPublicationReceipt { head_sha: String }
-  | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
-  | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
-  | AttemptVerificationSelection { head_sha: String }
-  | AttemptReviewVerdict { head_sha: String, criterion_key: String }
-  | AttemptReviewRequestScratch { criterion_key: String }
-  | AttemptAuditVerdict { head_sha: String }
-  | AttemptAuditRequestScratch
-  | AttemptSupervisorRequestScratch
-  | AttemptSupervisorVerdict
-
-// A plain member is a member; the reverse does not hold, which is the point of the split.
-fn attempt_state_plain_to_member(member: AttemptStatePlainMember) -> AttemptStateMember {
+// The log lane's OWN directory/name/path over AttemptLogMember, mirroring the plain helpers one row each.
+fn attempt_log_member_directory(member: AttemptLogMember) -> AttemptStateDirectory {
   match member {
-    AttemptKeyRecord => AttemptKeyRecord
-    AttemptProcessFingerprint => AttemptProcessFingerprint
-    AttemptContinuationTurn => AttemptContinuationTurn
-    AttemptAlignmentBinding => AttemptAlignmentBinding
-    AttemptEnvironmentAdmission => AttemptEnvironmentAdmission
-    AttemptLaunchIdentity => AttemptLaunchIdentity
-    AttemptSpawnOrigin => AttemptSpawnOrigin
-    AttemptVerificationRecord => AttemptVerificationRecord
-    AttemptSpawnFailure => AttemptSpawnFailure
-    AttemptRequestBindingFile => AttemptRequestBindingFile
-    AttemptCommitOutcomeLast => AttemptCommitOutcomeLast
-    AttemptOracleIdentity => AttemptOracleIdentity
-    AttemptOracleRevision => AttemptOracleRevision
-    AttemptOraclePinRefused => AttemptOraclePinRefused
-    AttemptValidationReceipt => AttemptValidationReceipt
-    AttemptWorkerRequestScratch => AttemptWorkerRequestScratch
-    AttemptPublicationReceipt { head_sha: h } => AttemptPublicationReceipt { head_sha: h }
-    AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => AttemptVerificationReceipt { head_sha: h, window_identity_hex: w }
-    AttemptDiffWindow { head_sha: h, window_identity_hex: w } => AttemptDiffWindow { head_sha: h, window_identity_hex: w }
-    AttemptVerificationSelection { head_sha: h } => AttemptVerificationSelection { head_sha: h }
-    AttemptReviewVerdict { head_sha: h, criterion_key: c } => AttemptReviewVerdict { head_sha: h, criterion_key: c }
-    AttemptReviewRequestScratch { criterion_key: c } => AttemptReviewRequestScratch { criterion_key: c }
-    AttemptAuditVerdict { head_sha: h } => AttemptAuditVerdict { head_sha: h }
-    AttemptAuditRequestScratch => AttemptAuditRequestScratch
-    AttemptSupervisorRequestScratch => AttemptSupervisorRequestScratch
-    AttemptSupervisorVerdict => AttemptSupervisorVerdict
+    AttemptWorkerLog => AttemptDirectoryWorker
+    AttemptWorkerEvents => AttemptDirectoryWorker
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => AttemptDirectoryReview
+    AttemptReviewLog { criterion_key: _ } => AttemptDirectoryReview
+    AttemptAuditEvents { head_sha: _ } => AttemptDirectoryAudit
+    AttemptAuditLog => AttemptDirectoryAudit
+    AttemptSupervisorEvents { turn: _ } => AttemptDirectorySupervisor
+    AttemptSupervisorLog => AttemptDirectorySupervisor
   }
+}
+
+fn attempt_log_member_name(member: AttemptLogMember) -> String {
+  match member {
+    AttemptWorkerLog => "worker-stdout.log"
+    AttemptWorkerEvents => "provider-events.jsonl"
+    AttemptReviewEvents { criterion_key: c, head_sha: h } => join([c, "@", h, ".provider-events.jsonl"], "")
+    AttemptReviewLog { criterion_key: c } => join([c, ".reviewer-stdout.log"], "")
+    AttemptAuditEvents { head_sha: h } => join([h, ".provider-events.jsonl"], "")
+    AttemptAuditLog => "auditor-stdout.log"
+    AttemptSupervisorEvents { turn: t } => join(["t", to_string(value: t), ".provider-events.jsonl"], "")
+    AttemptSupervisorLog => "supervisor-stdout.log"
+  }
+}
+
+fn attempt_log_member_path(store: AttemptState, member: AttemptLogMember) -> String {
+  join([attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member)), "/", attempt_log_member_name(member: member)], "")
 }
 
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
-    AttemptWorkerLog => AttemptDirectoryWorker
     AttemptWorkerRequestScratch => AttemptDirectoryWorker
-    AttemptWorkerEvents => AttemptDirectoryWorker
     AttemptPublicationReceipt { head_sha: _ } => AttemptDirectoryPublication
     AttemptVerificationReceipt { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptDiffWindow { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptVerificationSelection { head_sha: _ } => AttemptDirectoryVerification
     AttemptReviewVerdict { head_sha: _, criterion_key: _ } => AttemptDirectoryReview
-    AttemptReviewEvents { criterion_key: _, head_sha: _ } => AttemptDirectoryReview
     AttemptReviewRequestScratch { criterion_key: _ } => AttemptDirectoryReview
-    AttemptReviewLog { criterion_key: _ } => AttemptDirectoryReview
     AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
-    AttemptAuditEvents { head_sha: _ } => AttemptDirectoryAudit
     AttemptAuditRequestScratch => AttemptDirectoryAudit
-    AttemptAuditLog => AttemptDirectoryAudit
-    AttemptSupervisorEvents { turn: _ } => AttemptDirectorySupervisor
     AttemptSupervisorRequestScratch => AttemptDirectorySupervisor
-    AttemptSupervisorLog => AttemptDirectorySupervisor
     AttemptSupervisorVerdict => AttemptDirectorySupervisor
     AttemptKeyRecord => AttemptDirectoryRoot
     AttemptProcessFingerprint => AttemptDirectoryRoot
@@ -239,24 +205,16 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptOracleRevision => "validation-oracle-revision"
     AttemptOraclePinRefused => "validation-oracle-pin-refused"
     AttemptValidationReceipt => "validation-receipt.json"
-    AttemptWorkerLog => "worker-stdout.log"
     AttemptWorkerRequestScratch => "harness-request.json"
-    AttemptWorkerEvents => "provider-events.jsonl"
     AttemptPublicationReceipt { head_sha: h } => join([h, ".json"], "")
     AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => exact_verification_receipt_basename(head_sha: h, window_identity_hex: w)
     AttemptDiffWindow { head_sha: h, window_identity_hex: w } => join([h, ".", w, ".diff-window.json"], "")
     AttemptVerificationSelection { head_sha: h } => current_verification_selection_basename(head_sha: h)
     AttemptReviewVerdict { head_sha: h, criterion_key: c } => join([h, ".", c, ".json"], "")
-    AttemptReviewEvents { criterion_key: c, head_sha: h } => join([c, "@", h, ".provider-events.jsonl"], "")
     AttemptReviewRequestScratch { criterion_key: c } => join([c, ".harness-request.json"], "")
-    AttemptReviewLog { criterion_key: c } => join([c, ".reviewer-stdout.log"], "")
     AttemptAuditVerdict { head_sha: h } => join([h, ".json"], "")
-    AttemptAuditEvents { head_sha: h } => join([h, ".provider-events.jsonl"], "")
     AttemptAuditRequestScratch => "harness-request.json"
-    AttemptAuditLog => "auditor-stdout.log"
-    AttemptSupervisorEvents { turn: t } => join(["t", to_string(value: t), ".provider-events.jsonl"], "")
     AttemptSupervisorRequestScratch => "harness-request.json"
-    AttemptSupervisorLog => "supervisor-stdout.log"
     AttemptSupervisorVerdict => supervisor_verdict_basename as String
   }
 }
@@ -351,8 +309,8 @@ fn attempt_state_read(store: AttemptState, member: AttemptStateMember) -> Filesy
   filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
 }
 
-fn attempt_state_write(store: AttemptState, member: AttemptStatePlainMember, content: String) -> FilesystemWriteOutcome {
-  let path = attempt_state_member_path(store: store, member: attempt_state_plain_to_member(member))
+fn attempt_state_write(store: AttemptState, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
+  let path = attempt_state_member_path(store: store, member: member)
   let write = Filesystem.Write(path: path, content: content)
   filesystem_write_outcome(path: path, success: write.success, error: write.error)
 }
@@ -428,10 +386,10 @@ fn attempt_state_read_current(instance: HostDashboardInstance, node: String, mem
   }
 }
 
-fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStatePlainMember, content: String) -> FilesystemWriteOutcome {
+fn attempt_state_write_at(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember, content: String) -> FilesystemWriteOutcome {
   match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
     AttemptStateUnready { detail } =>
-      FilesystemWriteRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: attempt_state_plain_to_member(member)), error: detail }
+      FilesystemWriteRefused { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node, attempt_key: attempt_key), member: member), error: detail }
     AttemptStateReady { store } => attempt_state_write(store: store, member: member, content: content)
   }
 }
@@ -602,7 +560,7 @@ type AttemptAppendLogReading
 // The census log members that are AttemptStateMember values. AttemptDirectoryWire is an in-place record in the
 // wire directory written by the worker lane (roadmap_attempt_directory_wire), NOT an AttemptStateMember, so it is
 // minted through that lane's own directory read, not here; every other census member is not a log member.
-fn attempt_append_log_member_name(member: AttemptStateMember) -> String {
+fn attempt_append_log_member_name(member: AttemptLogMember) -> String {
   match member {
     AttemptWorkerEvents => "AttemptWorkerEvents"
     AttemptWorkerLog => "AttemptWorkerLog"
@@ -627,7 +585,7 @@ fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
 }
 
 // THE ONE SEAL MINT. Business key only; the path is derived from the sealed attempt-state record and read once.
-fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> AttemptAppendLogReading {
+fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogReading {
   let name = attempt_append_log_member_name(member: member)
   if name == "" {
     AttemptAppendLogUnready { detail: "not an append-log member" }
@@ -635,15 +593,17 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
     match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
       AttemptStateReady { store } => {
-        let member_dir = attempt_state_directory_path(store: store, directory: attempt_state_member_directory(member: member))
+        let member_dir = attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member))
         let listed = Filesystem.List(path: member_dir)
-        if listed.success {
-          match attempt_append_log_census_row(name: name) {
+        match filesystem_listing_observation(directory: member_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+          FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the member directory subject was refused; the listing is never treated as empty" }
+          FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the member directory could not be listed; a member is never treated as absent from a failed read -- ", e], "") }
+          FilesystemDirectoryListed(lic) => match attempt_append_log_census_row(name: name) {
             Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
             Present { value: row } => match append_log_census_slot(row: row) {
               Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
               Present { value: slot } => {
-                let names = filesystem_listing_entry_names(listing: FilesystemDirectoryListing { entries: listed.entries })
+                let names = filesystem_listing_entry_names(listing: lic)
                 match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
                   AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
                   AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
@@ -652,8 +612,6 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
               }
             }
           }
-        } else {
-          AttemptAppendLogUnready { detail: join(["the member directory ", member_dir, " could not be listed; a member is never treated as absent from a failed read"], "") }
         }
       }
     }
@@ -683,8 +641,8 @@ type AttemptAppendLogHostCreate
   = AttemptAppendLogCreated { path: String, created_mode: FileMode? }
   | AttemptAppendLogAlreadyExists { path: String }
   | AttemptAppendLogCreateRefused { detail: String }
-  | AttemptAppendLogUnready { detail: String }
-  | AttemptAppendLogLegacyRefused { cause: AppendLogLegacyCause }
+  | AttemptAppendLogHostUnready { detail: String }
+  | AttemptAppendLogHostLegacyRefused { cause: AppendLogLegacyCause }
 
 fn attempt_append_log_refusal_detail(refusal: AppendWriteRefusal) -> String {
   match refusal {
@@ -697,14 +655,14 @@ fn attempt_append_log_refusal_detail(refusal: AppendWriteRefusal) -> String {
   }
 }
 
-fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptStateMember) -> AttemptAppendLogHostCreate {
+fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogHostCreate {
   match attempt_append_log_store_open(instance: instance, node: node, attempt_key: attempt_key, member: member) {
-    AttemptAppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
-    AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
+    AttemptAppendLogUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
+    AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogHostLegacyRefused { cause: cause }
     AttemptAppendLogReady { store: sealed } => match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
-      AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
+      AttemptStateUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
       AttemptStateReady { store: as_store } => {
-        let member_path = attempt_state_member_path(store: as_store, member: member)
+        let member_path = attempt_log_member_path(store: as_store, member: member)
         let exists_read = Filesystem.Read(path: member_path)
         let member_exists = exists_read.success
         match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: member_exists) {
