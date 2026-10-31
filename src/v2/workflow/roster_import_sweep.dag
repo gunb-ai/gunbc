@@ -4549,7 +4549,7 @@ fn roster_owner_modules(owners: List<RosterRenameOwner>) -> List<String> {
 // ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every distinct module is read
 // once and every distinct owner's closure is acquired once, however many rows name them.
 fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
-  let renames = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+  let renames: List<RosterRename> = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match roster_rename_target(r: r) {
       Present { value: t } => list_snoc_item(xs: acc, item: RosterRename { row: r, to: t })
       Absent => acc
@@ -4557,7 +4557,7 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   })
   let empty_reads: Map<String, RosterModuleRead> = empty_map()
   let home_reads = roster_modules_read_into(reads: empty_reads, names: list_map(xs: renames, f: fn(x) { roster_qn_text(qn: x.row.home) }), prepared: prepared, lex: lex)
-  let owners = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
+  let owners: List<RosterRenameOwner> = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
   let owner_modules = roster_owner_modules(owners: owners)
   let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
   let closures = roster_homes_closures_read(homes: owner_modules, bindings: roster_repository_bindings(root: ""))
