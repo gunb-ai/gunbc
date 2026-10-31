@@ -2,6 +2,7 @@ module std.algebra
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 import std.error_primitives { DivError, Result, pure_dag_seam_unreachable_string }
+import std.types { Map }
 
 type Magma<T> {
   op: fn(T, T) -> T
