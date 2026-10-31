@@ -8,7 +8,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
-import std.algebra { length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
+import std.algebra { string_contains, length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
 import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -989,7 +989,7 @@ fn member_parse_at(file: ModuleFileRef, content: String) -> String {
         content: content
       ) {
         MemberParses => "parses"
-        MemberParseRefused { cause: cause } => concat("refused:", cause)
+        MemberParseRefused { cause: cause, at: at } => concat("refused:", cause, match at { Present { value: locus } => concat("@", locus)  Absent => "" })
       }
   }
 }
@@ -1022,6 +1022,18 @@ test fn a_refused_member_is_refused_the_same_at_two_paths() -> Bool {
   parse_at_two_paths_agree(content: malformed)
     && (member_parse_text(content: malformed) != "parses")
     && (member_parse_text(content: malformed) != "grammar-unprepared")
+}
+
+// THE REFUSAL CARRIES ITS POSITION. `data x: Int =` with no value is DataValueMissingAfterEq, located at the `=`
+// token the expectation follows: line 3, byte column 13 of the text below. The clean control differs by the
+// value alone, so a verdict that located every member, or none, is told apart.
+test fn a_data_decl_missing_its_value_reports_the_line_and_column_of_the_equals_sign() -> Bool {
+  let verdict = member_parse_text(content: "module v2.test.subject\n\ndata x: Int =\n")
+  string_contains(verdict, "parse_data_value_missing_after_eq") && string_contains(verdict, "@3:13")
+}
+
+test fn the_same_data_decl_with_its_value_parses_and_reports_no_position() -> Bool {
+  member_parse_text(content: "module v2.test.subject\n\ndata x: Int = 1\n") == "parses"
 }
 
 fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {

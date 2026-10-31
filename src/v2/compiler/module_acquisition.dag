@@ -18,7 +18,8 @@ import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prep
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
 import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, SourceRootRef, namespace_declared }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
+import v2.std.diagnostic { Accepted, ByteRange, NonEmptyDiagnostics, Outcome, Rejected, SourcePortLocus, Textual, bind_outcome, diagnostics_fatal, diagnostics_fatal_reason, outcome_accepted }
+import v2.workflow.source_locus { line_starts, locus_at }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
@@ -872,11 +873,23 @@ fn acquisition_front_end(env: AcquisitionEnv, file: ModuleFileRef, content: Stri
 // folds, carrying the cause and never the tree.
 type MemberParse
   = MemberParses
-  | MemberParseRefused { cause: String }
+  | MemberParseRefused { cause: String, at: Optional<String> }
+
+// WHERE THE FATAL DIAGNOSTIC POINTS, as the census's `<line>:<byte column>` (v2.workflow.source_locus, the single
+// rendering authority). The parse stage already locates its refusal (a byte range in the interned file key);
+// the verdict used to keep only the reason, so a refused member was found by bisecting the population.
+// A diagnostic with no byte range is Absent (std.optional, the one absence authority), never a sentinel string.
+fn acquisition_refusal_at(d: NonEmptyDiagnostics, content: String) -> Optional<String> {
+  match diagnostics_fatal(d: d).at {
+    SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => optional_present(value: locus_at(starts: line_starts(text: content), offset: s))
+    Textual { file: _, extent: ByteRange { start: s, end: _ } } => optional_present(value: locus_at(starts: line_starts(text: content), offset: s))
+    _ => optional_absent()
+  }
+}
 
 fn acquisition_parse(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> MemberParse {
   match acquisition_parsed(env: env, file: file, content: content) {
-    Rejected { diagnostics: d } => MemberParseRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Rejected { diagnostics: d } => MemberParseRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)), at: acquisition_refusal_at(d: d, content: content) }
     Accepted { value: _, diagnostics: _ } => MemberParses {}
   }
 }
