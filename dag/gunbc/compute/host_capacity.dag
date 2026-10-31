@@ -71,11 +71,19 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // have made every reservation carry a whole deployment record in order to add two numbers, and
 // would have left no seam at which the transaction can be exercised on a host other than the one
 // the deployment describes.
-type ComputeCapacitySubject {
+//
+// THE SUBJECT IS A SEALED VALUE (sole_constructor), AS gunbc.compute.compute_attempt_slots_root ComputeSeatStore IS:
+// it holds the two facts only the host's own declaration derives -- WHICH ledger (root) and WHICH partition -- and
+// is built in exactly two places, host_capacity_subject (the host resolved by the deployment's authority) and
+// host_capacity_subject_in (an instance already in hand, which is how a witness roots the ledger in its own
+// directory, as isolated_dashboard_instance does for every instance store). Neither takes a path. What the pool
+// appropriates and what a request takes are NOT part of the sealed value: they are arithmetic inputs, supplied to
+// the functions that do the arithmetic. The root is a field and field reads are not module-private, so a holder CAN
+// read it (declared residual: gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module);
+// what is sealed is that a consumer cannot be handed a subject over a root the declaration did not derive.
+type ComputeCapacitySubject sole_constructor {
   root: NonEmptyStr
   partition: PartitionId
-  appropriation: Kibibyte
-  request: Kibibyte
 }
 
 // THE POOL IS A HOST'S, AND KEYING IT BY THE INSTANCE WAS A MIS-KEYING (side-chat review of
@@ -95,7 +103,7 @@ type ComputeCapacitySubject {
 // A HOST THAT AUTHORITY CANNOT RESOLVE RESERVES NOTHING. It is not defaulted to the calling
 // instance: that is exactly the fork this fix removes, re-entering through a fallback.
 type ComputeSubjectResolution
-  = ComputeSubjectResolved { subject: ComputeCapacitySubject }
+  = ComputeSubjectResolved { subject: ComputeCapacitySubject, appropriation: Kibibyte }
   | ComputeSubjectHostUnresolved { host: NonEmptyStr }
 
 // THE COMPUTE ROOT THE WORK PROVIDER AND THIS POOL DEMAND: leases, checkouts, per-identity target
@@ -114,8 +122,14 @@ fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
   owned_directory_path(t: compute_root_directory(instance: instance)) as String as NonEmptyStr
 }
 
+// THE ONE DECLARATION OF THE CAPACITY LEDGER'S LOCATION: the member under the host's compute root. The ledger root
+// (compute_capacity_root) derives from it and nothing else spells it.
+type ComputeCapacityLedgerDeclaration { member: NonEmptyStr }
+
+data compute_capacity_slots: ComputeCapacityLedgerDeclaration = ComputeCapacityLedgerDeclaration { member: "capacity" as NonEmptyStr }
+
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
-  join([compute_root(instance: host_instance) as String, "/capacity"], "") as NonEmptyStr
+  join([compute_root(instance: host_instance) as String, "/", compute_capacity_slots.member as String], "") as NonEmptyStr
 }
 
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
@@ -159,24 +173,36 @@ fn host_capacity_pool_slots(pool: HostCapacityPool) -> Nat {
 }
 
 // THE JOIN WITH THE DEPLOYMENT, and the only function in this module that knows what an instance is.
-fn compute_capacity_subject(instance: HostDashboardInstance, request: Kibibyte) -> ComputeSubjectResolution {
-  host_capacity_subject(instance: instance, pool: ComputeBuildPool, request: request)
+fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectResolution {
+  host_capacity_subject(instance: instance, pool: ComputeBuildPool)
 }
 
-fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool, request: Kibibyte) -> ComputeSubjectResolution {
+fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
   match dashboard_instance_for_host(host: instance.host_identity as String) {
     DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
-    DashboardInstanceForHost { instance: host_instance } =>
-      ComputeSubjectResolved {
-        subject: ComputeCapacitySubject {
-          root: compute_capacity_root(host_instance: host_instance),
-          partition: host_capacity_pool_partition(pool: pool, host: instance.host_identity),
-          appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
-          request: request,
-        },
-      }
+    DashboardInstanceForHost { instance: host_instance } => {
+      let ledger = host_capacity_subject_in(requesting: instance, host_instance: host_instance, pool: pool)
+      ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
+    }
   }
 }
+
+// THE SECOND MINT: the subject for a host instance already in hand. host_capacity_subject reaches it through the
+// deployment's host-to-instance authority; a witness reaches it with an isolated instance, which is the only way a
+// test roots the ledger in its own directory without a path-taking constructor.
+fn host_capacity_subject_in(requesting: HostDashboardInstance, host_instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeCapacityLedger {
+  ComputeCapacityLedger {
+    subject: ComputeCapacitySubject {
+      root: compute_capacity_root(host_instance: host_instance),
+      partition: host_capacity_pool_partition(pool: pool, host: requesting.host_identity),
+    },
+    appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
+  }
+}
+
+// WHAT A MINT RETURNS ONCE THE HOST IS KNOWN: the sealed subject and the appropriation the declaration derives for it.
+// The mint is total, so it has no refusal arm; the unresolved-host refusal belongs to the resolution above.
+type ComputeCapacityLedger { subject: ComputeCapacitySubject, appropriation: Kibibyte }
 
 fn compute_capacity_store(subject: ComputeCapacitySubject) -> FabricStorageBinding {
   FabricStorageLocalFiles { root: fabric_storage_file_root(root: subject.root) }
@@ -303,8 +329,8 @@ fn compute_lease_policy(term_seconds: Nat) -> LeasePolicy {
 // an event's admission happened when it was written -- so a dip in availability cannot make a
 // historical acquire refuse the fold and poison the partition. It makes the pool over-committed,
 // which refuses new acquires until it drains. That is the correct consequence of a reduction.
-fn compute_backing_ceiling(subject: ComputeCapacitySubject, available: Kibibyte) -> Kibibyte {
-  if kibibyte_count(k: available) < kibibyte_count(k: subject.appropriation) { available } else { subject.appropriation }
+fn compute_backing_ceiling(appropriation: Kibibyte, available: Kibibyte) -> Kibibyte {
+  if kibibyte_count(k: available) < kibibyte_count(k: appropriation) { available } else { appropriation }
 }
 
 fn compute_memory_root_pool(subject: ComputeCapacitySubject, ceiling: Kibibyte) -> Pool<Memory, Kibi> {
@@ -339,10 +365,11 @@ fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term
 }
 
 fn host_capacity_reserve(instance: HostDashboardInstance, pool: HostCapacityPool, reference: NonEmptyStr, term_seconds: Nat, request: Kibibyte) -> ComputeReservation {
-  match host_capacity_subject(instance: instance, pool: pool, request: request) {
+  match host_capacity_subject(instance: instance, pool: pool) {
     ComputeSubjectHostUnresolved { host: h } =>
       ComputeReservationRefused { detail: join(["no dashboard instance is declared for host ", h as String, ", so this host has no compute capacity authority to reserve against"], "") }
-    ComputeSubjectResolved { subject: subject } => compute_reserve_on(subject: subject, reference: reference, term_seconds: term_seconds)
+    ComputeSubjectResolved { subject: subject, appropriation: appropriation } =>
+      compute_reserve_on(subject: subject, appropriation: appropriation, request: request, reference: reference, term_seconds: term_seconds)
   }
 }
 
@@ -359,38 +386,40 @@ fn host_capacity_reserve(instance: HostDashboardInstance, pool: HostCapacityPool
 // compute_reserve supplies the real one. DESIGN 3's pairing obligation is discharged by an
 // inhabitance claim that observe_host_memory really produces a well-formed reading of this machine,
 // and by the srv1 receipts, where the whole path runs for real.
-fn compute_reserve_on(subject: ComputeCapacitySubject, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
+fn compute_reserve_on(subject: ComputeCapacitySubject, appropriation: Kibibyte, request: Kibibyte, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
   match observe_host_memory() {
     HostMemoryUnobserved { detail: d } => ComputeReservationRefused { detail: join(["the host's memory could not be observed, so nothing was reserved: ", d], "") }
     HostMemoryObserved { total: total, available: available } =>
-      compute_reserve_against(subject: subject, reference: reference, term_seconds: term_seconds, total: total, available: available)
+      compute_reserve_against(subject: subject, appropriation: appropriation, request: request, reference: reference, term_seconds: term_seconds, total: total, available: available)
   }
 }
 
 fn compute_reserve_against(
   subject: ComputeCapacitySubject,
+  appropriation: Kibibyte,
+  request: Kibibyte,
   reference: NonEmptyStr,
   term_seconds: Nat,
   total: Kibibyte,
   available: Kibibyte,
 ) -> ComputeReservation {
-  if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
+  if kibibyte_count(k: appropriation) > kibibyte_count(k: total) {
     ComputeReservationRefused {
       detail: join([
-        "the compute appropriation is ", to_string(value: kibibyte_count(k: subject.appropriation)),
+        "the compute appropriation is ", to_string(value: kibibyte_count(k: appropriation)),
         " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
         " KiB installed, so the share was never backed by the machine",
       ], ""),
     }
-  } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
-    ComputeHostBelowFloor { requested: subject.request, available: available }
+  } else if kibibyte_count(k: available) < kibibyte_count(k: request) {
+    ComputeHostBelowFloor { requested: request, available: available }
   } else {
     match compute_capacity_store_ensure(subject: subject) {
       FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
       FabricStorageRootReady =>
         match now_epoch_seconds() {
           Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
-          Present { value: now } => compute_seat(subject: subject, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(subject: subject, available: available))
+          Present { value: now } => compute_seat(subject: subject, request: request, reference: reference, now: now, term_seconds: term_seconds, ceiling: compute_backing_ceiling(appropriation: appropriation, available: available))
         }
     }
   }
@@ -401,19 +430,19 @@ fn compute_reserve_against(
 // an operator looking for a busy host while srv1 had 400 GiB free (2026-09-21). The marker is read
 // from the authority that writes it (product.capacity.pool_events pool_full_wire), never re-spelled
 // here, and anything else is a ledger refusal with its text carried through.
-fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, ceiling: Kibibyte) -> ComputeReservation {
+fn compute_seat(subject: ComputeCapacitySubject, request: Kibibyte, reference: NonEmptyStr, now: EpochSecs, term_seconds: Nat, ceiling: Kibibyte) -> ComputeReservation {
   let store = compute_capacity_store(subject: subject)
   match fabric_seat_acquire(
     store: store,
     partition: subject.partition,
     root: compute_memory_root_pool(subject: subject, ceiling: ceiling),
     actor: reference,
-    request: SeatRequest { reference: reference, amount: subject.request, at: now, term_seconds: term_seconds },
+    request: SeatRequest { reference: reference, amount: request, at: now, term_seconds: term_seconds },
     policy: compute_lease_policy(term_seconds: term_seconds),
     attempts: compute_seat_attempts,
     budget: compute_partition_read_budget,
   ) {
-    SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, partition: subject.partition, amount: subject.request, store: store }
+    SeatGranted { grant: g, generation: _, attempts_used: _ } => ComputeReserved { grant: g, partition: subject.partition, amount: request, store: store }
     SeatFull { wire: w, attempts_used: n } =>
       if starts_with(s: w, prefix: pool_full_wire) {
         ComputeCapacityFull { wire: join([w, " (attempt ", to_string(value: n), ")"], "") }
@@ -538,13 +567,13 @@ type ComputeCapacityStanding
 // THE STANDING IS A FACT ABOUT THE POOL, NOT ABOUT ANY REQUEST, so it reads the subject at the
 // ceiling: no field of the standing fold consults the subject's request.
 fn compute_capacity_standing(instance: HostDashboardInstance) -> ComputeCapacityStanding {
-  match compute_capacity_subject(instance: instance, request: compute_memory_ceiling(instance: instance)) {
+  match compute_capacity_subject(instance: instance) {
     ComputeSubjectHostUnresolved { host: h } => ComputeCapacityStandingUnread { detail: join(["no dashboard instance is declared for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subject } => compute_capacity_standing_on(subject: subject)
+    ComputeSubjectResolved { subject: subject, appropriation: appropriation } => compute_capacity_standing_on(subject: subject, appropriation: appropriation)
   }
 }
 
-fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapacityStanding {
+fn compute_capacity_standing_on(subject: ComputeCapacitySubject, appropriation: Kibibyte) -> ComputeCapacityStanding {
   match observe_host_memory() {
     HostMemoryUnobserved { detail: d } => ComputeCapacityStandingUnread { detail: d }
     HostMemoryObserved { total: total, available: available } =>
@@ -554,22 +583,22 @@ fn compute_capacity_standing_on(subject: ComputeCapacitySubject) -> ComputeCapac
           match fabric_seat_observe(
             store: compute_capacity_store(subject: subject),
             partition: subject.partition,
-            root: compute_memory_root_pool(subject: subject, ceiling: subject.appropriation),
+            root: compute_memory_root_pool(subject: subject, ceiling: appropriation),
             at: now,
             budget: compute_partition_read_budget,
           ) {
             SeatRoomObserved { headroom: h, generation: _ } =>
               ComputeCapacityStandingRead {
-                committed: kibibyte(count: kibibyte_count(k: subject.appropriation) - kibibyte_count(k: h)),
-                ceiling: subject.appropriation,
+                committed: kibibyte(count: kibibyte_count(k: appropriation) - kibibyte_count(k: h)),
+                ceiling: appropriation,
                 headroom: h,
                 observed_available: available,
                 observed_total: total,
               }
             SeatFullObserved { generation: _ } =>
               ComputeCapacityStandingRead {
-                committed: subject.appropriation,
-                ceiling: subject.appropriation,
+                committed: appropriation,
+                ceiling: appropriation,
                 headroom: kibibyte(count: 0),
                 observed_available: available,
                 observed_total: total,

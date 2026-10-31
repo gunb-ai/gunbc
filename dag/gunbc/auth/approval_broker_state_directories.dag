@@ -18,14 +18,17 @@ module gunbc.auth.approval_broker_state_directories
 // the fold consumes, so a state root joins by being a row.
 //
 // THE CENSUS. Every broker state root the serve path reads or writes, each with its provisioning
-// answer. A fold row is derived from the OWNING module's root (never re-minted here), so the path has
-// one home; this module adds the directory declaration, and `dark_state_directories_install` folds over
+// answer. A fold row is the OWNING module's directory declaration (never re-minted here): the sealed
+// host-singleton stores (the C-auth sealed-store change) each declare their member under the host-state
+// tree (gunbc.host_state_root) and derive both the mint and the ManagedDirectory row from it, so this
+// census consumes those rows as they are; only the decision store, still Blocked: shared, is shaped
+// here over its owner's root. `dark_state_directories_install` folds over
 // `approval_broker_state_directories`, so the deploy emits one converging `install -d` leg per row.
 //
 //   FOLD ROWS — broker-owned roots the serve path reads or writes, converged by the broker's own install:
-//   * /var/lib/gunbc/approval-devices            approval_device_store_root        (device enrolment records, and each enrolment's push-registration CAS slot: gunbc.auth.approval_device_redemption commit_push_registration writes under this root, so the separate approval-device-push root an earlier row named is gone and owes no provisioning; converged before this change)
-//   * /var/lib/gunbc/approval-jwks               approval_jwks_cache_root          (Google signing-key cache; converged before this change)
-//   * /var/lib/gunbc/approval-assertion-counters approval_assertion_counter_root   (THE OBSERVED 503 — the gap this change closes)
+//   * /var/lib/gunbc/approval-devices            approval_device_redemption approval_device_store_directory (device enrolment records, push registrations and the APNs provider token; converged before this change)
+//   * /var/lib/gunbc/approval-jwks               approval_device_redemption approval_jwks_cache_directory   (Google signing-key cache; converged before this change)
+//   * /var/lib/gunbc/approval-assertion-counters approval_assertion_counter approval_assertion_counter_directory (THE OBSERVED 503 — the gap this change closes)
 //   * /var/lib/gunbc/approvals                   approval_decision_store_root      (serve WRITES it at redemption commit — approval_request_submission redeem_device_over_store — and READS it on every escalation-status and receipt-answer route; the keyring converge job's store_root_mkdir_argv provisioned it alone, and now PROJECTS this row — broker_state_directory_install_argv — instead of restating owner/mode/path, so the deploy fold and the converge lane install one declaration (DESIGN §3) and the fold Noops against what the converge job already made)
 //
 //   SERVE-PATH READS, PROVISIONED OUTSIDE THE BROKER'S OWN LANE — named by the census, deliberately
@@ -36,9 +39,10 @@ module gunbc.auth.approval_broker_state_directories
 //     keyring_mkdir_argv provisions it ROOT-owned (root:ci_runner, DirectoryOwnerAllGroupTraverse) from
 //     the fleet converge workflow's approval_keyring_converge step. A fold row with the broker's
 //     operator-owned shape would chown a root-owned secret directory — fighting the lane that owns it.
-//   * /etc/gunbc-ntfy (approval_publisher_token_path's parent, gunbc.auth.approval_request_submission)
-//     is provisioned root:gunbc-ntfy 0750 by gunbc.fleet.host_credential_custody_converge
-//     (ApprovalNtfyPublisherToken); same argument, different owner, still not the broker's to assert.
+//   * /etc/gunbc-ntfy was provisioned root:gunbc-ntfy 0750 by the custody row for the ntfy publisher
+//     token, and while it existed the same argument held: a different owner, still not the broker's
+//     to assert. The retirement of 2026-10-30 removes the directory outright, with the custody row
+//     and the publisher token along with it (gunbc.fleet.approval_ntfy_retirement).
 //
 //   NOT SERVE-PATH (deliberately NOT rows): authorization_claim_store_root
 //   (gunbc.durable_cas_file_store) is the CI claim slot, written by the claim-issuing runner and
@@ -59,7 +63,7 @@ import gunbc.auth.approval_device_redemption {
   approval_device_store_directory,
   approval_jwks_cache_directory,
 }
-import gunbc.auth.approval_assertion_counter { approval_assertion_counter_root }
+import gunbc.auth.approval_assertion_counter { approval_assertion_counter_directory }
 import gunbc.auth.approval_decision_store { approval_decision_store_root }
 import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged, managed_directory_permissions }
 import gunbc.ownership { Ensured }
@@ -93,13 +97,6 @@ fn broker_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDire
     ownership: Ensured,
     entries: EntriesUnmanaged,
   }
-}
-
-// THE COUNTER ROOT AS A MANAGED DIRECTORY (the defect's root cause): derived from the owning module's
-// `approval_assertion_counter_root`, never re-minted, carrying the device store's owner/mode/dependent
-// shape.
-fn approval_assertion_counter_directory() -> ManagedDirectory {
-  broker_state_directory(member: "approval-assertion-counter-store", path: approval_assertion_counter_root)
 }
 
 // THE DECISION STORE ROOT AS A MANAGED DIRECTORY: serve-written at redemption commit, serve-read on

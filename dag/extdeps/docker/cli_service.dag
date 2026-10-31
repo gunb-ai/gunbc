@@ -20,6 +20,15 @@ fn docker_stop_grace_flag(grace: Second) -> NonEmptyStr {
   to_string(second_count(s: grace)) as NonEmptyStr
 }
 
+// The signals `docker kill --signal` is given here, by the name docker accepts. One arm today: HUP, which
+// tells nginx (and most daemons) to re-read its configuration in place.
+type DockerKillSignal
+  = | SignalHangup
+
+fn docker_kill_signal_name(s: DockerKillSignal) -> NonEmptyStr {
+  match s { SignalHangup => "HUP" as NonEmptyStr }
+}
+
 // THE DOCKER CLI AS A SHELL-TRANSPORT SERVICE, one fixed argv per operation. extdeps.docker.cli builds the
 // same commands as ArgvCommand values for units and scripts; this module performs them, and is its own
 // module so a native program that runs containers does not take that module's JSON closure.
@@ -148,6 +157,19 @@ service DockerCli {
       stderr: String from "stderr"
     }
     transport shell { argv: [docker, "stop", "-t", docker_stop_grace_flag(grace: grace), name] }
+  }
+
+  // `docker kill --signal <signal>`: one signal to the container's main process, which keeps running. An
+  // nginx reload this way keeps its shared memory zones, which a stop and start would discard.
+  operation Signal {
+    requires opaque
+    input { docker: NonEmptyStr, name: NonEmptyStr, signal: DockerKillSignal }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: [docker, "kill", "--signal", docker_kill_signal_name(s: signal), name] }
   }
 
   // `docker inspect --format <template>`: one field of a container, read by template.

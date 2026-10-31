@@ -1,6 +1,6 @@
 module test.claim.google_oidc_verdict_witness
 
-import std.types { Bool, NonEmptyStr, String, Email, List }
+import std.types { Bool, NonEmptyStr, String, Email, List, FilePath }
 import std.integer { UInt8 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt {
@@ -13,12 +13,13 @@ import extdeps.auth.jwks {
   JwkRsaPublicKey, JwksSignatureAlgorithm, JwksAlgRs256, JwksKeySelected, JwksKeyNotFound,
   jwks_select_key,
 }
+import gunbc.host_state_root { isolated_host_state_tree }
 import gunbc.auth.oidc_id_token_verification {
   OidcIdTokenWire, OidcIdTokenWireDecoded, OidcIdTokenWireRefused, OidcIdTokenHeader,
   oidc_id_token_wire_decode, rsa_spki_of_jwk, DerRefused, DerOctets,
   JwksResolve, JwksResolveRefused, JwksResolved, JwksServedFrom, JwksServedFromOrigin,
   Rs256Verification, Rs256SignatureValid, Rs256SignatureInvalid, Rs256VerificationUnrealizable,
-  oidc_id_token_signature_of_parts, oidc_id_token_signature_of_verification,
+  oidc_id_token_signature_of_parts, oidc_id_token_signature_of_verification, broker_jwks_cache_root,
 }
 import extdeps.auth.oidc {
   OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain,
@@ -545,7 +546,7 @@ test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool 
     wire: supplied_decoded_wire(),
     resolved: JwksResolveRefused { step: "fetch", reason: "the origin did not answer" },
     signature_segment: "c2ln",
-    scratch_dir: "witness-unused",
+    cache: broker_jwks_cache_root(tree: isolated_host_state_tree(dir: "/witness-unused")),
     verify_id: "witness" as NonEmptyStr,
   ) {
     OidcIdTokenSignatureRefused { reason: r } =>
@@ -555,7 +556,7 @@ test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool 
           wire: supplied_decoded_wire(),
           resolved: JwksResolved { body: "{\"keys\":[]}", served_from: JwksServedFromOrigin },
           signature_segment: "c2ln",
-          scratch_dir: "witness-unused",
+          cache: broker_jwks_cache_root(tree: isolated_host_state_tree(dir: "/witness-unused")),
           verify_id: "witness" as NonEmptyStr,
         ) {
           OidcIdTokenSignatureRefused { reason: r2 } => string_contains(s: r2, pattern: "no JWKS key answers")

@@ -49,10 +49,10 @@ import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deploy
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }
 import gunbc.auth.approval_broker_state_directories {
   approval_broker_state_directories,
-  approval_assertion_counter_directory,
   approval_decision_store_directory,
 }
-import gunbc.auth.approval_assertion_counter { approval_assertion_counter_root }
+import gunbc.auth.approval_assertion_counter { approval_assertion_counter_directory, assertion_counter_slots_path }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.auth.approval_decision_store { approval_decision_store_root }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_mode_octal, managed_directory_permissions, ManagedDirectory, ManagedDirectoryAdmitted, ManagedDirectoryRefused, DirectoryDependent, EntriesUnmanaged }
 import gunbc.ownership { Ensured }
@@ -155,8 +155,8 @@ test fn an_empty_leg_list_is_ok() -> Bool {
 // claim must FAIL rather than wave it through.
 //
 // THE BOUND, AND WHY IT IS NOT JUST A COUNT. >= count(units) is the floor the projection must clear
-// (each unit fans out to three argv legs -- revert, MemoryMax, MemoryHigh -- plus CPUQuota for the
-// sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
+// (each unit fans out to its set-property residue removals, one reload and a set-property per
+// property, with CPUQuota on the sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
 // NONE of unit 2's, and by one that emits one leg per unit while dropping two per unit. So the total is
 // pinned to the upstream producer the real fold enumerates over -- host_axis_caps
 // .slice_control_converge_argvs_for_unit, the same leaf test.claim.host.sessions_slice_cpu_witness reads
@@ -296,7 +296,7 @@ fn counter_install_args() -> List<String> {
       mode: managed_directory_permissions(d: approval_assertion_counter_directory()).mode,
       owner: fleet_posix_operator_user.name,
       group: fleet_posix_operator_user.name,
-      path: approval_assertion_counter_root as String,
+      path: assertion_counter_slots_path(tree: host_state_tree()) as String,
     ),
   )
 }
@@ -305,7 +305,7 @@ fn counter_install_args() -> List<String> {
 // a silent change in coreutils_install_directory_owned_argv or sudo_elevate cannot move both this and
 // the builder-based claim above in lockstep.
 fn counter_install_args_literal() -> List<String> {
-  ["-n", "install", "-d", "-m", "00700", "-o", "briansrls", "-g", "briansrls", approval_assertion_counter_root as String]
+  ["-n", "install", "-d", "-m", "00700", "-o", "briansrls", "-g", "briansrls", "/var/lib/gunbc/approval-assertion-counters"]
 }
 
 // THE EMITTED DEPLOY PLAN INCLUDES THE COUNTER DIRECTORY: the fold's leg list carries a
@@ -322,8 +322,9 @@ test fn the_state_directory_plan_includes_the_assertion_counter_root() -> Bool {
 }
 
 // THE CENSUS IS THE BROKER STATE ROOTS THE SERVE PATH READS OR WRITES: every serve-written root has a
-// row — the device store and JWKS cache that were converged before this change, the counter root (the
-// observed 503), and the decision store (serve-written at redemption commit, serve-read on every status route). A root joins the deploy by
+// row — the device store (enrolments, push registrations and the APNs provider token, since #15124)
+// and JWKS cache that were converged before this change, the counter root (the observed 503), and the
+// decision store (serve-written at redemption commit, serve-read on every status route). A root joins the deploy by
 // being a row here; adding a broker state root without a row is visible at review in this one list.
 test fn the_census_names_every_broker_serve_path_state_root() -> Bool {
   let rows = approval_broker_state_directories()
@@ -331,19 +332,20 @@ test fn the_census_names_every_broker_serve_path_state_root() -> Bool {
   count(rows) == 4
     && any(paths, p => p == "/var/lib/gunbc/approval-devices")
     && any(paths, p => p == "/var/lib/gunbc/approval-jwks")
-    && any(paths, p => p == approval_assertion_counter_root as String)
+    && any(paths, p => p == "/var/lib/gunbc/approval-assertion-counters")
     && any(paths, p => p == approval_decision_store_root as String)
 }
 
-// DERIVED, NOT RE-MINTED: the counter row's path IS the owning module's root — the census cannot drift
-// the path away from what the CAS store reads. The row carries the device store's shape (operator-owned
+// DERIVED, NOT RE-MINTED: the counter row's path IS the path the owning module's mint lists
+// (assertion_counter_slots_path over the production tree, both from assertion_counter_slots) — the census
+// cannot drift the path away from what the CAS store reads. The row carries the device store's shape (operator-owned
 // both sides, ownership Ensured so contents survive a retract of the deployment that created it) —
 // exactly the briansrls:briansrls 0700 state the operator's hand-made srv1 directory already stands at,
 // so `install -d` converges it as a no-op rather than fighting it (no wet claim asserts it is absent:
 // gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
 test fn the_counter_row_is_derived_and_shaped_for_the_live_host() -> Bool {
   let d = approval_assertion_counter_directory()
-  d.path as String == approval_assertion_counter_root as String
+  d.path as String == assertion_counter_slots_path(tree: host_state_tree()) as String
     && d.owner == fleet_posix_operator_user
     && d.group_principal == fleet_posix_operator_user
     && d.ownership == Ensured
@@ -382,9 +384,10 @@ test fn a_census_row_with_an_uncovered_writer_refuses_the_install() -> Bool {
   }
 }
 
-// THE DECISION ROW IS THE DEVICE STORE'S SHAPE, DERIVED FROM ITS OWNER: the census's whole point is
-// that a new root joins by being a row, not a branch -- so a row's ownership story is the device store's,
-// restated once by broker_state_directory.
+// THE DECISION ROW IS THE SAME SHAPE, DERIVED FROM ITS OWNER: the census's whole point is that a new
+// root joins by being a row, not a branch — so a row's ownership story is the device store's, restated
+// once by broker_state_directory. (The push-registration row is gone: #15124 moved push registrations
+// into the device store, whose row is the census's first.)
 test fn the_decision_row_is_derived_owner_only() -> Bool {
   let decision = approval_decision_store_directory()
   decision.path as String == approval_decision_store_root as String

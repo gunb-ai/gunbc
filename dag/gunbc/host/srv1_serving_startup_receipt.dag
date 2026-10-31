@@ -100,9 +100,23 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
   // to, not the mutable tag. The tag the operator's launcher pulls is
   // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
-  // 2026-10-29 12:55: the LMCache delete-repaired local build (gunbc.serving.srv1_serving_launch
-  // srv1_serving_image_derivation); 10:58-12:55 srv1 ran the unpatched base af14f1a9 by mistake.
-  image_digest_sha256: "da08aaf9d967bebc0fa053f59b087249cd0fd4719cd6e0ae76e7c1b432c2cd8b" as NonEmptyStr,
+  // 2026-10-31 08:02:26: relaunched by calm-moth-166 (operator ruling: relaunch with fans high, watch ECC) from the
+  // retained wrapper at the pool context cap; same recovery1 image; health 200 at 08:11, srv1-vllm re-added to the
+  // router at 08:12. The 2026-10-30 13:12 exit was a host reset (BMC SEL: undetermined system hardware failure).
+  // 2026-10-30 12:28: local/eager-checkpoint-read-priority:recovery1 (gunbc-private#267 at d49433f, LMCache read
+  // priority with copy-ownership quarantine and recovery), LMCACHE_L2_GB 150; it ran until the 13:12:33 host reboot
+  // (exit 255) and was deliberately not relaunched. Read back off the exited container and its startup log on
+  // 2026-10-30 20:3x; the launch was applied on the host outside this module and is recorded after the fact.
+  // 2026-10-29 22:53 and 23:20: further relaunches from the host script, not read here.
+  // 2026-10-29 20:08: the complete-checkpoint generation retention build with background reconciliation
+  // (gunbc-private#266 at 5360cb4), share 0.5 and window 1800 s; ready 20:19:02, catalog reconciled 20:23:08
+  // (65536 manifests, 65507 retired, 835 s).
+  // 2026-10-29 19:28: relaunched on the same image with LMCACHE_L2_GB 200 -> 160 (root-filesystem headroom; the
+  // gunbc-private#266 retention candidate failed startup at 19:26 and was rolled back with its directory snapshot).
+  // 2026-10-29 16:23: the page-loss attribution build (observation only) over the lost-retry build
+  // (gunbc.serving.srv1_serving_launch srv1_serving_image_derivation). 14:22-16:23 it ran 236aa2f2 (lost
+  // retry); 12:55-14:22 da08aaf9 (delete repair only); 10:58-12:55 the unpatched base af14f1a9, by mistake.
+  image_digest_sha256: "2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   host: "srv1 (100.69.18.126)" as NonEmptyStr,
   // The engine's own version banner in its startup log.
   engine_version: "0.1.dev22105+g5009fa56b" as NonEmptyStr,
@@ -115,7 +129,7 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   weight_load_format: "nvfp4" as NonEmptyStr,
   weight_quantization: "nvfp4_csf" as NonEmptyStr,
   served_model_name: "Qwen3.8-Flash-Next" as NonEmptyStr,
-  max_model_len: token_count(count: 262144),
+  max_model_len: token_count(count: 229376),
   max_num_batched_tokens: token_count(count: 6019),
   max_num_seqs: 16,
   gpu_memory_utilization_percent: 96,
@@ -138,8 +152,21 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // (the engine version is the base's: one Python file differs), checkpoint revision, max_model_len, max_num_seqs, max_num_batched_tokens, gpu_memory_utilization,
   // block_size, kv_cache_dtype and kv_connector were re-read from the new startup log and are unchanged.
   // speculative_acceptance_length was NOT re-read; its own date field says so.
-  wrapper_sha256_hex: "9df0384f3b92d46443bb1a8cf0862d9c911c58341b30074e4b990bd38c71eca8" as NonEmptyStr,
-  observed_on: "2026-10-29" as NonEmptyStr,
+  // RE-READ 2026-10-30 for the 12:28 recovery1 launch: the wrapper hash is the host file that launch ran
+  // (last modified 2026-10-30 00:43, before the launch; sha256 taken from its unedited backup copy, since
+  // the live file has since gained the context cap); the image digest from docker inspect; engine version,
+  // checkpoint revision, load format and quantization, served name, max_model_len 262144, max_num_seqs,
+  // max_num_batched_tokens, gpu_memory_utilization, block_size, kv_cache_dtype, MTP 3 and kv_connector from
+  // the launch's own non-default-args and engine-config lines, all unchanged; the driver from its START event.
+  // gdn_backend was not re-read: the log names the GDN decode kernel b12x on every launch since 10-29.
+  // RE-READ 2026-10-31 for the 08:02 relaunch at the pool context cap, by calm-crab-645 off the running
+  // container: image 2ad6245e (docker inspect), started 08:02:26Z; wrapper sha256 b8b73d18... (the live host
+  // file, unchanged since the cap edit); the launch's non-default args report max_model_len 229376 (was
+  // 262144), quantization and load_format nvfp4_csf, block_size 64, gpu_memory_utilization 0.96, fp8 KV,
+  // max_num_batched_tokens 6019, max_num_seqs 16; engine version 0.1.dev22105+g5009fa56b; driver 580.178.04.
+  // /v1/models reports max_model_len 229376 (calm-moth-166). The other fields were not re-read and carry over.
+  wrapper_sha256_hex: "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd" as NonEmptyStr,
+  observed_on: "2026-10-31" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
     "docker inspect --format {{.Config.Cmd}} lil-flash-next",
