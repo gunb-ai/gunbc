@@ -531,8 +531,7 @@ fn nominal_type_ref(name: String) -> Node {
 // was present in authored facts and an inference dropped it -- and the placeholder returned here
 // for a dropped argument is the base itself, so the element is read as the container
 // (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container). The
-// repair is upstream at the dropping link; this seam stays advisory, with its ceiling row in
-// gunbc.compile_clean_diagnostic_policy advisory_class_ceilings.
+// repair is upstream at the dropping link; this seam stays advisory.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
   let evidence_diags = if base.connective != NoConnective {
     [make_error_node(
