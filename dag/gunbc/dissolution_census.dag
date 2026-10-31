@@ -16,6 +16,7 @@ import gunbc.dissolution_observation {
   dissolution_census_facts,
   dissolution_census_modules,
   dissolution_census_verdict_for,
+  frontier_stale_subject_refs,
 }
 
 // THE CENSUS IS THE ROSTER-BEARING HALF. The mechanism — resolving a trigger ref against
@@ -38,8 +39,17 @@ fn dissolution_census_refused_keys(verdict: DissolutionCensusVerdict) -> List<St
   }
 }
 
+fn dissolution_census_stale_subject_keys() -> List<String> {
+  frontier_stale_subject_refs(
+    rows: census_closure_frontier_rows(),
+    facts: dissolution_census_facts(),
+    modules: dissolution_census_modules(),
+  ) |> map(r => declaration_ref_display_key(ref: r))
+}
+
 fn dissolution_census_holds() -> Bool {
   frontier_rows_well_formed(rows: census_closure_frontier_rows())
+    && length(xs: dissolution_census_stale_subject_keys()) == 0
     && match dissolution_census_verdict() {
       DissolutionCensusRefused { undecided: _ } => false
       DissolutionCensusAnswered { report: r } => frontier_expiry_clean(report: r)
