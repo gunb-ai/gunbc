@@ -66,7 +66,22 @@ type SpoolEntryKind
   = SpoolEntryDirectory
   | SpoolEntryFile
 
+// HOW EXACTLY-ONE-CONSUMER IS ESTABLISHED for a spool. ExclusiveByRename: the claim rename elects one winner, so any
+// number of drainers is safe. ExclusiveByAgreement: no election exists; safety rests on a fact OUTSIDE the corpus
+// that there is one consumer. That is rung 1 of the guarantee ladder (DESIGN 4b, mitigation, by agreement), never
+// structural, and it is declared with the consumer it assumes and the trigger that ends the assumption.
+// consumer: PublicationServiceUnit names gunbc.live_deploy.spec deployment_publication_service_unit_name, a systemd
+// service unit; drainers_allowed is the count the assumption covers. TRIGGER: drainers observed above drainers_allowed
+// (a second drainer appears) -> a claim stage is required (spool_needs_claim_stage).
+type SpoolSoleConsumer
+  = PublicationServiceUnit { drainers_allowed: Int }
+
+type SpoolExclusion
+  = ExclusiveByRename
+  | ExclusiveByAgreement { consumer: SpoolSoleConsumer }
+
 type SpoolDeclaration {
+  exclusion: SpoolExclusion
   entry_kind: SpoolEntryKind
   wire_suffix: String
   chain: List<SpoolRole>
@@ -81,6 +96,7 @@ type SpoolDeclaration {
 fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   match kind {
     SpoolAttemptUnit => SpoolDeclaration {
+      exclusion: ExclusiveByRename,
       entry_kind: SpoolEntryDirectory,
       wire_suffix: "",
       chain: [RolePending, RoleClaimed],
@@ -91,6 +107,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       key_part_count: 2,
     }
     SpoolAttemptExit => SpoolDeclaration {
+      exclusion: ExclusiveByRename,
       entry_kind: SpoolEntryDirectory,
       wire_suffix: "",
       chain: [RolePending, RoleHandedOff, RoleClaimed],
@@ -101,6 +118,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       key_part_count: 7,
     }
     SpoolPublication => SpoolDeclaration {
+      exclusion: ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: 1 } },
       entry_kind: SpoolEntryFile,
       wire_suffix: ".json",
       chain: [RolePending],
@@ -150,6 +168,16 @@ fn spool_role_has_dir(kind: SpoolKind, role: SpoolRole) -> Bool {
   match spool_role_dir(kind: kind, role: role) {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+// The assumption's trigger as a decision: an agreement-exclusive spool needs a claim stage the moment a second
+// drainer appears (the chain then gains the step; nothing else changes). PublicationServiceUnit is
+// gunbc.live_deploy.spec deployment_publication_service_unit_name, a systemd service unit (out of corpus enforcement).
+fn spool_needs_claim_stage(kind: SpoolKind, drainers: Int) -> Bool {
+  match spool_declaration(kind: kind).exclusion {
+    ExclusiveByRename => false
+    ExclusiveByAgreement { consumer: PublicationServiceUnit { drainers_allowed: n } } => drainers > n
   }
 }
 

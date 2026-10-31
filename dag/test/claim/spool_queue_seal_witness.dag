@@ -6,6 +6,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spool_queue {
+  spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
@@ -169,6 +170,23 @@ fn spool_role_dir_present(kind: SpoolKind, role: SpoolRole) -> Bool {
   match spool_role_dir(kind: kind, role: role) {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+test fn the_publication_single_drainer_assumption_ends_when_a_second_drainer_appears() -> ProcessExit {
+  if (!spool_needs_claim_stage(kind: SpoolPublication, drainers: 1)) && spool_needs_claim_stage(kind: SpoolPublication, drainers: 2) && (!spool_needs_claim_stage(kind: SpoolAttemptExit, drainers: 5)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the second-drainer trigger does not fire for the agreement spool alone")
+  }
+}
+
+test fn claim_realization_agrees_with_the_declared_exclusion() -> ProcessExit {
+  let rename_spools_claim = !(spool_claim_assess(kind: SpoolAttemptExit, observed: EntryAbsent) == ClaimNotRealized)
+  if rename_spools_claim && (spool_claim_assess(kind: SpoolPublication, observed: EntryAbsent) == ClaimNotRealized) && (spool_declaration(kind: SpoolPublication).exclusion != ExclusiveByRename) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "a spool's claim stage disagrees with its declared exclusion")
   }
 }
 
