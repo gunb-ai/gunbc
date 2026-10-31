@@ -1,6 +1,6 @@
 module gunbc.host.anchored_host_transport
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.node { Node }
@@ -323,6 +323,7 @@ fn anchored_host_transport_against(
 ) -> AnchoredHostBinding
   admit_callers: [
     decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_of"),
+    decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
@@ -356,6 +357,124 @@ fn anchored_host_transport_against(
       } else {
         AnchoredBindingNotTheAnchoredHost {
           cause: join(["the transport bound to ", bound.host as String, ", not to ", row.host as String, "; an anchored binding binds its anchored host and nothing else"], ""),
+        }
+      }
+  }
+}
+
+// ── 2b. THE PER-BOOT PIN (operator-delegated route, merry-fox-82 2026-10-31) ─────────────────────────
+//
+// mtcollins1's runner OS is a RAM image: a stable host key cannot reach it before sshd starts (the custody
+// arm delivers over the very SSH it would have to start). The key is therefore generated ON the host at
+// every boot and the image prints its PUBLIC line on the BMC serial console (SOL), which is authenticated
+// by the BMC credential and independent of the network path under test. No secret crosses any channel.
+// What the fleet pins is that line, TIED TO THE BOOT it was printed in: a pin from another boot is a pin
+// for another key, so the boot id is part of the pin and compared before the key is.
+//
+// The comparison is unchanged -- anchored_host_transport_against, the known_hosts-line equality -- so a
+// per-boot pin is one more source of an anchor, not a second trust algorithm (§3).
+type PerBootHostPin {
+  boot_id: NonEmptyStr
+  anchor: KnownHostKeyRow
+}
+
+// THE CONSOLE LINE THE IMAGE PRINTS: `GUNBC-HOST-KEY boot_id=<id> <key_type> <base64> <SHA256:fingerprint>`,
+// five space-separated fields, a public key and nothing secret. Anything else is no pin: a malformed or
+// truncated console read is an Absent pin and every transport refuses at AnchoredBindingAnchorAbsent,
+// never a partial key.
+data per_boot_console_marker: String = "GUNBC-HOST-KEY"
+
+fn per_boot_pin_from_console_line(row: AnchoredHostRow, line: String) -> PerBootHostPin? {
+  let fields = filter(split(s: trim(s: line), delimiter: " "), f => f != "")
+  match fields |> skip(n: 5) |> first {
+    Present { value: _ } => none
+    Absent => per_boot_pin_from_fields(row: row, fields: fields)
+  }
+}
+
+fn per_boot_pin_from_fields(row: AnchoredHostRow, fields: List<String>) -> PerBootHostPin? {
+  match fields |> first {
+    Absent => none
+    Present { value: marker } => match fields |> skip(n: 1) |> first {
+      Absent => none
+      Present { value: boot_field } => match fields |> skip(n: 2) |> first {
+        Absent => none
+        Present { value: key_type } => match fields |> skip(n: 3) |> first {
+          Absent => none
+          Present { value: key_b64 } => match fields |> skip(n: 4) |> first {
+            Absent => none
+            Present { value: fingerprint } =>
+              if marker == per_boot_console_marker && key_type == "ssh-ed25519" && starts_with_sha256(f: fingerprint) {
+                per_boot_pin_of(row: row, boot_field: boot_field, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
+              } else { none }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn per_boot_pin_of(row: AnchoredHostRow, boot_field: String, key_type: String, key_b64: String, fingerprint: String) -> PerBootHostPin? {
+  match split(s: boot_field, delimiter: "=") |> first {
+    Absent => none
+    Present { value: tag } => match split(s: boot_field, delimiter: "=") |> skip(n: 1) |> first {
+      Absent => none
+      Present { value: id } =>
+        if tag == "boot_id" && id != "" {
+          Present { value: PerBootHostPin {
+            boot_id: id as NonEmptyStr,
+            anchor: KnownHostKeyRow {
+              host: row.host,
+              address: row.address,
+              key_type: key_type,
+              public_key_base64: key_b64,
+              sha256_fingerprint: fingerprint,
+              provenance: ScannedFirstContact {
+                scanned_from: join(["the BMC serial console (SOL) of boot ", id, ", printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], ""),
+              },
+            },
+          } }
+        } else { none }
+    }
+  }
+}
+
+fn starts_with_sha256(f: String) -> Bool {
+  match split(s: f, delimiter: ":") |> first {
+    Present { value: head } => head == "SHA256"
+    Absent => false
+  }
+}
+
+// THE PER-BOOT BINDING. The pin is a SUPPLIED VALUE (the console read mints it); the expected boot id is
+// the boot the caller is acting on (the subject's boot id), so a pin captured at boot A can never vouch
+// for boot B's sshd. Order: no pin refuses; a pin from another boot refuses before any key is compared;
+// then the same host binding and row lookup anchored_host_transport_of does, and the same sealed
+// comparison against the pin's anchor.
+fn anchored_host_transport_per_boot(
+  transport: HostEffectTransport,
+  expected_boot_id: NonEmptyStr,
+  pin: PerBootHostPin?,
+  presented_key_line: String,
+) -> AnchoredHostBinding {
+  match pin {
+    Absent => AnchoredBindingAnchorAbsent {
+      cause: "no per-boot host-key pin: the console read of this boot's key line is absent or malformed; matching against nothing is accepting anything",
+    }
+    Present { value: p } =>
+      if (p.boot_id as String) != (expected_boot_id as String) {
+        AnchoredBindingAnchorNotForRow {
+          cause: join(["the pin was printed at boot ", p.boot_id as String, ", not boot ", expected_boot_id as String, "; a per-boot key vouches for its own boot only"], ""),
+        }
+      } else {
+        match host_bound_transport_of(transport: transport) {
+          HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
+          HostBoundTransportResolved { bound: bound } => match anchored_host_row_for(host: bound.host) {
+            Absent => AnchoredBindingAnchorAbsent {
+              cause: join(["no anchored row exists for ", bound.host as String], ""),
+            }
+            Present { value: row } => anchored_host_transport_against(row: row, anchor: p.anchor, transport: transport, presented_key_line: presented_key_line)
+          }
         }
       }
   }

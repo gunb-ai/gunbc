@@ -25,6 +25,9 @@ import gunbc.host.anchored_host_transport {
   anchored_host_trusted_row,
   anchored_host_transport_of,
   anchored_host_transport_against,
+  anchored_host_transport_per_boot,
+  per_boot_pin_from_console_line,
+  PerBootHostPin,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,
   anchored_host_key_readback_go_step,
@@ -73,6 +76,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fleet_locus_ssh_target over the managed-host join, wrapped whole into the fleet arm. The address is
 // what binds (gunbc.host.host_bound_transport), so nothing here hand-names a host the binding does not.
 fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unanchored_host_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
@@ -141,6 +145,7 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
 
 // (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
 fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
@@ -619,4 +624,70 @@ test fn the_mint_is_a_declared_scaffold_and_a_fleet_once_step() -> Bool {
     NoDischargeSiteModeled => true
     _ => false
   }
+}
+
+// ── THE PER-BOOT PIN (S4: the image generates its host key each boot and prints the PUBLIC line on SOL) ──
+//
+// The console line is a supplied value at this boundary; the pairing obligation (the real image prints
+// exactly this shape) is owed by the runner-medium stage that prints it, witnessed in
+// test.claim.runner.runner_host_medium_witness. What is pinned here is the fleet's side: a pin binds only
+// its own boot, only the key it carries, and only from a well-formed console read.
+
+data per_boot_fixture_fingerprint: String = "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0"
+
+fn per_boot_console_line(boot_id: String, key_b64: String) -> String {
+  join(["GUNBC-HOST-KEY boot_id=", boot_id, " ssh-ed25519 ", key_b64, " ", per_boot_fixture_fingerprint], "")
+}
+
+fn per_boot_binding_kind(b: AnchoredHostBinding) -> String {
+  match b {
+    AnchoredBindingBound { bound: _ } => "bound"
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => "not-the-anchored-host"
+    AnchoredBindingAnchorNotForRow { cause: _ } => "anchor-not-for-row"
+    AnchoredBindingAnchorAbsent { cause: _ } => "anchor-absent"
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => "presented-key-mismatch"
+    AnchoredBindingRefused { cause: _ } => "refused"
+  }
+}
+
+// the binding for a pin parsed from `console`, acting on `expected_boot` and presented `key_b64`
+fn per_boot_binding(console: String, expected_boot: NonEmptyStr, key_b64: String) -> String {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => "no-transport"
+    Present { value: t } => per_boot_binding_kind(b: anchored_host_transport_per_boot(
+      transport: t,
+      expected_boot_id: expected_boot,
+      pin: per_boot_pin_from_console_line(row: row, line: console),
+      presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", key_b64], ""),
+    ))
+  }
+}
+
+// POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
+test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "bound"
+}
+
+// RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
+// is compared -- a per-boot key vouches for its own boot only.
+test fn a_pin_from_another_boot_refuses() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-b" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "anchor-not-for-row"
+}
+
+// RED: right boot, but the sshd presents a different key than the console printed.
+test fn a_mismatched_key_under_a_per_boot_pin_refuses() -> Bool {
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
+}
+
+// RED: no pin (nothing read from the console) refuses; so does every malformed read.
+test fn no_per_boot_pin_refuses_and_so_does_every_malformed_console_read() -> Bool {
+  let key = fixture_public_key.material as String
+  let ok = per_boot_console_line(boot_id: "boot-a", key_b64: key)
+  per_boot_binding(console: "", expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["x", ok], " "), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join([ok, "extra"], " "), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id= ssh-ed25519 ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-ed25519 ", key], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-rsa ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
 }
