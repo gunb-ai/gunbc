@@ -873,17 +873,17 @@ fn acquisition_front_end(env: AcquisitionEnv, file: ModuleFileRef, content: Stri
 // folds, carrying the cause and never the tree.
 type MemberParse
   = MemberParses
-  | MemberParseRefused { cause: String, at: String }
+  | MemberParseRefused { cause: String, at: Optional<String> }
 
 // WHERE THE FATAL DIAGNOSTIC POINTS, as the census's `<line>:<byte column>` (v2.workflow.source_locus, the single
 // rendering authority). The parse stage already locates its refusal (a byte range in the interned file key);
 // the verdict used to keep only the reason, so a refused member was found by bisecting the population.
-// A diagnostic with no byte range renders "unlocated", never a fabricated position.
-fn acquisition_refusal_at(d: NonEmptyDiagnostics, content: String) -> String {
+// A diagnostic with no byte range is Absent (std.optional, the one absence authority), never a sentinel string.
+fn acquisition_refusal_at(d: NonEmptyDiagnostics, content: String) -> Optional<String> {
   match diagnostics_fatal(d: d).at {
-    SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => locus_at(starts: line_starts(text: content), offset: s)
-    Textual { file: _, extent: ByteRange { start: s, end: _ } } => locus_at(starts: line_starts(text: content), offset: s)
-    _ => "unlocated"
+    SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => optional_present(value: locus_at(starts: line_starts(text: content), offset: s))
+    Textual { file: _, extent: ByteRange { start: s, end: _ } } => optional_present(value: locus_at(starts: line_starts(text: content), offset: s))
+    _ => optional_absent()
   }
 }
 

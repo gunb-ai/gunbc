@@ -989,7 +989,7 @@ fn member_parse_at(file: ModuleFileRef, content: String) -> String {
         content: content
       ) {
         MemberParses => "parses"
-        MemberParseRefused { cause: cause, at: at } => concat("refused:", cause, "@", at)
+        MemberParseRefused { cause: cause, at: at } => concat("refused:", cause, match at { Present { value: locus } => concat("@", locus)  Absent => "" })
       }
   }
 }
