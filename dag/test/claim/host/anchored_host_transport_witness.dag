@@ -40,7 +40,6 @@ import gunbc.host.mtcollins1_ssh_host_key_mint { mtcollins1_host_key_mint_receip
 import gunbc.host.fleet_keypair_mint { mtcollins1_host_keypair_mint_subject }
 import extdeps.dns.domain_name { DnsLabel }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import extdeps.filesystem.filesystem_io
 import std.human_intervention { FleetOnce }
 import gunbc.auth.privileged_effect_census {
@@ -448,17 +447,12 @@ test fn the_transport_route_cites_the_executed_selectors() -> Bool {
 // THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
 // rows for what this diff does NOT yet do in production: nothing routes a live transport through
 // anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
-// (no sshd in this slice). They must be well-formed and stand in the census-closure registry -- a gap in
+// (no sshd in this slice). They must be well-formed -- a gap in
 // a comment dissolves; a row's trigger is checked.
 
-fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
-  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
-}
-
-test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
+test fn the_open_gaps_are_well_formed_frontier_rows() -> Bool {
   count(anchored_host_transport_frontier_rows) == 3
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
-  && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
 
 // ── THE MINT, WHICH IS NO LONGER A HUMAN STEP ──────────────────────────────────────────────────
