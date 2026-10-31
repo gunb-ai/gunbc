@@ -1,7 +1,7 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified, acquisition_reached }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_import_verified, acquisition_reached }
 import v2.workflow.source_locus { line_starts, locus_at }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
@@ -289,8 +289,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   }
 }
 
-// THE HOME'S IMPORT CLOSURE, read once per run through the compiler's own door (v2.compiler.module_acquisition
-// acquire_verified over v2.cli.repository_layout repository_storage_layout). Importing a home into a module that home already
+// THE HOME'S IMPORT CLOSURE, read once per run through the compiler's own door at IMPORT depth (v2.compiler.module_acquisition
+// acquire_import_verified over v2.cli.repository_layout repository_storage_layout). Importing a home into a module that home already
 // reaches closes a cycle, and acyclicity is the import graph's only structural law (DESIGN section 3). A closure the door
 // cannot verify is carried as unread, and every file needing that home refuses rather than guessing it acyclic.
 type RosterHomeClosure
@@ -316,7 +316,7 @@ fn roster_rooted(root: String, dir: String) -> String {
 }
 
 fn roster_home_closure_read(home: String, bindings: List<SourceRootBinding>) -> RosterHomeClosure {
-  match acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: [home]) {
+  match acquire_import_verified(layout: repository_storage_layout(), bindings: bindings, entries: [home]) {
     AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } => RosterClosureRead { home: home, modules: list_map(xs: modules, f: fn(m) { roster_acquired_name(m: m) }) }
     AcquisitionNotVerified { reason: _, cause: _ } => RosterClosureUnread { home: home }
   }
@@ -331,7 +331,7 @@ fn roster_acquired_name(m: AcquiredModule) -> String {
 // -- the same reach acquisition_exactness certifies, so no second derivation of what a home reaches. A union the door
 // cannot verify leaves EVERY home unread (a refusal, never a guess).
 fn roster_homes_closures_read(homes: List<String>, bindings: List<SourceRootBinding>) -> List<RosterHomeClosure> {
-  match acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
+  match acquire_import_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
     AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
       list_map(xs: homes, f: fn(home) {
         let reached = acquisition_reached(entries: [home], modules: modules)

@@ -151,7 +151,16 @@ type AcquisitionEnv {
   lex: PreparedLexRules
   grammar: PreparedGrammar
   header_tail: Reach
+  depth: AcquisitionDepth
 }
+
+// WHAT A CLOSURE MEMBER IS ASKED TO REQUEST. The compiler's closure is the full front end of every member (normalize,
+// reference sites, imported members, qualified references). A consumer whose question is only the IMPORT graph
+// (is there an import path from A to B; the import graph's one structural law is acyclicity, DESIGN section 3) needs the
+// parse and the module's import rows: nothing normalized, no reference site collected.
+type AcquisitionDepth
+  = AcquireFullClosure
+  | AcquireImportClosure
 
 // The pending requests are a stack (a member's requests are pushed in front), so a push costs the
 // size of the push and not of the queue. `known` is the modules already acquired and `absent` the
@@ -955,7 +964,44 @@ fn acquisition_identity_checked(front: AcquisitionFrontEnd, module: String, file
   }
 }
 
+// THE IMPORT-DEPTH MEMBER READ: parse only; the module line is checked exactly as the full read checks it, and the
+// requests are the import rows the full read already extracts (admission_from_module_root), never a second reader.
+fn acquisition_import_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
+  match acquisition_parsed(env: env, file: file, content: content) {
+    Rejected { diagnostics: d } =>
+      AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+    Accepted { value: artifact, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: artifact.tree) {
+        Rejected { diagnostics: d } =>
+          AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+        Accepted { value: parsed, diagnostics: _ } =>
+          if qualified_name_to_dotted_string(qn: parsed) == module {
+            match admission_from_module_root(root: artifact.tree) {
+              Rejected { diagnostics: d } =>
+                AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+              Accepted { value: admission, diagnostics: _ } =>
+                AcquisitionMemberReadOk {
+                  requests: MemberRequests { imports: acquisition_import_texts(rows: admission.imports), members: [], references: [] },
+                  test_markers: []
+                }
+            }
+          } else {
+            AcquisitionMemberReadRefused {
+              refusal: AcquisitionMemberIdentityDisagrees { module: module, file: file, declared: qualified_name_to_dotted_string(qn: parsed) }
+            }
+          }
+      }
+  }
+}
+
 fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
+  match env.depth {
+    AcquireImportClosure => acquisition_import_requests(env: env, module: module, file: file, content: content)
+    AcquireFullClosure => acquisition_full_requests(env: env, module: module, file: file, content: content)
+  }
+}
+
+fn acquisition_full_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
   match acquisition_front_end(env: env, file: file, content: content) {
     Rejected { diagnostics: d } =>
       AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
@@ -1201,7 +1247,7 @@ fn acquisition_env_over(
   lex: PreparedLexRules,
   grammar: PreparedGrammar
 ) -> AcquisitionEnv {
-  AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar, header_tail: module_header_tail(grammar: grammar) }
+  AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar, header_tail: module_header_tail(grammar: grammar), depth: AcquireFullClosure }
 }
 
 // The header reader over the env's prepared lexer and grammar: the one reading of a file's declared
@@ -1218,6 +1264,19 @@ fn acquire_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBind
     AcquisitionEnvUnprepared { diagnostics: d } => AcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d }, reads: [] }
     AcquisitionEnvReady { env: env } => acquisition_start(env: env, entries: entries)
   }
+}
+
+// THE IMPORT-GRAPH DOOR: the closure of `entries` over IMPORT edges only, each member parsed and nothing more.
+fn acquire_import_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> Acquisition {
+  match acquisition_env(layout: layout, bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: d } => AcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d }, reads: [] }
+    AcquisitionEnvReady { env: env } =>
+      acquisition_start(env: AcquisitionEnv { layout: env.layout, bindings: env.bindings, lex: env.lex, grammar: env.grammar, header_tail: env.header_tail, depth: AcquireImportClosure }, entries: entries)
+  }
+}
+
+fn acquire_import_verified(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> VerifiedAcquisition {
+  acquisition_verified(acquisition: acquire_import_closure_of(layout: layout, bindings: bindings, entries: entries))
 }
 
 fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entry: String) -> Acquisition {
