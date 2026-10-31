@@ -2,6 +2,7 @@ module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length }
+import extdeps.git.plumbing { git_index_file_env_argv, git_index_file_env_arguments }
 import extdeps.git { git_push_ref_in_repo_argv, git_push_ref_in_repo_arguments }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
@@ -686,6 +687,7 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "git_index_program_is_one_word_and_path_keeps_boundaries",
   "git_push_program_is_one_word_and_operands_keep_boundaries",
   "git_push_arguments_exclude_the_outer_program",
   "nat_as_int_inclusion_is_the_operand",
@@ -915,6 +917,11 @@ fn git_push_argv_cases() -> List<NativeEmissionCase> {
     refspec: "refs/heads/source:refs/heads/destination", home: "/tmp/private home" as FilePath,
   )
   [
+    NativeEmissionCase {
+      identity: "git_index_program_is_one_word_and_path_keeps_boundaries",
+      held: git_index_file_env_argv(index: "/tmp/index with spaces" as FilePath) == ["env", "GIT_INDEX_FILE=/tmp/index with spaces"]
+        && git_index_file_env_arguments(index: "/tmp/index with spaces" as FilePath) == ["GIT_INDEX_FILE=/tmp/index with spaces"],
+    },
     NativeEmissionCase {
       identity: "git_push_program_is_one_word_and_operands_keep_boundaries",
       held: words == ["env", "HOME=/tmp/private home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "git", "-C", "/tmp/repo with spaces", "push", "--quiet", "remote with spaces", "refs/heads/source:refs/heads/destination"],
