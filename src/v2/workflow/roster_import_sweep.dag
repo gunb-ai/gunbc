@@ -4519,17 +4519,31 @@ fn roster_companion_of(row: RosterHeadRow, to: String, prepared: PreparedGrammar
   }
 }
 
-fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+// THE OWNER-TO-TAGS STEP, ONE DERIVATION: a declared type (`owner`, dotted module.Type) read from its declaring module into
+// that module and the type's variant tags. RenameHead (owner = the callee's return type) and ExpandCatchAll (owner = the
+// row's declared type) both read it, so a second variant-reading helper never exists. Underivable keeps its detail.
+type RosterOwnerTags
+  = OwnerTagsRead { module: String, tags: List<String> }
+  | OwnerTagsUnderivable { detail: String }
+
+fn roster_owner_tags(owner: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOwnerTags {
   let module = roster_dotted_init(q: owner)
   match roster_module_read(name: module, prepared: prepared, lex: lex) {
-    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+    ModuleReadFailed { detail: d } => OwnerTagsUnderivable { detail: d }
     ModuleReadOk { root: mroot, imports: _ } =>
       match roster_declaration_node(root: mroot, name: roster_dotted_last(q: owner)) {
-        Absent => CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }
-        // A return type that is not a coproduct has no tags an ambient pattern could stand in for: nothing to import.
-        Present { value: decl } =>
-          CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: "")) }
+        Absent => OwnerTagsUnderivable { detail: module + " declares no " + roster_dotted_last(q: owner) }
+        // A type that is not a coproduct has no tags an ambient pattern could stand in for: nothing to import.
+        Present { value: decl } => OwnerTagsRead { module: module, tags: roster_variant_tags(decl: decl) }
       }
+  }
+}
+
+fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+  match roster_owner_tags(owner: owner, prepared: prepared, lex: lex) {
+    OwnerTagsUnderivable { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+    OwnerTagsRead { module: module, tags: tags } =>
+      CompanionDerived { call: row.call, to: to, module: module, tags: tags, closure: roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: "")) }
   }
 }
 
