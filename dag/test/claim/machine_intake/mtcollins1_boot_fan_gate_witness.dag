@@ -298,6 +298,14 @@ test fn the_stopped_boot_observation_records_each_undecoded_thermal_row() -> Boo
     && string_contains(s: render_round_block(round: r), pattern: "undecoded=2")
 }
 
+fn boot5_empty_reading_rows() -> String {
+  "PSU2_Status      | EBh | ok  |  0.0 |\nWatchdog2        | D7h | ok  | 33.0 |\nEndOfPost        | E2h | ok  |  6.2 |\nEvent_log        | D6h | ok  |  6.2 |"
+}
+
+fn boot5_unstructured() -> List<String> {
+  sdr_unstructured_texts(results: sdr_decode_lines(stdout: boot5_empty_reading_rows()))
+}
+
 // BOOT 7 STATIC ADMISSION CHECK (manager ask: does the gate AS MERGED in #15327 admit boot 5's
 // thermal reading, or still refuse it? no live run). THE COMMITTED INPUT: boot 5 (run 40258937016)
 // committed its sensor dump at artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt,
@@ -311,19 +319,10 @@ test fn the_stopped_boot_observation_records_each_undecoded_thermal_row() -> Boo
 // committed as a rendering (mtcollins1-boot-fan-gate-observation.txt): "round=0 ... thermal=published
 // undecoded=4" - the source of the TemperaturePublished input below.
 
-fn boot5_empty_reading_rows() -> String {
-  "PSU2_Status      | EBh | ok  |  0.0 |\nWatchdog2        | D7h | ok  | 33.0 |\nEndOfPost        | E2h | ok  |  6.2 |\nEvent_log        | D6h | ok  |  6.2 |"
-}
-
-fn boot5_unstructured() -> List<String> {
-  sdr_unstructured_texts(results: sdr_decode_lines(stdout: boot5_empty_reading_rows()))
-}
-
-// WHAT THE MERGED DECODER LEAVES UNSTRUCTURED IS EXACTLY THE FOUR COMMITTED ROWS: boot 5's disputed
-// classification is settled FROM THE COMMITTED BYTES, not picked between candidate sets.
-claim fn the_four_committed_boot5_empty_reading_rows_are_the_undecoded_rows() -> Bool {
-  let t = join(boot5_unstructured(), "\n")
-  boot5_unstructured().length() == 4 &&
+test fn the_four_committed_boot5_empty_reading_rows_are_the_undecoded_rows() -> Bool {
+  let u = boot5_unstructured()
+  let t = join(u, "\n")
+  u.length() == 4 &&
   string_contains(s: t, pattern: "PSU2_Status") &&
   string_contains(s: t, pattern: "Watchdog2") &&
   string_contains(s: t, pattern: "EndOfPost") &&
@@ -333,8 +332,9 @@ claim fn the_four_committed_boot5_empty_reading_rows_are_the_undecoded_rows() ->
 // THE ANSWER, MEASURED: with the committed publication fact (thermal=published) and the committed rows,
 // thermal_refusal - the arm that stopped boot 5 - still REFUSES: PostPowerThermalRowsUndecoded over the
 // four rows. Admission would be Absent. #15327 changed the RECEIPT (raw rows carried), not the DECISION.
-claim fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
-  match thermal_refusal(thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: boot5_unstructured(), unrecognised_readings: [] }) {
+test fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
+  let thermal_read = ThermalRead { publication: TemperaturePublished, undecoded_texts: boot5_unstructured(), unrecognised_readings: [] }
+  match thermal_refusal(thermal: thermal_read) {
     Present { value: PostPowerThermalRowsUndecoded { texts: t } } => t.length() == 4
     _ => false
   }
@@ -342,7 +342,7 @@ claim fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
 
 // THE #15327 RECEIPT HALF: the refusal text names each committed row, so a boot that stops here EMITS
 // the bytes the later admission rule will classify.
-claim fn the_refusal_text_carries_each_committed_boot5_row() -> Bool {
+test fn the_refusal_text_carries_each_committed_boot5_row() -> Bool {
   let text = post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { texts: boot5_unstructured() })
   string_contains(s: text, pattern: "PSU2_Status") &&
   string_contains(s: text, pattern: "Watchdog2") &&
