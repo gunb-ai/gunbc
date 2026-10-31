@@ -154,6 +154,13 @@ pub fn container_template_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
+pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
+    match container_template_algebra(name) {
+        Some(found) => (found.clone() == algebra.clone()),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }

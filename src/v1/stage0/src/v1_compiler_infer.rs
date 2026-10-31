@@ -169,8 +169,9 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
-    container_param_name, container_template_algebra, container_template_alias_algebra,
-    is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
+    container_param_name, container_spelling_is_algebra, container_template_algebra,
+    container_template_alias_algebra, is_container_type, is_kernel_type, kernel_type_set,
+    NonEmptyStr, SourceSpan,
 };
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::{
@@ -14582,6 +14583,18 @@ pub fn expected_type_is_open_variable(exp: Rc<Node>) -> bool {
     }
 }
 
+pub fn spelling_is_collection_carrier(name: String) -> bool {
+    ((crate::std_types::container_spelling_is_algebra(name.clone(), "FreeMonoid".to_string())
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitePowerSet".to_string(),
+        ))
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitelySupportedFunction".to_string(),
+        ))
+}
+
 pub fn expected_collection_surface(
     mut __tco_loop_exp: Rc<Node>,
     mut __tco_loop_scope: Rc<InferScope>,
@@ -14602,9 +14615,7 @@ pub fn expected_collection_surface(
                     exp.clone(),
                     scope.clone(),
                 ));
-                if (((last.clone() == "Map".to_string()) || (last.clone() == "Set".to_string()))
-                    || (last.clone() == "List".to_string()))
-                {
+                if spelling_is_collection_carrier(last.clone()) {
                     break exp.clone();
                 } else {
                     match exp.inferred.clone().as_deref().cloned() {
@@ -14612,9 +14623,7 @@ pub fn expected_collection_surface(
                             let rt_last = crate::v1_std_core::qualified_last_segment(
                                 expected_type_spelling(rt.clone(), scope.clone()),
                             );
-                            if (((((rt_last.clone() == "Map".to_string())
-                                || (rt_last.clone() == "Set".to_string()))
-                                || (rt_last.clone() == "List".to_string()))
+                            if ((spelling_is_collection_carrier(rt_last.clone())
                                 || (rt_last.clone() == "Outcome".to_string()))
                                 || (rt_last.clone() == "Optional".to_string()))
                             {
@@ -14844,9 +14853,11 @@ pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -
                 if crate::v1_compiler_infer_types::node_is_keyed_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Map".to_string())
-                        || (((core.children.clone().len() as i64) == 2)
-                            && (core.name.clone() == "Map".to_string())))
+                    (crate::std_types::container_spelling_is_algebra(
+                        last,
+                        "FinitelySupportedFunction".to_string(),
+                    ) || (((core.children.clone().len() as i64) == 2)
+                        && (core.name.clone() == "Map".to_string())))
                 }
             }
         }
@@ -14868,9 +14879,11 @@ pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> 
                 if crate::v1_compiler_infer_types::node_is_set_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Set".to_string())
-                        || (((core.children.clone().len() as i64) == 1)
-                            && (core.name.clone() == "Set".to_string())))
+                    (crate::std_types::container_spelling_is_algebra(
+                        last,
+                        "FinitePowerSet".to_string(),
+                    ) || (((core.children.clone().len() as i64) == 1)
+                        && (core.name.clone() == "Set".to_string())))
                 }
             }
         }
