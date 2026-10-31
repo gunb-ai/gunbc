@@ -9,6 +9,7 @@ import std.resources { Filesystem }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
+import extdeps.systemd.invocation_id { SystemdInvocationId, systemd_invocation_id_of }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
