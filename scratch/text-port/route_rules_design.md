@@ -45,15 +45,23 @@ The operation follows the value's representation. It never follows the spelling.
 - A crossing inside a loop over the same text is authored duplication (DESIGN section 2, question 1). Hoist the unfold to the value's producer; do not cache it.
 - A site where both crossings sit on a hot path is the trigger to convert that value's PRODUCER to structural text. Converting at the producer removes the crossing; a host-realized op beside the structural one would be a second path.
 
-## R2. starts_with / ends_with have no home
+## R2. starts_with / ends_with
 
-There is no structural prefix or suffix predicate today. A DFS found only `std.effect_grant path_is_prefix` and `std.occurrence_identity occurrence_id_list_is_prefix_of`. Each is specialised to one element type, and they are siblings of one rule (DESIGN section 6b, root generalization).
+**Correction.** The earlier draft said there was no structural prefix predicate; my DFS search missed one. `std.algebra` `list_starts_with<T>(xs, prefix, eq: fn(T, T) -> Bool)` already exists and takes element equality as a declared parameter. It has three call sites. Only the suffix half is missing.
 
-Proposal, held for a home ruling (the home-table rule):
-- One generic list prefix predicate and one suffix predicate in `std.algebra`, over `FreeMonoid<T>` with T's equality profile. Text calls them directly, so there is no text-specific nickname.
-- The two specialised siblings become callers of the generic predicates, in a follow-up, named here as the fork census.
+**Ruled (tidy-ant-251, msg_2797b012):** the generic pair lives in `std.algebra`, with element equality as a declared parameter.
+- The prefix predicate is `list_starts_with`, which already exists.
+- The PR adds the missing `list_ends_with<T>(xs, suffix, eq)` beside it.
+- The same PR repoints each specialised sibling to the pair, or keeps it with a stated reason.
 
-`starts_with` and `ends_with` sites stay unported until this is ruled.
+Fork census for that PR (grep + inspection):
+- `std.effect_grant` `path_is_prefix`
+- `std.occurrence_identity` `occurrence_id_list_is_prefix_of`
+- `std.materialization_ladder` `frame_path_is_prefix`
+- `gunbc.publication_policy` `segment_prefix_is_prefix`
+- `std.declaring_identity_spelling` `authored_is_suffix_of_canonical` (suffix; read before repointing)
+
+Text `starts_with` and `ends_with` sites then route through `chars`, as in R1.
 
 ## R3. Per-port-PR acceptance (tidy-ant-251 ruling, msg_68a9518b)
 
