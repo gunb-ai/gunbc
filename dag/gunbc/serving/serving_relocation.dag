@@ -30,13 +30,13 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
-  HardConstraint, NonMoneyConstraint, PreferSurvivor, UniqueSurvivorRequired, SelectionPolicy, SelectionReceipt,
+  HardConstraint, NonMoneyConstraint, UniqueSurvivorElsePrefer, SelectionPolicy, SelectionReceipt,
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
   NoFeasibleRealization, CandidateFieldUnestablished, DecisionVariable, ContextParameter,
   DecisionConstraint, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain, DecisionSubject, DecisionRegion,
   VariesAlong, MonotoneDecreasing, ConstraintSatisfied, ParameterBound, DecisionAssessment,
   PhysicalModelEstablished, PhysicalModelUnestablished, CausalModelEstablished, FleetObservedCoupling,
-  select_realization,
+  select_realization, policy_identity_of,
 }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
 import extdeps.uri { Uri, Https }
@@ -129,7 +129,6 @@ data id_field: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_rel
 data id_constraints: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_constraints")
 data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_evidence")
 data id_policy_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_policy_stay")
-data id_policy_unique: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_policy_unique")
 data id_term: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_term")
 data id_var: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_var")
 data id_region: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_region")
@@ -242,21 +241,21 @@ fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecisi
     constraints: [capacity_bound()],
     constraint_authority: id_constraints,
     // A move is selected only when it STRICTLY DOMINATES stay on the funded axes (the caller folds the
-    // required margin into the net reading, so a marginal benefit ties and does not dominate). A strict
-    // dominator is the unique survivor and UniqueSurvivorRequired selects it; a genuine tie leaves two
-    // survivors and falls to the explicit stay-preference below, never a fallthrough to the first field
-    // element. PreferSurvivor is NOT used here: it can only ever pick the preferred identity or refuse,
-    // so it could never select a dominating move.
-    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    // required margin into the net reading, so a marginal benefit ties and does not dominate). The
+    // UniqueSurvivorElsePrefer arm selects the sole survivor on its own merit (a dominating move wins),
+    // and falls to the preferred stay identity only when several nondominated alternatives survive.
+    // This keeps the whole choice inside std.decision (DESIGN 3d): there is no caller-side second
+    // decision, and the SelectionReceipt records the arm and its preferred parameter.
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_stay, preferred: id_stay },
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: c, receipt: r } =>
       if declaration_ref_eq(a: c.identity, b: id_stay) { Stay } else { Move { destination_label: c.display_label, receipt: r } }
     SelectionNeedsEvidence { needs: _ } => NotEstablished { reason: "economic move not established: a funded axis has no reading" as NonEmptyStr }
-    // Two survivors = a genuine tie. The declared tie policy prefers the stay survivor explicitly; a
-    // tie with no stay survivor (two competing moves) defers rather than pick one arbitrarily.
-    SelectionNeedsPolicy { survivors: sv } =>
-      if any(sv, s => declaration_ref_eq(a: s, b: id_stay)) { Stay } else { DeferredToPolicy }
+    // The arm already resolved stay-vs-move (it prefers stay among survivors). SelectionNeedsPolicy is
+    // reached only when several survivors EXCLUDE stay — competing moves with no stay survivor — which
+    // defers rather than pick one arbitrarily.
+    SelectionNeedsPolicy { survivors: _ } => DeferredToPolicy
     RealizationSelectionRefused { defects: _ } => NoAdmissibleTransition
     NoFeasibleRealization { causes: _, scope: _ } => NoAdmissibleTransition
     CandidateFieldUnestablished { causes: _ } => NotEstablished { reason: "candidate field unestablished" as NonEmptyStr }
