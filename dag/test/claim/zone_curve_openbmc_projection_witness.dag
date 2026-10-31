@@ -7,7 +7,7 @@ import extdeps.bmc.pid_control_program { DemandCurvePoint, SensorTimeoutDeclared
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import product.zone_thermal_curve { ZoneCurve, ZoneCurveReady, ZoneCurveRefused, zone_curve }
-import gunbc.fleet.zone_curve_openbmc_projection { OpenBmcCurveProjected, OpenBmcCurveRefusal, OpenBmcCurveRefused, OpenBmcCurveZone, OpenBmcCurveZoneRow, OpenBmcPointsExceedUpstreamLimit, OpenBmcTimeoutNotPositive, openbmc_curve_points, openbmc_curve_zone }
+import gunbc.fleet.zone_curve_openbmc_projection { OpenBmcCurveProjected, OpenBmcCurveRefusal, OpenBmcCurveRefused, OpenBmcCurveZone, OpenBmcCurveZoneRow, OpenBmcPointsExceedUpstreamLimit, OpenBmcTimeoutNotPositive, openbmc_curve_point_count, openbmc_curve_points, openbmc_curve_zone }
 
 // SUPPLIED: the butch curve and row. The curve is ZoneCurve{floor 60, flat_until 60, full_at 80}; the
 // expected points are the GPU_MAX_CURVE of config-butch-gpumax-test2.json read from the butch BMC on
@@ -169,4 +169,20 @@ test fn witness_point_count_beyond_the_upstream_limit_is_refused() -> Bool {
     && refusal_codes(row: butch_row(), curve: curve_of(floor: 20, lo: 0, hi: 100)) == [21]
     && refusal_codes(row: butch_row_with_timeout(seconds: 0), curve: curve_of(floor: 20, lo: 0, hi: 100))
       == [0, 21]
+}
+
+// P2: ADMISSION DOES NOT BUILD THE REJECTED TABLE. A checked curve spanning a billion degrees is refused
+// naming its 200000001 points by arithmetic (building them would not finish), and the arithmetic count
+// equals the sampler's length at the 95/96 degree boundary and for a span that is not a step multiple.
+fn count_matches_table(floor: Nat, lo: Int, hi: Int) -> Bool {
+  match curve_of(floor: floor, lo: lo, hi: hi) {
+    Absent => false
+    Present { value: c } => openbmc_curve_point_count(curve: c) == length(openbmc_curve_points(curve: c))
+  }
+}
+
+test fn witness_oversized_span_is_refused_without_building_the_table() -> Bool {
+  refusal_codes(row: butch_row(), curve: curve_of(floor: 20, lo: 0, hi: 1000000000)) == [200000001]
+    && count_matches_table(floor: 20, lo: 0, hi: 95) && count_matches_table(floor: 20, lo: 0, hi: 96)
+    && count_matches_table(floor: 20, lo: 75, hi: 88) && count_matches_table(floor: 60, lo: 60, hi: 80)
 }

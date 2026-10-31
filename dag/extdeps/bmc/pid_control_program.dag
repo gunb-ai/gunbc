@@ -187,8 +187,12 @@ data phosphor_stepwise_max_points_standing: CitedFigureStanding = TranscribedUnc
   read_obligation: "phosphor-pid-control source (conf.hpp maxStepwisePoints and the stepwise JSON parser in pid/buildjson.cpp) at the revision shipped in the OpenBMC release the host runs (butch: 3.22.00); the version is not yet read, so the figure is the upstream master value, unversioned."
 }
 
+fn stepwise_point_count_fits_upstream(count: Int) -> Bool {
+  count <= phosphor_stepwise_max_points
+}
+
 fn curve_fits_upstream_stepwise_table(curve: List<DemandCurvePoint>) -> Bool {
-  length(curve) <= phosphor_stepwise_max_points
+  stepwise_point_count_fits_upstream(count: length(curve))
 }
 
 // HYSTERESIS IS A TEMPERATURE DIFFERENCE AND THE SETPOINT IS A TEMPERATURE, which are different

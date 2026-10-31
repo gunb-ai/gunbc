@@ -26,7 +26,7 @@ import extdeps.bmc.pid_control_program {
   decimal_celsius_delta,
   decimal_milliseconds,
   decimal_seconds,
-  curve_fits_upstream_stepwise_table,
+  stepwise_point_count_fits_upstream,
   phosphor_stepwise_max_points,
   zone_demand_value,
 }
@@ -184,12 +184,21 @@ type OpenBmcCurveProjection
   = OpenBmcCurveProjected { zone: OpenBmcCurveZone }
   | OpenBmcCurveRefused { causes: List<OpenBmcCurveRefusal> }
 
+// HOW MANY POINTS openbmc_curve_points WILL EMIT, WITHOUT EMITTING THEM: one at flat_until, one every
+// step, and a last at full_at, which is 1 + ceil(span / step) for the strictly ascending span a
+// ZoneCurve guarantees. Admission needs only this, so a rejected curve of any span costs constant work
+// and an admitted one is sampled once.
+fn openbmc_curve_point_count(curve: ZoneCurve) -> Int {
+  let span = celsius_count(curve.full_at) - celsius_count(curve.flat_until)
+  let step = celsius_delta_count(openbmc_curve_sample_step)
+  if span <= 0 { 1 } else { 1 + (span + step - 1) / step }
+}
+
 fn openbmc_curve_refusals(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> List<OpenBmcCurveRefusal> {
-  let points = openbmc_curve_points(curve: curve)
-  let required = length(points)
+  let required = openbmc_curve_point_count(curve: curve)
   concat(
     if (second_count(row.input_timeout) as Int) > 0 { [] } else { [OpenBmcTimeoutNotPositive] },
-    if curve_fits_upstream_stepwise_table(curve: points) { [] } else { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: phosphor_stepwise_max_points }] },
+    if stepwise_point_count_fits_upstream(count: required) { [] } else { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: phosphor_stepwise_max_points }] },
   )
 }
 
