@@ -6,7 +6,7 @@ import extdeps.access.posix { PosixUser, LoginShellUnobserved, FilePermissions }
 import std.fabric_storage { FabricStoreUnreachable }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_storage_slots }
 import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric.fabric_writer_identity_observe { FabricWriterIdentityReceipt }
 import gunbc.fabric.fabric_writer_roster {
@@ -127,7 +127,7 @@ test fn the_door_admits_the_operator_and_the_ci_runner_locally_and_no_one_else()
 }
 
 test fn the_placed_store_areas_admit_no_writer_but_the_service() -> Bool {
-  let areas = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
+  let areas = fabric_store_area_paths(members: fabric_storage_slots, instance: srv1_live_dashboard_instance())
   let objects = fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)
   let heads = fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)
   class_writes(d: objects, who: fleet_posix_operator_user) && class_writes(d: heads, who: fleet_posix_operator_user)

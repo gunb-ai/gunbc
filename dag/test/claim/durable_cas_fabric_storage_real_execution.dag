@@ -12,7 +12,11 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store { CasAttemptAdmitted, admit_cas_attempt, VerifiedCasAttempt }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot, cas_slot_head }
 import gunbc.fabric.fabric_storage_client { fabric_storage_head, fabric_storage_put, fabric_storage_advance }
 import std.fabric_storage { FabricObject, FabricObjectRef, fabric_object_ref_eq, FabricHeadObserved, FabricHeadAt, ExpectHeadAt, FabricObjectStored, FabricHeadMoved }
@@ -37,11 +41,11 @@ fn dcel_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
 }
 
 fn dcel_store(dir: FilePath) -> FabricStorageBinding {
-  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
+  FabricStorageLocalFiles { operations: ops }
 }
 
 fn dcel_store_ready(dir: FilePath) -> Bool {
-  match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false }
+  match dcel_wet_store(dir: dir) { FabricWetStoreReady { store: _ } => true  FabricWetStoreUnready { area: _, detail: _ } => false }
 }
 
 fn dcel_verified(key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr) -> VerifiedCasAttempt? {

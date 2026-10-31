@@ -11,7 +11,11 @@ import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, Der
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
 import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import extdeps.languages.json.emit { serialize_json, json_array, json_object, json_kv, json_string }
 import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_protocol_key, workspace_acquisition_actor_key, workspace_recorded_actor, RecordedActorInvocation, workspace_rearm_actor,
@@ -87,9 +91,8 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, cells: FabricAl
 // own directory, so the two stores share no entries.
 fn acquisition_cancellation_temporary_store(claim: String, marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> ProcessExit {
   allocation_witness_run(template: "/tmp/gunbc_acquisition.XXXXXX", claim: claim, body: fn(dir, cells) {
-    let root = fabric_storage_file_root(root: concat(dir as String, "/fabric-storage") as NonEmptyStr)
-    match fabric_storage_file_root_ensure(root: root) {
-      FabricStorageRootReady => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { root: root }, cells: cells,
+    match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+      FabricWetStoreReady { store: ops } => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { operations: ops }, cells: cells,
         marked: marked, elected: elected, slot: slot, expect_released: expect_released)
       other => false
     }
@@ -135,9 +138,9 @@ fn actor_rearm_race(store: FabricStorageBinding, root: NonEmptyStr) -> Bool {
 
 test fn concurrent_actor_replacement_admits_exactly_one() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: concat(directory.path as String, "/fabric") as NonEmptyStr)
-  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => actor_rearm_race(store: FabricStorageLocalFiles { root: root }, root: directory.path as NonEmptyStr)
+  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
+  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+    FabricWetStoreReady { store: ops } => actor_rearm_race(store: FabricStorageLocalFiles { operations: ops }, root: directory.path as NonEmptyStr)
     other => false
   } }
   let cleaned = shell.Remove.RecursiveForce(path: directory.path)

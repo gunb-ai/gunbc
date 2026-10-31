@@ -6,7 +6,8 @@ import std.fabric_storage { FabricStoreUnreachable }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles, FabricStorageBindingUnplaced }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture { fabric_wet_run, fabric_fixture_instance }
 import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
 import gunbc.fabric.fabric_writer_identity_observe {
   FabricWriterIdentityReceipt, fabric_writer_identity_receipt_text, fabric_writer_identity_reading_grounds_roster,
@@ -30,11 +31,14 @@ test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() 
 // principal (the grain a roster at the door can name); an absent header is a principal deficit
 // that grounds a blocker, never an admitted principal; unproxied is the placed host, whose writes
 // never reach the door; unread is the transport. Only the first two are readings of the door.
-test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool {
+test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool { // THE LOCAL BINDING IS A REAL ONE, obtained through the ONE mint over the declared chain of an isolated
+// scenario instance: "binding=local" is asserted over a store nobody chose, and an unstanding store fails the claim.
+ fabric_wet_run(members: fabric_storage_slots, instance: fabric_fixture_instance(root: shell.Mktemp.Dir().path as String), body: fn(ops) {
+
   let served = FabricStorageServed { endpoint: "https://srv1.example.ts.net:10000/fabric-storage" as NonEmptyStr }
   let present = FabricWriterIdentityReceipt { host: "srv2" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetUser { login: "srv2@example.ts.net" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
   let absent = FabricWriterIdentityReceipt { host: "srv3" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetIdentityAbsent }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
-  let local = FabricWriterIdentityReceipt { host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/var/lib/gunbc/fabric" as NonEmptyStr) }, read: FabricIdentityUnproxied, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
+  let local = FabricWriterIdentityReceipt { host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { operations: ops }, read: FabricIdentityUnproxied, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
   let unread = FabricWriterIdentityReceipt { host: "srv4" as HostIdentity, binding: FabricStorageBindingUnplaced, read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: "the fabric DB is unplaced" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
   let t = fabric_writer_identity_receipt_text(r: present)
   t.contains("fabric_writer_identity host=srv2\n") && t.contains("binding=served https://srv1.example.ts.net:10000/fabric-storage\n") && t.contains("identity=present srv2@example.ts.net\n")
@@ -51,4 +55,5 @@ test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_r
     && fabric_writer_identity_reading_grounds_roster(read: absent.read)
     && !fabric_writer_identity_reading_grounds_roster(read: local.read)
     && !fabric_writer_identity_reading_grounds_roster(read: unread.read)
-}
+  } )
+  }

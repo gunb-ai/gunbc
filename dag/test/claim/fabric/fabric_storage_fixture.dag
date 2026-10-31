@@ -7,7 +7,7 @@ import extdeps.http.server { ServeWireResponse }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
-import gunbc.fabric.fabric_storage_file_store { FabricStoreAreas, fabric_store_area_paths, fabric_storage_slots, fabric_storage_state_slots }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, FabricStoreAreas, fabric_store_area_paths, fabric_store_open, fabric_store_declared_root, fabric_storage_slots, fabric_storage_state_slots }
 import gunbc.fabric.fabric_storage_placement {
   FabricStorage, FabricStateStorage, fabric_storage_store_root, fabric_state_storage_root,
   fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
@@ -50,6 +50,65 @@ fn fabric_fixture_instance(root: String) -> HostDashboardInstance {
 // ONE FIXTURE PER CLAIM, AND A REFUSED MINT FAILS THE CLAIM. Either mint answering Unready ends the claim with
 // ExitFailure naming the mint's own detail; it is never projected into a 503, an empty head or a refused write,
 // any of which a claim here can expect.
+// THE WITNESS ROUTE TO A FABRIC STORE goes through the same door production does: mktemp a directory,
+// wrap it in the recorded isolated-dashboard-instance route (no new seam for a temporary root), and hand
+// the declared member chain plus that instance to the ONE mint. It takes no store directory -- a helper
+// that accepted one would be the caller-chosen-root route this lane deletes. A scenario whose directory or
+// store will not stand is Unready with its cause, which a claim reports as its own failure, never as a store.
+type FabricWetScenario
+  = FabricWetScenarioReady { instance: HostDashboardInstance, root: NonEmptyStr }
+  | FabricWetScenarioUnready { detail: String }
+
+fn fabric_wet_scenario(template: NonEmptyStr) -> FabricWetScenario {
+  let made = shell.Mktemp.DirWithTemplate(template: template as String)
+  if !made.success {
+    FabricWetScenarioUnready { detail: "the scenario directory could not be made" }
+  } else {
+    FabricWetScenarioReady { instance: fabric_fixture_instance(root: made.path as String), root: made.path as NonEmptyStr }
+  }
+}
+
+// THE CLAIM-SHAPED FORM: run a body over a standing store; an unstanding store fails the claim. This is the
+// route every wet fabric witness uses, so no witness needs a store value it cannot obtain.
+fn fabric_wet_run(members: List<NonEmptyStr>, instance: HostDashboardInstance, body: fn(FabricStorageOperations) -> Bool) -> Bool {
+  match fabric_wet_store(members: members, instance: instance) {
+    FabricWetStoreUnready { area: _, detail: _ } => false
+    FabricWetStoreReady { store: ops } => body(ops)
+  }
+}
+
+type FabricWetStore
+  = FabricWetStoreReady { store: FabricStorageOperations }
+  | FabricWetStoreUnready { area: String, detail: String }
+
+// THE SCENARIO STANDS UP THE DECLARED MEMBER, then opens the store: on a real host the placement demand
+// rows provision that directory from the same declaration (fabric_storage_store_directories); an isolated
+// scenario owes the same step, spelled here through fabric_store_declared_root so the provisioning target
+// and the store root cannot disagree. fabric_wet_store_unprovisioned skips the step and is the BROKEN
+// realization: the mint lists a root that is not there and refuses, and no scenario can hand it a directory
+// to stand in.
+fn fabric_wet_provision(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> Bool {
+  shell.Mkdir.Parents(path: fabric_store_declared_root(members: members, root: instance.instance_root)).success
+}
+
+fn fabric_wet_store(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricWetStore {
+  if !fabric_wet_provision(members: members, instance: instance) {
+    FabricWetStoreUnready { area: "provision", detail: "the scenario could not stand up the declared member" }
+  } else {
+    match fabric_store_open(members: members, instance: instance, entry_mode: none) {
+      FabricStoreUnready { area: a, detail: d } => FabricWetStoreUnready { area: a, detail: d }
+      FabricStoreReady { store: ops } => FabricWetStoreReady { store: ops }
+    }
+  }
+}
+
+fn fabric_wet_store_unprovisioned(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricWetStore {
+  match fabric_store_open(members: members, instance: instance, entry_mode: none) {
+    FabricStoreUnready { area: a, detail: d } => FabricWetStoreUnready { area: a, detail: d }
+    FabricStoreReady { store: ops } => FabricWetStoreReady { store: ops }
+  }
+}
+
 fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> ProcessExit {
   let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_fixture.XXXXXX").path)
   let files = fabric_store_area_paths(members: fabric_storage_slots, instance: instance)

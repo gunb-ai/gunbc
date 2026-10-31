@@ -14,7 +14,7 @@ import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generati
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.host_capacity { ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
@@ -115,16 +115,22 @@ fn slot_store_at(dir: String) -> SlotStore? {
   }
 }
 
+// THE LEDGER IS OBTAINED THROUGH THE ONE MINT (the standing the route's own mint returns): a store that is
+// not standing yields no stores record, and this witness then fails -- it is the inhabitance claim that the
+// real capacity ledger produces the shape the hermetic placement witness asserts.
 fn stores_at(dir: String) -> SessionPlacementStores? {
   let _made = shell.Mkdir.Parents(path: slots_dir(dir: dir) as FilePath)
   match session_attempt_slots_store(instance: instance_at(dir: dir)) {
     SessionAttemptSlotsStoreUnready { detail: _ } => none
-    SessionAttemptSlotsStoreReady { store } => Present { value: SessionPlacementStores {
-      slots: store,
-      records_dir: dir,
-      store: compute_capacity_store(subject: subject_at(dir: dir)),
-      partition: subject_at(dir: dir).partition,
-    } }
+    SessionAttemptSlotsStoreReady { store: slots } => match compute_capacity_store(subject: subject_at(dir: dir)) {
+      ComputeCapacityStoreUnready { area: _, detail: _ } => none
+      ComputeCapacityStoreReady { store: ledger } => Present { value: SessionPlacementStores {
+        slots: slots,
+        records_dir: dir,
+        store: ledger,
+        partition: subject_at(dir: dir).partition,
+      } }
+    }
   }
 }
 
@@ -140,10 +146,13 @@ fn reserve_real(dir: String) -> LeaseGrant? {
 // THE LEDGER STILL HOLDS THE REFERENCE iff a release proposed now returns it. Destructive, so it is
 // each control's LAST read.
 fn ledger_still_holds(dir: String) -> Bool {
-  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
-    ComputeReleased { partition: _, reference: _, reason: _ } => true
-    ComputeNothingToRelease { detail: _ } => false
-    ComputeReleaseRefused { detail: _ } => false
+  match compute_capacity_store(subject: subject_at(dir: dir)) {
+    ComputeCapacityStoreUnready { area: _, detail: _ } => false
+    ComputeCapacityStoreReady { store: ledger } => match compute_release_on(store: ledger, partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
+      ComputeReleased { partition: _, reference: _, reason: _ } => true
+      ComputeNothingToRelease { detail: _ } => false
+      ComputeReleaseRefused { detail: _ } => false
+    }
   }
 }
 
@@ -178,7 +187,6 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
     amount: kibibyte(count: 8388608),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
     slot: slot,
     slot_generation: cas_generation_first(),
   }

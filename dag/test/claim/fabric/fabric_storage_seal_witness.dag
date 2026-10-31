@@ -77,13 +77,20 @@ data tailnet_door_cutover_lawful: String = "module probe_tailnet_door_cutover_la
 
 data tailnet_door_cutover_baseline: String = "module probe_tailnet_door_cutover_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.live_deploy.tailnet_door_cutover_host { TailnetDoorCutoverStore, tailnet_door_cutover_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
-data file_root_literal: String = "module probe_file_root_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(r: NonEmptyStr) -> FabricStorageFileRoot {\n  FabricStorageFileRoot { objects: r, heads: r, entry_mode: none }\n}\n"
+data file_root_literal: String = "module probe_file_root_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageOperations }\nfn f(r: NonEmptyStr) -> FabricStorageOperations {\n  FabricStorageOperations { objects: r, heads: r, entry_mode: none }\n}\n"
 
-data file_root_cast: String = "module probe_file_root_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(r: NonEmptyStr) -> FabricStorageFileRoot {\n  r as FabricStorageFileRoot\n}\n"
+data file_root_cast: String = "module probe_file_root_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageOperations }\nfn f(r: NonEmptyStr) -> FabricStorageOperations {\n  r as FabricStorageOperations\n}\n"
 
-data file_root_path_mint: String = "module probe_file_root_path_mint\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f() -> FabricStorageFileRoot {\n  fabric_storage_file_root(root: \"/any/literal\")\n}\n"
+data file_root_path_mint: String = "module probe_file_root_path_mint\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
-data file_root_baseline: String = "module probe_file_root_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+data file_root_lawful_mint: String = "module probe_file_root_lawful_mint\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"lawful\"\n}\n"
+
+data file_root_baseline: String = "module probe_file_root_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"lawful route: the one mint over a declared chain and a business key\"\n}\n"
+
+// THE SEAL IS WHAT REFUSES, not something else in the probe: the same construction over an UNSEALED twin of the
+// record -- same fields, no sole_constructor -- is accepted, zero SoleConstructorViolations. The seal on
+// FabricStorageOperations is the difference, and stripping it would flip the literal RED above to zero.
+data file_root_unsealed_analogue: String = "module probe_file_root_unsealed_analogue\nimport std.types { NonEmptyStr }\nimport extdeps.access.posix { FileMode }\ntype OpsAnalogue {\n  objects: NonEmptyStr\n  heads: NonEmptyStr\n  entry_mode: FileMode?\n}\nfn f(r: NonEmptyStr) -> OpsAnalogue {\n  OpsAnalogue { objects: r, heads: r, entry_mode: none }\n}\n"
 
 data local_files_store_path: String = "module probe_local_files_store_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f() -> WorkspaceAllocationStore {\n  workspace_allocation_store(binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: \"/any/literal\") })\n}\n"
 
@@ -194,25 +201,34 @@ test fn the_lawful_tailnet_door_cutover_mint_is_admitted() -> ProcessExit {
   ])
 }
 
+test fn the_same_record_without_the_seal_is_constructed() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: file_root_unsealed_analogue, subject: "OpsAnalogue"), holds: fn(n) { n == 0 }))
+}
+
 test fn a_forged_file_root_literal_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: file_root_literal, subject: "FabricStorageFileRoot"), holds: fn(n) { n == 1 }))
+  census_exit(census_verdict(census: seal_violations(source: file_root_literal, subject: "FabricStorageOperations"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_file_root_cast_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: file_root_cast, subject: "FabricStorageFileRoot"), holds: fn(n) { n == 1 }))
+  census_exit(census_verdict(census: seal_violations(source: file_root_cast, subject: "FabricStorageOperations"), holds: fn(n) { n == 1 }))
 }
 
-// AN EXPECTING-RED PROBE, recorded as what holds TODAY (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module):
-// fabric_storage_file_root stays exported, so a foreign module still reaches a FileRoot over a literal path. No rung is claimed;
-// when the ambient-authority lane (and the FabricStorageOperations follow-up) lands this must go red.
-test fn a_file_root_over_a_literal_path_is_accepted_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: file_root_path_mint, safe: file_root_baseline, holds: fn(n) { n <= 0 }))
+// THE PATH MINT IS DELETED, and the probe that used to RECORD the residual now attributes its closure: a foreign module
+// asking for fabric_storage_file_root is refused with exactly one MissingExport keyed on that name; the lawful route (the
+// ONE mint over a declared member chain and a business key) is zero blocking. The recorded residual stands for the AMBIENT
+// route -- raw Filesystem over a literal path, file_slot_store_over -- which is a different probe and a different lane.
+test fn the_deleted_path_mint_is_no_longer_reachable_from_any_module() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: file_root_path_mint, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_root"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_fabric_store_mint_is_reachable() -> ProcessExit {
+  census_exit(blocking_delta(hostile: file_root_lawful_mint, safe: file_root_baseline, holds: fn(n) { n <= 0 }))
 }
 
 // THE SECOND EXPECTING-RED PROBE: the LocalFiles arm of the binding carries that path-built FileRoot, and the store mints take the
 // binding, so a workspace store over a literal path is ACCEPTED today. Same trigger; no rung claimed.
-test fn a_workspace_store_over_a_local_files_literal_path_is_accepted_today() -> ProcessExit {
-  census_exit(blocking_delta(hostile: local_files_store_path, safe: local_files_baseline, holds: fn(n) { n <= 0 }))
+test fn the_local_files_binding_no_longer_takes_a_path_mint() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: local_files_store_path, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_root"), holds: fn(n) { n == 1 }))
 }
 
 // THE OUTCOME-TAKING FOLD IS DELETED: fabric_storage_put_from_create turned a supplied FilesystemCreated into FabricObjectStored
