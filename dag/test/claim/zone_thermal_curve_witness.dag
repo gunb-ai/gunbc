@@ -1,9 +1,10 @@
 module test.claim.zone_thermal_curve_witness
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { Second, celsius, percent, percent_count, second }
 import std.optional { Absent, Present }
-import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, zone_curve_for_load, zone_duty, zone_duty_percent }
+import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, ZoneSensorObservation, ZoneSensorRead, ZoneSensorUnread, zone_curve, zone_curve_duty, zone_curve_for_load, zone_duty, zone_duty_percent }
 
 // SUPPLIED: readings. EXECUTED: the real zone_duty fold. The curves are the two live h11 zone curves
 // (a16-fan.sh, read 2026-10-30): CPU zone 20% to 60 C, 100% at 85 C; GPU idle 20% to 75 C, 100% at 88 C.
@@ -15,8 +16,21 @@ fn gpu_idle_curve() -> ZoneCurve {
   ZoneCurve { floor: percent(20), flat_until: celsius(75), full_at: celsius(88) }
 }
 
+fn sensor_a() -> NonEmptyStr {
+  "a" as NonEmptyStr
+}
+
+fn sensor_b() -> NonEmptyStr {
+  "b" as NonEmptyStr
+}
+
+// One required sensor "a"; every temp is a read of it, so the zone follows the hottest.
 fn duty_at(curve: ZoneCurve, temps: List<Int>) -> Int {
-  percent_count(zone_duty_percent(zone_duty(curve: curve, readings: map(temps, t => celsius(t))))) as Int
+  percent_count(zone_duty_percent(zone_duty(
+    curve: curve,
+    required: [sensor_a()],
+    observations: map(temps, t => ZoneSensorObservation { sensor: sensor_a(), status: ZoneSensorRead { temperature: celsius(t) } }),
+  ))) as Int
 }
 
 // THE FAIL-SAFE RED: no reading must drive 100, on every curve, and a floor-only answer is the failure.
@@ -63,4 +77,42 @@ fn load_duty(since: Second?, t: Int) -> Int {
 test fn witness_loaded_steps_down_only_after_the_hold() -> Bool {
   load_duty(since: Present { value: second(0) }, t: 72) == 33 && load_duty(since: Present { value: second(59) }, t: 72) == 33
     && load_duty(since: Present { value: second(60) }, t: 72) == 20 && load_duty(since: Absent, t: 72) == 20
+}
+
+// PARTIAL SENSOR FAILURE: one cool reading beside an unread required sensor is 100, and the same cool
+// reading with every required sensor read follows the curve (floor), so the 100 is the completeness
+// check. An observation of a sensor outside the required set cannot stand in for a missing one.
+fn two_sensor_duty(b: ZoneSensorObservation) -> Int {
+  percent_count(zone_duty_percent(zone_duty(
+    curve: gpu_idle_curve(),
+    required: [sensor_a(), sensor_b()],
+    observations: [ZoneSensorObservation { sensor: sensor_a(), status: ZoneSensorRead { temperature: celsius(40) } }, b],
+  ))) as Int
+}
+
+test fn witness_partial_sensor_failure_drives_full_duty() -> Bool {
+  two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorUnread }) == 100
+    && two_sensor_duty(b: ZoneSensorObservation { sensor: "c" as NonEmptyStr, status: ZoneSensorRead { temperature: celsius(40) } }) == 100
+    && two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorRead { temperature: celsius(40) } }) == 20
+}
+
+// A CURVE EXISTS ONLY WHEN VALID. Refused: floor over 100, reversed thresholds, equal thresholds.
+// Controls: valid curve, and the boundaries floor 100 and adjacent thresholds, accepted. The over-range
+// and reversed literals still fail to full duty when built by hand rather than through the constructor.
+fn built(floor: Nat, lo: Int, hi: Int) -> Bool {
+  match zone_curve(floor: percent(floor), flat_until: celsius(lo), full_at: celsius(hi)) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn witness_invalid_curves_are_refused_and_valid_ones_built() -> Bool {
+  !built(floor: 120, lo: 60, hi: 85) && !built(floor: 20, lo: 85, hi: 60) && !built(floor: 20, lo: 70, hi: 70)
+    && built(floor: 20, lo: 60, hi: 85) && built(floor: 100, lo: 60, hi: 61)
+}
+
+test fn witness_hand_built_invalid_curve_never_answers_below_full() -> Bool {
+  percent_count(zone_curve_duty(curve: ZoneCurve { floor: percent(120), flat_until: celsius(60), full_at: celsius(85) }, t: celsius(70))) == 100
+    && percent_count(zone_curve_duty(curve: ZoneCurve { floor: percent(20), flat_until: celsius(85), full_at: celsius(60) }, t: celsius(70))) == 100
+    && percent_count(zone_curve_duty(curve: ZoneCurve { floor: percent(20), flat_until: celsius(70), full_at: celsius(70) }, t: celsius(70))) == 100
 }
