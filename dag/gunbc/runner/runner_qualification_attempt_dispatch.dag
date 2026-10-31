@@ -1,0 +1,64 @@
+module gunbc.runner.runner_qualification_attempt_dispatch
+
+import std.types { String, NonEmptyStr, List }
+import product.host_identity { HostIdentity }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire }
+import gunbc.fleet.fleet_converge_workflow {
+  FleetConvergeDispatchSpec, DispatchInputValue, QualificationAttempt, fleet_converge_subject_host_input,
+}
+
+// LEG G'S FIRST DISPATCH, AS DATA AND NOT YET AN EFFECT (gunbc.plans.mtcollins1_ci_service_legs G; merry-fox-82,
+// 2026-10-31). It is the qualification_attempt mode of the fleet-converge workflow, run on an executor host and acting
+// on mtcollins1, rendered by the one builder every fleet-converge dispatch uses
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_values). It names no revision: a dispatch's revision is
+// its event sha, which the attempt admits as an accepted fleet revision before anything is held
+// (gunbc.runner.runner_qualification_revision_admission), so the dispatch is at the default branch's ref.
+//
+// Nothing here dispatches. The production dispatcher is the operator's manual dispatch on merry-fox-82's go; what this
+// carries is what that dispatch must say and what it waits on.
+
+// WHAT THE DISPATCH WAITS ON, CLOSED: each is a fact read elsewhere, never a flag set here.
+type QualificationAttemptDispatchWait
+  // mtcollins1 is booted from the runner image with network and sshd, and its host-key anchor is read back under the
+  // operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live refuses until then).
+  = AttemptWaitsOnAnchoredBoot
+  // the runner-qualification group exists, created once by microvm_runner_group_ensure under its per-create approval
+  // (gunbc.runner.runner_group_restriction_ensure restricted_runner_groups).
+  | AttemptWaitsOnQualificationGroup
+  // merry-fox-82's go for the wet step.
+  | AttemptWaitsOnOperatorGo
+
+// WHY THIS EXECUTOR: an observed run in which the boot route's job ran on it, plus the decision that chose it.
+type QualificationAttemptExecutorGrounding {
+  observed_run: GitHubWorkflowRunId
+  observed_runner: NonEmptyStr
+  decided_by: NonEmptyStr
+}
+
+type QualificationAttemptDispatch {
+  dispatch: FleetConvergeDispatchSpec
+  git_ref: NonEmptyStr
+  subject: HostIdentity
+  executor_grounding: QualificationAttemptExecutorGrounding
+  waits_on: List<QualificationAttemptDispatchWait>
+}
+
+data mtcollins1_qualification_subject: HostIdentity = "mtcollins1" as HostIdentity
+
+data mtcollins1_qualification_attempt_dispatch: QualificationAttemptDispatch = QualificationAttemptDispatch {
+  dispatch: FleetConvergeDispatchSpec {
+    mode: QualificationAttempt,
+    executor: "srv1" as HostIdentity,
+    inputs: [DispatchInputValue { input: fleet_converge_subject_host_input, value: mtcollins1_qualification_subject as String }],
+  },
+  git_ref: "refs/heads/main" as NonEmptyStr,
+  subject: mtcollins1_qualification_subject,
+  executor_grounding: QualificationAttemptExecutorGrounding {
+    // boot 6: job mtcollins1-boot ran on runner srv1-01 (labels self-hosted, linux, arm64, srv1); srv1 holds the WIF
+    // auth, the fleet key agent and the reach to mtcollins1 on the boot route.
+    observed_run: github_workflow_run_id_of_wire(n: 40264233543),
+    observed_runner: "srv1-01" as NonEmptyStr,
+    decided_by: "merry-fox-82, 2026-10-31 (msg_ecb3594d)" as NonEmptyStr,
+  },
+  waits_on: [AttemptWaitsOnAnchoredBoot, AttemptWaitsOnQualificationGroup, AttemptWaitsOnOperatorGo],
+}
