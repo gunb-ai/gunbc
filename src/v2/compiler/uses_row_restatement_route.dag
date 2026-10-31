@@ -1,0 +1,36 @@
+module v2.compiler.uses_row_restatement_route
+
+import std.algebra { Empty, fold_list, list_snoc_item }
+import std.types { List }
+import v2.compiler.dependency_demand_census { AuthoredResolved, AuthoredRowReading, AuthoredTypeUnresolved, DemandCensusReport, DemandCensusRow }
+import v2.compiler.uses_row_restatement { UsesRowReading, UsesRowResolved, UsesRowStanding, UsesRowTypeUnresolved, uses_row_standing_of_demand }
+import v2.std.qualified_name { QualifiedName }
+
+// THE ROUTE OF v2.compiler.uses_row_restatement over the real corpus: one standing per authored row, read from the
+// census report's rows BY SYMBOL (their demand and authored readings), never from a second fact walk. The census
+// strip, fact walk and reader are the symbols D13's surviving home (v2.compiler.dependency_demand) takes after the
+// operation-declaration PR (#15382); this module repoints its imports there when they move and changes nothing else.
+fn uses_row_reading_of(r: AuthoredRowReading) -> UsesRowReading {
+  match r {
+    AuthoredResolved { declared: p } => UsesRowResolved { resource: p }
+    AuthoredTypeUnresolved => UsesRowTypeUnresolved
+  }
+}
+
+type UsesRowRestatementEntry {
+  function: QualifiedName
+  standings: List<UsesRowStanding>
+}
+
+fn uses_row_restatement_entry(row: DemandCensusRow) -> UsesRowRestatementEntry {
+  UsesRowRestatementEntry {
+    function: row.function,
+    standings: fold_list(xs: row.authored, empty: Empty, cons: fn(acc, r) {
+      list_snoc_item(xs: acc, item: uses_row_standing_of_demand(demand: row.demand, reading: uses_row_reading_of(r: r)))
+    })
+  }
+}
+
+fn uses_row_restatement_of_report(r: DemandCensusReport) -> List<UsesRowRestatementEntry> {
+  fold_list(xs: r.rows, empty: Empty, cons: fn(acc, row) { list_snoc_item(xs: acc, item: uses_row_restatement_entry(row: row)) })
+}

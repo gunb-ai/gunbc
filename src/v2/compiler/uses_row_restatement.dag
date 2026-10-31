@@ -38,11 +38,15 @@ fn uses_row_demand_of(rows: List<DependencyDemandRow>, function: QualifiedName) 
 }
 
 fn uses_row_standing(rows: List<DependencyDemandRow>, function: QualifiedName, reading: UsesRowReading) -> UsesRowStanding {
+  uses_row_standing_of_demand(demand: uses_row_demand_of(rows: rows, function: function), reading: reading)
+}
+
+fn uses_row_standing_of_demand(demand: Optional<DependencyDemand>, reading: UsesRowReading) -> UsesRowStanding {
   match reading {
     UsesRowTypeUnresolved => UsesRowUnobserved
     UsesRowAliasUnestablished => UsesRowUnobserved
     UsesRowResolved { resource: p } =>
-      match uses_row_demand_of(rows: rows, function: function) {
+      match demand {
         Absent => UsesRowUnobserved
         Present { value: d } =>
           match d {
