@@ -7,6 +7,9 @@ import std.algebra { collection_join_shape }
 import std.filesystem.types { SymlinkTarget }
 import extdeps.filesystem.posix { PosixFileIdentity, PosixFileStat }
 import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -967,3 +970,31 @@ service Filesystem {
     transport file { path: "{path}", verb: "list" }
   }
 }
+
+// ── THE HANDLE'S REALIZATION IS A DECLARED FRONTIER, ENROLLED IN gunbc.census_closure_frontier (§3c) ──
+//
+// Both dissolutions are UNBOUND because their triggers are declarations the tree does not carry yet (a bound
+// dissolution may only cite a declaration it already has). Each description names the change that discharges it, so
+// the row becomes bindable in that change. The negative-identity refusal is likewise an OBLIGATION on the mint, not
+// earned evidence: nothing here executes it.
+
+data filesystem_handle_mint_frontier_reason: String = "FilesystemHandle is sole_constructor and nothing mints one: the Filesystem.Open operation and its host-derived handler (open(path, O_NOFOLLOW), minting inline over the host channel and refusing a negative st_dev/st_ino reading) are not declared. Named consumers once it exists: the capacity-recovery symlink reader and the executor's staged-file intake."
+
+data filesystem_handle_mint_frontier_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Filesystem.Open operation and its handler are declared in extdeps.filesystem (the realization change that mints FilesystemHandle from the host's returned descriptor), together with the symlink-swap RED and the lawful positive control executed against it")
+
+data filesystem_handle_consumer_frontier_reason: String = "std.fabric_blob read_staged_fabric_blob verifies a staged blob through path-based sha256sum and stat reads that re-resolve the path between calls (gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls); its consumer is extdeps.realization.materialization_store_local. It migrates to FilesystemHandle copy_to_new with the digest taken on the copy's descriptor, delete-first."
+
+data filesystem_handle_consumer_frontier_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: read_staged_fabric_blob no longer reads the staged path through sha256sum or stat and every consumer by name (extdeps.realization.materialization_store_local among them) reads through a FilesystemHandle, with the path-based route deleted rather than kept beside it")
+
+data filesystem_handle_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "FilesystemOpen"),
+    reason: filesystem_handle_mint_frontier_reason,
+    dissolution: filesystem_handle_mint_frontier_dissolution
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob"),
+    reason: filesystem_handle_consumer_frontier_reason,
+    dissolution: filesystem_handle_consumer_frontier_dissolution
+  ),
+]
