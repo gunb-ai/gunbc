@@ -138,7 +138,6 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_generate_command"),
     decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
-    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_into_existing_directory_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_reproducible_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_command"),

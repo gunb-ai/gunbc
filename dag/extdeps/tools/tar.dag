@@ -2,7 +2,7 @@ module extdeps.tools.tar
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -42,32 +42,37 @@ fn tar_program() -> ProgramIdentity = uncataloged_program(invocation: "tar")
 // destination rather than to wherever the process happened to be standing; --strip-components drops
 // the leading path components a release tarball wraps its tree in. The depth is an Int rather than a
 // pre-spelled flag string because it is a number the caller knows, not a token it should remember.
-fn tar_extract_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
-  argv_command(
-    program: tar_program(),
-    arguments: [
-      "xf", archive,
-      "-C", into_directory,
-      concat("--strip-components=", to_string(strip_components)),
-    ],
-  )
+//
+// WHAT HAPPENS TO A DIRECTORY THAT ALREADY EXISTS is the caller's to state, because only the caller knows
+// whether its destination carries a mode of its own. GNU tar restores an existing directory's metadata
+// from the archive's entry for it by default (--overwrite-dir), and a release tarball's leading `./`
+// entry names the -C directory itself: the actions/runner archives carry it at drwxr-xr-x, which turned a
+// 0700 deploy tree into 0755 (gunbc.recurring_failure_mode
+// an_archive_extract_reapplies_its_directory_mode_to_the_destination). --no-overwrite-dir is "Preserve
+// metadata of existing directories" (GNU tar manual, Option Summary). The default emits no word, so its
+// argv is the one GNU tar has always been given here.
+type TarExistingDirectoryMetadata
+  = TarOverwriteDir
+  | TarNoOverwriteDir
+
+fn tar_existing_directory_metadata_arguments(existing_directories: TarExistingDirectoryMetadata) -> List<String> {
+  match existing_directories {
+    TarOverwriteDir => []
+    TarNoOverwriteDir => ["--no-overwrite-dir"]
+  }
 }
 
-// EXTRACT INTO A DIRECTORY THE CALLER ALREADY MADE, LEAVING THAT DIRECTORY AS THE CALLER MADE IT. GNU tar
-// restores an existing directory's metadata from the archive's entry for it unless told not to: a release
-// tarball's leading `./` entry (the actions/runner archives carry one at drwxr-xr-x) re-applies its own
-// mode to the -C directory. --no-overwrite-dir is "Preserve metadata of existing directories" (GNU tar
-// manual, Option Summary), so a destination created at a mode keeps it. tar_extract_command keeps the
-// default for callers whose destination carries no mode of its own.
-fn tar_extract_into_existing_directory_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
+fn tar_extract_command(archive: String, into_directory: String, strip_components: Int, existing_directories: TarExistingDirectoryMetadata) -> ArgvCommand {
   argv_command(
     program: tar_program(),
-    arguments: [
-      "xf", archive,
-      "-C", into_directory,
-      concat("--strip-components=", to_string(strip_components)),
-      "--no-overwrite-dir",
-    ],
+    arguments: concat(
+      [
+        "xf", archive,
+        "-C", into_directory,
+        concat("--strip-components=", to_string(strip_components)),
+      ],
+      tar_existing_directory_metadata_arguments(existing_directories: existing_directories),
+    ),
   )
 }
 
