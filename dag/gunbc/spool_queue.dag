@@ -2,6 +2,9 @@ module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
 import std.optional { Optional, Present, Absent, optional_is_absent }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
@@ -451,8 +454,14 @@ fn spool_requeue_assess(kind: SpoolKind, observed: SpoolEntryState, evidence: Sp
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
 //  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
 //    spool_role_writers when the implementation PR migrates the three spools and deletes the literal spellings.
-//  - out-of-corpus writers (the ExecStopPost hook is derived from the codec; any other principal is not): no rung is
-//    established by this model-only change, so none is dropped here. The implementation PR files the gunbc.rung_drop
-//    row (previous rung, temporary rung, reason, population, trigger). Restoration capability: each spool directory
-//    creatable only by the principals spool_role_writers names, kernel-refusing others; a permission-bits readback
-//    does not retire it.
+
+// The out-of-corpus writers frontier, enrolled in gunbc.census_closure_frontier census_closure_frontier_row_groups
+// (the consumer). No rung is established by this model-only change, so none is dropped here; the implementation
+// change (node://adhoc-ec4fbad6-dec) files the gunbc.rung_drop row (previous rung, temporary rung, reason, population).
+data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_role_writers"),
+    reason: "spool_role_writers names who MAY create an entry into a role, but the ExecStopPost hook writes the exit spool from outside the corpus and nothing refuses any other principal: the exclusion holds only by the declared writers' agreement (mitigation), never by the kernel",
+    dissolution: unbound_dissolution(description: "dissolve-on: each spool directory is creatable only by the principals spool_role_writers names, with every other principal kernel-refused (ownership and mode derived from spool_role_writers by gunbc.live_deploy.emit), and a permission-bits readback does not retire it. SUFFICIENT FOR deleting this row. Unbound until the implementation change node://adhoc-ec4fbad6-dec declares that ownership authority as a declaration this corpus can cite.")
+  )
+]

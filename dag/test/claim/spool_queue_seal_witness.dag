@@ -5,7 +5,10 @@ import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdic
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.roster_frontier { frontier_subject_key }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.spool_queue {
+  spool_out_of_corpus_writers_frontier_rows,
   spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
@@ -378,4 +381,13 @@ test fn the_stale_stop_effect_does_not_exist_today() -> ProcessExit {
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
 test fn the_host_spool_stage_enum_is_importable_today() -> ProcessExit {
   census_exit(blocking_delta(hostile: raw_host_spool_stage_source, safe: baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+// ENROLMENT IS A DIFFERENT FACT FROM DECLARATION: the writer-confinement row is joined against the census closure by
+// subject key. Dropping spool_out_of_corpus_writers_frontier_rows from census_closure_frontier_row_groups reds it.
+test fn the_out_of_corpus_writers_frontier_row_is_enrolled_in_the_census_closure() -> Bool {
+  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
+  length(xs: spool_out_of_corpus_writers_frontier_rows) == 1
+    && spool_out_of_corpus_writers_frontier_rows |> all(row =>
+      census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
 }

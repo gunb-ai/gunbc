@@ -7,6 +7,7 @@ import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.serving.router_proxy_scaffold { router_proxy_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
+import gunbc.spool_queue { spool_out_of_corpus_writers_frontier_rows }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_consumer_frontier_rows }
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
 import gunbc.site_segment_anchor_frontier { site_segment_anchor_consumer_frontier_rows }
@@ -198,6 +199,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     site_segment_anchor_consumer_frontier_rows(),
     bmc_secure_redfish_consumer_frontier_rows(),
     dashboard_target_write_consumer_frontier_rows,
+    spool_out_of_corpus_writers_frontier_rows,
   ]
 }
 
