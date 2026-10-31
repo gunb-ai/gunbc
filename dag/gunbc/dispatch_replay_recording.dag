@@ -20,9 +20,6 @@ import extdeps.git.plumbing {
 }
 import extdeps.git.object_store { GitRefName, GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.service_exec { ServiceResult, ServiceResultSuccess, ServiceResultExitCode, service_result_of_wire }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import gunbc.devboot.transport { devboot_repo_address, devboot_observe_ref }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecord,
@@ -35,12 +32,16 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // how its unit ended. A hand-authored fixture would owe a separate claim that a real worker emits that shape;
 // a recording owes none ONCE recording_capture runs, which is why the replay executor takes recordings and nothing else.
 //
-// DECLARED FRONTIER: recording_capture has no executing consumer on the production path in this change; until it
-// does, a recording can only be written by hand and the 'owes none' claim above is NOT yet established. The row
-// below (dispatch_replay_recording_frontier_rows) states that gap with its dissolution trigger. NOTHING EXECUTES
-// THE ROW: the repository-wide closure census was retired (#15428) and no replacement instrument is owed, so it is
-// a declared unconsumed frontier rather than a tracked gap. Until it dissolves, the lab operator captures a
-// recording with the entry
+// DECLARED FRONTIER, STATED IN PROSE AND ENROLLED NOWHERE: recording_capture has no executing consumer on the
+// production path in this change; until it does, a recording can only be captured by the operator-run entry below,
+// and the 'owes none' claim above is NOT yet established. TRIGGER that dissolves this statement: a belt step of a
+// completed lab attempt invokes recording_capture over that attempt's own durable records.
+// It is prose rather than a FrontierRow on purpose. A row that no fold reads is DESIGN 3c's dangling red, and the
+// fold that read these rows is being retired (#15415, #15428; DESIGN.md section 6 ruling gunbc.design_ruling
+// bad_process_is_worse_than_no_process: "Removal does not owe a replacement instrument"). On this base that fold is
+// still live and the ruling is not yet here; the removal was directed by the parent (msg_ce75df07) and this branch
+// carries it ahead of the merge that brings the ruling across. Until the trigger above fires, the lab operator
+// captures a recording with the entry
 // gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli, which reads one completed attempt's own records.
 //
 // WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
@@ -309,11 +310,3 @@ fn recording_replay_admission(id: RecordingId, attempt_base: String) -> Recordin
     RecordingReplayBaseMismatch { recorded_base: recording_object_hex(oid: id.base), attempt_base: attempt_base }
   }
 }
-
-data dispatch_replay_recording_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: "recording_capture"),
-    reason: "recording_capture is not yet bound to a completed attempt's belt step; until it is, its executing consumer is the operator-run entry gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli over one completed attempt's records",
-    dissolution: unbound_dissolution(description: "a completed lab attempt's belt step captures its recording"),
-  ),
-]
