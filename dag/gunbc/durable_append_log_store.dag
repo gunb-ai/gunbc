@@ -127,7 +127,7 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 // `<events>.wire/<round>.{request,response}.json` into. So every `multi-writer` member is a host create
 // followed by ONE sandbox window, and the contract is a sequence of exclusive windows, not concurrent writers.
 type MemberDisposition
-  = MigrateToLogStore { member: NonEmptyStr, framing: AppendFraming, principal: DurableHoldOwnerRef }
+  = MigrateToLogStore { framing: AppendFraming, principal: DurableHoldOwnerRef }
   | MigrateToCreateOnceMember {}
   | BlockedOnCapability { journal: DeclarationRef }
   | StaysSharedByAgreement { drop: DeclarationRef }
@@ -150,55 +150,55 @@ data append_log_member_census: List<MemberCensusRow> = [
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerEvents" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptWorkerEvents" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewEvents" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptReviewEvents" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditEvents" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptAuditEvents" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorEvents" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptSupervisorEvents" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptDirectoryWire" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptDirectoryWire" as NonEmptyStr, framing: RecordPerGeneration {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: RecordPerGeneration {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerLog" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptWorkerLog" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewLog" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptReviewLog" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditLog" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptAuditLog" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorLog" as NonEmptyStr,
     disposition: MigrateToLogStore {
-      member: "AttemptSupervisorLog" as NonEmptyStr, framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+      framing: NewlineDelimitedStream {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
     },
   },
   MemberCensusRow {
@@ -259,7 +259,7 @@ data append_log_member_census: List<MemberCensusRow> = [
 // the member, framing and principal and the slot is built here: a HostOnly or SandboxOnly log row has no spelling.
 fn append_log_census_slot(row: MemberCensusRow) -> AppendLogSlot? {
   match row.disposition {
-    MigrateToLogStore { member: m, framing: f, principal: p } => Present { value: AppendLogSlot { member: m, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
+    MigrateToLogStore { framing: f, principal: p } => Present { value: AppendLogSlot { member: row.member, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
     _ => Absent
   }
 }
