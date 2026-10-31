@@ -33,6 +33,8 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.fleet.printer_execution_hold {
   PrinterExecutionHold, printer_hold_enter, printer_operator_observation_request,
+  printer_hold_observation_escalation_id, printer_hold_release_request_at,
+  HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
 }
 import gunbc.process_hold_identity { process_hold_text, self_process_identity, SelfIdentified, SelfUnidentified }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
@@ -110,20 +112,33 @@ fn approval_written(w: StoreWrite) -> Bool {
   }
 }
 
+// THE ESCALATION THE PRODUCTION ARM LOOKS THIS HOLD'S OBSERVATION UP UNDER. It is derived from the
+// hold (root, slot, holder, generation), NOT from the converge that met it, so the witness asks the
+// PRODUCTION derivation for it rather than naming one: a drift in either direction shows up as a
+// refused grant, not a passing claim.
+fn printer_recovery_escalation(
+  hold_root: String,
+  holder: DurableHoldOwnerRef,
+  generation: CasGeneration,
+) -> NonEmptyStr {
+  printer_hold_observation_escalation_id(
+    hold_root: hold_root as NonEmptyStr, hold_slot: printer_recovery_witness_slot,
+    holder: holder, generation: generation)
+}
+
 // THE REVISION THE PRODUCTION ARM WILL REBUILD UNDER. The operator arm rebuilds its
-// AuthorizationRequest from (root, slot, escalation, holder, generation); the revision the approval
-// route binds is that request's intent hash, so the witness asks the PRODUCTION builder for the
-// subject and files under its revision -- it never re-implements the subject, and a subject drift in
-// either direction shows up as a refused grant rather than a passing claim.
+// AuthorizationRequest from (root, slot, holder, generation); the revision the approval route binds
+// is that request's intent hash, so the witness asks the PRODUCTION builder for the subject and
+// files under its revision -- it never re-implements the subject, and a subject drift in either
+// direction shows up as a refused grant rather than a passing claim.
 fn printer_recovery_revision(
   hold_root: String,
-  escalation_id: NonEmptyStr,
   holder: DurableHoldOwnerRef,
   generation: CasGeneration,
 ) -> NonEmptyStr {
   request_revision_of(request: printer_operator_observation_request(
     hold_root: hold_root as NonEmptyStr, hold_slot: printer_recovery_witness_slot,
-    escalation_id: escalation_id, holder: holder, generation: generation))
+    holder: holder, generation: generation))
 }
 
 // THE OPERATOR OBSERVATION, filed and decided through the real approval route -- the device-approval
@@ -132,13 +147,13 @@ fn printer_recovery_revision(
 fn file_and_approve(
   approvals_root: String,
   hold_root: String,
-  escalation_id: NonEmptyStr,
   holder: DurableHoldOwnerRef,
   generation: CasGeneration,
 ) -> Bool {
-  let revision = printer_recovery_revision(hold_root: hold_root, escalation_id: escalation_id, holder: holder, generation: generation)
+  let escalation = printer_recovery_escalation(hold_root: hold_root, holder: holder, generation: generation)
+  let revision = printer_recovery_revision(hold_root: hold_root, holder: holder, generation: generation)
   let filed = file_approval_request(root: approvals_root as NonEmptyStr, request: StoredApprovalRequest {
-    escalation_id: escalation_id,
+    escalation_id: escalation,
     request_revision: revision,
     attempt: printer_recovery_witness_attempt,
     requester: "operator-observation-witness",
@@ -149,7 +164,7 @@ fn file_and_approve(
     key_id: approval_mac_key_id,
   })
   let approved = commit_broker_decision(root: approvals_root as NonEmptyStr, decision: BrokerApproved {
-    escalation_id: escalation_id,
+    escalation_id: escalation,
     revision: revision,
     decided_by: "fleet-operator",
     decided_at: "2026-10-28T00:05:00Z",
@@ -166,13 +181,13 @@ fn file_and_approve(
 fn file_undecided(
   approvals_root: String,
   hold_root: String,
-  escalation_id: NonEmptyStr,
   holder: DurableHoldOwnerRef,
   generation: CasGeneration,
 ) -> Bool {
-  let revision = printer_recovery_revision(hold_root: hold_root, escalation_id: escalation_id, holder: holder, generation: generation)
+  let escalation = printer_recovery_escalation(hold_root: hold_root, holder: holder, generation: generation)
+  let revision = printer_recovery_revision(hold_root: hold_root, holder: holder, generation: generation)
   approval_written(w: file_approval_request(root: approvals_root as NonEmptyStr, request: StoredApprovalRequest {
-    escalation_id: escalation_id,
+    escalation_id: escalation,
     request_revision: revision,
     attempt: printer_recovery_witness_attempt,
     requester: "operator-observation-witness",
@@ -335,7 +350,7 @@ test fn an_unobservable_holder_is_released_by_an_approved_operator_observation()
       HoldSlotHeld { generation: g, owner: h } =>
         file_and_approve(
           approvals_root: approvals_root, hold_root: hold_root,
-          escalation_id: esc, holder: h, generation: g)
+          holder: h, generation: g)
           && ran(e: printer_hold_enter(
                escalation_id: esc,
                use: print_ran,
@@ -353,44 +368,135 @@ test fn an_unobservable_holder_is_released_by_an_approved_operator_observation()
 // ── (4c) CONSENT IS FINE-GRAINED, NOT A FLAG ────────────────────────────────────────────────────
 // Two refusals that a permissive consent check would silently release:
 //   - FILED BUT UNDECIDED: the operator has not clicked. Must refuse with the not-yet-decided cause.
-//   - APPROVED FOR ANOTHER HOLD: the decision binds a subject over a DIFFERENT claim directory, so
-//     its intent hash (and revision) differ from the request the production arm rebuilds. Must refuse
-//     with the decided-for-a-different-intent cause.
+//   - APPROVED FOR ANOTHER HOLD: the observation binds a subject over a DIFFERENT claim directory, so
+//     it lives under that hold's OWN escalation id (printer_hold_observation_escalation_id) and this
+//     hold's escalation is simply not filed. Must refuse with the not-filed cause, and the two
+//     escalations must differ -- that derivation is what stops one operator "yes" from covering every
+//     stale hold in the fleet.
 // Both over the same legacy plant, with the hold still held afterwards.
 test fn a_pending_or_foreign_observation_never_releases_the_stale_hold() -> Bool {
   let hold_root = fresh_root()
   let approvals_root = fresh_root()
+  let foreign_approvals_root = fresh_root()
   let foreign_root = fresh_root()
   let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
-  let esc_pending = "printer-start-legacy-pending-witness" as NonEmptyStr
-  let esc_foreign = "printer-start-legacy-foreign-witness" as NonEmptyStr
   let verdict = plant(root: hold_root, owner: legacy)
     && match observe_file_hold(root: hold_root as NonEmptyStr, key: printer_recovery_witness_slot) {
       HoldSlotHeld { generation: g, owner: h } =>
         file_undecided(
           approvals_root: approvals_root, hold_root: hold_root,
-          escalation_id: esc_pending, holder: h, generation: g)
+          holder: h, generation: g)
           && string_contains(s: failure_reason(e: printer_hold_enter(
-               escalation_id: esc_pending,
+               escalation_id: "printer-start-legacy-pending-witness" as NonEmptyStr,
                use: print_ran,
                root: hold_root as NonEmptyStr,
                slot_key: printer_recovery_witness_slot,
                approvals_root: approvals_root as NonEmptyStr)), pattern: "nobody has decided it yet")
-          // approved -- but for a DIFFERENT claim directory, so it is not this hold's observation.
+          // approved -- but for a DIFFERENT claim directory, so it is filed under that hold's escalation
+          // id and this hold's escalation carries nothing at all.
           && file_and_approve(
-               approvals_root: approvals_root, hold_root: foreign_root,
-               escalation_id: esc_foreign, holder: h, generation: g)
+               approvals_root: foreign_approvals_root, hold_root: foreign_root,
+               holder: h, generation: g)
           && string_contains(s: failure_reason(e: printer_hold_enter(
-               escalation_id: esc_foreign,
+               escalation_id: "printer-start-legacy-foreign-witness" as NonEmptyStr,
                use: print_ran,
                root: hold_root as NonEmptyStr,
                slot_key: printer_recovery_witness_slot,
-               approvals_root: approvals_root as NonEmptyStr)), pattern: "decided for a different intent")
+               approvals_root: foreign_approvals_root as NonEmptyStr)), pattern: "no operator observation is filed")
+          // The derivation is per-hold: the same holder and generation under a different claim
+          // directory is a DIFFERENT escalation, which is what keeps one approval from covering both.
+          && (printer_recovery_escalation(hold_root: hold_root, holder: h, generation: g)
+              != printer_recovery_escalation(hold_root: foreign_root, holder: h, generation: g))
           && held(root: hold_root)
       _ => false
     }
   let removed1 = shell.Remove.RecursiveForce(path: hold_root)
   let removed2 = shell.Remove.RecursiveForce(path: approvals_root)
-  let removed3 = shell.Remove.RecursiveForce(path: foreign_root)
-  verdict && removed1.success && removed2.success && removed3.success
+  let removed3 = shell.Remove.RecursiveForce(path: foreign_approvals_root)
+  let removed4 = shell.Remove.RecursiveForce(path: foreign_root)
+  verdict && removed1.success && removed2.success && removed3.success && removed4.success
+}
+
+// ── (5) THE FILER: THE ROUTE MUST BE REACHABLE BY A HUMAN ───────────────────────────────────────
+// THE CLAIM THAT WOULD HAVE FAILED ON MAIN. Every claim above passes while NO OPERATOR CAN EVER BE
+// ASKED: the release arm only READS a decision, and the only code that ever FILED an observation was
+// this witness, writing the approval store by hand -- a path no operator has, because the Approve app
+// only DECIDES requests and filing one needs the submission key. So the release route existed only as
+// a test fixture. This claim pins the filer: the release-request route must reach the unobservable
+// arm, must attempt the CANONICAL approval route (gunbc.auth.approval_gate.approval_file_stored_request
+// -- the same one the print-start card files through), and must NOT fall back to writing the store it
+// reads. Here the canonical route refuses before any request leaves, because this executor is not the
+// origin host; what is proven is that the route accepts that refusal as its own answer instead of
+// manufacturing the consent locally, and that the hold stays held either way.
+test fn the_release_request_asks_through_the_broker_and_never_conscribes_a_decision() -> Bool {
+  let hold_root = fresh_root()
+  let approvals_root = fresh_root()
+  let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
+  let planted = plant(root: hold_root, owner: legacy)
+  let asked = printer_hold_release_request_at(
+    root: hold_root as NonEmptyStr,
+    slot_key: printer_recovery_witness_slot,
+    approvals_root: approvals_root as NonEmptyStr)
+  let verdict = planted
+    && match asked {
+      // A hermetic witness has no admitted approval origin, so a real filing cannot have happened.
+      HoldReleaseCardFiled { escalation_id: _ } => false
+      HoldReleaseCardOnFile { escalation_id: _, detail: _ } => false
+      HoldReleaseNothingHeld { detail: _ } => false
+      HoldReleaseRefused { reason: r } => string_contains(s: r as String, pattern: "no card was filed")
+    }
+    // Nothing was written into the store the release arm reads: the arm still answers that this hold's
+    // observation is NOT FILED, which is only true if the route did not file it by hand.
+    && string_contains(s: failure_reason(e: printer_hold_enter(
+         escalation_id: "printer-start-filer-witness" as NonEmptyStr,
+         use: print_ran,
+         root: hold_root as NonEmptyStr,
+         slot_key: printer_recovery_witness_slot,
+         approvals_root: approvals_root as NonEmptyStr)), pattern: "no operator observation is filed")
+    && held(root: hold_root)
+  let removed1 = shell.Remove.RecursiveForce(path: hold_root)
+  let removed2 = shell.Remove.RecursiveForce(path: approvals_root)
+  verdict && removed1.success && removed2.success
+}
+
+// ── (6) A FREED SLOT IS NOT AN OCCASION TO ASK ──────────────────────────────────────────────────
+// A route that files a card whenever it is called would train the operator to approve cards about
+// holds that do not exist. With the slot absent, or freed by the dead-holder recovery, the route says
+// so and files nothing -- the canonical approval route is never reached at all.
+test fn an_absent_or_freed_slot_asks_for_nothing() -> Bool {
+  let hold_root = fresh_root()
+  let approvals_root = fresh_root()
+  let absent = match printer_hold_release_request_at(
+    root: hold_root as NonEmptyStr,
+    slot_key: printer_recovery_witness_slot,
+    approvals_root: approvals_root as NonEmptyStr) {
+    HoldReleaseNothingHeld { detail: d } => string_contains(s: d as String, pattern: "is absent")
+    _ => false
+  }
+  // Free the slot the only way it gets freed in production: the holder is observable and dead, and the
+  // converge's own recovery releases it. Then the route has nothing left to ask about.
+  let freed_then_asked = match self_process_identity() {
+    SelfUnidentified { cause: _ } => false
+    SelfIdentified { process: me, pid_namespace: ns } => {
+      let dead = ProcessIdentity { boot_id: me.boot_id, pid: 4194303, start_time: "1" as NonEmptyStr }
+      let stale_owner = concat("printer-start-deadholder-witness", process_hold_text(p: dead, pid_namespace: ns)) as DurableHoldOwnerRef
+      plant(root: hold_root, owner: stale_owner)
+        && ran(e: printer_hold_enter(
+             escalation_id: "printer-start-freed-slot-witness" as NonEmptyStr,
+             use: print_ran,
+             root: hold_root as NonEmptyStr,
+             slot_key: printer_recovery_witness_slot,
+             approvals_root: approvals_root as NonEmptyStr))
+        && match printer_hold_release_request_at(
+             root: hold_root as NonEmptyStr,
+             slot_key: printer_recovery_witness_slot,
+             approvals_root: approvals_root as NonEmptyStr) {
+          HoldReleaseNothingHeld { detail: d } => string_contains(s: d as String, pattern: "is free")
+          _ => false
+        }
+    }
+  }
+  let removed1 = shell.Remove.RecursiveForce(path: hold_root)
+  let removed2 = shell.Remove.RecursiveForce(path: approvals_root)
+  absent && freed_then_asked && removed1.success && removed2.success
 }

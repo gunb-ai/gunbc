@@ -11008,6 +11008,7 @@ pub enum WitnessRuntimeCause {
     NoSuchVariable,
     NoSuchField,
     TypeError,
+    CallDepthExceeded,
     CrossRepresentationEquality,
     StringRealizationStraddle,
     VariantRealizationRefused,
@@ -11052,6 +11053,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
             WitnessRuntimeCause::NoSuchField => "no-such-field",
             WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CallDepthExceeded => "call-depth-exceeded",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
@@ -11089,6 +11091,7 @@ impl WitnessRuntimeCause {
             E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
             E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
             E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CallDepthExceeded { .. } => WitnessRuntimeCause::CallDepthExceeded,
             E::CrossRepresentationEquality { .. } => {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }

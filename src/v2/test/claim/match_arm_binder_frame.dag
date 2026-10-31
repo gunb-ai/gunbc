@@ -661,3 +661,35 @@ test fn mab_a_module_constant_in_pattern_position_refuses_naming_both_readings()
   mab_outcome_refuses_with(o: mab_resolved_module_constant_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
     && mab_outcome_refuses_with(o: mab_resolved_module_constant_read_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
+
+// THE WHOLE-ARM BARE ATOM (PatternTagPosition). The position reports one way for a nullary tag and
+// for a catch-all binder, so it cannot tell them apart: resolution decides, by what the atom names on
+// the arm's chain. The discriminator is the unread-binder rule: a catch-all binder its arm never reads
+// refuses (resolve_reason_catch_all_binder_unread), so `A => 1` accepting means A was taken as the
+// tag, not as a binder; `other => 1` refusing means `other` was taken as a binder. A binder the body
+// reads stays the Atom it was spelled as. (Atom presence of a tag's own spelling proves nothing: the
+// type declaration spells it too.)
+fn mab_resolved_nullary_tag_arm() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_fresh_name_arm() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    other => 0\n  }\n}\n")
+}
+
+fn mab_resolved_fresh_name_arm_body_reads_it() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> C {\n  match c {\n    A => B\n    other => other\n  }\n}\n")
+}
+
+test fn mab_a_bare_atom_arm_naming_a_nullary_tag_binds_the_tag() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_nullary_tag_arm())
+}
+
+test fn mab_a_bare_atom_arm_naming_nothing_binds_a_binder_its_body_reads() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_fresh_name_arm_body_reads_it())
+    && mab_has_atom(o: mab_resolved_fresh_name_arm_body_reads_it(), id: ^other)
+}
+
+test fn mab_an_unread_catch_all_binder_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_fresh_name_arm(), reason: ^resolve_reason_catch_all_binder_unread)
+}
