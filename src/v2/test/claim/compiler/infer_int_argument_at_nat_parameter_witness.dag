@@ -29,6 +29,9 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // assembly-rejected even for its control and is INVALID (no verdict); this fixture is a fresh authoring, not a
 // repair of it, and it is a hypothesis until a run shows its control accepted.
 //
+// CITATION LABEL (verbatim): this claim may be cited ONLY as 'v2's structural judgment refuses a distinct product at a
+// distinct product'. It may NOT be cited as 'v2 refuses Int at std.nat Nat' (DESIGN section 4b: rung evidence is the real path).
+//
 // FIDELITY LIMIT, STATED: the ingest carries two-declaration STAND-INS for std.nat Nat and std.integer Int
 // (the shapes the real modules declare: Int = NonNegative { n: Nat } | Negative { pred: Nat }), because the
 // real modules' closure is out of scope for one claim. The stand-ins carry no kernel grounding, so a green RED

@@ -20,6 +20,8 @@ data an_int_argument_inhabits_a_nat_parameter_at_typecheck: RecurringFailureMode
     "7-KIND RED (zesty-badger-599, srv1 ~/zb-evidence/k7.log sha256 741b255780039b4db5266c0d0a6be20705183f4646df2e68bc63733c414ab933; fixtures zz_k_<kind>.dag, tree 761485283f2, seed 747ed06b from f20cdcc799ee): the record and generic-T arms stand as siblings of Int-at-Nat; the coproduct arm is WITHDRAWN (NonNegative at the std.integer Int parameter accepted, and the fixture cannot tell std.integer.Int from the kernel Int).","SIBLING, CITED NOT DUPLICATED: the `std.integer` UInt8 = Compose<UInt, MachineWidth<8>> phantom hole (transparent to Int; base64_octets [256,0,0]). Also M2c and #15441. The recursion symptom stays with clever T9.",
 
     "STATED OUT, OWNED BY Q4: a Char value at a declared Int (a branded Int alias) is a distinct case not claimed closed by the numeric-arm repair. Candidate admitting arms, by reading and unrun: (a) `alias_identity_in_judgment`, (b) the terminal `Inhabits` fall-through of `declared_type_inhabitance`. A probe separating them is unrun.",
+
+    "OPEN ITEM, NOT DONE: the REAL-PATH v2 claim is OWED. `v2.test.claim.compiler.infer_int_argument_at_nat_parameter_witness` runs over two-declaration stand-ins for std.nat Nat and std.integer Int and is citable only as v2's structural judgment refusing a distinct product at a distinct product, never as v2 refusing Int at std.nat Nat. TRIGGER: an ingest that resolves the real std.nat Nat and std.integer Int with their kernel grounding.",
   ],
 
   evidence: [],
