@@ -1,6 +1,7 @@
 module gunbc.spool_queue
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
+import std.optional { Present, Absent }
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
@@ -23,6 +24,9 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 // What is reused is the VOCABULARY of std.durable_exclusive_hold, not its protocol: occupancy is derived from
 // an observation and never accepted from a caller, and an unreadable observation is not a state.
 //
+// INVENTORY: rows Sbb01362f (attempt-unit request spool), S4df2b101 (attempt-exit spool) and S29c50e03
+// (publication requests) of the store inventory at commit c5671ca07216.
+//
 // MODEL ONLY. This module declares the closed stage roles, the per-spool declaration row, the sealed entry key
 // and the pure decisions of the four operations. The effect layer (listing, create-only write, the rename) is
 // the implementation PR; its REDs are the expecting-red claims in test.claim.spool_queue_seal_witness.
@@ -32,25 +36,27 @@ type SpoolKind
   | SpoolAttemptExit
   | SpoolPublication
 
-// The closed set of places an entry can stand. A spool declares which of these it has; there is no per-spool
-// stage name in a caller, because the directory a role maps to is host_layout's and is read by the effect layer.
+// The closed set of places an entry can stand. HostSpoolStage (gunbc.durable_handoff_host) is the exit spool's
+// private five-stage enum and DISSOLVES into this one (inbox = RolePending, queued = RoleHandedOff, running =
+// RoleClaimed, done = RoleDone, refused = RoleRefused); no second stage enum survives beside it (DESIGN section 3).
 type SpoolRole
   = RolePending
+  | RoleHandedOff
   | RoleClaimed
   | RoleDone
   | RoleRefused
 
-// WHO MAY PERFORM A VERB, as data the privilege layout reads (gunbc.live_deploy.emit creates the directories
-// with exactly the ownership these rows imply) so the request/answer forgery wall is one fact and not two
-// spellings. ExternalHook is a writer the corpus does not execute (a systemd ExecStopPost mkdir); its entry
-// name is DERIVED from the same key codec the reader decodes with.
+// Who may perform a verb. ExternalHook is a writer the corpus does not execute (a systemd ExecStopPost mkdir).
 type SpoolPrincipal
   = PrincipalRequester
   | PrincipalDrainer
   | PrincipalExternalHook
 
+// chain: the non-terminal roles in order. A claim advances an entry ONE step along it; there is no step back.
+// terminals: the roles an entry can finish in. A role in neither list is not declared for the spool.
 type SpoolDeclaration {
-  roles: List<SpoolRole>
+  chain: List<SpoolRole>
+  terminals: List<SpoolRole>
   enqueuer: SpoolPrincipal
   claimant: SpoolPrincipal
   key_separator: String
@@ -61,21 +67,24 @@ type SpoolDeclaration {
 fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   match kind {
     SpoolAttemptUnit => SpoolDeclaration {
-      roles: [RolePending, RoleClaimed],
+      chain: [RolePending, RoleClaimed],
+      terminals: [RoleRefused],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
       key_part_count: 2,
     }
     SpoolAttemptExit => SpoolDeclaration {
-      roles: [RolePending, RoleClaimed, RoleDone, RoleRefused],
+      chain: [RolePending, RoleHandedOff, RoleClaimed],
+      terminals: [RoleDone, RoleRefused],
       enqueuer: PrincipalExternalHook,
       claimant: PrincipalDrainer,
       key_separator: "+",
       key_part_count: 7,
     }
     SpoolPublication => SpoolDeclaration {
-      roles: [RolePending, RoleRefused],
+      chain: [RolePending, RoleClaimed],
+      terminals: [RoleRefused],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
       key_separator: "-",
@@ -84,9 +93,23 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
   }
 }
 
-// THE SEALED ENTRY KEY. Minted only by spool_entry_key from the business key's parts; never from a path and
-// never from a directory listing. A name read out of a directory is decoded THROUGH the declaration or it is
-// not a key (SpoolKeyRefused), so a foreign name an out-of-corpus writer created cannot become a key.
+// THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer into the
+// first role, the claimant into every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each
+// spool directory with the ownership these principals imply instead of spelling it beside host_layout's path
+// functions; that rewrite is the implementation PR (frontier row spool_writers_column_reader below).
+fn spool_role_writer(kind: SpoolKind, role: SpoolRole) -> SpoolPrincipal {
+  match role {
+    RolePending => spool_declaration(kind: kind).enqueuer
+    RoleHandedOff => spool_declaration(kind: kind).claimant
+    RoleClaimed => spool_declaration(kind: kind).claimant
+    RoleDone => spool_declaration(kind: kind).claimant
+    RoleRefused => spool_declaration(kind: kind).claimant
+  }
+}
+
+// THE SEALED ENTRY KEY. Minted only from the business key's parts (or decoded from a name through the same
+// declaration); never from a path. The mint is INJECTIVE: each part must be a safe path segment and must not
+// contain the separator, so two different part lists can never produce one name, and the parts are recoverable.
 type SpoolEntryKey sole_constructor {
   kind: SpoolKind
   name: NonEmptyStr
@@ -96,71 +119,101 @@ type SpoolKeyMint
   = SpoolKeyMinted { key: SpoolEntryKey }
   | SpoolKeyRefused { detail: String }
 
+fn spool_part_admitted(part: String, separator: String) -> Bool {
+  path_segment_is_safe(raw: part) && !string_contains(s: part, pattern: separator)
+}
+
 fn spool_entry_key(kind: SpoolKind, parts: List<String>) -> SpoolKeyMint {
   let declaration = spool_declaration(kind: kind)
   if count(parts) != declaration.key_part_count {
     SpoolKeyRefused { detail: "the part count differs from the spool's declared key shape" }
+  } else if parts |> any(p => !spool_part_admitted(part: p, separator: declaration.key_separator)) {
+    SpoolKeyRefused { detail: "a key part is empty, unsafe as a path segment, or contains the spool's separator" }
   } else {
-    let name = join(parts, declaration.key_separator)
-    SpoolKeyMinted { key: SpoolEntryKey { kind: kind, name: name } }
+    SpoolKeyMinted { key: SpoolEntryKey { kind: kind, name: join(parts, declaration.key_separator) as NonEmptyStr } }
   }
 }
 
-// THE FOUR OPERATIONS' PURE DECISIONS. An observation of ONE key across the spool's stages. Two roles
-// holding the same key is Ambiguous and is never resolved by picking one (DESIGN section 5, no absorbing
-// fallback); an observation that could not be made is Unavailable and says nothing about the entry.
+// THE ONE DECODE: a name read out of a directory becomes a key only by splitting on the declared separator and
+// re-minting its parts. A foreign name (wrong count, empty or unsafe part) is SpoolKeyRefused, never a key.
+fn spool_entry_key_of_name(kind: SpoolKind, name: String) -> SpoolKeyMint {
+  spool_entry_key(kind: kind, parts: name.split(delimiter: spool_declaration(kind: kind).key_separator))
+}
+
+fn spool_entry_key_parts(key: SpoolEntryKey) -> List<String> {
+  (key.name as String).split(delimiter: spool_declaration(kind: key.kind).key_separator)
+}
+
+// One observation of ONE key across the spool's roles. Two roles holding the same key is Ambiguous and is never
+// resolved by picking one; an observation that could not be made says nothing about the entry.
 type SpoolEntryState
   = EntryAbsent
-  | EntryPending
-  | EntryClaimed
-  | EntryDone
-  | EntryRefused
+  | EntryStanding { role: SpoolRole }
   | EntryAmbiguous { roles: List<SpoolRole> }
   | EntryObservationUnavailable { detail: String }
 
-// ENQUEUE derives its eligibility from the observation. Only an absent entry may be enqueued; a present one
-// is AlreadyPresent (idempotent against a repeated hook for one invocation, as mkdir already is).
+fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
+  spool_declaration(kind: kind).terminals |> any(r => r == role)
+}
+
+// THE ONLY FORWARD STEP. The successor of a role is the first chain role of strictly greater rank; the LAST chain role (the claim
+// itself) and every terminal have none. THERE IS NO CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE: no
+// requeue, no reap-and-reclaim, no age-based release (a claimed entry whose claimant died stops the line through
+// gunbc.roadmap.spool_stall and is settled by complete, never re-offered).
+fn spool_role_rank(role: SpoolRole) -> Int {
+  match role {
+    RolePending => 0
+    RoleHandedOff => 1
+    RoleClaimed => 2
+    RoleDone => 3
+    RoleRefused => 3
+  }
+}
+
+fn spool_chain_successor(kind: SpoolKind, role: SpoolRole) -> SpoolRole? {
+  spool_declaration(kind: kind).chain |> filter(r => spool_role_rank(role: r) > spool_role_rank(role: role)) |> first()
+}
+
 type SpoolEnqueueAssessment
-  = EnqueueEligible
+  = EnqueueEligible { into: SpoolRole }
   | EnqueueAlreadyPresent { state: SpoolEntryState }
   | EnqueueRefused { detail: String }
 
-fn spool_enqueue_assess(observed: SpoolEntryState) -> SpoolEnqueueAssessment {
+fn spool_enqueue_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolEnqueueAssessment {
   match observed {
-    EntryAbsent => EnqueueEligible
-    EntryPending => EnqueueAlreadyPresent { state: observed }
-    EntryClaimed => EnqueueAlreadyPresent { state: observed }
-    EntryDone => EnqueueAlreadyPresent { state: observed }
-    EntryRefused => EnqueueAlreadyPresent { state: observed }
+    EntryAbsent => EnqueueEligible { into: RolePending }
+    EntryStanding { role: _ } => EnqueueAlreadyPresent { state: observed }
     EntryAmbiguous { roles: _ } => EnqueueRefused { detail: "the entry stands in two stages" }
     EntryObservationUnavailable { detail: d } => EnqueueRefused { detail: d }
   }
 }
 
-// CLAIM: only a pending entry is eligible. The election itself is the rename; this decision names what a
-// LOST election means so the effect layer cannot read ENOENT/EEXIST as success or as failure by guess.
+// CLAIM advances one chain step. A lost election (the entry already stands at the last chain role) is typed.
 type SpoolClaimAssessment
-  = ClaimEligible
+  = ClaimEligible { from: SpoolRole, into: SpoolRole }
   | ClaimAbsent
   | ClaimAlreadyClaimed
   | ClaimTerminal { state: SpoolEntryState }
   | ClaimRefused { detail: String }
 
-fn spool_claim_assess(observed: SpoolEntryState) -> SpoolClaimAssessment {
+fn spool_claim_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAssessment {
   match observed {
     EntryAbsent => ClaimAbsent
-    EntryPending => ClaimEligible
-    EntryClaimed => ClaimAlreadyClaimed
-    EntryDone => ClaimTerminal { state: observed }
-    EntryRefused => ClaimTerminal { state: observed }
     EntryAmbiguous { roles: _ } => ClaimRefused { detail: "the entry stands in two stages" }
     EntryObservationUnavailable { detail: d } => ClaimRefused { detail: d }
+    EntryStanding { role: r } =>
+      if spool_role_is_terminal(kind: kind, role: r) {
+        ClaimTerminal { state: observed }
+      } else {
+        match spool_chain_successor(kind: kind, role: r) {
+          Present { value: next } => ClaimEligible { from: r, into: next }
+          Absent => ClaimAlreadyClaimed
+        }
+      }
   }
 }
 
-// COMPLETE consumes a claim: only a CLAIMED entry may move to a terminal role, and the terminal role must be
-// one the spool declares. A spool with no Done role (the publication spool deletes on consume) completes into
-// Refused only; completing into an undeclared role refuses.
+// COMPLETE consumes a claim: only an entry at the LAST chain role (claimed) may finish, into a terminal the spool declares.
 type SpoolOutcome
   = SpoolOutcomeDone
   | SpoolOutcomeRefused { cause: String }
@@ -171,10 +224,6 @@ type SpoolCompleteAssessment
   | CompleteRoleUndeclared { role: SpoolRole }
   | CompleteRefused { detail: String }
 
-fn spool_role_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
-  spool_declaration(kind: kind).roles |> any(r => r == role)
-}
-
 fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
   match outcome {
     SpoolOutcomeDone => RoleDone
@@ -182,27 +231,30 @@ fn spool_outcome_role(outcome: SpoolOutcome) -> SpoolRole {
   }
 }
 
-fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: SpoolOutcome) -> SpoolCompleteAssessment {
-  match observed {
-    EntryClaimed =>
-      if spool_role_declared(kind: kind, role: spool_outcome_role(outcome: outcome)) {
-        CompleteEligible { into: spool_outcome_role(outcome: outcome) }
-      } else {
-        CompleteRoleUndeclared { role: spool_outcome_role(outcome: outcome) }
-      }
-    EntryAmbiguous { roles: _ } => CompleteRefused { detail: "the entry stands in two stages" }
-    EntryObservationUnavailable { detail: d } => CompleteRefused { detail: d }
-    EntryAbsent => CompleteNotClaimed { state: observed }
-    EntryPending => CompleteNotClaimed { state: observed }
-    EntryDone => CompleteNotClaimed { state: observed }
-    EntryRefused => CompleteNotClaimed { state: observed }
+fn spool_complete_into(kind: SpoolKind, target: SpoolRole) -> SpoolCompleteAssessment {
+  if spool_role_is_terminal(kind: kind, role: target) {
+    CompleteEligible { into: target }
+  } else {
+    CompleteRoleUndeclared { role: target }
   }
 }
 
-// CRASH REFUSAL. A claimed entry whose claimant is gone is NEVER reclaimed by being found old (age is not
-// liveness, std.durable_exclusive_hold's third amendment). The verdict is an OBSERVATION of the claimant,
-// bound to the key it is about, and the only recovery it licenses is the line stop (gunbc.roadmap.spool_stall),
-// not a silent re-claim. Unobservable is not dead.
+fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: SpoolOutcome) -> SpoolCompleteAssessment {
+  match observed {
+    EntryAbsent => CompleteNotClaimed { state: observed }
+    EntryAmbiguous { roles: _ } => CompleteRefused { detail: "the entry stands in two stages" }
+    EntryObservationUnavailable { detail: d } => CompleteRefused { detail: d }
+    EntryStanding { role: r } =>
+      if (r == RoleClaimed) {
+        spool_complete_into(kind: kind, target: spool_outcome_role(outcome: outcome))
+      } else {
+        CompleteNotClaimed { state: observed }
+      }
+  }
+}
+
+// CRASH REFUSAL. The verdict is an OBSERVATION of the claimant, never an age. Dead licenses the line stop only;
+// there is deliberately no arm that offers the entry again. Unobservable is not dead.
 type SpoolClaimantLiveness
   = ClaimantObservedLive { evidence: NonEmptyStr }
   | ClaimantObservedDead { evidence: NonEmptyStr }
@@ -216,17 +268,43 @@ type SpoolStaleAssessment
 
 fn spool_stale_assess(observed: SpoolEntryState, liveness: SpoolClaimantLiveness) -> SpoolStaleAssessment {
   match observed {
-    EntryClaimed =>
-      match liveness {
-        ClaimantObservedLive { evidence: _ } => StaleClaimantLive
-        ClaimantObservedDead { evidence: e } => StaleStopTheLine { evidence: e }
-        ClaimantUnobservable { cause: c } => StaleRefused { cause: c }
+    EntryStanding { role: r } =>
+      if (r == RoleClaimed) {
+        match liveness {
+          ClaimantObservedLive { evidence: _ } => StaleClaimantLive
+          ClaimantObservedDead { evidence: e } => StaleStopTheLine { evidence: e }
+          ClaimantUnobservable { cause: c } => StaleRefused { cause: c }
+        }
+      } else {
+        StaleNotApplicable { state: observed }
       }
     EntryAbsent => StaleNotApplicable { state: observed }
-    EntryPending => StaleNotApplicable { state: observed }
-    EntryDone => StaleNotApplicable { state: observed }
-    EntryRefused => StaleNotApplicable { state: observed }
     EntryAmbiguous { roles: _ } => StaleNotApplicable { state: observed }
     EntryObservationUnavailable { detail: _ } => StaleNotApplicable { state: observed }
   }
+}
+
+// FRONTIER ROWS: declared, consumed by a named later change (DESIGN 3c), never silent.
+type SpoolFrontier {
+  subject: String
+  home: String
+  trigger: String
+}
+
+data spool_frontier_answers: SpoolFrontier = SpoolFrontier {
+  subject: "the publication spool's answers/ directory (and the attempt-unit spool's answers/): the reply record keyed to a request",
+  home: "an answer store, minted by request key, written by the drainer principal and read by the requester; not an op of this contract",
+  trigger: "the publication spool is migrated onto spool_queue; then the answer store is modeled as its own sealed face (inventory row to be added at the next census)",
+}
+
+data spool_frontier_writers_reader: SpoolFrontier = SpoolFrontier {
+  subject: "spool_writers_column_reader: gunbc.live_deploy.emit spells each spool directory's ownership beside host_layout's path functions",
+  home: "gunbc.live_deploy.emit derives directory ownership from spool_role_writer",
+  trigger: "the implementation PR migrates the three spools; the literal ownership spellings in emit are deleted in the same change",
+}
+
+data spool_frontier_out_of_corpus_writers: SpoolFrontier = SpoolFrontier {
+  subject: "an entry created in a spool directory by a process that never ran the corpus mint (the ExecStopPost hook is derived from the codec; any other principal is not)",
+  home: "a gunbc.rung_drop row filed by the implementation PR, when the seal establishes the rung it then drops from (no rung is established by this model-only change, so none is dropped)",
+  trigger: "restoration capability: each spool directory is creatable only by the principals spool_role_writer names, ownership derived from it, so a non-declared principal is refused by the kernel; a permission-bits readback does not retire it",
 }
