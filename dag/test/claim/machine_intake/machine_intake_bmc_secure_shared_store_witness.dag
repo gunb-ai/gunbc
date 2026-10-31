@@ -1,7 +1,6 @@
 module test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String }
-import std.algebra { string_contains }
 import std.decl_ref { decl_ref }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -28,12 +27,13 @@ import std.scoped_authorization { AttemptIdentity }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
-import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_with_redfish_accounts, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.machine_intake.bmc_credential_policy { RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
+import std.algebra { string_contains }
 import gunbc.machine_intake.bmc_rotation_route {
-  BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
+  BmcRotationRouteStanding, rotation_route_from_citation, IpmiSetUserPassword,
 }
 import gunbc.machine_intake.bmc_secure {
   bmc_secure_convergence_approval,
@@ -112,15 +112,7 @@ fn census() -> IpmiControllerChannelCensus {
 }
 
 fn world_root(password: String) -> BmcWorld {
-  // The 03.22.00 build shares root's ONE password across its surfaces: the Redfish ManagerAccount root and the
-  // IPMI root user hold the same credential (BmcRedfishCredentialSharesIpmi reads it from the IPMI table, never a
-  // copy). The plan runs over the cited Redfish route, so the write is the Redfish Password PATCH -- which moves
-  // that one shared credential. A Redfish account the surface does not serve would make the PATCH find nothing to
-  // write, so the world that the Redfish route writes MUST serve it.
-  bmc_with_redfish_accounts(
-    world: bmc_with_ipmi_user_access(world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 1, password: password }]), rows: census().user_access),
-    accounts: [BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: root_user }, role: AccountRoleAdministrator, enabled: true, locked: false, forced_password_change: false, failed_logins: 0 }],
-  )
+  bmc_with_ipmi_user_access(world: bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 1, password: password }]), rows: census().user_access)
 }
 
 fn derive_over(served: List<CredentialSurface>) -> DryPublishedReading {
@@ -217,12 +209,17 @@ test fn a_surface_the_policy_does_not_ground_refuses_the_derivation() -> Bool {
 
 data lab_route_citation: ExternalAuthority = ExternalAuthority { uri: uri_https(locator: "example.invalid/root-route-witness-citation" as NonEmptyStr) }
 
+// THE ROUTE ROOT ROTATES OVER: an IPMI Set User Password citation. The shared-store premise (03.22.00:
+// one password per account, IPMI lanplus and Redfish sharing root's store) lands the managed write through
+// the IPMI user table, so the route names that transport -- the request receipt then carries the request the
+// dispatch actually issued. A Redfish route here would have named a transport the IPMI-only world does not
+// serve; before the dispatch read the request, that mismatch was hidden by a hard-coded IPMI call.
 fn cited_root_route() -> BmcRotationRouteStanding
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "plan_root"),
   ]
 {
-  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: redfish_account_password_write(account: "root" as NonEmptyStr), citation: lab_route_citation)
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: root_user }, citation: lab_route_citation)
 }
 
 fn version_identity(version: String) -> SmResolvedVersionIdentity {
@@ -326,16 +323,6 @@ test fn the_root_rotation_applies_reads_back_and_converges() -> Bool {
           let step = dry_apply_bmc_account_plan(world: initial, plan: p, managed_fetch: ready(version: "2", bytes: generation_2), published_fetch: ready(version: "2", bytes: generation_2), applied_at_millis: t_apply)
           let after = read_root(w: step.world, managed: p.goal.managed, password: generation_2, served: redfish_only, at: t_readback)
           let stale = read_root(w: initial, managed: p.goal.managed, password: generation_2, served: redfish_only, at: t_readback)
-          // THE ROUTE IS ON THE RECEIPT, not only the answer (DESIGN §3). The application's request receipt carries
-          // the request the dispatch ACTUALLY issued: over this Redfish route that is the Redfish Password PATCH at
-          // the root account's @odata.id, naming the generation REFERENCE. If apply_planned_account_write's Redfish
-          // arm were reverted to the IPMI call, this slot would read "IPMI Set User Password" and THIS claim would go
-          // red -- even though the controller still converges -- so the witness pins the transport, not just the state.
-          let receipt = step.application.request_receipt.label as String
-          let route_is_the_redfish_patch = string_contains(s: receipt, pattern: "Redfish PATCH /redfish/v1/AccountService/Accounts/root")
-          // The receipt names the generation reference, never the credential bytes: neither the published nor the
-          // managed password string may appear in it.
-          let carries_no_credential_bytes = !string_contains(s: receipt, pattern: generation_2) && !string_contains(s: receipt, pattern: published_password)
           match bmc_secure_phase_applied(application: step.application, post_read: after) {
             BmcSecurePhaseConverged { receipt: _ } => true
             BmcSecurePhaseRefused { cause: _ } => false
@@ -344,10 +331,19 @@ test fn the_root_rotation_applies_reads_back_and_converges() -> Bool {
               BmcSecurePhaseConverged { receipt: _ } => false
               BmcSecurePhaseRefused { cause: _ } => true
             }
-            && route_is_the_redfish_patch && carries_no_credential_bytes
+            && receipt_names_the_issued_ipmi_write(label: step.application.request_receipt.label as String)
         }
       }
   }
+}
+
+// The application's request receipt carries the transport the dispatch actually ISSUED, for THIS route:
+// the IPMI Set User Password command naming root's user id (the shared-store write). It never carries a
+// credential -- only the generation reference -- so neither the published nor the new secret bytes appear.
+fn receipt_names_the_issued_ipmi_write(label: String) -> Bool {
+  string_contains(s: label, pattern: "IPMI Set User Password (App 47h) user 1")
+    && !string_contains(s: label, pattern: generation_2)
+    && !string_contains(s: label, pattern: published_password)
 }
 
 // ── the derivation is bound to the board and build it was read on (review of gunbc#15317) ───────────
