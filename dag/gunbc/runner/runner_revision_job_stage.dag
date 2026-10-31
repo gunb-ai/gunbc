@@ -9,7 +9,7 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.tar { tar_extract_command, tar_create_reproducible_command }
+import extdeps.tools.tar { tar_extract_command, tar_create_reproducible_command, TarOverwriteDir }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.git {
   git_init_quiet_command, git_fetch_shallow_revision_command, git_rev_parse_tree_command,
@@ -199,7 +199,7 @@ fn stage_verified_revision(
   match stage_steps(steps: [
     StageNamedStep { step: "git-archive-tree", command: git_archive_tar_command(repository_dir: cache_repo, revision: commit_hex, output: tree_archive) },
     StageNamedStep { step: "mkdir-source", command: mkdir_parents_command(path: source) },
-    StageNamedStep { step: "extract-source-for-vendor", command: tar_extract_command(archive: tree_archive, into_directory: source, strip_components: 0) },
+    StageNamedStep { step: "extract-source-for-vendor", command: tar_extract_command(archive: tree_archive, into_directory: source, strip_components: 0, existing_directories: TarOverwriteDir) },
     StageNamedStep { step: "mkdir-vendor", command: mkdir_parents_command(path: vendor_dir) },
     StageNamedStep { step: "cargo-vendor", command: cargo_vendor_command(manifest_path: concat(source, "/Cargo.toml"), output_dir: vendor_dir, cargo_home: concat(staging_dir, "/cargo-home")) },
     StageNamedStep { step: "tar-vendor", command: tar_create_reproducible_command(archive: vendor_archive, from_directory: vendor_dir) },

@@ -10,6 +10,7 @@ import extdeps.systemd {
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.access.posix { FileMode, file_mode_octal }
 
 // THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
 //
@@ -325,6 +326,10 @@ type SystemdServiceDirective
   // systemd.resource-control(5) on the service's own cgroup; the knob and value have one owner each.
   | ServiceResourceControl { directive: SystemdServiceResourceDirective }
   | TimeoutStopSec { duration: NonEmptyStr }
+  // systemd.exec(5) UMask=: "Controls the file mode creation mask. Takes an access mode in octal
+  // notation." The mask is the bits REMOVED from every file the unit's processes create, so it is carried
+  // as the mode whose set bits are masked and rendered in chmod's four-digit spelling.
+  | ServiceUMask { mask: FileMode }
 
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
@@ -826,6 +831,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceTasksMax { count: v } => join(["TasksMax=", to_string(v)], "")
     ServiceResourceControl { directive: d } => systemd_service_resource_directive_line(directive: d)
     TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
+    ServiceUMask { mask: m } => join(["UMask=", file_mode_octal(mode: m)], "")
   }
 }
 
