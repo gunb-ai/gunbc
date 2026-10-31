@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
@@ -34,7 +35,7 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
   CredentialSnapshotTombstoned,
@@ -69,19 +70,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_launch_alternative,
   prepared_attempt_process_fingerprint,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
-  DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused,
-  dispatch_harness_attempt_selection, prepared_attempt_provider,
-  RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
-  filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
-  dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_command,
-  dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
-  dispatch_audit_unit_name, dispatch_audit_unit_command,
-  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
-  dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command, dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -160,7 +149,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -330,8 +319,9 @@ import gunbc.compute.compute_seat_ensure {
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
-  compute_leases_root, ObserveUnitLifecycle,
+  ObserveUnitLifecycle,
 }
+import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
   VerificationEvidence, VerificationEvidenceForSubject,
@@ -364,11 +354,7 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   SelectionObserved,
   ExactVerificationReceiptSource,
   current_verification_selection_json,
-  current_verification_selection_observe,
-  exact_verification_receipt_source_read,
   exact_verification_receipt_basename,
-  exact_verification_address_for,
-  ExactVerificationAddress,
   verification_receipt_file_source_from_exact,
   belt_verification_decision,
   BeltVerificationRun,
@@ -561,14 +547,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  host_exec_argv,
-  dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
-  dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
-  dispatch_attempt_process_fingerprint_path_for_instance, dispatch_current_attempt_process_fingerprint_path_for_instance,
-  dispatch_actuator_selection_process_fingerprint,
-  dispatch_worker_attempt_identity,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
@@ -679,6 +658,10 @@ import gunbc.roadmap.spool_stall {
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  FilesystemWriteRefused,
+  FilesystemWritten,
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
@@ -883,163 +866,114 @@ fn belt_attempt_state_initialize_for_instance(
   request: AttemptLaunchRequest,
   process_fingerprint: NonEmptyStr,
 ) -> AttemptStateInitialization {
-  let key_write = Filesystem.Write(
-    path: dispatch_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    content: attempt_key,
-  )
-  let turn_write = Filesystem.Write(
-    path: dispatch_attempt_continuation_turn_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    content: to_string(value: turn),
-  )
-  let binding_write = Filesystem.Write(
-    path: dispatch_attempt_alignment_binding_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    content: alignment_binding_text(binding: binding),
-  )
-  if !key_write.success {
-    AttemptStateInitializationFailed {
-      step: "attempt-key-write",
-      detail: key_write.error,
-    }
-  } else if !turn_write.success {
-    AttemptStateInitializationFailed {
-      step: "attempt-continuation-turn-write",
-      detail: turn_write.error,
-    }
-  } else if !binding_write.success {
-    AttemptStateInitializationFailed {
-      step: "attempt-alignment-binding-write",
-      detail: binding_write.error,
-    }
-  } else if !Filesystem.Write(
-    path: dispatch_attempt_process_fingerprint_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    content: process_fingerprint as String,
-  ).success {
-    AttemptStateInitializationFailed {
-      step: "attempt-process-fingerprint-write",
-      detail: "the spawn's selected process fingerprint could not be recorded in the attempt state",
-    }
-  } else {
-    let admission_write = Filesystem.Write(
-      path: dispatch_attempt_admission_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-      ),
-      content: admission_receipt,
-    )
-    if !admission_write.success {
-      AttemptStateInitializationFailed {
-        step: "attempt-admission-write",
-        detail: admission_write.error,
-      }
-    } else {
-    let launch_write = Filesystem.Write(
-      path: dispatch_attempt_launch_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-      ),
-      content: serialize_json(v: attempt_launch_record_json(id: launch, attempt_key: attempt_key as NonEmptyStr)),
-    )
-    if !launch_write.success {
-      AttemptStateInitializationFailed {
-        step: "attempt-launch-write",
-        detail: launch_write.error,
-      }
-    } else {
-      match dispatch_attempt_events_initialize_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-      ) {
-      DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
-        AttemptStateInitializationFailed {
-          step: "attempt-events-initialize",
-          detail: events_detail,
-        }
-      DispatchAttemptEventsInitialized => {
-        let receipt_initialized = Filesystem.Write(
-          path: dispatch_attempt_validation_receipt_path_for_instance(
-            instance: instance,
-            node_id: node.node,
-            attempt_key: attempt_key,
-          ),
-          content: validation_receipt_json(
-            verdict: ValidationNotRun,
-            observations: belt_oracle_observations_in_worktree(
-              contract: node.execution,
-              worktree: dispatch_worktree_path_for_instance(
-                instance: instance,
-                node_id: node.node,
-                attempt_key: attempt_key,
-              ),
-            ),
-          ),
-        ).success
-        if !receipt_initialized {
-          AttemptStateInitializationFailed {
-            step: "attempt-validation-receipt-initialize",
-            detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
-          }
-        } else {
-          match belt_persist_oracle_pin_for_instance(
-            instance: instance,
-            node: node,
-            attempt_key: attempt_key,
-            capture: belt_attempt_oracle_pin_capture_for_instance(
-              instance: instance,
-              node: node,
-              attempt_key: attempt_key,
-            ),
-          ) {
-            OraclePinPersisted =>
-              match belt_persist_spawn_origin_for_instance(
-                instance: instance,
-                node: node,
-                attempt_key: attempt_key,
-              ) {
-                SpawnOriginRecorded =>
-                  match attempt_request_binding_commit_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key, request: request) {
-                    RequestBindingCommitted { binding: _ } => AttemptStateInitialized
-                    RequestBindingCommitRefused { step, detail } =>
-                      AttemptStateInitializationFailed { step: step, detail: detail }
+  match attempt_state_open(instance: instance, node: node.node as String, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } =>
+      AttemptStateInitializationFailed { step: "attempt-state-directory", detail: detail }
+    AttemptStateReady { store } =>
+      match attempt_state_write(store: store, member: AttemptKeyRecord, content: attempt_key) {
+        FilesystemWriteRefused { path: _, error: e } =>
+          AttemptStateInitializationFailed { step: "attempt-key-write", detail: e }
+        FilesystemWritten { path: _ } =>
+          match attempt_state_write(store: store, member: AttemptContinuationTurn, content: to_string(value: turn)) {
+            FilesystemWriteRefused { path: _, error: e } =>
+              AttemptStateInitializationFailed { step: "attempt-continuation-turn-write", detail: e }
+            FilesystemWritten { path: _ } =>
+              match attempt_state_write(store: store, member: AttemptAlignmentBinding, content: alignment_binding_text(binding: binding)) {
+                FilesystemWriteRefused { path: _, error: e } =>
+                  AttemptStateInitializationFailed { step: "attempt-alignment-binding-write", detail: e }
+                FilesystemWritten { path: _ } =>
+                  match attempt_state_write(store: store, member: AttemptProcessFingerprint, content: process_fingerprint as String) {
+                    FilesystemWriteRefused { path: _, error: _ } =>
+                      AttemptStateInitializationFailed {
+                        step: "attempt-process-fingerprint-write",
+                        detail: "the spawn's selected process fingerprint could not be recorded in the attempt state",
+                      }
+                    FilesystemWritten { path: _ } =>
+                      match attempt_state_write(store: store, member: AttemptEnvironmentAdmission, content: admission_receipt) {
+                        FilesystemWriteRefused { path: _, error: e } =>
+                          AttemptStateInitializationFailed { step: "attempt-admission-write", detail: e }
+                        FilesystemWritten { path: _ } =>
+                          match attempt_state_write(store: store, member: AttemptLaunchIdentity, content: serialize_json(v: attempt_launch_record_json(id: launch, attempt_key: attempt_key as NonEmptyStr))) {
+                            FilesystemWriteRefused { path: _, error: e } =>
+                              AttemptStateInitializationFailed { step: "attempt-launch-write", detail: e }
+                            FilesystemWritten { path: _ } =>
+                              match dispatch_attempt_events_initialize_for_instance(
+                                instance: instance,
+                                node_id: node.node,
+                                attempt_key: attempt_key,
+                              ) {
+                                DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: events_detail,
+                                  }
+                                DispatchAttemptEventsInitialized =>
+                                  match attempt_state_write(
+                                    store: store,
+                                    member: AttemptValidationReceipt,
+                                    content: validation_receipt_json(
+                                      verdict: ValidationNotRun,
+                                      observations: belt_oracle_observations_in_worktree(
+                                        contract: node.execution,
+                                        worktree: dispatch_worktree_path_for_instance(
+                                          instance: instance,
+                                          node_id: node.node,
+                                          attempt_key: attempt_key,
+                                        ),
+                                      ),
+                                    ),
+                                  ) {
+                                    FilesystemWriteRefused { path: _, error: _ } =>
+                                      AttemptStateInitializationFailed {
+                                        step: "attempt-validation-receipt-initialize",
+                                        detail: "the not-run validation receipt could not be written beside the attempt; without it a later unreadable receipt is indistinguishable from an absent one, which is the conflation this initialization exists to remove",
+                                      }
+                                    FilesystemWritten { path: _ } =>
+                                      match belt_persist_oracle_pin_for_instance(
+                                        instance: instance,
+                                        node: node,
+                                        attempt_key: attempt_key,
+                                        capture: belt_attempt_oracle_pin_capture_for_instance(
+                                          instance: instance,
+                                          node: node,
+                                          attempt_key: attempt_key,
+                                        ),
+                                      ) {
+                                        OraclePinPersisted =>
+                                          match belt_persist_spawn_origin_for_instance(
+                                            instance: instance,
+                                            node: node,
+                                            attempt_key: attempt_key,
+                                          ) {
+                                            SpawnOriginRecorded =>
+                                              match attempt_request_binding_commit_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key, request: request) {
+                                                RequestBindingCommitted { binding: _ } => AttemptStateInitialized
+                                                RequestBindingCommitRefused { step, detail } =>
+                                                  AttemptStateInitializationFailed { step: step, detail: detail }
+                                              }
+                                            SpawnOriginRecordFailed { step, detail } =>
+                                              AttemptStateInitializationFailed { step: step, detail: detail }
+                                          }
+                                        OraclePinSpawnRefused { reason } =>
+                                          AttemptStateInitializationFailed {
+                                            step: "validation-oracle-pin",
+                                            detail: reason,
+                                          }
+                                        OraclePinPersistWriteFailed { detail } =>
+                                          AttemptStateInitializationFailed {
+                                            step: "attempt-oracle-pin-persist",
+                                            detail: detail,
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
                   }
-                SpawnOriginRecordFailed { step, detail } =>
-                  AttemptStateInitializationFailed { step: step, detail: detail }
-              }
-            OraclePinSpawnRefused { reason } =>
-              AttemptStateInitializationFailed {
-                step: "validation-oracle-pin",
-                detail: reason,
-              }
-            OraclePinPersistWriteFailed { detail } =>
-              AttemptStateInitializationFailed {
-                step: "attempt-oracle-pin-persist",
-                detail: detail,
               }
           }
-        }
       }
-      }
-    }
   }
-    }
 }
 
 type SpawnOriginRecord
@@ -1078,20 +1012,12 @@ fn belt_persist_spawn_origin_for_instance(
             base_ref: instance.dispatch_base_ref,
             base_sha: revision as NonEmptyStr,
           }
-          let write = Filesystem.Write(
-            path: dispatch_attempt_spawn_origin_path_for_instance(
-              instance: instance,
-              node_id: node.node,
-              attempt_key: attempt_key,
-            ),
-            content: dispatch_spawn_origin_json(origin: origin),
-          )
-          if write.success {
-            SpawnOriginRecorded
-          } else {
+          match attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptSpawnOrigin, content: dispatch_spawn_origin_json(origin: origin)) {
+            FilesystemWritten { path: _ } => SpawnOriginRecorded
+            FilesystemWriteRefused { path: _, error: e } =>
             SpawnOriginRecordFailed {
               step: "spawn-destination-write",
-              detail: write.error,
+              detail: e,
             }
           }
         }
@@ -1397,6 +1323,8 @@ type OraclePinPersist
   | OraclePinSpawnRefused { reason: String }
   | OraclePinPersistWriteFailed { detail: String }
 
+data belt_oracle_pin_write_failure_detail: String = "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit"
+
 fn belt_persist_oracle_pin_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1405,45 +1333,26 @@ fn belt_persist_oracle_pin_for_instance(
 ) -> OraclePinPersist {
   match capture {
     OraclePinNotRecorded { reason } => {
-      let wrote = Filesystem.Write(
-        path: dispatch_attempt_oracle_pin_refusal_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: reason,
-      )
-      if !wrote.success {
-        OraclePinPersistWriteFailed { detail: wrote.error }
-      } else if count(belt_oracle_refs_for_contract(contract: node.execution)) == 0 {
-        OraclePinPersisted
-      } else {
-        OraclePinSpawnRefused { reason: reason }
+      match attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptOraclePinRefused, content: reason) {
+        FilesystemWriteRefused { path: _, error: e } => OraclePinPersistWriteFailed { detail: e }
+        FilesystemWritten { path: _ } =>
+          if count(belt_oracle_refs_for_contract(contract: node.execution)) == 0 {
+            OraclePinPersisted
+          } else {
+            OraclePinSpawnRefused { reason: reason }
+          }
       }
     }
     OraclePinRecorded { identity, revision } => {
-      let identity_write = Filesystem.Write(
-        path: dispatch_attempt_oracle_identity_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: serialize_content_hash(hash: identity) as String,
-      )
-      let revision_write = Filesystem.Write(
-        path: dispatch_attempt_oracle_revision_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: revision,
-      )
-      if identity_write.success && revision_write.success {
-        OraclePinPersisted
-      } else {
-        OraclePinPersistWriteFailed {
-          detail: "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit",
-        }
+      let identity_write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptOracleIdentity, content: serialize_content_hash(hash: identity) as String)
+      let revision_write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptOracleRevision, content: revision)
+      match identity_write {
+        FilesystemWritten { path: _ } =>
+          match revision_write {
+            FilesystemWritten { path: _ } => OraclePinPersisted
+            FilesystemWriteRefused { path: _, error: _ } => OraclePinPersistWriteFailed { detail: belt_oracle_pin_write_failure_detail }
+          }
+        FilesystemWriteRefused { path: _, error: _ } => OraclePinPersistWriteFailed { detail: belt_oracle_pin_write_failure_detail }
       }
     }
   }
@@ -1768,14 +1677,19 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
 // attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
 // which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
 fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
-  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+  match compute_capacity_subject(instance: instance) {
     ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subj } =>
-      compute_seat_discharge_all(
-        instance: instance,
-        leases_dir: compute_leases_root(instance: instance),
-        subject: subj,
-        source: ObserveUnitLifecycle)
+    ComputeSubjectResolved { subject: subj, appropriation: appropriation } =>
+      match compute_producer_leases(instance: instance) {
+        ComputeProducerLeasesUnready { detail: d } => SeatDischargeRefused { reason: join(["the producer leases are not admissible: ", d], "") }
+        ComputeProducerLeasesReady { leases: leases } =>
+          compute_seat_discharge_all(
+            instance: instance,
+            leases: leases,
+            subject: subj,
+            appropriation: appropriation,
+            source: ObserveUnitLifecycle)
+      }
   }
 }
 
@@ -1887,22 +1801,14 @@ fn belt_persist_spawn_failure_for_instance(
   detail: String,
 ) -> String {
   let evidence = join([step, ": ", detail], "")
-  let write = Filesystem.Write(
-    path: dispatch_attempt_spawn_failure_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    content: evidence,
-  )
-  if write.success {
-    detail
-  } else {
-    join([
-      detail,
-      "; additionally failed to persist spawn evidence: ",
-      write.error,
-    ], "")
+  match attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptSpawnFailure, content: evidence) {
+    FilesystemWritten { path: _ } => detail
+    FilesystemWriteRefused { path: _, error: e } =>
+      join([
+        detail,
+        "; additionally failed to persist spawn evidence: ",
+        e,
+      ], "")
   }
 }
 
@@ -2720,12 +2626,14 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
 // successful listing) instead of refused (an unlistable directory that is simply absent) -- the
 // first live escalate run (2026-09-22, the cron-entry lineage) refused on exactly that.
 fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SupervisorVerdictObservation {
-  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = join([dir, "/", supervisor_verdict_basename as String], "")
+  match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+  AttemptStateUnready { detail } => SupervisorVerdictUnreadable { reason: detail }
+  AttemptStateReady { store } =>
+  // EXTERNAL HAND-OFF: `install -d` runs in a shell step outside this process's filesystem handle.
   match belt_attempt_submission_dir_ensure(
     instance: instance,
     worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    dir: dir,
+    dir: attempt_state_external_directory(store: store, directory: AttemptDirectorySupervisor),
   ) {
     ExecFailed { program, exit_code, stderr } =>
       SupervisorVerdictUnreadable {
@@ -2739,14 +2647,7 @@ fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: Roa
         reason: belt_commit_exec_detail(step: "supervisor-directory", outcome: ExecRefused { program: program, reason: reason }),
       }
     ExecOk { stdout: _ } => {
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: supervisor_verdict_basename as String,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptSupervisorVerdict) {
     FilesystemFileAbsent(_) => SupervisorVerdictAbsent
     FilesystemFileRead { path: _, content } =>
       match supervisor_verdict_decode(text: content) {
@@ -2766,6 +2667,7 @@ fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: Roa
     FilesystemFileIndeterminate { cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileObservationsDisagree { path: _, cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileSubjectRefused { directory: _, name: _, cause } => SupervisorVerdictUnreadable { reason: cause }
+  }
   }
   }
   }
@@ -2841,16 +2743,7 @@ fn belt_supervisor_checkpoint_lines(capture: SubmissionCaptureObservation, head_
 // lineage), never the belt's memory: the file is the receipt, and an absent or unreadable one is
 // named rather than reconstructed.
 fn belt_supervisor_history_line(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = join([dir, "/", belt_commit_outcome_last_basename as String], "")
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: belt_commit_outcome_last_basename as String,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptCommitOutcomeLast) {
     FilesystemFileAbsent(_) =>
       join([to_string(value: turn), " turns spent; no persisted commit outcome is recorded for this attempt"], "")
     FilesystemFileIndeterminate { cause } =>
@@ -3124,16 +3017,7 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
 }
 
 fn belt_continuation_turn_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ContinuationTurnRead {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_continuation_turn_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_continuation_turn_basename,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptContinuationTurn) {
     FilesystemFileAbsent(_) => ContinuationTurnAbsent
     FilesystemFileRead { path: _, content } =>
       match parse_int(s: trim(content)) {
@@ -3166,16 +3050,7 @@ type BeltAlignmentBindingText
   | BeltAlignmentBindingUnreadable { reason: String }
 
 fn belt_alignment_binding_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltAlignmentBindingText {
-  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_alignment_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_alignment_binding_basename,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptAlignmentBinding) {
     FilesystemFileAbsent(_) => BeltAlignmentBindingAbsent
     FilesystemFileRead { path: _, content } => BeltAlignmentBindingRead { content: content }
     FilesystemFileIndeterminate { cause } => BeltAlignmentBindingUnreadable { reason: cause }
@@ -3752,13 +3627,8 @@ type BeltCurrentAttemptKey
   | BeltCurrentAttemptKeyUnreadable { reason: String }
 
 fn belt_current_attempt_key_read(instance: HostDashboardInstance, node_id: String) -> BeltCurrentAttemptKey {
-  let read = Filesystem.Read(
-    path: dispatch_current_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: node_id as RoadmapNodeId,
-    ),
-  )
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+  let read = attempt_state_read_current(instance: instance, node: node_id, member: AttemptKeyRecord)
+  match read {
     FilesystemReadRefused { error } =>
       BeltCurrentAttemptKeyUnreadable { reason: error }
     FilesystemReadSucceeded { content } => {
@@ -5498,29 +5368,14 @@ fn belt_recorded_fingerprint_for_node(
   instance: HostDashboardInstance,
   node_id: String,
 ) -> RecordedFingerprintsRead {
-  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
-  let current_name = join([node_id, "-current"], "")
-  let root_listing = Filesystem.List(path: root)
-  match filesystem_entry_presence(
-    listing: filesystem_listing_observation(directory: root, success: root_listing.success, entries: root_listing.entries, error: root_listing.error),
-    name: current_name,
-  ) {
+  match attempt_state_presence_current(instance: instance, node: node_id) {
     FilesystemEntryAbsent(_) => RecordedFingerprintsOk { recorded: [] }
     FilesystemEntryPresenceIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
     FilesystemEntryListed { directory: _, name: _ } => {
-      let path = dispatch_current_attempt_process_fingerprint_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId)
-      let dir = join([root, "/", current_name], "")
-      let listing = Filesystem.List(path: dir)
-      let read = Filesystem.Read(path: path)
-      match filesystem_file_observation(
-        listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-        name: "process-fingerprint",
-        path: path,
-        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-      ) {
+      match attempt_state_observe_current(instance: instance, node: node_id, member: AttemptProcessFingerprint) {
         FilesystemFileAbsent(_) => RecordedFingerprintsOk { recorded: [] }
-        FilesystemFileRead { path: _, content } =>
+        FilesystemFileRead { path, content } =>
           if trim(s: content) == "" {
             RecordedFingerprintsUnreadable { reason: join(["the recorded process fingerprint at ", path, " is empty"], "") }
           } else {
@@ -5804,17 +5659,13 @@ fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, l
 
 fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
   let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let directory = filesystem_entry_presence_of_path(
-    path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
-  )
+  let directory = attempt_state_presence_at(instance: instance, node: node_id as String, attempt_key: attempt.attempt_key)
   match belt_occurrence_attempt_directory_standing(attempt: attempt, directory: directory) {
     AttemptDirectoryDecided { read } => read
     AttemptDirectoryListed =>
       belt_occurrence_record_from_launch_observation(
         attempt: attempt,
-        launch: filesystem_file_observation_of_path(
-          path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
-        ),
+        launch: attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt.attempt_key, member: AttemptLaunchIdentity),
       )
   }
 }
@@ -5977,10 +5828,15 @@ fn belt_provider_event_projection_observe_for_instance(
   instance: HostDashboardInstance,
   node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId,
 ) -> ProviderEventProjectionObservation {
-  belt_provider_event_projection_observe_at(
-    instance: instance,
-    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
-  )
+  // EXTERNAL HAND-OFF: the events projection runs as a subprocess over the append-only events file.
+  match attempt_state_open_current(instance: instance, node: node_id as String) {
+    AttemptStateUnready { detail } => ProviderEventProjectionRefused { reason: detail }
+    AttemptStateReady { store } =>
+      belt_provider_event_projection_observe_at(
+        instance: instance,
+        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+      )
+  }
 }
 
 fn belt_provider_event_projection_observe_at(
@@ -6073,21 +5929,9 @@ fn belt_publication_receipt_source(
   match subject {
     PublicationSubjectUnobserved { reason: _ } => ReceiptSourceAbsent
     PublicationSubjectObserved { subject: observed } => {
-      let attempt_dir = dispatch_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      )
-      let attempt_listing = Filesystem.List(path: attempt_dir)
-      match filesystem_entry_presence(
-        listing: filesystem_listing_observation(
-          directory: attempt_dir,
-          success: attempt_listing.success,
-          entries: attempt_listing.entries,
-          error: attempt_listing.error,
-        ),
-        name: publication_receipt_directory_segment,
-      ) {
+      match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+        AttemptStateUnready { detail } => ReceiptSourceUnreadable { detail: detail }
+        AttemptStateReady { store } => match attempt_state_directory_presence(store: store, directory: AttemptDirectoryPublication) {
         FilesystemEntryPresenceIndeterminate { cause: c } =>
           ReceiptSourceUnreadable { detail: c }
         FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
@@ -6099,35 +5943,7 @@ fn belt_publication_receipt_source(
           }
         FilesystemEntryAbsent(_) => ReceiptSourceAbsent
         FilesystemEntryListed { directory: _, name: _ } => {
-          let publication_dir = dispatch_attempt_publication_dir_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: attempt_key,
-          )
-          let receipt_basename = join([observed.expected_head as String, ".json"], "")
-          let path = dispatch_attempt_publication_receipt_path_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: attempt_key,
-            head_sha: observed.expected_head as String,
-          )
-          let publication_listing = Filesystem.List(path: publication_dir)
-          let read = Filesystem.Read(path: path)
-          match filesystem_file_observation(
-            listing: filesystem_listing_observation(
-              directory: publication_dir,
-              success: publication_listing.success,
-              entries: publication_listing.entries,
-              error: publication_listing.error,
-            ),
-            name: receipt_basename,
-            path: path,
-            read: filesystem_read_outcome(
-              content: read.content,
-              success: read.success,
-              error: read.error,
-            ),
-          ) {
+          match attempt_state_observe(store: store, member: AttemptPublicationReceipt { head_sha: observed.expected_head as String }) {
             FilesystemFileIndeterminate { cause: c } =>
               ReceiptSourceUnreadable { detail: c }
             FilesystemFileObservationsDisagree { path: _, cause: c } =>
@@ -6144,6 +5960,7 @@ fn belt_publication_receipt_source(
               ReceiptSourcePresent { text: text }
           }
         }
+        }
       }
     }
   }
@@ -6155,31 +5972,24 @@ fn belt_publish_current_verification_selection(
   attempt_key: String,
   subject: VerificationSubject,
 ) -> VerificationSelectionPublishOutcome {
-  let path = dispatch_attempt_verification_current_selection_path_for_instance(
+  match attempt_state_write_at(
     instance: instance,
-    node_id: node_id,
+    node: node_id as String,
     attempt_key: attempt_key,
-    head_sha: subject.head_sha as String,
-  )
-  let write = Filesystem.Write(
-    path: path,
+    member: AttemptVerificationSelection { head_sha: subject.head_sha as String },
     content: current_verification_selection_json(
       selection: CurrentVerificationSelection {
         head_sha: subject.head_sha,
         change_window_identity: subject.change_window_identity,
       },
     ),
-  )
-  if write.success {
-    VerificationSelectionPublished { path: path }
-  } else {
-    VerificationSelectionPublishRefused {
-      path: path,
-      cause: join([
-        "the belt could not publish the current verification selection: ",
-        write.error,
-      ], ""),
-    }
+  ) {
+    FilesystemWritten { path } => VerificationSelectionPublished { path: path }
+    FilesystemWriteRefused { path, error } =>
+      VerificationSelectionPublishRefused {
+        path: path,
+        cause: join(["the belt could not publish the current verification selection: ", error], ""),
+      }
   }
 }
 
@@ -6189,19 +5999,7 @@ fn belt_verification_selection_observe(
   attempt_key: String,
   head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
-  current_verification_selection_observe(
-    attempt_dir: dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    verification_dir: dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    head_sha: head_sha,
-  )
+  attempt_state_verification_selection_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, head_sha: head_sha)
 }
 
 // THE SHARED-COMPUTATION READER. For one attempt and the head it is verifying, it follows the belt's
@@ -6231,18 +6029,18 @@ fn shared_computation_observe_for_attempt(
   head_sha: String,
 ) -> SharedComputationObservation {
   let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
-  let verification_dir = dispatch_attempt_verification_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
-  match current_verification_selection_observe(attempt_dir: attempt_dir, verification_dir: verification_dir, head_sha: head_sha) {
+  match attempt_state_verification_selection_observe_at(instance: instance, node: node_id as String, attempt_key: attempt.attempt_key, head_sha: head_sha) {
     SelectionAbsent => SharedComputationAbsent { absence: NoVerificationSelectionPublished }
     SelectionUnaddressable { cause } => SharedComputationRefused { cause: cause }
     SelectionUnreadable { cause } => SharedComputationRefused { cause: cause }
     SelectionMalformed { cause } => SharedComputationRefused { cause: cause }
     SelectionObserved { head, window_identity } =>
-      match exact_verification_receipt_source_read(
-        attempt_dir: attempt_dir,
-        verification_dir: verification_dir,
-        receipt_basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)),
+      match attempt_state_verification_receipt_read_at(
+        instance: instance,
+        node: node_id as String,
+        attempt_key: attempt.attempt_key,
+        head_sha: head as String,
+        window_identity_hex: git_diff_window_identity_hex(identity: window_identity),
       ) {
         ExactVerificationReceiptAbsent => SharedComputationAbsent { absence: SelectedReceiptNotWritten }
         ExactVerificationReceiptUnreadable { detail } => SharedComputationRefused { cause: detail }
@@ -6322,25 +6120,13 @@ fn belt_verification_receipt_source_for_selection(
   head_sha: String,
   window_identity_hex: String,
 ) -> VerificationReceiptFileSource {
-  let address = exact_verification_address_for(
-    attempt_dir: dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    verification_dir: dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    head_sha: head_sha,
-    window_identity_hex: window_identity_hex,
-  )
   verification_receipt_file_source_from_exact(
-    source: exact_verification_receipt_source_read(
-      attempt_dir: address.attempt_dir,
-      verification_dir: address.verification_dir,
-      receipt_basename: address.receipt_basename,
+    source: attempt_state_verification_receipt_read_at(
+      instance: instance,
+      node: node_id as String,
+      attempt_key: attempt_key,
+      head_sha: head_sha,
+      window_identity_hex: window_identity_hex,
     ),
   )
 }
@@ -6517,13 +6303,7 @@ fn belt_workflow_attempt_evidence_for_ref(
   panes: BeltAttemptPanes,
   attempt: DispatchAttemptRef,
 ) -> WorkflowAttemptEvidence {
-  let key_read = Filesystem.Read(
-    path: dispatch_current_attempt_key_path_for_instance(
-      instance: instance,
-      node_id: attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-    ),
-  )
-  match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+  match attempt_state_read_current(instance: instance, node: attempt.node_id as String, member: AttemptKeyRecord) {
     FilesystemReadRefused { error } =>
       belt_workflow_attempt_evidence_without_modeled_state(
         instance: instance,
@@ -6545,20 +6325,6 @@ fn belt_workflow_attempt_evidence_for_ref(
   }
 }
 
-type BeltAttemptRecordPaths {
-  admission: String
-  events: String
-  spawn_failure: String
-}
-
-fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: String) -> BeltAttemptRecordPaths {
-  BeltAttemptRecordPaths {
-    admission: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    events: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    spawn_failure: dispatch_attempt_spawn_failure_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-  }
-}
-
 // THE EVIDENCE OF ONE NAMED ATTEMPT. belt_workflow_attempt_evidence_for_ref resolves the node's
 // CURRENT attempt through its state pointer and then reads it here; a reader of attempt HISTORY
 // (gunbc.roadmap.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
@@ -6574,10 +6340,17 @@ fn belt_workflow_attempt_evidence_for_key(
   current_key: String,
 ) -> WorkflowAttemptEvidence {
   let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  let paths = belt_attempt_record_paths(instance: instance, node_id: node_id, attempt_key: current_key)
-  let admission = Filesystem.Read(path: paths.admission)
-  let events = belt_provider_event_projection_observe_at(instance: instance, events_path: paths.events)
-  let spawn_failure = Filesystem.Read(path: paths.spawn_failure)
+  let admission = attempt_state_read_at(instance: instance, node: attempt.node_id, attempt_key: current_key, member: AttemptEnvironmentAdmission)
+  // EXTERNAL HAND-OFF: the events projection runs as a subprocess over the append-only events file.
+  let events = match attempt_state_open(instance: instance, node: attempt.node_id, attempt_key: current_key) {
+    AttemptStateUnready { detail } => ProviderEventProjectionRefused { reason: detail }
+    AttemptStateReady { store } =>
+      belt_provider_event_projection_observe_at(
+        instance: instance,
+        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+      )
+  }
+  let spawn_failure = attempt_state_read_at(instance: instance, node: attempt.node_id, attempt_key: current_key, member: AttemptSpawnFailure)
   let branch = dispatch_branch_name(
     node_id: node_id,
     attempt_key: current_key,
@@ -6701,10 +6474,22 @@ fn belt_workflow_attempt_evidence_for_key(
     ),
     modeled_state: WorkflowModeledStateObserved,
     worktree: belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: current_key),
-    admission_receipt_readable: admission.success,
-    admission_receipt: admission.content,
-    spawn_failure_present: spawn_failure.success,
-    spawn_failure: spawn_failure.content,
+    admission_receipt_readable: match admission {
+      FilesystemReadSucceeded { content: _ } => true
+      FilesystemReadRefused { error: _ } => false
+    },
+    admission_receipt: match admission {
+      FilesystemReadSucceeded { content: c } => c
+      FilesystemReadRefused { error: _ } => ""
+    },
+    spawn_failure_present: match spawn_failure {
+      FilesystemReadSucceeded { content: _ } => true
+      FilesystemReadRefused { error: _ } => false
+    },
+    spawn_failure: match spawn_failure {
+      FilesystemReadSucceeded { content: c } => c
+      FilesystemReadRefused { error: _ } => ""
+    },
     provider_events_readable: provider_event_projection_readable(
       observation: events,
     ),
@@ -7311,13 +7096,8 @@ type BeltBaseSha
   | BaseShaUnobserved { reason: String }
 
 fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltBaseSha {
-  let path = dispatch_attempt_spawn_origin_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
-  let read = Filesystem.Read(path: path)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+  let path = attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), member: AttemptSpawnOrigin)
+  match attempt_state_read_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptSpawnOrigin) {
     FilesystemReadRefused { error } =>
       BaseShaUnobserved {
         reason: join([
@@ -8635,9 +8415,8 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
   ])
 }
 
-// THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE: the persist pass writes it and the supervisor's
-// history line reads it, so writer and reader cannot drift.
-data belt_commit_outcome_last_basename: NonEmptyStr = "commit-outcome-last.json" as NonEmptyStr
+// THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE, as the AttemptCommitOutcomeLast row of the attempt-state
+// store: the persist pass writes it and the supervisor's history line reads it through that one member.
 
 // THE COMMIT STEP'S OUTCOME KINDS, spelled once. The persisted record carries an outcome's kind, never
 // its payload, so the writer (belt_commit_outcome_receipt, belt_commit_outcome_json_value) and the
@@ -8781,11 +8560,7 @@ fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt
 // NO CAPTURE AT THIS HEAD: settled, owed or refused, as the commit step's own record for this head says. The record is
 // observed listing-first, so an unlistable directory is never read as a missing record.
 fn belt_capture_absence_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
-  let path = join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    "/", belt_commit_outcome_last_basename as String,
-  ], "")
-  match filesystem_file_observation_of_path(path: path) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptCommitOutcomeLast) {
     FilesystemFileAbsent(_) => CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }
     FilesystemFileRead { path: _, content } =>
       match belt_commit_record_standing_of_text(content: content, node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha) {
@@ -8808,15 +8583,11 @@ fn belt_commit_outcome_persist(
   if trim(attempt_key) == "" {
     outcome
   } else {
-    let write = Filesystem.Write(
-      path: join([
-        dispatch_attempt_state_path_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
-        "/", belt_commit_outcome_last_basename as String,
-      ], ""),
+    match attempt_state_write_at(
+      instance: instance,
+      node: node_id,
+      attempt_key: attempt_key,
+      member: AttemptCommitOutcomeLast,
       content: serialize_json(v: belt_commit_outcome_receipt_json(
         r: belt_commit_outcome_receipt(
           o: outcome,
@@ -8830,17 +8601,16 @@ fn belt_commit_outcome_persist(
           },
         ),
       )),
-    )
-    if write.success {
-      outcome
-    } else {
-      CommitFailed {
-        node_id: node_id,
-        detail: join([
-          "the commit step's outcome record could not be written (", write.error,
-          "): the step is unsettled at this head and the worktree release waits on it",
-        ], ""),
-      }
+    ) {
+      FilesystemWritten { path: _ } => outcome
+      FilesystemWriteRefused { path: _, error: e } =>
+        CommitFailed {
+          node_id: node_id,
+          detail: join([
+            "the commit step's outcome record could not be written (", e,
+            "): the step is unsettled at this head and the worktree release waits on it",
+          ], ""),
+        }
     }
   }
 }
@@ -9117,19 +8887,6 @@ type BeltVerifyOutcome
   | VerifyEvidenceUnreadable { node_id: String, detail: String }
   | VerifyRefused { node_id: String, cause: String }
 
-// review 45271; the scope of this collapse is now deliberate. Reducing a read to `""` conflates
-// absent with unreadable, safe only where BOTH branches take the same action. That holds for the
-// PIN reads below — absent and unreadable identity both leave pin_recorded false, the gate refuses
-// either way, nothing actuates — so the distinction changes the message, not the behaviour. It did
-// NOT hold for the receipt-presence read, which gated whether to RUN the validation and OVERWRITE
-// the evidence: absent means run, unreadable means stop, so the collapse let an I/O fault
-// regenerate a verdict against a worktree that may have moved. That seam no longer uses this
-// function; it reads with status preserved and decodes.
-fn belt_read_or_empty(path: String) -> String {
-  let read = Filesystem.Read(path: path)
-  if read.success { trim(read.content) } else { "" }
-}
-
 type BeltValidationRun {
   executions: List<ValidationExecution>
   verdict: ValidationVerdict
@@ -9276,26 +9033,21 @@ fn belt_prepare_diff_window_for_verification(
               let identity_hex = git_diff_window_identity_hex(
                 identity: window.window_identity,
               )
-              let path = dispatch_attempt_diff_window_path_for_instance(
+              match attempt_state_write_at(
                 instance: instance,
-                node_id: node_id,
+                node: node_id as String,
                 attempt_key: attempt_key,
-                head_sha: head_sha,
-                window_identity_hex: identity_hex,
-              )
-              let write = Filesystem.Write(
-                path: path,
+                member: AttemptDiffWindow { head_sha: head_sha, window_identity_hex: identity_hex },
                 content: git_diff_window_json(window: window),
-              )
-              if write.success {
-                GitDiffWindowPrepared { path: path, window: window }
-              } else {
-                GitDiffWindowPrepareRefused {
-                  cause: ChangeWindowPersistenceRefused {
-                    path: path,
-                    cause: write.error,
-                  },
-                }
+              ) {
+                FilesystemWritten { path } => GitDiffWindowPrepared { path: path, window: window }
+                FilesystemWriteRefused { path, error } =>
+                  GitDiffWindowPrepareRefused {
+                    cause: ChangeWindowPersistenceRefused {
+                      path: path,
+                      cause: error,
+                    },
+                  }
               }
             GitMergeBaseProgramUnavailable { program: program, reason: reason } =>
               GitDiffWindowPrepareRefused {
@@ -9810,20 +9562,6 @@ fn belt_verify_attempt_for_instance(
                     let identity_hex = git_diff_window_identity_hex(
                       identity: subject.change_window_identity,
                     )
-                    let address = exact_verification_address_for(
-                      attempt_dir: dispatch_attempt_state_path_for_instance(
-                        instance: instance,
-                        node_id: node_id,
-                        attempt_key: progress.attempt_key,
-                      ),
-                      verification_dir: dispatch_attempt_verification_dir_for_instance(
-                        instance: instance,
-                        node_id: node_id,
-                        attempt_key: progress.attempt_key,
-                      ),
-                      head_sha: head_sha,
-                      window_identity_hex: identity_hex,
-                    )
                     match belt_publish_current_verification_selection(
                       instance: instance,
                       node_id: node_id,
@@ -9839,10 +9577,12 @@ fn belt_verify_attempt_for_instance(
                           ], ""),
                         }
                       VerificationSelectionPublished { path: _ } => {
-                        let exact_source = exact_verification_receipt_source_read(
-                          attempt_dir: address.attempt_dir,
-                          verification_dir: address.verification_dir,
-                          receipt_basename: address.receipt_basename,
+                        let exact_source = attempt_state_verification_receipt_read_at(
+                          instance: instance,
+                          node: node_id as String,
+                          attempt_key: progress.attempt_key,
+                          head_sha: head_sha,
+                          window_identity_hex: identity_hex,
                         )
                         match belt_verification_decision(
                           expected: subject,
@@ -9873,13 +9613,8 @@ fn belt_verify_attempt_for_instance(
                                 contract: node.execution,
                               ) {
                                 Present {
-                                  value: dispatch_attempt_diff_window_path_for_instance(
-                                    instance: instance,
-                                    node_id: node_id,
-                                    attempt_key: progress.attempt_key,
-                                    head_sha: head_sha,
-                                    window_identity_hex: identity_hex,
-                                  ),
+                                  // EXTERNAL HAND-OFF: the validation command reads the window file by path.
+                                  value: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: progress.attempt_key), member: AttemptDiffWindow { head_sha: head_sha, window_identity_hex: identity_hex }),
                                 }
                               } else {
                                 none
@@ -9990,43 +9725,23 @@ fn belt_verify_run_and_persist(
   let identity_hex = git_diff_window_identity_hex(
     identity: subject.change_window_identity,
   )
-  let receipt_path = dispatch_attempt_verification_receipt_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: progress.attempt_key,
-    head_sha: subject.head_sha as String,
-    window_identity_hex: identity_hex,
-  )
   let worktree = belt_verify_detached_worktree(
     instance: instance,
     node_id: node_id,
     attempt_key: progress.attempt_key,
     head_sha: subject.head_sha as String,
   )
-  let pinned_identity_wire = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_identity_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-  )
-  let pinned_revision_wire = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_revision_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-  )
-  let pinned_identity = validation_oracle_parse_pinned_identity_wire(
-    text: pinned_identity_wire,
-  )
-  let pinned_revision = validation_oracle_parse_pinned_revision_wire(
-    text: pinned_revision_wire,
-  )
-  let pin_refusal = belt_read_or_empty(
-    path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-  )
+  // A pin record that is absent or unreadable leaves the pin unrecorded (Absent) and the oracle gate refuses on it;
+  // the refusal is carried in the pin-read detail below, never projected to an empty string.
+  let pinned_identity = match attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOracleIdentity) {
+    FilesystemReadSucceeded { content: c } => validation_oracle_parse_pinned_identity_wire(text: trim(c))
+    FilesystemReadRefused { error: _ } => Absent
+  }
+  let pinned_revision = match attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOracleRevision) {
+    FilesystemReadSucceeded { content: c } => validation_oracle_parse_pinned_revision_wire(text: trim(c))
+    FilesystemReadRefused { error: _ } => Absent
+  }
+  let pin_refusal = attempt_state_read_current(instance: instance, node: node_id as String, member: AttemptOraclePinRefused)
   let pin_recorded = validation_oracle_pin_recorded(
     identity: pinned_identity,
     revision: pinned_revision,
@@ -10058,21 +9773,25 @@ fn belt_verify_run_and_persist(
       executions: run.executions,
       verdict: run.verdict,
     }
-    let write = Filesystem.Write(
-      path: receipt_path,
-      content: verification_receipt_json(receipt: receipt),
-    )
-    if write.success {
-      VerifyRecorded {
-        node_id: progress.node_id,
-        verdict_key: validation_verdict_key(verdict: run.verdict),
-        detail: validation_verdict_detail(verdict: run.verdict),
-      }
-    } else {
-      VerifyWriteFailed {
-        node_id: progress.node_id,
-        detail: write.error,
-      }
+    let write = attempt_state_write_at(
+  instance: instance,
+  node: node_id as String,
+  attempt_key: progress.attempt_key,
+  member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
+  content: verification_receipt_json(receipt: receipt),
+)
+    match write {
+      FilesystemWritten { path: _ } =>
+        VerifyRecorded {
+          node_id: progress.node_id,
+          verdict_key: validation_verdict_key(verdict: run.verdict),
+          detail: validation_verdict_detail(verdict: run.verdict),
+        }
+      FilesystemWriteRefused { path: _, error: e } =>
+        VerifyWriteFailed {
+          node_id: progress.node_id,
+          detail: e,
+        }
     }
   } else {
     match change_window_refusal {
@@ -10095,21 +9814,25 @@ fn belt_verify_run_and_persist(
           executions: run.executions,
           verdict: run.verdict,
         }
-        let write = Filesystem.Write(
-          path: receipt_path,
-          content: verification_receipt_json(receipt: receipt),
-        )
-        if write.success {
-          VerifyRecorded {
-            node_id: progress.node_id,
-            verdict_key: validation_verdict_key(verdict: run.verdict),
-            detail: validation_verdict_detail(verdict: run.verdict),
-          }
-        } else {
-          VerifyWriteFailed {
-            node_id: progress.node_id,
-            detail: write.error,
-          }
+        let write = attempt_state_write_at(
+  instance: instance,
+  node: node_id as String,
+  attempt_key: progress.attempt_key,
+  member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
+  content: verification_receipt_json(receipt: receipt),
+)
+        match write {
+          FilesystemWritten { path: _ } =>
+            VerifyRecorded {
+              node_id: progress.node_id,
+              verdict_key: validation_verdict_key(verdict: run.verdict),
+              detail: validation_verdict_detail(verdict: run.verdict),
+            }
+          FilesystemWriteRefused { path: _, error: e } =>
+            VerifyWriteFailed {
+              node_id: progress.node_id,
+              detail: e,
+            }
         }
       }
       Absent => {
@@ -10132,10 +9855,14 @@ fn belt_verify_run_and_persist(
         Present { value: revision } => revision
         Absent => "oracle-pin-unreadable" as NonEmptyStr as VersionIdentity
       },
-      pin_read_detail: if pin_refusal == "" {
-        "no oracle identity was recorded for this attempt at dispatch"
-      } else {
-        pin_refusal
+      pin_read_detail: match pin_refusal {
+        FilesystemReadSucceeded { content: c } =>
+          if trim(c) == "" {
+            "no oracle identity was recorded for this attempt at dispatch"
+          } else {
+            trim(c)
+          }
+        FilesystemReadRefused { error: e } => join(["the oracle pin refusal record could not be read: ", e], "")
       },
     ) {
       ValidationOracleGateRefused { cause } =>
@@ -10190,21 +9917,25 @@ fn belt_verify_run_and_persist(
       executions: run.executions,
       verdict: run.verdict,
     }
-    let write = Filesystem.Write(
-      path: receipt_path,
-      content: verification_receipt_json(receipt: receipt),
-    )
-    if write.success {
-      VerifyRecorded {
-        node_id: progress.node_id,
-        verdict_key: validation_verdict_key(verdict: run.verdict),
-        detail: validation_verdict_detail(verdict: run.verdict),
-      }
-    } else {
-      VerifyWriteFailed {
-        node_id: progress.node_id,
-        detail: write.error,
-      }
+    let write = attempt_state_write_at(
+  instance: instance,
+  node: node_id as String,
+  attempt_key: progress.attempt_key,
+  member: AttemptVerificationReceipt { head_sha: subject.head_sha as String, window_identity_hex: identity_hex },
+  content: verification_receipt_json(receipt: receipt),
+)
+    match write {
+      FilesystemWritten { path: _ } =>
+        VerifyRecorded {
+          node_id: progress.node_id,
+          verdict_key: validation_verdict_key(verdict: run.verdict),
+          detail: validation_verdict_detail(verdict: run.verdict),
+        }
+      FilesystemWriteRefused { path: _, error: e } =>
+        VerifyWriteFailed {
+          node_id: progress.node_id,
+          detail: e,
+        }
     }
       }
     }
@@ -11857,27 +11588,41 @@ fn belt_publish_gate(
   }
 }
 
-fn belt_publish_write_outcome(
+// A JUDGMENT REACHED AND THEN LOST: the text of a write that did not land. It mints no success; PublishRecorded is
+// spelled only in the match arm of the write it reports on, never from a flag a caller supplies.
+fn belt_publish_lost(node_id: String, error: String) -> BeltPublishOutcome {
+  PublishWriteFailed {
+    node_id: node_id,
+    detail: join([
+      "the publication receipt could not be written, so the judgment was reached and then lost: ",
+      error,
+    ], ""),
+  }
+}
+
+// The attempt-state publication receipt write and the outcome it reports, one entry: the write is performed here
+// and PublishRecorded is minted only from the store's FilesystemWritten.
+fn belt_publish_attempt_receipt(
+  instance: HostDashboardInstance,
   node_id: String,
+  attempt_key: String,
   subject: RoadmapPublicationSubject,
   receipt: PublicationReceipt,
-  write_success: Bool,
-  write_error: String,
 ) -> BeltPublishOutcome {
-  if write_success {
-    PublishRecorded {
-      node_id: node_id,
-      head_sha: subject.expected_head as String,
-      outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
-    }
-  } else {
-    PublishWriteFailed {
-      node_id: node_id,
-      detail: join([
-        "the publication receipt could not be written, so the judgment was reached and then lost: ",
-        write_error,
-      ], ""),
-    }
+  match attempt_state_write_at(
+    instance: instance,
+    node: node_id,
+    attempt_key: attempt_key,
+    member: AttemptPublicationReceipt { head_sha: subject.expected_head as String },
+    content: publication_receipt_json(receipt: receipt),
+  ) {
+    FilesystemWritten { path: _ } =>
+      PublishRecorded {
+        node_id: node_id,
+        head_sha: subject.expected_head as String,
+        outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+      }
+    FilesystemWriteRefused { path: _, error: e } => belt_publish_lost(node_id: node_id, error: e)
   }
 }
 
@@ -11971,16 +11716,7 @@ fn belt_audit_evidence(
   attempt_key: String,
   head_sha: String,
 ) -> List<CriterionReviewEvidence> {
-  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  let source = match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_audit_verdict_basename(head_sha: head_sha),
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  let source = match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptAuditVerdict { head_sha: head_sha }) {
     FilesystemFileAbsent(_) => ReviewReceiptAbsent
     FilesystemFileRead { path: _, content } => ReviewReceiptPresent { text: content }
     FilesystemFileIndeterminate { cause } => ReviewReceiptUnreadable { detail: cause }
@@ -12074,7 +11810,8 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 review_detail: review_detail,
                 base_sha: trim(base),
                 head_sha: head,
-                verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
+                // EXTERNAL HAND-OFF: the auditor (a sandboxed unit) writes its verdict here.
+                verdict_path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: progress.attempt_key), member: AttemptAuditVerdict { head_sha: head }),
               )
               let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
               match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
@@ -12193,16 +11930,7 @@ fn belt_review_receipt_source(
   head_sha: String,
   criterion_key: String,
 ) -> ReviewReceiptSource {
-  let dir = dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key)
-  let listing = Filesystem.List(path: dir)
-  let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  match attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptReviewVerdict { head_sha: head_sha, criterion_key: criterion_key }) {
     FilesystemFileAbsent(_) => ReviewReceiptAbsent
     FilesystemFileRead { path: _, content } => ReviewReceiptPresent { text: content }
     FilesystemFileIndeterminate { cause } => ReviewReceiptUnreadable { detail: cause }
@@ -12339,16 +12067,20 @@ fn belt_review_supersession(
   head: String,
   plan: ReviewPlan,
 ) -> List<BeltReviewOutcome> {
-  let listing = Filesystem.List(path: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key))
-  if !listing.success {
-    []
-  } else {
-    let stale = filter(listing.entries.split(sep: "\n"), name =>
-      name.length() > head.length() + 1
-        && name.substring(start: 0, end: head.length() + 1) == join([head, "."], "")
-        && !string_contains(s: name, pattern: join([".", plan.revision, "-"], ""))
-        && string_contains(s: name, pattern: ".json"))
-    if count(stale) == 0 { [] } else { [ ReviewPlanSuperseded { node_id: node_id as String, stale_verdicts: count(stale), revision: plan.revision } ] }
+  match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+    AttemptStateUnready { detail: _ } => []
+    AttemptStateReady { store } =>
+      match attempt_state_list(store: store, directory: AttemptDirectoryReview) {
+        AttemptStateListingUnreadable { detail: _ } => []
+        AttemptStateListingRead { entries } => {
+          let stale = filter(entries.split(sep: "\n"), name =>
+            name.length() > head.length() + 1
+              && name.substring(start: 0, end: head.length() + 1) == join([head, "."], "")
+              && !string_contains(s: name, pattern: join([".", plan.revision, "-"], ""))
+              && string_contains(s: name, pattern: ".json"))
+          if count(stale) == 0 { [] } else { [ ReviewPlanSuperseded { node_id: node_id as String, stale_verdicts: count(stale), revision: plan.revision } ] }
+        }
+      }
   }
 }
 
@@ -12378,7 +12110,8 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
   match instance.toolchain.systemd_run {
     Absent => ReviewDeferred { node_id: node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
     Present { value: systemd_run } => {
-      let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
+      // EXTERNAL HAND-OFF: the reviewer (a sandboxed unit) writes its verdict here.
+      let verdict_path = attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node_id, attempt_key: attempt_key), member: AttemptReviewVerdict { head_sha: head, criterion_key: key })
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
       match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
@@ -14343,13 +14076,7 @@ fn belt_publish_project_for_instance(
                                                         AnswerReady { receipt } => {
                                                           match belt_publication_receipt_store(instance: instance) {
                                                             BeltPublicationReceiptStoreUnready { detail } =>
-                                                              belt_publish_write_outcome(
-                                                                node_id: project_key,
-                                                                subject: project_subject,
-                                                                receipt: receipt,
-                                                                write_success: false,
-                                                                write_error: detail,
-                                                              )
+                                                              belt_publish_lost(node_id: project_key, error: detail)
                                                             BeltPublicationReceiptStoreReady { store } =>
                                                               match belt_publication_receipt_put(
                                                                 store: store,
@@ -14357,21 +14084,13 @@ fn belt_publish_project_for_instance(
                                                                 content: publication_receipt_json(receipt: receipt),
                                                               ) {
                                                                 BeltReceiptWritten =>
-                                                                  belt_publish_write_outcome(
+                                                                  PublishRecorded {
                                                                     node_id: project_key,
-                                                                    subject: project_subject,
-                                                                    receipt: receipt,
-                                                                    write_success: true,
-                                                                    write_error: "",
-                                                                  )
+                                                                    head_sha: project_subject.expected_head as String,
+                                                                    outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+                                                                  }
                                                                 BeltReceiptWriteRefused { error } =>
-                                                                  belt_publish_write_outcome(
-                                                                    node_id: project_key,
-                                                                    subject: project_subject,
-                                                                    receipt: receipt,
-                                                                    write_success: false,
-                                                                    write_error: error,
-                                                                  )
+                                                                  belt_publish_lost(node_id: project_key, error: error)
                                                               }
                                                           }
                                                         }
@@ -14450,12 +14169,6 @@ fn belt_publish_attempt_adjudicate(
             ], ""),
           }
         WorktreeBoundToRepository => {
-          let path = dispatch_attempt_publication_receipt_path_for_instance(
-            instance: instance,
-            node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-            attempt_key: attempt_key,
-            head_sha: subject.expected_head as String,
-          )
           match belt_publish_admission_for(
             instance: instance,
             node_id: node_id,
@@ -14497,17 +14210,7 @@ fn belt_publish_attempt_adjudicate(
                       request_path: request_path,
                     }
                   AnswerReady { receipt } => {
-                    let write = Filesystem.Write(
-                      path: path,
-                      content: publication_receipt_json(receipt: receipt),
-                    )
-                    belt_publish_write_outcome(
-                      node_id: node_id,
-                      subject: subject,
-                      receipt: receipt,
-                      write_success: write.success,
-                      write_error: write.error,
-                    )
+                    belt_publish_attempt_receipt(instance: instance, node_id: node_id, attempt_key: attempt_key, subject: subject, receipt: receipt)
                   }
                 }
             }
@@ -14727,13 +14430,7 @@ fn belt_publish_node_for_instance(
             reason: join([belt_publish_transition_inhibited_reason, " ", tr], ""),
           }
         ActuationAdmitted => {
-      let key_read = Filesystem.Read(
-        path: dispatch_current_attempt_key_path_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-        ),
-      )
-      match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+      match attempt_state_read_current(instance: instance, node: node_id, member: AttemptKeyRecord) {
         FilesystemReadRefused { error } =>
           PublishDeferred {
             node_id: node_id,

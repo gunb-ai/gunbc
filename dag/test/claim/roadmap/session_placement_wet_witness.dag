@@ -23,7 +23,7 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.host_capacity {
-  ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
+  ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
@@ -88,12 +88,7 @@ fn fresh_dir(tag: String) -> String {
 // directory, and counts a release only when the ledger answers ComputeReleased -- an empty partition
 // answering NothingToRelease or a refusal can never read as a returned seat.
 fn subject_at(dir: String) -> ComputeCapacitySubject {
-  ComputeCapacitySubject {
-    root: join([dir, "/capacity"], "") as NonEmptyStr,
-    partition: "session-memory-g5-witness" as NonEmptyStr as PartitionId,
-    appropriation: kibibyte(count: 1048576),
-    request: kibibyte(count: 1024),
-  }
+  host_capacity_subject_in(requesting: instance_at(dir: dir), host_instance: instance_at(dir: dir), pool: AgentSessionPool { slots: 4 }).subject
 }
 
 // THE SESSION SLOT STORE UNDER A DIRECTORY THE TEST OWNS: the production mint
@@ -141,7 +136,7 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
 }
 
 fn reserve_real(dir: String) -> LeaseGrant? {
-  match compute_reserve_against(subject: subject_at(dir: dir), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
+  match compute_reserve_against(subject: subject_at(dir: dir), appropriation: kibibyte(count: 1048576), request: kibibyte(count: 1024), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
     ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none

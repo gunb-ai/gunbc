@@ -1,0 +1,176 @@
+module test.claim.roadmap.roadmap_dashboard_target_write_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import std.roster_frontier { frontier_subject_key }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  macbook_local_dashboard_instance,
+  srv1_live_dashboard_instance,
+}
+import gunbc.roadmap.roadmap_dashboard_target_write {
+  DashboardCreateNewOutcome,
+  CreateNewWritten,
+  CreateNewRefused,
+  CreateNewNotDispatched,
+  CreateNewStagingResidue,
+  dashboard_target_write_create_new,
+  dashboard_target_write_consumer_frontier_rows,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data first_body: String = "first-bytes\n"
+data second_body: String = "second-bytes\n"
+
+fn fx_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_write.XXXXXX").path
+}
+
+// The macbook instance with its controller workdir (repo_root, the cwd the local exec arm runs in) moved to a
+// directory that exists on this host: the declared one is a path on the operator's laptop.
+fn local_instance_with_workdir(root: String) -> HostDashboardInstance {
+  let i = macbook_local_dashboard_instance()
+  HostDashboardInstance {
+    deployment: i.deployment,
+    instance_id: i.instance_id,
+    host_identity: i.host_identity,
+    provision_parent_root: i.provision_parent_root,
+    instance_root: i.instance_root,
+    local_origin_root: i.local_origin_root,
+    local_origin_publish_ref: i.local_origin_publish_ref,
+    repo_root: root as FilePath,
+    dispatch_base_ref: i.dispatch_base_ref,
+    publication_base_branch: i.publication_base_branch,
+    dispatch_state_scope: i.dispatch_state_scope,
+    execution_environment: i.execution_environment,
+    provider_state: i.provider_state,
+    serve_binary: i.serve_binary,
+    serve_function: i.serve_function,
+    listen_host: i.listen_host,
+    listen_port: i.listen_port,
+    tmux_server: i.tmux_server,
+    actuation: i.actuation,
+    provision_transport: i.provision_transport,
+    source_seed: i.source_seed,
+    admitted_revision: i.admitted_revision,
+    toolchain: i.toolchain,
+    dispatch_worker_memory_max: i.dispatch_worker_memory_max,
+    directory_owner: i.directory_owner,
+    worker: i.worker,
+    materialization_store_root: i.materialization_store_root,
+  }
+}
+
+fn is_written(outcome: DashboardCreateNewOutcome) -> Bool {
+  match outcome {
+    CreateNewWritten => true
+    CreateNewRefused { exit_code: _, stderr: _ } => false
+    CreateNewNotDispatched { reason: _ } => false
+    CreateNewStagingResidue { stage: _, landed: _, stderr: _ } => false
+  }
+}
+
+fn is_refused(outcome: DashboardCreateNewOutcome) -> Bool {
+  match outcome {
+    CreateNewWritten => false
+    CreateNewRefused { exit_code: _, stderr: _ } => true
+    CreateNewNotDispatched { reason: _ } => false
+    CreateNewStagingResidue { stage: _, landed: _, stderr: _ } => false
+  }
+}
+
+fn is_not_dispatched(outcome: DashboardCreateNewOutcome) -> Bool {
+  match outcome {
+    CreateNewWritten => false
+    CreateNewRefused { exit_code: _, stderr: _ } => false
+    CreateNewNotDispatched { reason: _ } => true
+    CreateNewStagingResidue { stage: _, landed: _, stderr: _ } => false
+  }
+}
+
+// WET (local exec rung): a create-only write lands complete, a second one over the same path refuses with a
+// typed outcome, the first bytes are unchanged, and NO staging file is left on either arm -- the directory
+// holds exactly the published name.
+test fn create_new_lands_then_refuses_over_existing_and_keeps_bytes_by_real_execution() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/entry")
+  let instance = local_instance_with_workdir(root: root)
+  let first = dashboard_target_write_create_new(instance: instance, path: path as FilePath, content: first_body)
+  let after_first = Filesystem.Read(path: path)
+  let listed_first = Filesystem.List(path: root)
+  let second = dashboard_target_write_create_new(instance: instance, path: path as FilePath, content: second_body)
+  let after_second = Filesystem.Read(path: path)
+  let listed_second = Filesystem.List(path: root)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  is_written(outcome: first)
+    && after_first.content == first_body
+    && listed_first.entries == "entry"
+    && is_refused(outcome: second)
+    && after_second.content == first_body
+    && listed_second.entries == "entry"
+    && cleaned.success
+}
+
+// WET: a create-only write whose PARENT is missing never reaches a published name and leaves nothing: the
+// staging allocation is the first step, so the refusal is typed and no target path exists afterwards.
+test fn create_new_into_a_missing_parent_refuses_and_publishes_nothing_by_real_execution() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/absent_dir/entry")
+  let outcome = dashboard_target_write_create_new(instance: local_instance_with_workdir(root: root), path: path as FilePath, content: first_body)
+  let probe = Filesystem.Read(path: path)
+  let listed = Filesystem.List(path: root)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  is_refused(outcome: outcome) && !probe.success && listed.entries == "" && cleaned.success
+}
+
+// WET: a DIRECTORY (or a symlink to one) at the target path is an existing name, so the write refuses and
+// creates nothing inside it. Without ln -T, GNU ln exits 0 and links the staging basename INSIDE the
+// directory, which would be reported as CreateNewWritten for a path that was never written.
+test fn create_new_over_an_existing_directory_refuses_and_creates_nothing_inside_by_real_execution() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/entry")
+  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["--", path])
+  let outcome = dashboard_target_write_create_new(instance: local_instance_with_workdir(root: root), path: path as FilePath, content: first_body)
+  let inside = Filesystem.List(path: path)
+  let listed = Filesystem.List(path: root)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  made.exit_code == 0 && is_refused(outcome: outcome) && inside.entries == "" && listed.entries == "entry" && cleaned.success
+}
+
+test fn create_new_over_a_symlink_to_a_directory_refuses_and_creates_nothing_inside_by_real_execution() -> Bool {
+  let root = fx_root()
+  let dir = concat(root, "/dir")
+  let path = concat(root, "/entry")
+  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["--", dir])
+  let linked = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", dir, path])
+  let outcome = dashboard_target_write_create_new(instance: local_instance_with_workdir(root: root), path: path as FilePath, content: first_body)
+  let inside = Filesystem.List(path: dir)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  made.exit_code == 0 && linked.exit_code == 0 && is_refused(outcome: outcome) && inside.entries == "" && cleaned.success
+}
+
+// ENROLMENT IS A DIFFERENT FACT FROM DECLARATION: the row is joined against the census closure itself by
+// subject key. Dropping dashboard_target_write_consumer_frontier_rows from census_closure_frontier_row_groups
+// reds it.
+test fn target_write_frontier_row_is_enrolled_in_the_census_closure() -> Bool {
+  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
+  length(xs: dashboard_target_write_consumer_frontier_rows) == 1
+    && dashboard_target_write_consumer_frontier_rows |> all(row =>
+      census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
+}
+
+// SSH ARM, MOCK ROUTE ONLY (local-exec rung, not wet): srv1's instance routes through
+// typed_argv_exec_over_ssh_with_stdin, answered by ssh.Session.ExecPortableWordsWithStdin mock_response, whose
+// stdout is empty, so the first step (mktemp) is dispatched, reports no staging path, and nothing else runs.
+// A relative path never dispatches. (A hostile word in the path is not exercised here: the mktemp template
+// carries only the parent directory, so the argv wall is not reached on this mock route.)
+test fn ssh_arm_routes_through_typed_argv_and_stops_without_a_staging_path() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let routed = dashboard_target_write_create_new(instance: instance, path: "/tmp/x/entry" as FilePath, content: first_body)
+  let relative = dashboard_target_write_create_new(instance: instance, path: "x/entry" as FilePath, content: first_body)
+  is_not_dispatched(outcome: routed) && is_not_dispatched(outcome: relative)
+}

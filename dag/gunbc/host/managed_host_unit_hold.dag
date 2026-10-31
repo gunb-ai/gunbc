@@ -845,15 +845,6 @@ fn probe_hold_release_refused(refusal: DurableHoldReleaseRefusal) -> ProbeHoldRe
   }
 }
 
-fn probe_hold_release_committed(outcome: FileHoldReleaseOutcome) -> ProbeHoldReleaseOutcome {
-  match outcome {
-    FileHoldReleased { slot_key: _, generation: _ } => ProbeHoldReleased
-    FileHoldReleaseLost { slot_key: _ } => ProbeHoldStale { detail: "the slot moved before the release committed" }
-    FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => ProbeHoldUnreleased { cause: "the store refused the release; the unit is STILL held" }
-    FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => ProbeHoldUnreleased { cause: "the key is not slot-addressable" }
-  }
-}
-
 fn probe_hold_release_outcome_text(o: ProbeHoldReleaseOutcome) -> String {
   match o {
     ProbeHoldReleased => "released this run's probe hold"
@@ -910,7 +901,13 @@ fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: N
     ProbeHoldReleaseAt { owner: o, generation: g } =>
       match file_hold_release_assess(root: executor.store.root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
         FileHoldReleaseNotEligible { slot_key: _, refusal: r } => probe_hold_release_refused(refusal: r)
-        FileHoldReleasePlanned { plan: p } => probe_hold_release_committed(outcome: file_hold_release_commit(plan: p))
+        FileHoldReleasePlanned { plan: p } =>
+          match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => ProbeHoldReleased
+            FileHoldReleaseLost { slot_key: _ } => ProbeHoldStale { detail: "the slot moved before the release committed" }
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => ProbeHoldUnreleased { cause: "the store refused the release; the unit is STILL held" }
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => ProbeHoldUnreleased { cause: "the key is not slot-addressable" }
+          }
       }
   }
 }

@@ -19241,11 +19241,36 @@ pub fn sole_constructor_construction_diags(
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if type_has_sole_constructor(type_name.clone(), scope.clone()) {
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            type_name.clone(),
-        ) {
+    {
+        let sealed_decl = match variant_owner_node(scope.clone(), type_name.clone()) {
+            Some(owner) => {
+                if {
+                    let mut __found = false;
+                    for p in owner.properties.clone().iter().cloned() {
+                        if (p.name.clone() == "sole_constructor".to_string()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Some(owner.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            std::option::Option::None => {
+                if type_has_sole_constructor(type_name.clone(), scope.clone()) {
+                    crate::v1_compiler_infer_env::lookup_type_by_name(
+                        scope.type_env.clone(),
+                        type_name.clone(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+        };
+        match sealed_decl.clone() {
             Some(decl) => {
                 if (decl.span.file.clone() == span.file.clone()) {
                     Rc::new(vec![])
@@ -19261,8 +19286,6 @@ pub fn sole_constructor_construction_diags(
             }
             std::option::Option::None => Rc::new(vec![]),
         }
-    } else {
-        Rc::new(vec![])
     }
 }
 

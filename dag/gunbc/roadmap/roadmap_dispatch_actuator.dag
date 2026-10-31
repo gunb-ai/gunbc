@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
@@ -1264,66 +1265,9 @@ fn dispatch_verification_checkout_path_for_instance(
   ], "")
 }
 
-fn dispatch_attempt_request_scratch_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    )),
-    "/harness-request.json",
-  ], "")
-}
-
-fn dispatch_attempt_events_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    )),
-    "/provider-events.jsonl",
-  ], "")
-}
-
 // THE WIRE LOG DIRECTORY (harness-conversation-log-forking): per-round request/response bytes
 // persist beside the provider events file under "<events>.wire/"; provisioning it here is what
 // makes the harness's round writes land instead of degrading to turn.wire_log_unwritable.
-fn dispatch_attempt_wire_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([dispatch_attempt_events_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  ), ".wire/"], "")
-}
-
-fn dispatch_attempt_key_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/attempt-key",
-  ], "")
-}
-
 // THE PROCESS FINGERPRINT THE SPAWN'S SELECTION CHOSE, written at state initialization beside the
 // attempt key. Live-session observation and stop judge a tmux session against what THIS attempt
 // spawned, read here, rather than against whatever the default selection would choose now: once an
@@ -1331,34 +1275,6 @@ fn dispatch_attempt_key_path_for_instance(
 // harness's, and re-selecting at observation time would also hide a live session the moment its
 // provider's standing stopped admitting new draws. An attempt with no such file predates the record
 // and keeps the default-selection scope it was always observed under.
-fn dispatch_attempt_process_fingerprint_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/process-fingerprint",
-  ], "")
-}
-
-fn dispatch_current_attempt_process_fingerprint_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/process-fingerprint",
-  ], "")
-}
-
 fn dispatch_actuator_selection_process_fingerprint(selection: DispatchActuatorSelection) -> NonEmptyStr? {
   match selection {
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } => Present { value: process_fingerprint }
@@ -1369,124 +1285,14 @@ fn dispatch_actuator_selection_process_fingerprint(selection: DispatchActuatorSe
 // THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
 // at state initialization beside the attempt key. A first turn writes 1, so an attempt with no such
 // file predates the continuation and is read as turn 1 by the decision, never guessed at otherwise.
-fn dispatch_attempt_continuation_turn_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/continuation-turn",
-  ], "")
-}
-
-data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
-
 // THE ALIGNMENT BINDING PATH: the resolved chain's fingerprint, written at state initialization
 // beside the attempt key and turn (gunbc.roadmap.roadmap_alignment owns the binding's shape; this
 // module only names its address in the attempt state directory).
-fn dispatch_attempt_alignment_binding_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/alignment-binding.json",
-  ], "")
-}
-
-data dispatch_attempt_alignment_binding_basename: String = "alignment-binding.json"
-
-fn dispatch_attempt_admission_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/environment-admission.json",
-  ], "")
-}
-
-fn dispatch_attempt_launch_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/launch-identity.json",
-  ], "")
-}
-
-fn dispatch_attempt_spawn_origin_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    dispatch_spawn_origin_basename,
-  ], "")
-}
-
 // The attempt's verification evidence sits beside its admission receipt and its event stream, in
 // the same attempt-state directory and keyed by the same attempt key. That placement is what lets a
 // Publication step find the evidence for the revision it is about to publish without being told
 // where to look: the attempt identity already addresses everything else the attempt produced, and a
 // verification record filed anywhere else would need a second index.
-
-fn dispatch_attempt_verification_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/verification.json",
-  ], "")
-}
-
-fn dispatch_attempt_spawn_failure_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/spawn-failure.txt",
-  ], "")
-}
 
 // The oracle pin is TWO one-fact files beside the attempt's other evidence, not one record needing
 // a grammar. That follows the directory's existing shape — attempt-key, spawn-failure.txt and
@@ -1496,90 +1302,6 @@ fn dispatch_attempt_spawn_failure_path_for_instance(
 // what the oracle's content WAS before the agent started, and which revision that content came
 // from. The subject, the selection, and the declared command are all re-derived from the node's own
 // execution contract, so persisting them would be a second home for a fact that already has one.
-
-fn dispatch_attempt_oracle_identity_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/validation-oracle-identity",
-  ], "")
-}
-
-fn dispatch_attempt_oracle_revision_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/validation-oracle-revision",
-  ], "")
-}
-
-fn dispatch_attempt_oracle_pin_refusal_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/validation-oracle-pin-refused",
-  ], "")
-}
-
-fn dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/validation-oracle-pin-refused",
-  ], "")
-}
-
-fn dispatch_current_attempt_oracle_identity_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/validation-oracle-identity",
-  ], "")
-}
-
-fn dispatch_current_attempt_oracle_revision_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/validation-oracle-revision",
-  ], "")
-}
 
 // THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop
 // is head A -> findings -> worker correction -> head B, all inside a single implementation attempt.
@@ -1597,41 +1319,6 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
 // what counts.
 
 data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
-
-fn dispatch_attempt_publication_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/publication",
-  ], "")
-}
-
-data publication_receipt_directory_segment: String = "publication"
-
-fn dispatch_attempt_publication_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  head_sha: String,
-) -> String {
-  join([
-    dispatch_attempt_publication_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    head_sha,
-    ".json",
-  ], "")
-}
 
 // EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The
 // alias exists so a reader that knows only a node can find the live attempt's evidence without
@@ -1652,75 +1339,12 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
 // window identity is selected for dashboard observation. DISSOLVE-ON: the legacy attempt-level
 // validation-receipt.json path deletes once its last belt consumer is gone.
 
-fn dispatch_attempt_verification_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    verification_directory_segment,
-  ], "")
-}
-
 // THE REVIEW DIRECTORY: the reviewer's verdict per head, its event stream, its request scratch and
 // its stdout, all beside the attempt's verification directory and prepared with it. It is the ONLY
 // path the reviewer's unit may write, which is how "you may not change the tree" is a wall rather
 // than a sentence (gunbc.harness.harness_review_guidance CapabilityWithheld ChangeTheTree).
-data review_directory_segment: String = "review"
-
-fn dispatch_attempt_review_dir_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    "/", review_directory_segment,
-  ], "")
-}
-
 // Every review artifact is addressed by head AND criterion: one reviewer per criterion, so one verdict,
 // one event stream, one scratch and one log per criterion, never shared between them.
-fn dispatch_attempt_review_verdict_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  head_sha: String,
-  criterion_key: String,
-) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".", criterion_key, ".json"], "")
-}
-
-fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: String) -> String {
-  join([head_sha, ".", criterion_key, ".json"], "")
-}
-
-fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
-  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
-}
-
-fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
-  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
-}
-
-fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
-}
-
-fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".harness-request.json"], "")
-}
-
-fn dispatch_attempt_review_log_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".reviewer-stdout.log"], "")
-}
-
 fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
   join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
 }
@@ -1825,8 +1449,8 @@ fn dispatch_review_unit_command(
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
-      log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-      review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      log_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
+      review_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       exit_hook: exit_hook,
     ),
     setenv_bindings: [],
@@ -1836,10 +1460,10 @@ fn dispatch_review_unit_command(
       worktree_path: worktree_path,
       brief: brief,
       timeout_program: instance.toolchain.timeout as String,
-      request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-      events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
-      verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+      request_scratch_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewRequestScratch { criterion_key: criterion_key }),
+      events_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: criterion_key, head_sha: head_sha }),
+      verdict_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
+      verdict_name: attempt_state_member_name(member: AttemptReviewVerdict { head_sha: head_sha, criterion_key: criterion_key }),
       attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
     ),
   )
@@ -1847,20 +1471,6 @@ fn dispatch_review_unit_command(
 
 // THE AUDIT DIRECTORY, the auditor's only writable path, beside review/. One auditor per head, so its
 // artifacts are addressed by head alone.
-data audit_directory_segment: String = "audit"
-
-fn dispatch_attempt_audit_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", audit_directory_segment], "")
-}
-
-fn dispatch_attempt_audit_verdict_basename(head_sha: String) -> String {
-  join([head_sha, ".json"], "")
-}
-
-fn dispatch_attempt_audit_verdict_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
-  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], "")
-}
-
 fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
   join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
@@ -1881,7 +1491,7 @@ fn dispatch_audit_unit_command(
   head_sha: String,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
-  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryAudit)
   gunbc_user_work_transient_command(
     unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
     properties: dispatch_review_unit_properties(
@@ -1903,9 +1513,9 @@ fn dispatch_audit_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+      "--arg", join(["events_path=", attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: head_sha })], ""),
       "--arg", join(["verdict_dir=", dir], ""),
-      "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
+      "--arg", join(["verdict_name=", attempt_state_member_name(member: AttemptAuditVerdict { head_sha: head_sha })], ""),
       "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
     ],
   )
@@ -1916,12 +1526,6 @@ fn dispatch_audit_unit_command(
 // scratch and log are addressed together, and the belt's continuation decision reads the verdict
 // at this same address (belt_supervisor_verdict_observe), so writer and reader cannot disagree
 // about where an adjudication lands.
-data supervisor_directory_segment: String = "supervisor"
-
-fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", supervisor_directory_segment], "")
-}
-
 fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
   join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
 }
@@ -1946,7 +1550,7 @@ fn dispatch_supervisor_unit_command(
   brief: String,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
-  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectorySupervisor)
   gunbc_user_work_transient_command(
     unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
     properties: dispatch_review_unit_properties(
@@ -1968,163 +1572,12 @@ fn dispatch_supervisor_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
+      "--arg", join(["events_path=", attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: turn })], ""),
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
       "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
     ],
   )
-}
-
-fn dispatch_attempt_verification_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  head_sha: String,
-  window_identity_hex: String,
-) -> String {
-  join([
-    dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    exact_verification_receipt_basename(
-      head_sha: head_sha,
-      window_identity_hex: window_identity_hex,
-    ),
-  ], "")
-}
-
-fn dispatch_attempt_diff_window_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  head_sha: String,
-  window_identity_hex: String,
-) -> String {
-  join([
-    dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    head_sha,
-    ".",
-    window_identity_hex,
-    ".diff-window.json",
-  ], "")
-}
-
-fn dispatch_attempt_verification_current_selection_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  head_sha: String,
-) -> String {
-  join([
-    dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/",
-    current_verification_selection_basename(head_sha: head_sha),
-  ], "")
-}
-
-fn dispatch_attempt_validation_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/validation-receipt.json",
-  ], "")
-}
-
-fn dispatch_current_attempt_validation_receipt_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/validation-receipt.json",
-  ], "")
-}
-
-fn dispatch_current_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
-    "/",
-    node_id as String,
-    "-current",
-  ], "")
-}
-
-fn dispatch_current_attempt_key_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/attempt-key",
-  ], "")
-}
-
-fn dispatch_current_attempt_admission_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/environment-admission.json",
-  ], "")
-}
-
-fn dispatch_current_attempt_spawn_failure_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/spawn-failure.txt",
-  ], "")
-}
-
-fn dispatch_current_attempt_events_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-) -> String {
-  join([
-    dispatch_current_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
-    "/provider-events.jsonl",
-  ], "")
 }
 
 // THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
@@ -2149,7 +1602,7 @@ fn dispatch_current_attempt_events_projection_argv_for_instance(
 ) -> HostExecArgv {
   dispatch_events_projection_argv_at(
     instance: instance,
-    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
+    events_path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptWorkerEvents),
   )
 }
 
@@ -2681,16 +2134,8 @@ fn dispatch_provider_inner_argv_for_launch(
               worktree_path: worktree_path,
               brief: brief,
               timeout_program: instance.toolchain.timeout as String,
-              request_scratch_path: dispatch_attempt_request_scratch_path_for_instance(
-                instance: instance,
-                node_id: attempt.node.node,
-                attempt_key: attempt.attempt_key,
-              ),
-              events_path: dispatch_attempt_events_path_for_instance(
-                instance: instance,
-                node_id: attempt.node.node,
-                attempt_key: attempt.attempt_key,
-              ),
+              request_scratch_path: attempt_state_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerRequestScratch),
+              events_path: attempt_state_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerEvents),
               attempt_identity: dispatch_worker_attempt_identity(node_id: attempt.node.node as String, attempt_key: attempt.attempt_key),
               alignment_chain_fingerprint: alignment_chain_fingerprint,
             ),
@@ -2769,7 +2214,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // a new step -- the attempt directory and the one subdirectory it is required to contain come into
 // existence together, and publication_receipt_directory_is_named_once_note's requirement that a
 // reader be able to LIST the directory holds from attempt birth instead of from first publish.
-// The worker/ child (path_parent_directory of dispatch_attempt_worker_log_path_for_instance) is
+// The worker/ child (path_parent_directory of the AttemptWorkerLog member) is
 // in this same list: the belt runs attempt_state_prepare_argvs_for_instance as step
 // attempt-state-prepare, then belt_attempt_state_initialize_for_instance writes
 // launch-identity.json, then the unit starts. ReadWritePaths has no '-' prefix, so a missing
@@ -2781,7 +2226,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // attempt group, and its handed set (dispatch_worker_handed_set) enters exactly three of these: it
 // traverses the attempt directory, writes worker/ (its scratch directory and stdout parent), and writes
 // the wire log directory inside worker/, where the harness persists each round's request and response
-// bytes (dispatch_attempt_wire_dir_for_instance). An owner-only attempt directory was refused at the
+// bytes (the AttemptDirectoryWire directory). An owner-only attempt directory was refused at the
 // worker-traversal step on the srv1 lab, 2026-10-24 (1000:1003 0700, no execute bit for the worker);
 // the wire directory was first filed with the stages below as owner-only, which the same lab refused
 // at the worker's first round. So the attempt directory is group-traversable and setgid, which keeps
@@ -2805,43 +2250,15 @@ fn attempt_state_prepare_argvs_for_instance(
   node_id: RoadmapNodeId,
   attempt_key: String,
 ) -> List<HostExecArgv> {
-  let attempt_directory = dispatch_attempt_state_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
-  let worker_scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  ))
+  let attempt_directory = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  let worker_scratch = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryWorker)
   let stages = [
-    dispatch_attempt_publication_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    dispatch_attempt_verification_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    dispatch_attempt_review_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    dispatch_attempt_audit_dir_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryPublication),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryVerification),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
+    attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryAudit),
   ]
-  let wire = dispatch_attempt_wire_dir_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-  )
+  let wire = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryWire)
   match instance.worker {
     WorkerIsServiceUser => [
       attempt_state_install_argv(instance: instance, mode: DirectoryOwnerOnly, paths: concat(concat([attempt_directory, worker_scratch], stages), [wire])),
@@ -2878,7 +2295,7 @@ fn dispatch_attempt_events_initialize_for_instance(
   node_id: RoadmapNodeId,
   attempt_key: String,
 ) -> DispatchAttemptEventsInitialization {
-  let path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
   match instance.worker {
     WorkerIsServiceUser => {
       let written = Filesystem.Write(path: path, content: "")
@@ -2904,15 +2321,8 @@ fn attempt_current_pointer_argv_for_instance(
     args: [
       "-sfnT",
       "--",
-      dispatch_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_current_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ),
+      attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot),
+      attempt_state_current_directory_text(instance: instance, node_id: node_id, directory: AttemptDirectoryRoot),
     ],
   )
 }
@@ -3734,11 +3144,7 @@ fn dispatch_spawn_commands_for_launch(
     node_id: node.node,
     attempt_key: attempt_key,
   )
-  let events_path = dispatch_attempt_events_path_for_instance(
-    instance: instance,
-    node_id: node.node,
-    attempt_key: attempt_key,
-  )
+  let events_path = attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerEvents)
   match dispatch_session_container_for_provider(
     provider: provider,
     instance: instance,
@@ -3746,11 +3152,7 @@ fn dispatch_spawn_commands_for_launch(
     attempt_key: attempt_key,
     session_name: session_name,
     events_path: events_path,
-    worker_log_path: dispatch_attempt_worker_log_path_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
+    worker_log_path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerLog),
     pane_working_directory: dispatch_pane_working_directory(
       provider: provider,
       instance: instance,
@@ -4674,7 +4076,7 @@ fn live_session_row_with_process(
 }
 
 // A node whose current attempt recorded the fingerprint its spawn selected (see
-// dispatch_attempt_process_fingerprint_path_for_instance) is judged against that record; a node
+// the AttemptProcessFingerprint member) is judged against that record; a node
 // with no record falls back to the default selection's scope, exactly as before the record existed.
 type RecordedAttemptFingerprint {
   node_id: String
