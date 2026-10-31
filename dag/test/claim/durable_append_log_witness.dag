@@ -1,0 +1,140 @@
+module test.claim.durable_append_log_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_exit, total_blocking_census, CensusVerdict }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_append_log {
+  AppendLogHead, AppendExpectation, AppendExpected, append_log_expectation,
+  AppendStreamObservation, AppendWriterStanding, WriterHoldsWindow, WriterWindowReleased, WriterStandingUnobserved,
+  AppendLogReadback, AppendLogSettled, AppendLogOpenPrefix, AppendLogTornTail, AppendLogStandingUnobserved,
+  append_stream_readback,
+  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, SandboxWriter,
+  IntentCreateEmpty, IntentAppendRecord, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
+  append_write_admission,
+}
+
+// THE APPEND-LOG / MULTI-WRITER CONTRACT (std.durable_append_log, gunbc.durable_append_log_store).
+// GREEN controls first: the pure contract answers every law it declares. Then the EXPECTING-RED claims the
+// implementation lane must make pass: each hands the compiler a source the migrated tree must refuse (or a
+// symbol the migrated tree must have deleted) and asserts the refusal. They fail today because the unsealed
+// log members are still reachable through the generic attempt-state write and the events initializer, and
+// they are enrolled in v2.workflow.floor_expected_red `floor_expected_red_chunk_append_log_store`.
+// When the implementation lands they pass, the roster reports them stale, and the row is deleted, leaving
+// each as a permanent regression control (DESIGN 4b(4)).
+
+fn worker() -> DurableHoldOwnerRef { "attempt-worker-unit" as DurableHoldOwnerRef }
+fn other() -> DurableHoldOwnerRef { "another-writer" as DurableHoldOwnerRef }
+
+fn obs(records: List<String>, tail: Int, length: Int) -> AppendStreamObservation {
+  AppendStreamObservation { complete_records: records, tail_bytes: tail, byte_length: length }
+}
+
+fn handed_off() -> MemberWriterPolicy { HostCreatesThenSandboxWrites { principal: worker() } }
+
+fn refused(a: AppendWriteAdmission) -> Bool {
+  match a { AppendWriteRefused { refusal: _ } => true, AppendWriteAdmitted => false }
+}
+
+fn admitted(a: AppendWriteAdmission) -> Bool {
+  match a { AppendWriteAdmitted => true, AppendWriteRefused { refusal: _ } => false }
+}
+
+// ── GREEN: ATOMICITY, ORDER AND READBACK ──────────────────────────────────────────────────────────
+test fn an_empty_log_expects_the_slot_absent_and_lands_on_the_first_position() -> Bool {
+  match append_log_expectation(head: AppendLogHead { record_count: 0, byte_length: 0 }) {
+    AppendExpected { expectation: _, position: p } => p == 1
+    _ => false
+  }
+}
+
+test fn the_next_position_follows_the_observed_head() -> Bool {
+  match append_log_expectation(head: AppendLogHead { record_count: 3, byte_length: 90 }) {
+    AppendExpected { expectation: _, position: p } => p == 4
+    _ => false
+  }
+}
+
+test fn a_released_stream_ending_on_a_terminator_reads_settled() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a", "b"], tail: 0, length: 4), standing: WriterWindowReleased {}) {
+    AppendLogSettled { records: _, head: h } => h.record_count == 2
+    _ => false
+  }
+}
+
+test fn a_released_stream_with_bytes_after_the_last_terminator_is_a_torn_tail_refusal() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], tail: 5, length: 7), standing: WriterWindowReleased {}) {
+    AppendLogTornTail { complete_records: _, torn_bytes: t, head: h } => t == 5 && h.byte_length == 2
+    _ => false
+  }
+}
+
+test fn an_open_window_reads_as_a_prefix_not_as_damage() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], tail: 5, length: 7), standing: WriterHoldsWindow { owner: worker() }) {
+    AppendLogOpenPrefix { records: _, head: _, writer: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unobserved_writer_standing_is_neither_settled_nor_open() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], tail: 0, length: 2), standing: WriterStandingUnobserved { cause: "hold unreadable" as NonEmptyStr }) {
+    AppendLogStandingUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── GREEN: WHO MAY WRITE ──────────────────────────────────────────────────────────────────────────
+test fn the_host_creates_the_member_once_and_only_while_it_does_not_exist() -> Bool {
+  admitted(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}, member_exists: false))
+    && refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}, member_exists: true))
+}
+
+test fn the_host_never_appends_during_the_sandbox_window() -> Bool {
+  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+}
+
+test fn the_declared_principal_appends_only_inside_its_own_window() -> Bool {
+  admitted(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}, member_exists: true))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: other() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+}
+
+test fn a_host_only_member_refuses_the_sandbox() -> Bool {
+  refused(append_write_admission(policy: HostOnly {}, writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}, member_exists: true))
+}
+
+test fn an_unobserved_standing_admits_nobody() -> Bool {
+  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }, member_exists: false))
+}
+
+// ── EXPECTING-RED: WHAT THE IMPLEMENTATION LANE MUST MAKE PASS ────────────────────────────────────
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data baseline_source: String = "module probe_append_log_baseline\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
+
+data log_member_write_source: String = "module probe_append_log_member_write\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerEvents, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nfn f(s: AttemptState) -> String {\n  let w = attempt_state_write(store: s, member: AttemptWorkerEvents, content: \"x\")\n  \"\"\n}\n"
+
+data events_initializer_source: String = "module probe_append_log_events_initializer\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_initialize_for_instance }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
+
+data forged_store_source: String = "module probe_append_log_forged_store\nimport std.types { NonEmptyStr }\nimport gunbc.durable_append_log_store { AppendLogStore, AppendLogParent }\nfn f(d: NonEmptyStr) -> AppendLogParent {\n  AppendLogParent { directory: d }\n}\n"
+
+// RED (EXPECTED, TRIGGER: the log and sandbox-written members leave AttemptStateMember and are reached only
+// through AppendLogStore) -- A LOG MEMBER IS WRITTEN THROUGH THE GENERIC ATTEMPT-STATE WRITE. Nothing refuses it
+// today (the closed enum still lists AttemptWorkerEvents); the migrated tree must.
+test fn a_log_member_cannot_be_written_through_the_generic_attempt_state_write() -> ProcessExit {
+  census_exit(blocking_delta(hostile: log_member_write_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// RED (EXPECTED, TRIGGER: the events initializer routes through the writer-window create) -- THE EVENTS FILE IS
+// STILL CREATED BY A BARE Filesystem.WriteCreateNewWithMode IN dispatch_attempt_events_initialize_for_instance.
+// The symbol must be deleted: importing it must add a blocking diagnostic.
+test fn the_raw_events_initializer_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: events_initializer_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// GREEN CONTROL, already true: the sealed parent handle cannot be forged outside its module.
+test fn a_forged_append_log_parent_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: forged_store_source, wanted_class: "SoleConstructorViolation", wanted_subject: "AppendLogParent"), holds: fn(n) { n == 1 }))
+}
