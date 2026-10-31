@@ -26,7 +26,7 @@ import product.host_identity { HostIdentity }
 import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
 import product.fabric.flex_market {
   FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
-  FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, FlexReleaseNow,
+  FlexCleanupAction, FlexDestroy, FlexKeep,
   flex_release_pass, flex_cleanup_dead,
 }
 import product.fabric.serving_recipe { ServingRecipe, ServingSelectionQuote, SelectionQuoteEstablished }
