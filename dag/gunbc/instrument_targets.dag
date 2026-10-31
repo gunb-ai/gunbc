@@ -292,19 +292,6 @@ fn native_crypto_vectors_entry() -> String {
   "dag/gunbc/instruments/native_crypto_vectors.dag"
 }
 
-// THE RECURRING-FAILURE-MODE RUNG CENSUS: the typed `rung` field of every
-// gunbc.recurring_failure_mode row folded by the NativeClaimDriver program
-// gunbc.instruments.rfm_rung_census -- counts of read / below-ceiling / unread-by-cause rows, a
-// refusal of any malformed standing (current at or above ceiling, blank trigger capability), and the
-// discriminating REDs with positive controls. `gunbc test //gunbc/instruments:rfm-rung-census`.
-fn rfm_rung_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "rfm-rung-census" } }
-}
-
-fn rfm_rung_census_entry() -> String {
-  "dag/gunbc/instruments/rfm_rung_census.dag"
-}
-
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion
 // executed natively over Apple's published sample rows by the NativeClaimDriver program
 // gunbc.instruments.native_app_attest -- the P-384 chain links and the P-256 assertion signature on
@@ -1080,10 +1067,6 @@ fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
 }
 
-fn rfm_rung_census_binding() -> TargetBinding {
-  TargetBinding { target: rfm_rung_census_label() producer: NativeClaimProgramProducer { entry: rfm_rung_census_entry() deadline: native_claim_policy_child_deadline() } }
-}
-
 fn native_crypto_vectors_binding() -> TargetBinding {
   TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -1361,7 +1344,7 @@ fn instrument_targets() -> List<Label> {
     known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
+    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
     native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
   ]
@@ -1384,7 +1367,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
     native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]

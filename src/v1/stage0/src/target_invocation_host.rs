@@ -375,12 +375,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
-            instrument_label("rfm-rung-census"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
-            },
-        ),
-        (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",

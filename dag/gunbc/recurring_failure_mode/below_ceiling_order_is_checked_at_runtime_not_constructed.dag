@@ -13,7 +13,7 @@ data below_ceiling_order_is_checked_at_runtime_not_constructed: RecurringFailure
 
   receipts: [
     "INVALID STATE: a RungStanding BelowCeiling whose current rung is at or above its ceiling. The type admits it; standing_admission refuses it as StandingNotBelowCeiling, so safety depends on the census executing and staying enrolled.",
-    "HARM: a standing that claims to be below its ceiling while at or above it ranks as climbable work that does not exist, or hides an inflated rung; it is caught only on the roster read by gunbc.instruments.rfm_rung_census.",
+    "HARM: a standing that claims to be below its ceiling while at or above it ranks as climbable work that does not exist, or hides an inflated rung; it was caught only on the roster read by the retired rung census.",
     "WHY NOT CONSTRUCTED NOW (review 83709): v2.std.cardinality NatLeWitness is a non-strict order over Nat, and GuaranteeRung is a closed enum with no strict-order witness over it; indexing it into Nat to reuse NatLeWitness would add a second order authority beside guarantee_rung_index.",
     "CEILING: structurally guaranteed once the strict-order witness exists; decidable, awaiting one grounding. NEXT TRIGGER: the capability named in the standing is built; then BelowCeiling takes the witness, StandingNotBelowCeiling is deleted, and its RED stays enrolled as a compile-refusal fixture.",
   ],
