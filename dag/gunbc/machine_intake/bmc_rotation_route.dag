@@ -157,6 +157,10 @@ fn rotation_route_from_citation(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "cited_password_route_at"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "cited_root_route"),
+    // The served-lockout witness plans a root password write over the SAME cited
+    // route the shared-store witness uses, so a budget refusal there cannot be
+    // attributed to a route that witness file invented.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "root_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),

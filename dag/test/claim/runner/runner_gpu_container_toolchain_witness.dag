@@ -28,8 +28,9 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // like a Docker bug. The plan fold must REFUSE, not install a broken daemon, so the refusal is pinned
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.logic { Bool }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Int, String }
 import std.algebra { trim, string_contains }
 import std.measure { second_count }
 
@@ -39,7 +40,13 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
 
+import gunbc.runner.runner_capability_labels { DropinPresent, host_capability_dropin_presence, host_capability_witness_of_reads }
 import gunbc.runner.runner_gpu_container_toolchain {
+  gpu_container_provision_start_leg,
+  gpu_container_provision_start_actions,
+  gpu_container_provision_start_admitted,
+  GpuContainerProvisionRun,
+  GpuContainerProvisioned, GpuContainerProvisionRefused,
   GpuContainerArm,
   GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
   GpuContainerToolchainReadback,
@@ -66,6 +73,19 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerProvisionMapClear,
   GpuContainerProvisionMapMappedFromRange,
   GpuContainerProvisionMapUnreadableRow,
+  GpuContainerProvisionMapNamespaceUnreadable,
+  GpuContainerProvisionNamespaceScope,
+  GpuContainerProvisionNamespaceInitial,
+  GpuContainerProvisionNamespaceChild,
+  GpuContainerProvisionNamespaceUnreadable,
+  GpuContainerProvisionNamespaceLinkRead,
+  GpuContainerProvisionNamespaceLinkUnreadable,
+  GpuContainerProvisionNamespaceBatch,
+  GpuContainerProvisionNamespaceBatchAligned,
+  GpuContainerProvisionNamespaceBatchUnreadable,
+  gpu_container_provision_namespace_scope,
+  gpu_container_provision_namespace_scan_pid_limit,
+  gpu_container_provision_namespace_batch_reading,
   gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
   gpu_container_provision_subordinate_lock_wait,
   gpu_container_provision_subordinate_lock_conflict_exit_code,
@@ -94,10 +114,11 @@ import gunbc.runner.runner_registration_labels {
 
 import extdeps.shadow.subordinate_ids {
   SubordinateRange,
-  SubordinateFileUnreadable, SubordinateFileReading,
+  SubordinateFileUnreadable, SubordinateFileRead, SubordinateFileReading,
   SubordinatePlan, SubordinatePlanSteps, SubordinatePlanRefused,
   subordinate_collisions,
   parse_subordinate_file,
+  parse_subordinate_file_exact,
   plan_subordinate_file,
   render_subordinate_file,
   subordinate_rows_after_plan,
@@ -106,12 +127,15 @@ import extdeps.shadow.subordinate_ids {
   subordinate_range_text,
 }
 
+import gunbc.typed_remote_file_write { typed_remote_file_step_failure_reason }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_program }
 import extdeps.tools.env { env_path_resolved_program }
 import extdeps.docker.cli {
   docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
 }
+import extdeps.container.docker_ce { docker_ce_packages, docker_ce_rootless_prerequisite_packages }
+import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, RunnerHostGpuToolchainAbsent, GpuContainerToolchainDesired, GpuContainerToolchainNotWanted, GpuContainerToolchainUnmeasured }
 import extdeps.container.nvidia_container_toolkit {
   nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
   nvidia_cdi_all_gpu_device,
@@ -759,7 +783,7 @@ test fn the_two_range_verifications_are_distinct_and_both_required() -> Bool {
 // names the browser capability as a branch — it names it as a row it chose to observe.
 
 fn gpu_labels_for_witnesses(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> List<String> {
-  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses) {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses, receipt: ReceiptAbsent) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }
@@ -1119,47 +1143,151 @@ test fn the_subordinate_write_carries_the_render_and_the_bytes_it_was_made_again
 // namespace mapped out of the range being moved". These rows are /proc/<pid>/uid_map as the kernel writes
 // them -- right-aligned columns, which is why the reader tokenizes instead of splitting on one space.
 
-test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     100000      65536", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => true
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
+// LITERAL NAMESPACE LINKS, as readlink(1) prints them. The host's own namespace is the reference every
+// other link is compared against; the child is a different inode.
+fn host_user_namespace() -> String { "user:[4026531837]" }
+
+fn child_user_namespace() -> String { "user:[4026532871]" }
+
+fn child_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: child_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn initial_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: host_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn map_scan_verdict(scope: GpuContainerProvisionNamespaceScope, text: String) -> String {
+  match gpu_container_provision_map_scan(scope: scope, text: text, first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => "clear"
+    GpuContainerProvisionMapMappedFromRange { row: _ } => "mapped"
+    GpuContainerProvisionMapUnreadableRow { row: _ } => "unreadable-row"
+    GpuContainerProvisionMapNamespaceUnreadable { cause: _ } => "unreadable-namespace"
   }
+}
+
+test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000      65536") == "mapped"
 }
 
 // ADJACENCY IS NOT OVERLAP: a namespace on the range ABOVE (165536+) shares no id with the range being
 // moved (100000..165535). A check that refused this would refuse every real host, because /etc/subuid on
 // these machines stacks its rows contiguously.
 test fn an_adjacent_namespace_range_is_clear() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     165536      65536", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => true
-    GpuContainerProvisionMapMappedFromRange { row: _ } => false
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
-  }
+  map_scan_verdict(scope: child_scope(), text: "         0     165536      65536") == "clear"
 }
 
 // EVERY ROW IS READ, not the first. The overlapping mapping is the third line here: a scan that stopped at
 // the first clear row -- or read only line 1, where the root's own mapping always sits -- would certify a
 // container that is live on the range being moved.
 test fn every_row_of_a_map_is_read_and_not_just_the_first() -> Bool {
-  match gpu_container_provision_map_scan(
-    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536",
-    first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => true
-    GpuContainerProvisionMapUnreadableRow { row: _ } => false
-  }
+  map_scan_verdict(
+    scope: child_scope(),
+    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536") == "mapped"
 }
 
 // A ROW THIS MODEL CANNOT READ IS A REFUSAL, NOT A SKIP. /proc/<pid>/uid_map is written by the kernel; a
 // row whose columns are not integers is a kernel this model does not describe, and "I could not read it"
 // must never be reported as "nothing is mapped from that range".
 test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
-  match gpu_container_provision_map_scan(text: "         0     100000    notanumber", first: 100000, count: 65536) {
-    GpuContainerProvisionMapClear => false
-    GpuContainerProvisionMapMappedFromRange { row: _ } => false
-    GpuContainerProvisionMapUnreadableRow { row: _ } => true
+  map_scan_verdict(scope: child_scope(), text: "         0     100000    notanumber") == "unreadable-row"
+}
+
+// THE srv3 CASE, VERBATIM (fleet-converge run 40843061056): ubuntu pid 4116, a systemd --user in the host's
+// own user namespace, whose uid_map is the initial namespace's identity row. Its ns/user link equals
+// /proc/1/ns/user, so it maps nothing from any subordinate range.
+test fn a_process_in_the_initial_user_namespace_is_clear_whatever_its_identity_row_overlaps() -> Bool {
+  map_scan_verdict(scope: initial_scope(), text: "         0          0 4294967295") == "clear"
+}
+
+// THE SAME ROW IN A CHILD NAMESPACE IS NOT CLEAR: the discriminator is namespace identity, not the shape of
+// the row. A child namespace whose outside column covers the whole parent id space reaches the range.
+test fn the_identity_row_in_a_child_namespace_still_overlaps() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0          0 4294967295") == "mapped"
+}
+
+// A CHILD NAMESPACE WHOSE OUTSIDE RANGE IS DISJOINT FROM THE RANGE BEING MOVED is clear.
+test fn a_child_namespace_with_a_disjoint_outside_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0       1000          1") == "clear"
+}
+
+// AN UNREADABLE NAMESPACE LINK REFUSES: not knowing which namespace a process is in is not evidence that it
+// maps nothing -- even when its rows would have been clear.
+test fn an_unreadable_namespace_link_is_refused_rather_than_read_as_the_host() -> Bool {
+  map_scan_verdict(
+    scope: gpu_container_provision_namespace_scope(
+      link: GpuContainerProvisionNamespaceLinkUnreadable { path: "/proc/4116/ns/user", cause: "exit 1 Permission denied" },
+      init_namespace: host_user_namespace()),
+    text: "         0          0 4294967295") == "unreadable-namespace"
+}
+
+// THE PID BOUND IS DERIVED, NOT TRANSCRIBED: half of execve(2)'s per-argument ceiling (32 pages of 4096 =
+// 131072 bytes) over the 22-byte word of the largest admissible pid (`/proc/4194304/ns/user` plus a space),
+// which is 65536 / 22 = 2978. It must admit the live session host that refused at 556 processes (run
+// 40837033922) and must not exceed what one argument can carry.
+test fn the_pid_bound_is_half_the_argument_ceiling_over_the_longest_word_and_admits_the_srv1_host() -> Bool {
+  gpu_container_provision_namespace_scan_pid_limit == 2978 && gpu_container_provision_namespace_scan_pid_limit >= 556
+}
+
+// THE BATCH READING, against literal readlink -v output. Gone pids are named on stderr and left out; the
+// stdout lines pair in order with the pids that remain.
+fn batch_namespaces_of(pids: List<Int>, exit_code: Int, stdout: String, stderr: String) -> String {
+  match gpu_container_provision_namespace_batch_reading(
+    reference: host_user_namespace(), pids: pids, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns, gone: g } =>
+      join(["aligned gone=", to_string(g), " ", join(map(ns, n => join([to_string(n.pid), "=", n.target], "")), ",")], "")
+    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => "unreadable"
   }
+}
+
+test fn a_complete_batch_report_pairs_every_pid_with_its_namespace() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 0,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n", stderr: "")
+    == "aligned gone=0 10=user:[4026531837],20=user:[4026532871]"
+}
+
+// A VANISHED PID is named on stderr, left out, and the lines pair with the pids that REMAIN -- even when a
+// child namespace is among them, so the child is attributed to its own pid and not guessed.
+test fn a_vanished_pid_is_named_and_the_rest_stay_attributed() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20, 30], exit_code: 1,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n",
+    stderr: "readlink: /proc/20/ns/user: No such file or directory\n")
+    == "aligned gone=1 10=user:[4026531837],30=user:[4026532871]"
+}
+
+// A LIVE PID WHOSE LINK COULD NOT BE READ IS NOT A VANISHED PID: a permission denial names the pid but not
+// as No-such-file, so the scan refuses rather than reading the pid as host-namespace.
+test fn a_live_pid_whose_link_is_denied_is_refused_not_counted_as_gone() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1,
+    stdout: "user:[4026531837]\n",
+    stderr: "readlink: /proc/20/ns/user: Permission denied\n") == "unreadable"
+}
+
+// A MISSING LINE WITH NOTHING NAMED ON STDERR cannot be attributed to anything: refused.
+test fn a_missing_line_that_stderr_does_not_name_is_refused() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1, stdout: "user:[4026531837]\n", stderr: "") == "unreadable"
+}
+
+// A pid number that is a PREFIX of another's must not be mistaken for it: pid 2 vanished, pid 20 did not.
+test fn a_vanished_pid_is_matched_by_its_whole_path() -> Bool {
+  batch_namespaces_of(
+    pids: [2, 20], exit_code: 1,
+    stdout: "user:[4026532871]\n",
+    stderr: "readlink: /proc/2/ns/user: No such file or directory\n")
+    == "aligned gone=1 20=user:[4026532871]"
+}
+
+// NOTHING BACK for pids still present is a refusal, not a clear.
+test fn an_empty_batch_report_is_refused() -> Bool {
+  batch_namespaces_of(pids: [10], exit_code: 0, stdout: "", stderr: "") == "unreadable"
 }
 
 // THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order
@@ -1338,4 +1466,102 @@ test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> B
 test fn the_subordinate_write_bounds_its_own_wait_and_reports_conflict_as_tempfail() -> Bool {
   second_count(s: gpu_container_provision_subordinate_lock_wait) == 120
     && gpu_container_provision_subordinate_lock_conflict_exit_code == 75
+}
+
+// THE TRANSPORT TRIMS CAPTURED STDOUT, SO THE READING MUST NOT BE `cat`. This is the srv3 refusal (run
+// 40960539993): bytes read through the trim lacked the file's final newline and `cmp -s - /etc/subuid`
+// exited 1 on every converge. The oracle here is a hand-written od dump of the 22-byte line
+// "ghrunner:100000:65536\n" (0x0a last), supplied as the transport hands it back -- trailing newline of the
+// dump already trimmed -- and the expected bytes are a literal, never rendered from the parse.
+test fn an_od_reading_carries_the_files_final_newline_the_transport_would_trim() -> Bool {
+  let reading = parse_subordinate_file_exact(
+    path: "/etc/subuid", exit_code: 0, stderr: "",
+    od_stdout: " 67 68 72 75 6e 6e 65 72 3a 31 30 30 30 30 30 3a 36 35 35 33 36 0a")
+  subordinate_file_bytes(reading: reading) == "ghrunner:100000:65536\n"
+    && length(subordinate_file_ranges(reading: reading)) == 1
+}
+
+// A dump that is not whole bytes, or holds a non-ASCII byte, is Unreadable: a reading that cannot carry
+// exact bytes must not stand as one.
+test fn an_od_reading_that_is_not_exact_ascii_bytes_is_unreadable() -> Bool {
+  let odd = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 6")
+  let high = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 ff")
+  reading_is_unreadable(reading: odd) && reading_is_unreadable(reading: high)
+}
+
+fn reading_is_unreadable(reading: SubordinateFileReading) -> Bool {
+  match reading {
+    SubordinateFileUnreadable { path: _, cause: _ } => true
+    SubordinateFileRead { path: _, bytes: _, ranges: _ } => false
+  }
+}
+
+// A REFUSAL NEVER HAS AN EMPTY REASON: cmp -s is silent, so its exit code is the whole evidence.
+test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empty_reason() -> Bool {
+  typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 1, stderr: "") == "destination differs from the bytes read (cmp exit 1)"
+    && typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 2, stderr: "") == "destination unreadable (cmp exit 2)"
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "") != "remote step failed: "
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "denied\n") == "remote step failed: denied"
+}
+
+// A FAILED UNIT START IS NEVER OPAQUE: the start leg carries the status and the journal tail of the unit,
+// both addressed to the same uid-keyed manager the start addressed, and the journal read is keyed by the
+// trusted _UID field. Discriminates against the pre-repair leg (start argv, no evidence) and against a
+// journal read of the wrong account.
+test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
+  let leg = gpu_container_provision_start_leg(uid: 999, job_user: "ghrunner" as NonEmptyStr)
+  length(leg.on_refusal) == 10
+    && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
+    && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newuidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
+    && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
+    && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
+    && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE START PHASE FOLLOWS THE ENSURE: it is admitted only when the first phase held AND every package
+// holds, and it is its own two actions (start, active readback), absent from the first plan. A start that
+// ran regardless of the ensure (srv3 run 41004665254) makes the ensure-failed arm true and this RED.
+test fn the_unit_start_runs_only_after_the_package_ensure_holds() -> Bool {
+  let held = GpuContainerProvisionRun { steps: [GpuContainerProvisioned { step: "unit enable" }], planned: 1 }
+  let refused = GpuContainerProvisionRun { steps: [GpuContainerProvisionRefused { step: "linger", cause: "x" }], planned: 1 }
+  gpu_container_provision_start_admitted(prior: held, ensure_ok: true)
+    && !gpu_container_provision_start_admitted(prior: held, ensure_ok: false)
+    && !gpu_container_provision_start_admitted(prior: refused, ensure_ok: true)
+    && gpu_container_provision_plan_step_names(actions: gpu_container_provision_start_actions(uid: 999, job_user: "ghrunner" as NonEmptyStr)) == ["unit start", "unit active verified"]
+}
+
+// A MISSING DROP-IN IS ABSENT, A DROP-IN THAT CANNOT BE LOOKED AT IS NOT (srv3 run 41006939256 refused the whole
+// label render over ENOENT). The probe exits 0 with empty stdout for a missing entry: that renders without the
+// label; a nonzero probe (permission denied, sudo refused) still refuses; a present file keeps its label.
+test fn a_missing_label_dropin_is_absent_and_an_unreadable_one_still_refuses() -> Bool {
+  let absent = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "", unreadable_cause: "x"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let denied = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 1, stdout: "", unreadable_cause: "permission denied"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let held = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "/etc/x.conf\n", unreadable_cause: "x"), read_exit_code: 0, read_stdout: gunbc_browser_ready_label, read_cause: "r")
+  let read_failed = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: DropinPresent, read_exit_code: 1, read_stdout: "", read_cause: "read failed")
+  let srv3 = gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [absent])
+  length(srv3) > 0
+    && !srv3.any(l => l == gunbc_browser_ready_label)
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [denied])) == 0
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [read_failed])) == 0
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [held]).any(l => l == gunbc_browser_ready_label)
+}
+
+// THE ROOTLESS PREREQUISITES ARE INHABITED, NOT VALIDATED: every declared prerequisite is a member of
+// docker_ce_packages and of the package set srv3's row resolves to (the set the apt ensure installs). Dropping
+// uidmap from either makes this false; srv3 run 40997904513 lived in that state. The end-to-end proof that
+// newuidmap works is the rerun's job_user_daemon reading ok.
+test fn every_rootless_prerequisite_is_in_the_docker_package_set_and_srv3s_resolved_ensure_set() -> Bool {
+  let srv3_packages = match runner_host_gpu_container_toolchain_for(host: operator_host_srv3) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: ps } } => ps
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => []
+    RunnerHostGpuToolchainAbsent { host: _ } => []
+  }
+  length(docker_ce_rootless_prerequisite_packages) > 0
+    && docker_ce_rootless_prerequisite_packages.all(p => docker_ce_packages.any(q => q == p))
+    && docker_ce_rootless_prerequisite_packages.all(p => srv3_packages.any(q => q == p))
 }

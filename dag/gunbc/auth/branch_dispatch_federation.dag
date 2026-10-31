@@ -4,6 +4,7 @@ import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_from_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed }
+import gunbc.fleet.fleet_converge_run_name { mode_of_run_title }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import std.human_intervention { EveryProvision, EveryOperatorRequest }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
@@ -223,12 +224,6 @@ fn parse_branch_run_key(key: String) -> BranchRunKey? {
       }
     }
   }
-}
-
-// THE RUN'S MODE AS ITS TITLE CARRIES IT: fleet-converge's run-name renders
-// "fleet-converge <mode> <host> nonce=<nonce>", so the mode is the second word.
-fn mode_of_run_title(title: String) -> String {
-  match title.split(delimiter: " ").skip(n: 1).first() { Present { value: w } => w  Absent => "" }
 }
 
 // ── the branch run, as GitHub records it ─────────────────────────────────────────────────────

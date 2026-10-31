@@ -1,7 +1,8 @@
 module gunbc.machine_intake.mtcollins1_netboot_client_observation
 
-import std.types { EpochMs, Int, NonEmptyStr, String }
+import std.types { EpochMs, Int, NonEmptyStr }
 import extdeps.numeric.base16 { base16_digit_rows }
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 
@@ -28,12 +29,27 @@ import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 //
 // The discriminator is not the address but the VENDOR CLASS: a PXE client identifies itself as
 // PXEClient:Arch:NNNNN and requests a boot file; a Linux DHCP client does neither.
-data mtcollins1_host_nic_mac: NonEmptyStr = "28:c1:3c:8a:d6:4a"
 
-// Firmware's PXE line renders the same host address with dashes and uppercase
-// hexadecimal digits. The alphabet comes from its existing encoding authority.
-fn firmware_pxe_mac_rendering(host_mac: NonEmptyStr) -> NonEmptyStr {
-  fold(base16_digit_rows, init: replace(s: host_mac as String, from: ":", to: "-"),
+// THE READING IS SIX OCTETS, NOT A STRING. This row was a NonEmptyStr holding the colon text and
+// every consumer had to decode it again if it wanted to know anything about it — which octet was
+// the OUI, whether two rows were the same machine — and the row that carried it could itself be a
+// typo that no type would catch. Plan gunbc.plans.site_segment_anchor_bmc_reach phase S1 moved it
+// onto extdeps.network.mac Eui48Address, the carrier whose whole point is that an address IS its
+// six octets (it refuses construction by text and takes the octets as typed numbers instead). The
+// octets below are the ones in the capture cited above, read off the packet's Client-Ethernet-Address
+// and chaddr fields; the digest and byte count pinned beside them are what make a wrong digit here
+// detectable rather than plausible. The colon form is now something the address RENDERS TO
+// (extdeps.network.mac render_mac_address), not something it is.
+data mtcollins1_host_nic_mac: Eui48Address = mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 74)
+
+// Firmware's PXE line renders the same host address with dashes and UPPERCASE hexadecimal digits —
+// the one rendering in this lane that is neither the canonical colon form nor a parse input. It
+// takes the address rather than text now, and renders FROM the octets: lowercase colon form from the
+// carrier's own authority, then ':' to '-' and each lowercase digit to its uppercase pair through the
+// existing base16 encoding authority. Taking a string here would have meant re-decoding an address we
+// already have, and a rendering that decodes can get the address wrong at render time.
+fn firmware_pxe_mac_rendering(host_mac: Eui48Address) -> NonEmptyStr {
+  fold(base16_digit_rows, init: replace(s: render_mac_address(addr: host_mac), from: ":", to: "-"),
     f: (rendered, digit) => replace(s: rendered, from: digit.lower, to: digit.upper)) as NonEmptyStr
 }
 

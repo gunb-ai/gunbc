@@ -10,6 +10,7 @@ import extdeps.systemd {
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.access.posix { FileMode, file_mode_octal }
 
 // THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
 //
@@ -325,6 +326,10 @@ type SystemdServiceDirective
   // systemd.resource-control(5) on the service's own cgroup; the knob and value have one owner each.
   | ServiceResourceControl { directive: SystemdServiceResourceDirective }
   | TimeoutStopSec { duration: NonEmptyStr }
+  // systemd.exec(5) UMask=: "Controls the file mode creation mask. Takes an access mode in octal
+  // notation." The mask is the bits REMOVED from every file the unit's processes create, so it is carried
+  // as the mode whose set bits are masked and rendered in chmod's four-digit spelling.
+  | ServiceUMask { mask: FileMode }
 
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
@@ -826,6 +831,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceTasksMax { count: v } => join(["TasksMax=", to_string(v)], "")
     ServiceResourceControl { directive: d } => systemd_service_resource_directive_line(directive: d)
     TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
+    ServiceUMask { mask: m } => join(["UMask=", file_mode_octal(mode: m)], "")
   }
 }
 
@@ -1064,6 +1070,17 @@ type SystemdDropInSection
 
 type SystemdDropIn {
   sections: List<SystemdDropInSection>
+}
+
+// WHICH DROP-IN WINS. systemd.unit(5) (v255), "Description": the drop-in files of a unit -- its own
+// `.d/` directories AND, for a template instance foo@bar.service, the template's foo@.service.d/ -- are
+// sorted by FILE NAME and parsed in that order, regardless of which directory they reside in; a file
+// with the same name in a higher-priority directory replaces the other. A setting assigned twice takes
+// the later assignment (for Environment=, the later value of the same variable). So an instance drop-in
+// does NOT apply after the template's drop-ins by virtue of its directory: it applies after exactly the
+// files whose names sort before its own. The order is the byte order of the names.
+fn systemd_drop_in_applies_after(later_file_name: String, earlier_file_name: String) -> Bool {
+  later_file_name > earlier_file_name
 }
 
 fn systemd_drop_in_section_block(section: SystemdDropInSection) -> List<String> {

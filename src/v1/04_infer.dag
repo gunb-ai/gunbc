@@ -93,7 +93,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
-  make_transport_node, local_transport_node, is_shell_transport,
+  make_transport_node, undeclared_transport_node, is_shell_transport,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
@@ -11982,17 +11982,25 @@ fn sole_constructor_construction_diags(
   span: SourceSpan,
   scope: InferScope
 ) -> List<ErrorNode> {
-  if type_has_sole_constructor(type_name: type_name, scope: scope) {
-    match lookup_type_by_name(env: scope.type_env, name: type_name) {
-      Present { value: decl } =>
-        if decl.span.file == span.file {
-          []
-        } else {
-          [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
-        }
-      Absent => []
-    }
-  } else { [] }
+  // ONE RULE: the owner of the constructed name carries the modifier. A coproduct variant carries no
+  // property of its own, so when the name is a variant its owning coproduct is the sealed declaration.
+  let sealed_decl = match variant_owner_node(scope: scope, name: type_name) {
+    Present { value: owner } =>
+      if owner.properties |> any(p => p.name == "sole_constructor") { Present { value: owner } } else { none }
+    Absent =>
+      if type_has_sole_constructor(type_name: type_name, scope: scope) {
+        lookup_type_by_name(env: scope.type_env, name: type_name)
+      } else { none }
+  }
+  match sealed_decl {
+    Present { value: decl } =>
+      if decl.span.file == span.file {
+        []
+      } else {
+        [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name, span: span }, module_name: scope.module_name)]
+      }
+    Absent => []
+  }
 }
 
 // THE ENUMERATED PAYLOAD-ARM WAIVER (gunbc.rung_drop payload_arm_tag_reference_hollow_value; replaces the

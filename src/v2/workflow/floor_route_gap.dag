@@ -1287,20 +1287,25 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // red5 of v41_source_patch_converge_witness (gunbc#12418) reads patch sets from this repository's
 // history byte-exactly (Mktemp.Dir + git restore + Filesystem.Read); its terminal is the same lane.
 // Plus the test.claim.approval_device_routes_wet_witness identity (gunbc#12000): the
-// bound-realization control's enrolment-store Read. Triple enrollment: this expectation, its
+// bound-realization control's first store effect, the device store mint's Filesystem.List. Triple enrollment: this expectation, its
 // WetScheduledClaim row, and the gunbc.ci.ci_layer_roots
-// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the two
-// test.claim.approval_google_enrolment_wet_witness identities (the enrol sequence through the real store
-// and the subject pin's lost-CAS reread), whose first effect is shell.Mktemp.DirWithTemplate and whose
-// LocalRepoWetLane row is for approval_google_enrolment_wet_witness.dag.
+// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the four
+// test.claim.approval_google_enrolment_wet_witness identities (the enrol sequence through the real store,
+// the subject pin's lost-CAS reread, a traversal id refused before any read, and the device store's
+// windowed slot operations), whose first effect is
+// shell.Mktemp.DirWithTemplate and whose LocalRepoWetLane row is for approval_google_enrolment_wet_witness.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
   Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "List", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_traversal_enrolment_id_is_refused_by_the_store_before_any_read", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } }
   }
 }
 
@@ -2120,7 +2125,8 @@ fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
 }
 
 // THE ALLOCATION AUTH REAL-FILE CLAIMS (gunbc#13004): the login transaction's create-new consume,
-// the callback hold over a real transaction store, and the private fabric-state namespace. Each
+// the callback hold over a real transaction store, the sealed auth record stores over real files
+// (test.claim.auth.auth_record_store_wet_witness), and the private fabric-state namespace. Each
 // first effect is shell.Mktemp.Dir / DirWithTemplate, which declares no mock_response; each is
 // executed by the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)
 // and its file carries a gunbc.ci.ci_layer_roots LocalRepoWetLane row. So does the grant row's real blob-id
@@ -2135,8 +2141,20 @@ fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.auth.login_callback_hold_wet_witness.foreign_browser_cannot_consume_and_cached_replay_cannot_exchange", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.a_session_written_before_the_seal_reads_back_and_rewrites_identically", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.a_profile_written_before_the_seal_reads_back_and_rewrites_identically", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.auth_record_store_wet_witness.every_auth_record_store_mint_refuses_a_directory_that_does_not_list", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_state_namespace_wet_witness.witness_public_head_cannot_alias_private_state_object", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } }
+    tail: Empty {} } } } } } } } } } }
 }
 
 // test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh
