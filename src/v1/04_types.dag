@@ -1879,7 +1879,9 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, right_type: Node?, source_i
     Present { value: req } =>
       match arithmetic_carrier_selection(requirement: req, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env) {
         Present { value: ArithmeticCarrierSelected { carrier: c } } =>
-          BinOpInferred { result_type: arithmetic_carrier_type(selected: c, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env), algebra_field: none }
+          // the algebra field is read from the SELECTED carrier's own type, exactly as the same-carrier
+          // operation always did, so emission still receives the field that chooses the realization
+          infer_arithmetic_binop_type_node(op: op, left_type: arithmetic_carrier_type(selected: c, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env), source_indices: source_indices)
         Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => BinOpInferred { result_type: error_type, algebra_field: none }
         Present { value: ArithmeticNoCarrier } => BinOpInferred { result_type: error_type, algebra_field: none }
         Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
