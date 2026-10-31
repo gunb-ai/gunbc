@@ -152,6 +152,7 @@ fn rotation_route_from_citation(
   citation: ExternalAuthority,
 ) -> BmcRotationRouteStanding
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_cited_route")
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
@@ -1292,4 +1293,22 @@ fn admit_forced_first_rotation(
         }
     }
   }
+}
+
+// TWO ADMITTED FORCED FIRST ROTATIONS ARE THE SAME ADMISSION when every field that makes one is the
+// same: the 403 it was read from (its endpoint, build key, message id and attempt), the route standing
+// it was admitted against (endpoint and build), the write it licenses, the attempt the approval was
+// granted under, and who decided. This exists so a consumer can bind a write transition to THE row
+// admission that licensed it, instead of letting two records that merely agree with each other stand in
+// for that join (DESIGN §3: one fact, one place; §5: the join is made, not asserted).
+fn admitted_forced_first_rotation_eq(a: AdmittedForcedFirstRotation, b: AdmittedForcedFirstRotation) -> Bool {
+  (a.forced.message_id as String) == (b.forced.message_id as String)
+    && (a.forced.endpoint.host as String) == (b.forced.endpoint.host as String)
+    && bmc_credential_policy_key_eq(a: a.forced.key, b: b.forced.key)
+    && (a.forced.attempt as String) == (b.forced.attempt as String)
+    && (a.attempt as String) == (b.attempt as String)
+    && (a.decided_by as String) == (b.decided_by as String)
+    && account_write_request_eq(a: a.request, b: b.request)
+    && (a.standing.endpoint.host as String) == (b.standing.endpoint.host as String)
+    && bmc_firmware_release_identity_eq(a: a.standing.firmware, b: b.standing.firmware)
 }

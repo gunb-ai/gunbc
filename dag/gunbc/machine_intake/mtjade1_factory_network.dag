@@ -164,6 +164,28 @@ data mtjade1_bmc_reconfigured_network: ObservedBmcNetwork = BmcNetworkObservedDh
   basis: "operator-directed ipmitool lan set 1 ipsrc dhcp on 2026-10-03; lease observed by tcpdump and read back by lan print 1 at 192.168.1.246",
 }
 
+// srv13's controller network, as first contact recorded it (artifacts/bmc/srv13-first-contact-2026-10-07
+// FINDINGS.txt line 4: "BMC 192.168.1.247, MAC 9c:6b:00:e7:c9:83 (router reservation
+// bmc-altrad8ud-1l2t-5)"), and as gunbc.fleet.fleet_intent srv13_baseboard carries the address. The
+// PREFIX and GATEWAY are the segment's, not this controller's own report: the same LAN's mtjade1 lease
+// above is 192.168.1.246/24, and 192.168.1.1 answers as the segment gateway (gunbc.host.host_primary_network_observed;
+// mtcollins1_netboot_client_observation records the same DHCP server). srv13 has never been read over IPMI,
+// so no lan print of its own grounds these two fields -- stated rather than assumed.
+data srv13_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic {
+  address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 247),
+  prefix: 24,
+  gateway: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1),
+  link: Eui48Address {
+    octet1: 156,
+    octet2: 107,
+    octet3: 0,
+    octet4: 231,
+    octet5: 201,
+    octet6: 131,
+  },
+  basis: "router reservation bmc-altrad8ud-1l2t-5, MAC 9c:6b:00:e7:c9:83, address 192.168.1.247 (srv13 first-contact FINDINGS.txt, 2026-10-07); prefix /24 and gateway 192.168.1.1 are the segment's, from the mtjade1 lease on this LAN and the segment gateway, not from srv13 itself",
+}
+
 data mtjade1_current_bmc_network_standing: FactoryBmcNetworkStanding = factory_bmc_network_standing(
   expectation: mt_jade_gsg_bmc_network_expectation,
   observed: mtjade1_bmc_reconfigured_network,

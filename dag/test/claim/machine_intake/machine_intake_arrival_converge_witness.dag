@@ -19,6 +19,7 @@ import gunbc.machine_intake.subject {
 import gunbc.machine_intake.mtjade1_access_observation {
   CurrentManagerRead, read_mtjade1_fru, read_mtjade1_smbios_type2, FruObserved, FruReadRefused, SmbiosObserved, SmbiosReadRefused,
   SmbiosBaseBoardDecode, SmbiosBaseBoardSerial, SmbiosBaseBoardRefused, SmbiosSerialLineCount, decode_smbios_type2_capture, sol_session_controller, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
+  read_srv13_current_manager_read, witness_recorded_fru_identity, witness_recorded_smbios_serial, FruIdentityFields,
 }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
@@ -53,10 +54,11 @@ import gunbc.machine_intake.prior_life_boundary {
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
   PriorLifeForcedWriteContext, EntriesPresentNoneBeforeWrite, ConfirmFactoryFresh,
   PriorLifeArchive, PriorLifeArchiveEstablished, dry_archive_prior_life,
+  NoPriorLifeEntries, PreCaptureOrderedForThisRun, ForcedFirstRotationWriteTransition,
 }
 import std.content_hash { content_hash_equal, content_hash_of_value, sha256_hex_of_text }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import test.claim.machine_intake.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
+import test.claim.machine_intake.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world, prior_life_full_dry_world, zero_entry_world, dry_world_at }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingBmcSecureAccountWrite,
   StandingOperatorGrant,
@@ -77,6 +79,7 @@ import gunbc.machine_intake.arrival_converge {
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
   converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, converge_arrival_through_bmc_secure, mtjade1_identity_bind_inputs,
+  witness_identity_bind_inputs, arrival_bound_unit_keys,
   bmc_secure_step_ref, BmcSecureReceipt,
   BmcSecureInputs, BmcSecureApplyInputs, BmcSecureAuthorizationUndischarged, BmcSecureApplyInputsMissing,
   BmcSecureApplicationForAnotherInstance, BmcSecureApplicationNotTheInspectedTransition,
@@ -124,9 +127,12 @@ import gunbc.machine_intake.bmc_credential_policy {
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { controller_reading, reading_of, srv13_forced_change_body, srv13_capture }
-import test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness { srv13, another_controller, build_3_22, root_write, candidate, go, forced_in }
+import test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness {
+  srv13, another_controller, build_3_22, root_write, candidate, go, forced_in,
+  srv13_intake_subject, srv13_dry_census, srv13_forced_write_sequence, srv4_forced_write_sequence, ForcedWriteSequence,
+}
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
-  lab_subject, lab_endpoint, lab_board, root_user, published_password, generation_1, root_ref, census, world_root, derive_over, redfish_only, goal_v1, t_read,
+  lab_subject, lab_endpoint, lab_board, root_user, published_password, generation_1, root_ref, census, world_root, derive_over, redfish_only, goal_v1, t_read, t_readback,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -196,9 +202,17 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
               && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
               && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
               && (i.agreement.serial as String) == "B810301000412080005AJ0C1"
-              && (i.agreement.fru.capture_sha256 as String) == "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
-              && (i.agreement.smbios.capture_sha256 as String) == "b40dde96a64c4d04c5440235a05a9571467472ba0b1ed0f35c907f675e817442"
-              && (sol_session_controller(a: i.agreement.smbios.sol_session).host as String) == "192.168.1.246"
+              && match i.agreement.fru.source {
+                IdentityFromCommittedCapture { capture_path: _, capture_sha256: sha, sol_session: _ } => (sha as String) == "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
+                IdentityWitnessSupplied { realization: _ } => false
+              }
+              && match i.agreement.smbios.source {
+                IdentityFromCommittedCapture { capture_path: _, capture_sha256: sha, sol_session: Present { value: a } } =>
+                  (sha as String) == "b40dde96a64c4d04c5440235a05a9571467472ba0b1ed0f35c907f675e817442"
+                    && (sol_session_controller(a: a).host as String) == "192.168.1.246"
+                IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Absent } => false
+                IdentityWitnessSupplied { realization: _ } => false
+              }
               && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
           AccessDiscoverReceipt { receipt: _ } => false
           PriorLifeBoundaryReceipt { receipt: _ } => false
@@ -737,7 +751,11 @@ test fn w_mtjade1_fru_and_smbios_reads_are_sealed_observations_of_the_unit() -> 
       SmbiosObserved { observation: o } =>
         (o.subject as String) == "mtjade1"
           && (o.serial as String) == "B810301000412080005AJ0C1"
-          && (sol_session_controller(a: o.sol_session).host as String) == "192.168.1.246"
+          && match o.source {
+            IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Present { value: a } } => (sol_session_controller(a: a).host as String) == "192.168.1.246"
+            IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Absent } => false
+            IdentityWitnessSupplied { realization: _ } => false
+          }
       SmbiosReadRefused { gap: _ } => false
     }
 }
@@ -753,7 +771,7 @@ fn agreement_of(smbios_controller: NonEmptyStr, smbios_serial: NonEmptyStr) -> B
     fru_subject: "mtjade1",
     fru_serial: "B810301000412080005AJ0C1",
     smbios_subject: "mtjade1",
-    smbios_controller: BmcControllerEndpoint { host: smbios_controller },
+    smbios_controller: Present { value: BmcControllerEndpoint { host: smbios_controller } },
     smbios_serial: smbios_serial,
   )
 }
@@ -1808,387 +1826,540 @@ test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-// FORCED-CHANGE ARRIVAL: ForcedFirstRotationPrecedesPriorLife (§3b divergence row) +
-// PriorLifeIndeterminateAcrossForcedWrite (the typed third outcome). Design merry-fox-82 approved
-// 2026-10-29. NO live effect: the whole forced sequence runs over the dry model.
+// FORCED-CHANGE ARRIVAL: the §3b divergence row ForcedFirstRotationPrecedesPriorLife, and the typed
+// third outcome PriorLifeIndeterminateAcrossForcedWrite. Design approved by merry-fox-82 on 2026-10-29;
+// arrival_phases_all is UNTOUCHED -- the row places one EFFECT before a standing, it does not reorder the
+// order of standings. NO live effect: the whole sequence runs over the dry model.
 //
-// The forced unit is the lab ALTRAD8UD (srv13, 03.22.00) whose every authenticated read answers 403
-// Base.1.16.0.PasswordChangeRequired until root's password is written. Its identity / prior-life /
-// current-manager fixtures are carried by mtjade1 (the established non-forcing unit that has the full
-// committed-capture + minimal-archive set on the real fold); the EFFECT that precedes PriorLife is
-// srv13's OWN admitted forced first write, and the post-write authenticated read is the real
-// dry_read_bmc_account_state over the IPMI-modeled root world at 03.22.00 with board Present(ALTRAD8UD)
-// and DryDerivePublishedRetirement{published_account: root, served: [RedfishBasicOrSession]} — the read
-// that yields the Noop (secured) BmcSecure standing (machine_intake_bmc_secure_shared_store read_root_on).
+// ONE UNIT, ONE RUN (the P1-a fix). Every record the row joins is srv13's, and every one comes from ONE run
+// of the real producers:
+//   the 403                          -- srv13's committed factory-login capture of the 03.22.00 push, read
+//                                       through the credential-policy row's own verdict (controller_forced_at);
+//   the authenticated Manager read   -- read_srv13_current_manager_read: srv13's post-rotation Redfish Manager
+//                                       read, digest-checked against that directory's SHA256SUMS;
+//   the account read before the write, -- dry_read_bmc_account_state / plan_bmc_account_action /
+//   the plan, the dry apply, and the    dry_apply_bmc_account_plan over ONE BmcWorld, inside
+//   authenticated read after it         forced_write_sequence_at (machine_intake_bmc_forced_first_rotation_witness);
+//   the pre-write archive            -- dry_archive_prior_life for srv13's subject, read before the write begins.
+// The pending is minted under THIS run's AccessDiscover step instance, and the write's attempt IS this run's
+// intake attempt (intake_attempt_of_run), so the classifier joins the ACTIVE instance rather than a supporting
+// record that merely agrees with another one -- the class filed as a recurring_failure_mode row by this PR.
 //
-// DEPENDENCY (declared, not duplicated): crisp-gull-572's dry Redfish read (bmc_secure item 3, PR #15347)
-// is the faithful surface for 03.22.00's Redfish-shared password store; when it lands it should REPLACE
-// this IPMI-modeled srv13_secured_read. That is a follow-up, not a blocker: the IPMI-modeled read already
-// grounds the Noop-forced path on the real fold, and the divergence row's obligations (this run's own 403,
-// one write, one approval, build-eq) are enforced by bmc_rotation_route regardless of the read surface.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
+// WHAT IS NOT CAPTURE-GROUNDED HERE, and says so in its type: srv13's FRU and SMBIOS observations. srv13 has a
+// Redfish capture set, no ipmitool FRU print, no UEFI smbiosview type-2 transcript, and its Redfish System
+// serial is the unprovisioned factory placeholder "$PRODUCT_SERIAL_NUMBER". The identity leg comes from the
+// witness mints (mtjade1_access_observation witness_recorded_fru_identity / witness_recorded_smbios_serial,
+// admitted only here) and carries IdentityWitnessSupplied, so nothing in this control can be read as a measured
+// identity. The producers of those record types are grounded by the inhabitance claim above (read_mtjade1_fru /
+// read_mtjade1_smbios_type2 over mtjade1's committed capture set), and the ALTRAD8UD readers are declared as
+// mtjade1_access_observation.altrad8ud_identity_readers_frontier.
+//
+// THE ORDERING IS OBSERVER ORDERING, NOT A LABEL (the P1-b fix). Nothing below passes a write instant or calls
+// an archive "pre-write": the boundary derives the order from the sealed read_at of the archives and the write
+// leg's own begin/completion, produced by forced_first_rotation_write_leg. AdmittedForcedFirstRotation is an
+// ADMISSION, not a completion, so it anchors nothing.
 
-// The post-write authenticated read of the forced unit, over the real dry Redfish-shared-store world at
-// the build inferred from the 403 (build_3_22). `firmware` is the observed build; the positive control and
-// RED iv differ only in this value (matching build vs a foreign build).
-fn srv13_secured_read(subject: MachineIntakeSubject, firmware: BmcFirmwareReleaseIdentity) -> BmcAccountStateObservation {
-  dry_read_bmc_account_state(
-    world: world_root(password: generation_1),
-    subject: subject,
-    endpoint: lab_endpoint,
-    board: lab_board(),
-    firmware: firmware,
-    managed: goal_v1().managed,
-    managed_user: root_user,
-    managed_password: generation_1,
-    census: census(),
-    published_user: root_user,
-    published_password: published_password,
-    published_account: PublishedAccountRetired,
-    break_glass: goal_v1().published_break_glass,
-    break_glass_password: generation_1,
-    published_reading: derive_over(served: redfish_only),
-    attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
-    read_at_millis: t_read,
-    lockout: lockout_both_served(read_at: t_read, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
-  )
+data srv13_key: StepSubjectKey = "srv13" as StepSubjectKey
+
+// The observer-clock order the boundary reads: srv13's archive is read, the write leg begins, the leg is read
+// as complete, the archive is read again after it. Millis on the modeled archive clock -- the same clock the
+// archives and the leg deadline are sealed on (see the PR body: cross-realization comparability of
+// ObserverClockInstant is a declared follow-up, not this change).
+data t_srv13_pre_capture: EpochMs = 1791158300000
+data t_srv13_write_began: EpochMs = 1791158360000
+data t_srv13_write_finished: EpochMs = 1791158365000
+data t_srv13_post_read: EpochMs = 1791158460000
+
+// srv13's prior-life world at an observer instant of the run's choosing. The shared dry carrier model; the
+// archive arm is what the boundary reads. The platform row is mtjade1's because no ALTRAD8UD product brief is
+// committed yet -- the row selects which carriers matter, it is not a claim about srv13's firmware.
+fn srv13_prior_life_world(read_at: EpochMs) -> DryPriorLifeWorld {
+  let full = prior_life_full_dry_world()
+  dry_world_at(bmc: full.bmc, store: full.store, read_at: read_at)
 }
 
-fn forced_bmc_inputs(subject: MachineIntakeSubject, firmware: BmcFirmwareReleaseIdentity) -> BmcSecureInputs {
-  BmcSecureInputs {
-    goal: goal_v1(),
-    reading: srv13_secured_read(subject: subject, firmware: firmware),
-    grant: none,
-    capability: none,
-    apply: none,
-    hold_release: none,
-  }
+fn srv13_empty_prior_life_world(read_at: EpochMs) -> DryPriorLifeWorld {
+  let z = zero_entry_world()
+  dry_world_at(bmc: z.bmc, store: z.store, read_at: read_at)
 }
 
-// The forced 403 the controller answered, read in run `attempt` on `endpoint` (its own build row is 03.22.00).
-fn controller_forced_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
-  match admit_published_credential_change_forced(
-    reading: controller_reading(
-      endpoint: endpoint,
-      attempt: attempt,
-      board: asrock_altrad8ud_board_authority,
-      login: "root" as NonEmptyStr,
-      status: 403,
-      body: srv13_forced_change_body,
-      capture: srv13_capture,
-      firmware: ForcedChangeBuildUnreadable,
-    ),
-  ) {
-    ForcedChangeAdmitted { state: f } => Present { value: f }
-    ForcedChangeRefused { cause: _ } => none
-  }
-}
-
-// The forced root write, ADMITTED through the real bmc_rotation_route for `endpoint`, so it is a genuine
-// AdmittedForcedFirstRotation (QualifyByRotation, one write, one approval) — the same admission the wet run
-// would earn, not a hand-built carrier.
-fn admitted_forced_write_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> AdmittedForcedFirstRotation? {
-  match controller_forced_at(endpoint: endpoint, attempt: attempt) {
-    Absent => none
-    Present { value: forced } => {
-      let request = root_write()
-      let standing = candidate(endpoint: endpoint, firmware: build_3_22(), request: request)
-      match admit_forced_first_rotation(
-        forced: forced,
-        standing: standing,
-        request: request,
-        approval: go(standing: standing, request: request, purpose: QualifyByRotation),
-      ) {
-        ForcedFirstRotationAdmitted { admitted: a } => Present { value: a }
-        ForcedFirstRotationRefused { cause: _ } => none
-      }
-    }
-  }
-}
-
-// THE RUN'S OWN PRE-WRITE CAPTURE, sealed by the REAL archive producer (dry_archive_prior_life) over the
-// same world and subject the fold reads after the write. The witnesses below hand the boundary ARCHIVES,
-// never a classification of them: the standing is derived inside prior_life_boundary (review 88155).
-fn forced_pre_capture() -> PriorLifeArchive? {
+// THE RUN'S OWN PRE-WRITE CAPTURE: the real archive producer, for srv13's subject, read at `read_at` -- before
+// the write leg begins. Minted, never labelled.
+fn srv13_pre_capture(run: ConvergenceRunId, intake: MachineIntakeSubject, read_at: EpochMs) -> PriorLifeArchive? {
   match dry_archive_prior_life(
-    key: step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key),
-    consumed_identity: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key),
-    subject: mtjade1_intake_subject(),
+    key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: srv13_key),
+    consumed_identity: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: srv13_key),
+    subject: intake,
     platform: mt_jade_platform_ref,
-    world: prior_life_minimal_dry_world(),
+    world: srv13_prior_life_world(read_at: read_at),
+    forced_inference: none,
   ).outcome {
     PriorLifeArchiveEstablished { receipt: r } => Present { value: prior_life_receipt_archive(r) }
     _ => none
   }
 }
 
-// (i) POSITIVE CONTROL. The full forced-change unit sequence converges on the real fold: srv13's OWN
-// admitted forced write precedes PriorLife, PriorLife establishes (a pre-write entry is present), and
-// BmcSecure reads Noop (secured) at the build inferred from the 403. All four instances converge.
-// Rung: the whole forced arrival prefix through fold_convergence_run (the real fold).
-test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs: std.resources.Filesystem {
-  match admitted_forced_write_at(endpoint: srv13(), attempt: "attempt-1" as AttemptIdentity) {
-    Absent => false
-    Present { value: write } =>
-      match converge_arrival_forced_through_bmc_secure(
-        run: run_a,
-        subject: mtjade1_key,
-        pending: access_forced_change_pending(
-          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-          forced: write.forced,
-        ),
-        read: read_mtjade1_current_manager_read(),
-        inputs: mtjade1_identity_bind_inputs(),
-        prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-        across: match forced_pre_capture() {
-          Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }
-          Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } }
+// srv13's identity inputs, WITNESS-SUPPLIED and typed as such (see the banner above): the values srv13's first
+// contact recorded (baseboard product ALTRAD8UD-1L2T, serial BR80S6102300077 -- the same board area srv14's
+// in-band recovery capture carries), with no capture path, digest or SOL attribution implied.
+fn srv13_witness_realization() -> NonEmptyStr {
+  "witness-supplied: srv13 has no committed FRU print and no SOL smbiosview transcript; values as recorded at first contact; PR 2's ALTRAD8UD readers replace this (mtjade1_access_observation.altrad8ud_identity_readers_frontier)" as NonEmptyStr
+}
+
+fn srv13_identity_bind_inputs() -> IdentityBindInputs {
+  witness_identity_bind_inputs(
+    fru: FruObserved {
+      observation: witness_recorded_fru_identity(
+        subject: "srv13" as NonEmptyStr,
+        fields: FruIdentityFields {
+          board_serial: "BR80S6102300077" as NonEmptyStr,
+          board_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
+          board_product: "ALTRAD8UD-1L2T" as NonEmptyStr,
+          chassis_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
+          chassis_serial: "BR80S6102300077" as NonEmptyStr,
         },
-        bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
-        write: write,
-        locked: none,
+        realization: srv13_witness_realization(),
+      ),
+    },
+    smbios: SmbiosObserved {
+      observation: witness_recorded_smbios_serial(
+        subject: "srv13" as NonEmptyStr,
+        serial: "BR80S6102300077" as NonEmptyStr,
+        realization: srv13_witness_realization(),
+      ),
+    },
+    other_units: arrival_bound_unit_keys(),
+  )
+}
+
+// THE SEQUENCE FOR THE CAPTURED UNIT: srv13's own -- the controller the committed 403 and the committed
+// post-rotation Manager read are of.
+fn forced_sequence_for_the_captured_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence? {
+  srv13_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis)
+}
+
+// THE SEQUENCE FOR ANOTHER CONTROLLER: the same producers at srv4's address. Internally consistent -- forced
+// state, route standing, approval, plan, application and readback all name that controller -- which is what
+// makes the matching-foreign-controller RED a join test rather than a mismatch test.
+fn forced_sequence_for_the_foreign_unit(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedWriteSequence? {
+  srv4_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis)
+}
+
+// BmcSecure's inputs for the forced path: the run's goal, and the AUTHENTICATED read the sequence produced
+// after the write -- not a hand-built "secured" reading.
+fn forced_bmc_inputs(subject: MachineIntakeSubject, readback: BmcAccountStateObservation) -> BmcSecureInputs {
+  BmcSecureInputs {
+    goal: goal_v1(),
+    reading: readback,
+    managed_user: root_user,
+    managed_route: none,
+    approval: none,
+    plan: none,
+    apply: none,
+    published_user: root_user,
+    published_password: published_password,
+    published_account: PublishedAccountRetired,
+    break_glass_password: generation_1,
+    published_reading: derive_over(served: redfish_only),
+    managed_fetch: none,
+    published_fetch: none,
+    channel_close: none,
+    planned_at: none,
+    declared_retries: [],
+  }
+}
+
+// AN AUTHENTICATED READ OF THE SAME CONTROLLER, SUBJECT AND ATTEMPT AT ANOTHER BUILD: the read a post-write
+// controller answers when its firmware is not the build the 403 inferred. Same producers, same world, a
+// different build identity -- the disagreement RED (iv) consumes it.
+fn srv13_read_at_build(subject: MachineIntakeSubject, firmware: BmcFirmwareReleaseIdentity) -> BmcAccountStateObservation {
+  let attempt = (subject.attempt_id as NonEmptyStr) as AttemptIdentity
+  dry_read_bmc_account_state(
+    world: world_root(password: generation_1),
+    subject: subject,
+    endpoint: srv13(),
+    board: lab_board(),
+    firmware: firmware,
+    managed: goal_v1().managed,
+    managed_user: root_user,
+    managed_password: generation_1,
+    census: srv13_dry_census(),
+    published_user: root_user,
+    published_password: published_password,
+    published_account: PublishedAccountRetired,
+    break_glass: goal_v1().published_break_glass,
+    break_glass_password: generation_1,
+    published_reading: derive_over(served: redfish_only),
+    attempt: attempt,
+    read_at_millis: t_readback,
+    lockout: lockout_both_served(read_at: t_readback, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+  )
+}
+
+// THE FORCED DRIVER, one call shape for every test below: the run, its subject, the pending it mints under its
+// own AccessDiscover instance, the authenticated read, the identity inputs, the prior-life world, the write's
+// transition, the admitted write, and BmcSecure's inputs.
+fn forced_fold(
+  run: ConvergenceRunId,
+  subject: StepSubjectKey,
+  pending: AccessForcedChangePending,
+  read: CurrentManagerRead,
+  bind: IdentityBindInputs,
+  world: DryPriorLifeWorld,
+  transition: ForcedFirstRotationWriteTransition,
+  write: AdmittedForcedFirstRotation,
+  bmc: BmcSecureInputs,
+) -> ArrivalPrefixVerdict {
+  converge_arrival_forced_through_bmc_secure(
+    run: run,
+    subject: subject,
+    pending: pending,
+    read: read,
+    inputs: bind,
+    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: world },
+    transition: transition,
+    bmc: bmc,
+    write: write,
+    locked: none,
+  )
+}
+
+// POSITIVE CONTROL, on the real arrival path. The forced state, the approval, the write, the application, the
+// readback, the archive and the run all describe ONE unit (srv13) and ONE run (run_a, whose intake attempt is
+// the attempt the write was admitted under). The row is taken, the four instances establish in the normal
+// phase order, and BmcSecure's Noop establishes in its normal place.
+// Rung: the real fold driver over the real producers.
+test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs: std.resources.Filesystem {
+  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
+  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
+    Absent => false
+    Present { value: pre } =>
+      match forced_sequence_for_the_captured_unit(
+        subject: intake,
+        pre_capture: Present { value: pre },
+        began_millis: t_srv13_write_began,
+        finished_millis: t_srv13_write_finished,
       ) {
-        ArrivalRunFolded { verdict: v } =>
-          match v {
-            RunConverged { run: r } =>
-              length(xs: r.ledger.instances) == 4
-                && match r.ledger.instances.last() {
-                  Present { value: s } => bmc_secure_noop_established(s: s)
-                  Absent => false
-                }
-            RunStopped { ledger: _, at: _ } => false
-            RunIncomplete { ledger: _, at: _ } => false
+        Absent => false
+        Present { value: seq } =>
+          match forced_fold(
+            run: run_a,
+            subject: srv13_key,
+            pending: access_forced_change_pending(
+              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+              forced: seq.transition.leg.write.forced,
+            ),
+            read: read_srv13_current_manager_read(),
+            bind: srv13_identity_bind_inputs(),
+            world: srv13_prior_life_world(read_at: t_srv13_post_read),
+            transition: seq.transition,
+            write: seq.transition.leg.write,
+            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
+          ) {
+            ArrivalRunFolded { verdict: v } =>
+              match v {
+                RunConverged { run: r } =>
+                  length(xs: r.ledger.instances) == 4
+                    && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
+                      Present { value: s } => bmc_secure_noop_established(s: s)
+                      Absent => false
+                    }
+                _ => false
+              }
             _ => false
           }
+      }
+  }
+}
+
+// (i) RED. A NON-FORCING build cannot take the row. mtjade1's build row answers no forced-change verdict, so
+// admit_published_credential_change_forced mints no forced state at all and the row admission is never reached
+// -- condition (a) is carried by the sealed PublishedCredentialChangeForced, and re-testing the policy row
+// here would be a validation where construction holds (DESIGN §5). Paired positive: the srv13 control above,
+// which takes the row on the same call shape.
+// Rung: the real fold driver; the row admission refuses before any step runs.
+test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Bool uses fs: std.resources.Filesystem {
+  match admit_published_credential_change_forced(
+    reading: controller_reading(
+      endpoint: lab_endpoint,
+      attempt: "attempt-1" as AttemptIdentity,
+      board: mt_collins_board_authority,
+      login: "admin" as NonEmptyStr,
+      status: 401,
+      body: "{\"error\":{\"code\":\"Base.1.16.0.GeneralError\",\"message\":\"unauthorized\"}}" as NonEmptyStr,
+      capture: srv13_capture,
+      firmware: ForcedChangeBuildUnreadable,
+    ),
+  ) {
+    ForcedChangeAdmitted { state: _ } => false
+    ForcedChangeRefused { cause: _ } =>
+      match admitted_forced_write_at(endpoint: srv13(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
+        Absent => false
+        Present { value: write } =>
+          match forced_sequence_for_the_captured_unit(
+            subject: srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity),
+            pre_capture: srv13_pre_capture(run: run_a, intake: srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity), read_at: t_srv13_pre_capture),
+            began_millis: t_srv13_write_began,
+            finished_millis: t_srv13_write_finished,
+          ) {
+            Absent => false
+            Present { value: seq } =>
+              match forced_fold(
+                run: run_a,
+                subject: mtjade1_key,
+                pending: access_forced_change_pending(
+                  key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
+                  forced: write.forced,
+                ),
+                read: read_mtjade1_current_manager_read(),
+                bind: mtjade1_identity_bind_inputs(),
+                world: prior_life_minimal_dry_world(),
+                transition: seq.transition,
+                write: write,
+                bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), readback: seq.post_read),
+              ) {
+                // mtjade1's authenticated read is not srv13's controller: the join refuses. The non-forcing
+                // build never reaches the row at all -- there is no forced state to carry it.
+                ArrivalForcedRowNotAdmitted { key: _ } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// (ii) RED. A forced state from ANOTHER run or ANOTHER controller cannot take the row: the two sides disagree
+// with each other. Paired positive: the srv13 control above.
+// Rung: the real fold driver.
+test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
+  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
+  match forced_sequence_for_the_captured_unit(
+    subject: intake,
+    pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
+    began_millis: t_srv13_write_began,
+    finished_millis: t_srv13_write_finished,
+  ) {
+    Absent => false
+    Present { value: seq } =>
+      match admitted_forced_write_at(endpoint: another_controller(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
+        Absent => false
+        // The pending names srv13's forced state; the write was admitted for another controller.
+        Present { value: foreign } =>
+          match forced_fold(
+            run: run_a,
+            subject: srv13_key,
+            pending: access_forced_change_pending(
+              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+              forced: seq.transition.leg.write.forced,
+            ),
+            read: read_srv13_current_manager_read(),
+            bind: srv13_identity_bind_inputs(),
+            world: srv13_prior_life_world(read_at: t_srv13_post_read),
+            transition: seq.transition,
+            write: foreign,
+            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
+          ) {
+            ArrivalForcedRowNotAdmitted { key: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// (ii-a) RED, the MATCHING foreign-RUN pair. The forced state, the admitted write, the transition, the plan and
+// the readback all agree with EACH OTHER and describe srv13 -- but they were produced under another run's
+// intake attempt, while the fold runs under run_a. Both sides agreeing with each other is exactly what the old
+// cross-check let through; what refuses is that the attempt is not THIS run's.
+// Paired positive: w_forced_change_unit_sequence_converges_under_the_row, identical but for the attempt.
+// Rung: the real fold driver.
+test fn w_a_matching_forced_pair_from_another_run_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
+  let foreign_intake = srv13_intake_subject(attempt: (run_b as NonEmptyStr) as AttemptIdentity)
+  match forced_sequence_for_the_captured_unit(
+    subject: foreign_intake,
+    pre_capture: srv13_pre_capture(run: run_b, intake: foreign_intake, read_at: t_srv13_pre_capture),
+    began_millis: t_srv13_write_began,
+    finished_millis: t_srv13_write_finished,
+  ) {
+    Absent => false
+    Present { value: seq } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: access_forced_change_pending(
+          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+          forced: seq.transition.leg.write.forced,
+        ),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_prior_life_world(read_at: t_srv13_post_read),
+        transition: seq.transition,
+        write: seq.transition.leg.write,
+        bmc: forced_bmc_inputs(subject: foreign_intake, readback: seq.post_read),
+      ) {
+        ArrivalForcedRowNotAdmitted { key: _ } => true
         _ => false
       }
   }
 }
 
-// (i) RED. A non-forcing build cannot take the row: the sealed PublishedCredentialChangeForced carries
-// condition (a) by CONSTRUCTION (admit_published_credential_change_forced mints no forced state on an
-// Accepted / no-forcing-row build), so the classifier is UNREACHABLE and the row cannot be admitted. The
-// Mt.Jade board answering the same 403 shape yields NO forced state, while the forcing ALTRAD8UD board
-// yields one. Paired positive: w_forced_change_unit_sequence_converges_under_the_row (srv13 takes the row).
-// Rung: sealed forced-state construction (admit_published_credential_change_forced).
-test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Bool uses fs: std.resources.Filesystem {
-  let non_forcing = admit_published_credential_change_forced(
-    reading: reading_of(
-      board: mt_collins_board_authority,
-      login: "root" as NonEmptyStr,
-      status: 403,
-      body: srv13_forced_change_body,
-      capture: srv13_capture,
-      firmware: ForcedChangeBuildUnreadable,
-    ),
-  )
-  let forcing = admit_published_credential_change_forced(
-    reading: reading_of(
-      board: asrock_altrad8ud_board_authority,
-      login: "root" as NonEmptyStr,
-      status: 403,
-      body: srv13_forced_change_body,
-      capture: srv13_capture,
-      firmware: ForcedChangeBuildUnreadable,
-    ),
-  )
-  match non_forcing {
-    ForcedChangeRefused { cause: _ } =>
-      match forcing {
-        ForcedChangeAdmitted { state: _ } => true
-        ForcedChangeRefused { cause: _ } => false
-      }
-    ForcedChangeAdmitted { state: _ } => false
-  }
-}
-
-// (ii) RED. A forced state admitted from ANOTHER RUN or ANOTHER CONTROLLER cannot take the row. Two cases:
-// the write is srv13's own but the pending forced state was read in a different run; and the pending forced
-// state is srv13's while the write was admitted on another controller. Both are refused by the classifier's
-// same-run-and-controller check. Paired positive: w_forced_change_unit_sequence_converges_under_the_row.
-// Rung: the real fold driver (converge_arrival_forced_through_bmc_secure) — ArrivalForcedRowNotAdmitted.
-test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
-  match admitted_forced_write_at(endpoint: srv13(), attempt: "attempt-1" as AttemptIdentity) {
+// (ii-b) RED, the MATCHING foreign-CONTROLLER pair. The forced state, the route standing, the approval, the
+// plan, the application and the readback all name srv4 (192.168.1.195) and agree with each other; the run's own
+// authenticated read and account observation name srv13. Nothing is malformed -- the pair simply belongs to
+// another controller, and the endpoint chain across the forced state, the route standing and this run's BMC
+// observation is what refuses.
+// Paired positive: w_forced_change_unit_sequence_converges_under_the_row, identical but for the controller.
+// Rung: the real fold driver.
+test fn w_a_matching_forced_pair_for_another_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
+  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
+  match forced_sequence_for_the_captured_unit(
+    subject: intake,
+    pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
+    began_millis: t_srv13_write_began,
+    finished_millis: t_srv13_write_finished,
+  ) {
     Absent => false
-    Present { value: write } => {
-      let other_run =
-        match forced_in(attempt: "attempt-2" as AttemptIdentity) {
-          Absent => false
-          Present { value: f } =>
-            match converge_arrival_forced_through_bmc_secure(
-              run: run_a,
-              subject: mtjade1_key,
-              pending: access_forced_change_pending(
-                key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-                forced: f,
-              ),
-              read: read_mtjade1_current_manager_read(),
-              inputs: mtjade1_identity_bind_inputs(),
-              prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-              across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
-              bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
-              write: write,
-              locked: none,
-            ) {
-              ArrivalForcedRowNotAdmitted { key: _ } => true
-              _ => false
-            }
-        }
-      match admitted_forced_write_at(endpoint: another_controller(), attempt: "attempt-1" as AttemptIdentity) {
+    Present { value: own } =>
+      match forced_sequence_for_the_foreign_unit(
+        subject: intake,
+        pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
+        began_millis: t_srv13_write_began,
+        finished_millis: t_srv13_write_finished,
+      ) {
         Absent => false
         Present { value: foreign } =>
-          match converge_arrival_forced_through_bmc_secure(
+          match forced_fold(
             run: run_a,
-            subject: mtjade1_key,
+            subject: srv13_key,
             pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-              forced: write.forced,
+              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+              forced: foreign.transition.leg.write.forced,
             ),
-            read: read_mtjade1_current_manager_read(),
-            inputs: mtjade1_identity_bind_inputs(),
-            prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-            across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
-            bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22()),
-            write: foreign,
-            locked: none,
+            read: read_srv13_current_manager_read(),
+            bind: srv13_identity_bind_inputs(),
+            world: srv13_prior_life_world(read_at: t_srv13_post_read),
+            transition: foreign.transition,
+            write: foreign.transition.leg.write,
+            bmc: forced_bmc_inputs(subject: intake, readback: own.post_read),
           ) {
-            ArrivalForcedRowNotAdmitted { key: _ } => other_run
+            ArrivalForcedRowNotAdmitted { key: _ } => true
             _ => false
           }
-        Absent => false
       }
-    }
   }
 }
 
-// (iii) RED. Zero pre-write archive entries take the TYPED THIRD OUTCOME, which BLOCKS fleet admission: the
-// fold is RunIncomplete (NOT RunStopped — a plain refusal would brick every factory-fresh unit) with the
-// incomplete cause the PriorLifeIndeterminateAcrossForcedWrite naming the operator decision (factory-fresh
-// vs quarantine). Paired positive: w_forced_change_unit_sequence_converges_under_the_row (a pre-write entry
-// present establishes normally and the whole run converges).
-// Rung: the real fold driver — the prior_life instance is Incomplete, the bmc_secure instance is not reached.
+// (iii) RED. Zero pre-write archive entries take the TYPED THIRD OUTCOME, which BLOCKS fleet admission: the fold
+// is RunIncomplete (NOT RunStopped -- a plain refusal would brick every factory-fresh unit) with the incomplete
+// cause carrying the PriorLifeIndeterminateAcrossForcedWrite, whose options name the operator decision
+// (confirm factory-fresh vs quarantine). The pre-write capture IS this run's and IS ordered before the write;
+// what is missing is an entry from before it, and fresh-and-erased read alike.
+// Paired positive: w_forced_change_unit_sequence_converges_under_the_row (an entry before the write establishes
+// normally and the run converges).
+// Rung: the real fold driver -- the prior_life instance is Incomplete with that cause, and bmc_secure is not reached.
 test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_real_path() -> Bool uses fs: std.resources.Filesystem {
-  match admitted_forced_write_at(endpoint: srv13(), attempt: "attempt-1" as AttemptIdentity) {
+  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
+  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
     Absent => false
-    Present { value: write } => {
-      let across = PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }
-      let bmc = forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: build_3_22())
-      let incomplete_on_fold =
-        match converge_arrival_forced_through_bmc_secure(
-          run: run_a,
-          subject: mtjade1_key,
-          pending: access_forced_change_pending(
-            key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-            forced: write.forced,
-          ),
-          read: read_mtjade1_current_manager_read(),
-          inputs: mtjade1_identity_bind_inputs(),
-          prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-          across: across,
-          bmc: bmc,
-          write: write,
-          locked: none,
-        ) {
-          ArrivalRunFolded { verdict: v } =>
-            match v {
-              // RunIncomplete (NOT RunStopped): a plain refusal here would brick every factory-fresh unit.
-              RunIncomplete { ledger: l, at: at } =>
-                declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
-                  && length(xs: l.instances) == 4
-              RunConverged { run: _ } => false
-              RunStopped { ledger: _, at: _ } => false
-              _ => false
-            }
-          _ => false
-        }
-      let indeterminate_cause =
-        match admit_forced_first_rotation_precedes_prior_life(forced: write.forced, write: write) {
-          Absent => false
-          Present { value: row } =>
-            match arrival_prefix_outcomes_through_bmc_secure(
-              run: run_a,
-              subject: mtjade1_key,
-              read: read_mtjade1_current_manager_read(),
-              inputs: mtjade1_identity_bind_inputs(),
-              prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-              across: across,
-              bmc: bmc,
-              forced: Present { value: row },
-              locked: none,
-            ).last() {
-              Present { value: o } =>
-                match o {
-                  StepIncomplete { key: _, cause: ForcedWritePriorLifeIndeterminate { verdict: v } } =>
-                    length(xs: v.options) == 2
-                      && (match v.standing { EntriesPresentNoneBeforeWrite { entries_seen: _ } => true  _ => false })
-                  _ => false
-                }
-              Absent => false
-            }
-        }
-      incomplete_on_fold && indeterminate_cause
-    }
-  }
-}
-
-// (iv) RED. The post-write authenticated firmware read must equal the build inferred from the 403
-// (ForcedBuildInferredFromTheResponse); a foreign read makes BmcSecure REFUSE. The same fold with the read
-// at a foreign build (3.06.00) is RunStopped at BmcSecure, whereas the read at the inferred build (3.22.00)
-// establishes (positive control w_forced_change_unit_sequence_converges_under_the_row). The located cause is
-// checked directly on the prefix builder's BmcSecure outcome.
-// Rung: real fold driver (RunStopped at BmcSecure) + the prefix builder's BmcSecure StepOutcome (cause-equal).
-test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse() -> Bool uses fs: std.resources.Filesystem {
-  match admitted_forced_write_at(endpoint: srv13(), attempt: "attempt-1" as AttemptIdentity) {
-    Absent => false
-    Present { value: write } =>
-      match admit_forced_first_rotation_precedes_prior_life(forced: write.forced, write: write) {
+    Present { value: pre } =>
+      match forced_sequence_for_the_captured_unit(
+        subject: intake,
+        pre_capture: Present { value: pre },
+        began_millis: t_srv13_write_began,
+        finished_millis: t_srv13_write_finished,
+      ) {
         Absent => false
-        Present { value: row } => {
-          let foreign_read = bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.06.00" as NonEmptyStr)
-          let stopped =
-            match converge_arrival_forced_through_bmc_secure(
-              run: run_a,
-              subject: mtjade1_key,
-              pending: access_forced_change_pending(
-                key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key),
-                forced: write.forced,
-              ),
-              read: read_mtjade1_current_manager_read(),
-              inputs: mtjade1_identity_bind_inputs(),
-              prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-              across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
-              bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: foreign_read),
-              write: write,
-              locked: none,
-            ) {
-              ArrivalRunFolded { verdict: v } =>
-                match v {
-                  RunStopped { ledger: _, at: at } => declaration_ref_eq(a: at.step_identity, b: bmc_secure_step_ref)
-                  _ => false
-                }
-              _ => false
-            }
-          let outcomes = arrival_prefix_outcomes_through_bmc_secure(
+        Present { value: seq } =>
+          match forced_fold(
             run: run_a,
-            subject: mtjade1_key,
-            read: read_mtjade1_current_manager_read(),
-            inputs: mtjade1_identity_bind_inputs(),
-            prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() },
-            across: match forced_pre_capture() { Absent => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: none }  Present { value: cap } => PriorLifeForcedWriteContext { write_instant: t_read, pre_write_archive: Present { value: cap } } },
-            bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), firmware: foreign_read),
-            forced: Present { value: row },
-            locked: none,
-          )
-          stopped && length(xs: outcomes) == 4 && match outcomes.last() {
-            Present { value: o } =>
-              match o {
-                StepRefused { key: _, cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: i, read: r } } =>
-                  bmc_firmware_release_identity_eq(a: i, b: build_3_22()) && bmc_firmware_release_identity_eq(a: r, b: foreign_read)
+            subject: srv13_key,
+            pending: access_forced_change_pending(
+              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+              forced: seq.transition.leg.write.forced,
+            ),
+            read: read_srv13_current_manager_read(),
+            bind: srv13_identity_bind_inputs(),
+            world: srv13_empty_prior_life_world(read_at: t_srv13_post_read),
+            transition: seq.transition,
+            write: seq.transition.leg.write,
+            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
+          ) {
+            ArrivalRunFolded { verdict: v } =>
+              match v {
+                RunIncomplete { ledger: l, at: at } =>
+                  declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
+                    && match l.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
+                      Present { value: s } => match s {
+                        InstanceIncomplete { key: _, cause: c } => match c {
+                          ForcedWritePriorLifeIndeterminate { verdict: i } =>
+                            match i.grounds { PreCaptureOrderedForThisRun {} => true  _ => false }
+                              && match i.standing { NoPriorLifeEntries {} => true  _ => false }
+                              && (length(xs: i.options) == 2)
+                          PriorLifeBoundaryIncomplete { cause: _ } => false
+                        }
+                        _ => false
+                      }
+                      Absent => false
+                    }
                 _ => false
               }
-            Absent => false
+            _ => false
           }
-        }
+      }
+  }
+}
+
+// (iv) RED. The authenticated read after the write answers a build that is NOT the build inferred from the 403:
+// BmcSecure refuses with its own arm, naming both builds, and the run stops before BmcSecure establishes.
+// Paired positive: w_forced_change_unit_sequence_converges_under_the_row, where the read answers 3.22.00.
+// Rung: the real fold driver -- the bmc_secure instance is refused, with the disagreement as its cause.
+test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse() -> Bool uses fs: std.resources.Filesystem {
+  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
+  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
+    Absent => false
+    Present { value: pre } =>
+      match forced_sequence_for_the_captured_unit(
+        subject: intake,
+        pre_capture: Present { value: pre },
+        began_millis: t_srv13_write_began,
+        finished_millis: t_srv13_write_finished,
+      ) {
+        Absent => false
+        Present { value: seq } =>
+          match forced_fold(
+            run: run_a,
+            subject: srv13_key,
+            pending: access_forced_change_pending(
+              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+              forced: seq.transition.leg.write.forced,
+            ),
+            read: read_srv13_current_manager_read(),
+            bind: srv13_identity_bind_inputs(),
+            world: srv13_prior_life_world(read_at: t_srv13_post_read),
+            transition: seq.transition,
+            write: seq.transition.leg.write,
+            bmc: forced_bmc_inputs(
+              subject: intake,
+              readback: srv13_read_at_build(subject: intake, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.03.00" as NonEmptyStr)),
+            ),
+          ) {
+            ArrivalRunFolded { verdict: v } =>
+              match v {
+                RunStopped { ledger: l, at: at } =>
+                  step_instance_key_eq(a: at, b: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: srv13_key))
+                    && match l.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
+                      Present { value: s } => match s {
+                        InstanceRefused { key: _, cause: c } => match c {
+                          BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: _, read: _ } => true
+                          _ => false
+                        }
+                        _ => false
+                      }
+                      Absent => false
+                    }
+                _ => false
+              }
+            _ => false
+          }
       }
   }
 }

@@ -22,6 +22,11 @@ import gunbc.fleet.convergence_fold {
   LegCompletedWithin, LegDeadlineElapsed, LegFinishedBeforeItStarted, LegCompletionUnobserved,
   leg_budget, effect_leg_deadline, complete_effect_leg,
 }
+import test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness { srv13_forced_write_transition }
+import gunbc.machine_intake.bmc_credential_policy { FactoryLoginForcesPasswordChange }
+import gunbc.machine_intake.prior_life_boundary { ForcedWritePreservesArchiveInference, PriorLifeForcedWriteContext, prior_life_forced_write_context, forced_write_preserves_archive_inference }
+import std.scoped_authorization { AttemptIdentity }
+import std.types { EpochMs }
 import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreKeepsWrites, DryArchiveStoreLosesWrites, DryArchiveStoreCorruptsWrites,
   PriorLifePolicy, UnclearedBoundaryAdmitted, UnclearedBoundaryNotAdmitted, CarrierCaptured, CarrierGap, CarrierSurfaceUnmodeled, PowerStatePayload,
@@ -114,6 +119,24 @@ data t_returned_p: EpochMs = 1791158402000
 // The write returns forty-five seconds after the read, past the thirty-second budget.
 data t_returned_late_p: EpochMs = 1791158445000
 
+// THE SAME WORLD READ AT A CHOSEN OBSERVER INSTANT. The ordering the forced-write boundary derives is
+// between sealed read_at instants, so a claim that wants a capture taken BEFORE or AFTER the write leg has
+// to say when that world was read -- it cannot relabel a capture after the fact.
+fn dry_world_at(bmc: BmcWorld, store: DryArchiveStore, read_at: EpochMs) -> DryPriorLifeWorld {
+  DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: read_at, write_returned_at_millis: t_returned_p }
+}
+
+// The forced write's effect leg, on this realization's clock: it begins after the pre-capture below was
+// read and finishes before the post-write archive is read (t_read_p). The boundary reads these off the
+// sealed leg; no claim supplies them as an ordering claim.
+data t_pre_capture_p: EpochMs = 1791158300000
+data t_write_began_p: EpochMs = 1791158360000
+data t_write_finished_p: EpochMs = 1791158365000
+
+// A minute after the post-write archive was read: a capture taken at this instant is a POST-write capture,
+// and the RED that hands one over as the pre-capture relies on that.
+data t_after_write_p: EpochMs = 1791158460000
+
 fn dry_world(bmc: BmcWorld, store: DryArchiveStore) -> DryPriorLifeWorld {
   DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_p }
 }
@@ -181,7 +204,7 @@ fn outcome_label(o: PriorLifeArchiveOutcome) -> String {
 // first unmodeled one (the controller clock) is a typed gap, and the phase refuses before any write.
 // The same world with every surface modeled is established.
 test fn w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established() -> Bool {
-  let refused = match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: sel_world(), store: empty_store)).outcome {
+  let refused = match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: sel_world(), store: empty_store), forced_inference: none).outcome {
     PriorLifeArchiveRefused { cause: c } =>
       match c {
         PriorLifeAssessmentRefused { cause: a } =>
@@ -193,7 +216,7 @@ test fn w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_establ
       }
     _ => false
   }
-  refused && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world()).outcome) == "established"
+  refused && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world(), forced_inference: none).outcome) == "established"
 }
 
 // A GAP IS A GAP FOR EVERY REQUIRED CARRIER, NOT ONLY THE FIRST: a world with every surface modeled
@@ -207,7 +230,7 @@ test fn w_one_unmodeled_carrier_is_a_typed_gap_that_refuses() -> Bool {
     sensors: none,
     ipmi_sdr: none,
   }
-  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: dry_world(bmc: bmc_with_record_surfaces(world: sel_world(), surfaces: no_sensors), store: empty_store)).outcome {
+  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: dry_world(bmc: bmc_with_record_surfaces(world: sel_world(), surfaces: no_sensors), store: empty_store), forced_inference: none).outcome {
     PriorLifeArchiveRefused { cause: c } =>
       match c {
         PriorLifeAssessmentRefused { cause: a } =>
@@ -229,7 +252,7 @@ test fn w_a_policy_refusal_writes_nothing() -> Bool {
   let not_admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted }
   let admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted }
   let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
-  let step = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mitchell, world: prior_life_full_dry_world())
+  let step = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mitchell, world: prior_life_full_dry_world(), forced_inference: none)
   (match classify_prior_life_policy(policy: not_admitting, captures: full_captures) { Present { value: r } => (match r { UnclearedBoundaryNotAdmittedByPolicy { platform: _ } => true  _ => false })  Absent => false })
     && (match classify_prior_life_policy(policy: admitting, captures: full_captures) { Present { value: _ } => false  Absent => true })
     && (match step.outcome { PriorLifeArchiveRefused { cause: c } => (match c { PriorLifePolicyAbsent { platform: p } => declaration_ref_eq(a: p, b: mitchell)  _ => false })  _ => false })
@@ -241,8 +264,8 @@ test fn w_a_policy_refusal_writes_nothing() -> Bool {
 // (ArchiveWritten); the second, over the store the first left, finds the object at the archive's
 // digest and is established with ArchiveAlreadyHeld, leaving exactly one object in the store.
 test fn w_an_archive_already_held_is_a_noop_and_is_not_written_twice() -> Bool {
-  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world())
-  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: first.store))
+  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world(), forced_inference: none)
+  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: first.store), forced_inference: none)
   (match first.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveWritten { write: _, within: _ } => true  ArchiveAlreadyHeld => false })  _ => false })
     && (match second.outcome { PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveAlreadyHeld => true  ArchiveWritten { write: _, within: _ } => false })  _ => false })
     && length(xs: first.store.objects) == 1
@@ -255,10 +278,10 @@ test fn w_an_archive_already_held_is_a_noop_and_is_not_written_twice() -> Bool {
 test fn w_a_lost_corrupted_or_late_write_is_incomplete_not_refused() -> Bool {
   let losing = DryArchiveStore { objects: [], behaviour: DryArchiveStoreLosesWrites }
   let corrupting = DryArchiveStore { objects: [], behaviour: DryArchiveStoreCorruptsWrites }
-  outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: losing)).outcome) == "incomplete:not-read-back"
-    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: corrupting)).outcome) == "incomplete:read-back-differs"
-    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: DryPriorLifeWorld { bmc: world_all_surfaces(), store: empty_store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_late_p }).outcome) == "incomplete:deadline-elapsed"
-    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world()).outcome) == "established"
+  outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: losing), forced_inference: none).outcome) == "incomplete:not-read-back"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_all_surfaces(), store: corrupting), forced_inference: none).outcome) == "incomplete:read-back-differs"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: DryPriorLifeWorld { bmc: world_all_surfaces(), store: empty_store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_late_p }, forced_inference: none).outcome) == "incomplete:deadline-elapsed"
+    && outcome_label(o: dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: prior_life_full_dry_world(), forced_inference: none).outcome) == "established"
 }
 
 // THE DEADLINE READS ITS OWN BUDGET (lesson 2: vary only that field). The same leg, the same start and
@@ -281,7 +304,7 @@ test fn w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed(
 // cursor names the last SEL record the archive holds and the archive's own digest, and the receipt
 // names the dry realization it came from.
 test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> Bool {
-  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: prior_life_full_dry_world()).outcome {
+  match dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_collins_platform_ref, world: prior_life_full_dry_world(), forced_inference: none).outcome {
     PriorLifeArchiveEstablished { receipt: r } =>
       match prior_life_receipt_boundary(r: r) {
         LogsArchivedWithBaselineCursor { cursor: c } =>
@@ -361,8 +384,8 @@ fn digests_differ(a: PriorLifeArchiveOutcome, b: PriorLifeArchiveOutcome) -> Boo
 test fn w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly() -> Bool {
   let a = [RedfishLogEntry { id: 1, severity: "OK", message: "a\n2|OK|b" }, RedfishLogEntry { id: 3, severity: "OK", message: "c" }]
   let b = [RedfishLogEntry { id: 1, severity: "OK", message: "a" }, RedfishLogEntry { id: 2, severity: "OK", message: "b\n3|OK|c" }]
-  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: a), store: empty_store))
-  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: b), store: first.store))
+  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: a), store: empty_store), forced_inference: none)
+  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: b), store: first.store), forced_inference: none)
   digests_differ(a: first.outcome, b: second.outcome)
     && written_not_held(o: second.outcome)
     && final_event_log_entry(o: first.outcome) == Present { value: 3 }
@@ -376,9 +399,9 @@ test fn w_virtual_media_connected_via_and_media_types_are_archived() -> Bool {
   let base = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "bmc" }, media_id: "CD1" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
   let via = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd], connected_via: ConnectedViaUri, inserted: false, image: none }
   let types = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd, MediaDvd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
-  let on_base = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: base), store: empty_store))
-  let on_via = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: via), store: on_base.store))
-  let on_types = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: types), store: on_base.store))
+  let on_base = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: base), store: empty_store), forced_inference: none)
+  let on_via = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: via), store: on_base.store), forced_inference: none)
+  let on_types = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: types), store: on_base.store), forced_inference: none)
   digests_differ(a: on_base.outcome, b: on_via.outcome)
     && digests_differ(a: on_base.outcome, b: on_types.outcome)
     && written_not_held(o: on_via.outcome)
@@ -393,9 +416,9 @@ test fn w_virtual_media_connected_via_and_media_types_are_archived() -> Bool {
 test fn w_two_locators_that_render_one_resource_path_archive_distinctly() -> Bool {
   let a = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a/VirtualMedia/b" }, media_id: "c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
   let b = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "a" }, media_id: "b/VirtualMedia/c" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
-  let on_a = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: empty_store))
-  let on_b = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: b), store: on_a.store))
-  let a_again = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: on_a.store))
+  let on_a = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: empty_store), forced_inference: none)
+  let on_b = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: b), store: on_a.store), forced_inference: none)
+  let a_again = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: a), store: on_a.store), forced_inference: none)
   redfish_virtual_media_resource_path(locator: a.locator) == redfish_virtual_media_resource_path(locator: b.locator)
     && digests_differ(a: on_a.outcome, b: on_b.outcome)
     && written_not_held(o: on_b.outcome)
@@ -421,14 +444,64 @@ fn pre_capture(world: DryPriorLifeWorld) -> PriorLifeArchive? {
     subject: subject_p(),
     platform: mt_jade_platform_ref,
     world: world,
-  ).outcome {
+    forced_inference: none).outcome {
     PriorLifeArchiveEstablished { receipt: r } => Present { value: prior_life_receipt_archive(r) }
     _ => none
   }
 }
 
-fn forced_ctx(pre: PriorLifeArchive?) -> PriorLifeForcedWriteContext {
-  PriorLifeForcedWriteContext { write_instant: t_returned_p, pre_write_archive: pre }
+// THE SAME PRE-WRITE CAPTURE, READ AT A CHOSEN OBSERVER INSTANT. Whether a capture came before the write is
+// a fact about WHEN it was read, and the boundary reads that off the archive's sealed read_at; a claim that
+// wants the before-case, or the after-case, has to say when the world was read.
+fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs) -> PriorLifeArchive? {
+  pre_capture(world: dry_world_at(bmc: world.bmc, store: world.store, read_at: read_at))
+}
+
+// THE FORCED-WRITE CONTEXT, BUILT FROM THE REAL WRITE TRANSITION. The write, the plan and the application
+// come from gunbc.machine_intake.bmc_secure's own producers over srv13's admitted forced first write (see
+// test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness); the inference is the row's
+// reason, typed as an inference (§4d), minted from the same admitted write. A producer that refuses returns
+// none, so no claim here can pass over a transition that was not produced.
+fn forced_ctx(pre: PriorLifeArchive?, began: EpochMs, finished: EpochMs) -> PriorLifeForcedWriteContext? {
+  match srv13_forced_write_transition(subject: subject_p(), pre_capture: pre, began_millis: began, finished_millis: finished) {
+    Absent => none
+    Present { value: tr } =>
+      match forced_write_preserves_archive_inference(
+        write: tr.leg.write,
+        vendor_row: tr.leg.write.forced.key,
+        vendor_behaviour: FactoryLoginForcesPasswordChange {
+          requirement: tr.leg.write.forced.requirement,
+          evidence: tr.leg.write.forced.policy_evidence,
+        },
+      ) {
+        Absent => none
+        Present { value: inf } => prior_life_forced_write_context(inference: inf, transition: tr)
+      }
+  }
+}
+
+// THE SAME CONTEXT, SUPPLIED TO A BOUNDARY CALL: the claims below pass it straight through, and a none from
+// the producers makes the claim false rather than silently skipping the check.
+fn forced_call_is_indeterminate(
+  world: DryPriorLifeWorld,
+  platform: DeclarationRef,
+  ctx: PriorLifeForcedWriteContext?,
+) -> Bool {
+  match ctx {
+    Absent => false
+    Present { value: c } =>
+      match dry_archive_prior_life_across_forced_write(
+        key: key_p(),
+        consumed_identity: identity_p(),
+        subject: subject_p(),
+        platform: platform,
+        world: world,
+        across: Present { value: c },
+      ).outcome {
+        PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: _ } => true
+        _ => false
+      }
+  }
 }
 
 // A world that ESTABLISHES but holds NO ENTRIES anywhere: every carrier captured (an empty log is a
@@ -450,17 +523,30 @@ fn zero_entry_world() -> DryPriorLifeWorld {
 // NORMALLY -- the same established outcome a non-forced unit gets, with the sealed receipt returned
 // untouched. Rung: classifier (pure derivation over the run's own two sealed archives).
 test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bool {
-  match pre_capture(world: prior_life_full_dry_world()) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
     Absent => false
     Present { value: pre } =>
-      outcome_label(o: dry_archive_prior_life_across_forced_write(
-        key: key_p(),
-        consumed_identity: identity_p(),
-        subject: subject_p(),
-        platform: mt_jade_platform_ref,
-        world: prior_life_full_dry_world(),
-        across: Present { value: forced_ctx(pre: Present { value: pre }) },
-      ).outcome) == "established"
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mt_jade_platform_ref,
+            world: prior_life_full_dry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            // ESTABLISHED NORMALLY, and the row's typed inference rides the receipt (§3c): the receipt the
+            // run keeps names the write the inference is about, so "the write changes only the password"
+            // stays an inference on the record rather than an assertion in a comment.
+            PriorLifeArchiveEstablished { receipt: r } => match r.forced_write_inference {
+              Present { value: i } => (i.write.request.account as String) == "root"
+              Absent => false
+            }
+            _ => false
+          }
+      }
   }
 }
 
@@ -473,23 +559,29 @@ test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bo
 // archive FULL of entries changes nothing: the standing is derived from the post-write archive itself,
 // which is exactly what review 88155 required to be unwritable.
 test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write() -> Bool {
-  match pre_capture(world: prior_life_full_dry_world()) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
     Absent => false
     Present { value: pre } =>
-      match dry_archive_prior_life_across_forced_write(
-        key: key_p(),
-        consumed_identity: identity_p(),
-        subject: subject_p(),
-        platform: mt_jade_platform_ref,
-        world: zero_entry_world(),
-        across: Present { value: forced_ctx(pre: Present { value: pre }) },
-      ).outcome {
-        PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
-          v.write_instant == t_returned_p
-            && length(xs: v.options) == 2
-            && (match first(xs: v.options) { ConfirmFactoryFresh {} => true  _ => false })
-            && (match v.standing { NoPriorLifeEntries {} => true  _ => false })
-        _ => false
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mt_jade_platform_ref,
+            world: zero_entry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
+              length(xs: v.options) == 2
+                && (match first(xs: v.options) { ConfirmFactoryFresh {} => true  _ => false })
+                && (match v.standing { NoPriorLifeEntries {} => true  _ => false })
+                // The ordered pre-capture grounded nothing, because the post-write archive holds no entry at
+                // all -- and the verdict names the write's own begin/completion, taken from the sealed leg.
+                && (match v.grounds { PreCaptureOrderedForThisRun {} => true  _ => false })
+            _ => false
+          }
       }
   }
 }
@@ -501,21 +593,57 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
 // looks like, and it establishes nothing predating the write -- so it is indeterminate too, with the count
 // DERIVED from the post-write archive (not copied in), and it fails closed to the operator (§5).
 test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write() -> Bool {
-  match pre_capture(world: zero_entry_world()) {
+  match pre_capture_at(world: zero_entry_world(), read_at: t_pre_capture_p) {
     Absent => false
     Present { value: pre } =>
-      match dry_archive_prior_life_across_forced_write(
-        key: key_p(),
-        consumed_identity: identity_p(),
-        subject: subject_p(),
-        platform: mt_jade_platform_ref,
-        world: prior_life_full_dry_world(),
-        across: Present { value: forced_ctx(pre: Present { value: pre }) },
-      ).outcome {
-        PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
-          match v.standing { EntriesPresentNoneBeforeWrite { entries_seen: n } => n == 5  _ => false }
-            && length(xs: v.options) == 2
-        _ => false
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mt_jade_platform_ref,
+            world: prior_life_full_dry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
+              match v.standing { EntriesPresentNoneBeforeWrite { entries_seen: n } => n == 5  _ => false }
+                && length(xs: v.options) == 2
+                && (match v.grounds { PreCaptureOrderedForThisRun {} => true  _ => false })
+            _ => false
+          }
+      }
+  }
+}
+
+// THE DECISIVE ORDERING RED (P1-b). A GENUINE post-write archive is handed over as the pre-capture: same
+// subject, same attempt, same run, sealed records throughout -- the only thing wrong with it is that it was
+// read AFTER the write leg finished. No caller-supplied label could have been caught here (the archive is
+// real, the identities all agree), which is precisely why the boundary derives the ordering from the sealed
+// read_at and the leg's observer instants instead of believing a field. It does not establish: the
+// pre-write side is grounded on nothing, and the run goes to the operator rather than to fleet admission.
+test fn w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish() -> Bool {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_after_write_p) {
+    Absent => false
+    Present { value: pre } =>
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mt_jade_platform_ref,
+            world: prior_life_full_dry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
+              match v.grounds { PreCaptureNotBeforeTheWrite {} => true  _ => false }
+                && (match v.standing { PreWriteEntryPresent { entry_receipt: _ } => false  _ => true })
+                && length(xs: v.options) == 2
+            _ => false
+          }
       }
   }
 }
@@ -525,19 +653,23 @@ test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_for
 // run supplies a full pre-write capture. This control keeps the third outcome from swallowing refusals.
 test fn w_a_refusal_across_the_forced_write_stays_a_refusal() -> Bool {
   let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
-  match pre_capture(world: prior_life_full_dry_world()) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
     Absent => false
     Present { value: pre } =>
-      match dry_archive_prior_life_across_forced_write(
-        key: key_p(),
-        consumed_identity: identity_p(),
-        subject: subject_p(),
-        platform: mitchell,
-        world: prior_life_full_dry_world(),
-        across: Present { value: forced_ctx(pre: Present { value: pre }) },
-      ).outcome {
-        PriorLifeArchiveRefused { cause: _ } => true
-        _ => false
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mitchell,
+            world: prior_life_full_dry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            PriorLifeArchiveRefused { cause: _ } => true
+            _ => false
+          }
       }
   }
 }

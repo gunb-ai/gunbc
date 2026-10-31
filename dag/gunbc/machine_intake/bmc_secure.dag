@@ -2470,6 +2470,8 @@ type BmcAccountApplication sole_constructor {
 
 fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence")
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence")
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
   ]
 {
@@ -2702,6 +2704,7 @@ data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.bmc_se
 // lists are the only wall between a supplied number and a sealed instant.
 fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence")
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
@@ -2834,6 +2837,7 @@ fn dry_read_bmc_account_state(
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence")
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
     // The served-lockout witness reads a root state so its budget gate has a real
@@ -2916,6 +2920,7 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence")
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_outcome_of_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),

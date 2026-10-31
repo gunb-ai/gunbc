@@ -67,6 +67,7 @@ import gunbc.machine_intake.subject {
 import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
 import gunbc.machine_intake.mtjade1_access_observation {
+  smbios_session_controller,
   ControllerClockReading,
   CurrentManagerRead,
   RecordedManagerCaptureGap,
@@ -125,6 +126,10 @@ import gunbc.machine_intake.prior_life_boundary {
   PriorLifeArchiveIndeterminateAcrossForcedWrite,
   PriorLifeIndeterminateAcrossForcedWrite,
   PriorLifeForcedWriteContext,
+  ForcedFirstRotationWriteTransition,
+  prior_life_forced_write_context,
+  ForcedWritePreservesArchiveInference,
+  forced_write_preserves_archive_inference,
   PostWriteEntryStanding,
   dry_archive_prior_life_across_forced_write,
   mt_jade_platform_ref,
@@ -378,21 +383,39 @@ type BoardSerialAgreementRefusal
   | SmbiosSessionForAnotherController { attested: BmcControllerEndpoint, accessed: BmcControllerEndpoint }
   | BoardSerialsDisagree { fru: NonEmptyStr, smbios: NonEmptyStr }
 
+// THE SOL SESSION CHECK, over an OPTIONAL attribution. An observation whose source is a witness fixture
+// carries no session, and none is not "read through some unnamed controller": there is nothing to compare,
+// so nothing contradicts the access and the arm cannot fire (mtjade1_access_observation.smbios_session_controller).
+// A capture-backed SMBIOS observation always carries its attribution, where the arm does discriminate.
+fn smbios_session_disagrees(attested: BmcControllerEndpoint?, accessed: BmcControllerEndpoint) -> Bool {
+  match attested {
+    Present { value: c } => (c.host as String) != (accessed.host as String)
+    Absent => false
+  }
+}
+
+fn smbios_controller_of(attested: BmcControllerEndpoint?) -> BmcControllerEndpoint {
+  match attested {
+    Present { value: c } => c
+    Absent => BmcControllerEndpoint { host: "unattested" as NonEmptyStr }
+  }
+}
+
 fn classify_board_serial_agreement(
   unit: StepSubjectKey,
   accessed: BmcControllerEndpoint,
   fru_subject: NonEmptyStr,
   fru_serial: NonEmptyStr,
   smbios_subject: NonEmptyStr,
-  smbios_controller: BmcControllerEndpoint,
+  smbios_controller: BmcControllerEndpoint?,
   smbios_serial: NonEmptyStr,
 ) -> BoardSerialAgreementRefusal? {
   if (fru_subject as String) != ((unit as NonEmptyStr) as String) {
     Present { value: FruObservedForAnotherUnit { subject: fru_subject } }
   } else if (smbios_subject as String) != ((unit as NonEmptyStr) as String) {
     Present { value: SmbiosObservedForAnotherUnit { subject: smbios_subject } }
-  } else if (smbios_controller.host as String) != (accessed.host as String) {
-    Present { value: SmbiosSessionForAnotherController { attested: smbios_controller, accessed: accessed } }
+  } else if smbios_session_disagrees(attested: smbios_controller, accessed: accessed) {
+    Present { value: SmbiosSessionForAnotherController { attested: smbios_controller_of(smbios_controller), accessed: accessed } }
   } else if (fru_serial as String) != (smbios_serial as String) {
     Present { value: BoardSerialsDisagree { fru: fru_serial, smbios: smbios_serial } }
   } else {
@@ -454,7 +477,7 @@ fn observe_identity(key: StepInstanceKey, request: IdentityBindRequest) -> Obser
             fru_subject: fru.subject,
             fru_serial: fru.fields.board_serial,
             smbios_subject: smbios.subject,
-            smbios_controller: sol_session_controller(a: smbios.sol_session),
+            smbios_controller: smbios_session_controller(source: smbios.source),
             smbios_serial: smbios.serial,
           ) {
             Present { value: why } => ObservationRefused { cause: BoardSerialsNotInAgreement { cause: why } }
@@ -1300,6 +1323,21 @@ fn arrival_bound_unit_keys() -> List<UnitKey> {
 // - PriorLifeBoundary: DRY ONLY. No capture of mtjade1's prior-life carriers is committed, so the
 //   archive reads the dry world the caller supplies, under the Mt. Jade policy row, and its receipt
 //   names the dry realization; the world claims no controller family.
+// WITNESS-ONLY IDENTITY INPUTS (parent decision 2026-10-30). A unit whose board identity has no committed
+// capture yet -- srv13 and srv14, the ALTRAD8UD units this lane drives -- can still carry an identity through
+// an arrival fold UNDER TEST: the two observations it supplies carry IdentityWitnessSupplied
+// (mtjade1_access_observation's witness mints), and this mint is admitted ONLY to
+// machine_intake_arrival_converge_witness, so no production arrival can pass identity inputs that did not
+// come from the capture readers above. Dissolves with
+// mtjade1_access_observation.altrad8ud_identity_readers_frontier.
+fn witness_identity_bind_inputs(fru: FruRead, smbios: SmbiosRead, other_units: List<UnitKey>) -> IdentityBindInputs
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_identity_bind_inputs"),
+  ]
+{
+  IdentityBindInputs { fru: fru, smbios: smbios, other_units: other_units }
+}
+
 fn mtjade1_identity_bind_inputs() -> IdentityBindInputs uses fs: std.resources.Filesystem {
   IdentityBindInputs { fru: read_mtjade1_fru(), smbios: read_mtjade1_smbios_type2(), other_units: arrival_bound_unit_keys() }
 }
@@ -1336,41 +1374,11 @@ fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life
 // theirs, so this is not a new order -- it is the single effect placed before PriorLifeBoundary's
 // standing, and nothing else may do so.)
 //
-// THE PREMISE, TYPED AS AN INFERENCE (DESIGN §4d), NEVER ASSERTED AS FACT. The vendor row for this build
-// (gunbc.machine_intake.bmc_credential_policy FactoryLoginForcesPasswordChange) says the first
-// authenticated read under the factory credential answers 403 PasswordChangeRequired -- so PriorLife
-// cannot be read before the write. And the write is a password change, not a log / virtual-media /
-// telemetry erase. Nothing read here proves the change left the archive, virtual media, and telemetry
-// untouched; that the change is non-destructive is INFERRED from the vendor row. It is carried as this
-// type so no downstream consumer can read "the prior life survives the write" as grounding. The consumer
-// of this inference is the row below (its `reason`) and, through the row, the forced driver; the frontier
-// that would let it be asserted as fact is the vendor-grounded fact of the build's non-destructive
-// first-login change (recorded per firmware under extdeps.bmc.*), and until then it stays an inference.
-// The fields are the ground, not a paraphrase of it: `vendor_row` names the credential-policy row whose
-// FactoryLoginForcesPasswordChange behaviour stands behind the inference, `vendor_behaviour` carries that
-// behaviour as the vendor module serves it, and `write` is the effect taken on it. The commentary above
-// the type is the classification (§4c); no prose field.
-type ForcedWritePreservesArchiveInference sole_constructor {
-  write: BmcAccountWriteRequest
-  vendor_row: BmcCredentialPolicyKey
-  vendor_behaviour: FactoryLoginBehaviour
-}
-
-fn forced_write_preserves_archive_inference(
-  write: BmcAccountWriteRequest,
-  vendor_row: BmcCredentialPolicyKey,
-  vendor_behaviour: FactoryLoginBehaviour,
-) -> ForcedWritePreservesArchiveInference
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "admit_forced_first_rotation_precedes_prior_life"),
-  ]
-{
-  ForcedWritePreservesArchiveInference {
-    write: write,
-    vendor_row: vendor_row,
-    vendor_behaviour: vendor_behaviour,
-  }
-}
+// THE PREMISE THE ROW RESTS ON is typed as an inference in its own right -- it is about the PRIOR LIFE
+// surviving the write, so its home is gunbc.machine_intake.prior_life_boundary
+// (ForcedWritePreservesArchiveInference, forced_write_preserves_archive_inference), where the established
+// receipt can carry it (§4d: the inference stays typed, and it stays on the fact it qualifies). It is
+// imported here for the row's `reason` field below.
 
 // THE DECLARED ROW: the one effect (this run's admitted forced root password write) placed before the
 // PriorLifeBoundary standing, together with both admission grounds and its reason. It is a ROW, not a
@@ -1399,6 +1407,8 @@ fn access_forced_change_pending(key: StepInstanceKey, forced: PublishedCredentia
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_forced_change_unit_sequence_converges_under_the_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_forced_state_from_another_run_or_controller_cannot_take_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_from_another_run_cannot_take_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_for_another_controller_cannot_take_the_row"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse"),
   ]
@@ -1430,41 +1440,106 @@ data forced_change_arrival_route_frontier: DissolutionCondition = unbound_dissol
 // yields no forced state, so this admission is never reached for it. Re-testing the policy row here would be
 // a validation where construction already holds (DESIGN §5), so it is stated, not checked.
 //
-// Ground (b) -- the forced state was admitted from THIS run's own 403 -- is what this admission checks. The
-// write travels as an AdmittedForcedFirstRotation, which gunbc.machine_intake.bmc_rotation_route
-// admit_forced_first_rotation mints only for one controller, one build, this run; and the admitted write's
-// sealed forced state must be the SAME 403 this row is taken on -- another controller's, another build's, or
-// another attempt's write yields none.
+// Ground (b) -- the forced state was admitted from THIS run's own 403 -- is what this admission checks, and
+// it is checked as a JOIN TO THE ACTIVE INSTANCE, not as agreement between supporting records. Two records
+// can match each other perfectly and belong to another run or another controller; that is not this run's
+// forced state, and it is the class this admission exists to make unwritable. So the admission joins, all
+// at once: the pending's step key to THIS run's AccessDiscover instance for THIS subject; the write's
+// attempt to the run itself (the fold mints one intake attempt per run, via intake_attempt_of_run); the
+// controller the 403 was read from to the controller the route standing was admitted against, the
+// controller the BMC account observation was taken from, and the subject this run is converging (access
+// read, BMC observation subject and attempt); and the write transition the prior life is read across to
+// THIS admission, field by field (bmc_rotation_route admitted_forced_first_rotation_eq). The write travels
+// as an AdmittedForcedFirstRotation, which gunbc.machine_intake.bmc_rotation_route admit_forced_first_rotation
+// mints only for one controller, one build, one attempt -- but that alone only says the pair is coherent,
+// never that it is THIS run's; the joins above supply that.
 //
-// The reason travels as the typed inference (item 4), not a design_ruling first.
+// The reason travels as the typed inference (item 4), not a design_ruling first, and it reaches the
+// established prior-life receipt through the context (prior_life_boundary
+// PriorLifeBoundaryEstablished.forced_write_inference), so the standing names the premise it rests on.
 //
-// (rung: pure admission classifier. RED (i) is
+// (rung: pure admission classifier over the run's own records. RED (i) is
 // w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row (mtjade1 yields no forced state, so the
-// row is not admitted, paired with srv13 taking it), RED (ii) is
-// w_a_forced_state_from_another_run_or_controller_cannot_take_the_row, both paired with the positive control
-// w_forced_change_unit_sequence_converges_under_the_row on the real fold.)
+// row is not admitted, paired with srv13 taking it); RED (ii) is
+// w_a_forced_state_from_another_run_or_controller_cannot_take_the_row; the matching-pair REDs are
+// w_a_matching_forced_pair_from_another_run_cannot_take_the_row and
+// w_a_matching_forced_pair_for_another_controller_cannot_take_the_row -- in both, the forced state and the
+// admitted write agree with each other in every field, and the row is still refused because the pair belongs
+// to another run's attempt / another controller. All paired with the positive control
+// w_forced_change_unit_sequence_converges_under_the_row, where the forced state, the approval, the arrival
+// identity and the readback all describe ONE unit under ONE run.)
 fn admit_forced_first_rotation_precedes_prior_life(
-  forced: PublishedCredentialChangeForced,
+  run: ConvergenceRunId,
+  subject: StepSubjectKey,
+  pending: AccessForcedChangePending,
+  read: CurrentManagerRead,
   write: AdmittedForcedFirstRotation,
+  transition: ForcedFirstRotationWriteTransition,
+  bmc: BmcSecureInputs,
 ) -> ForcedFirstRotationPrecedesPriorLife? {
-  let same_run_and_controller =
-    bmc_credential_policy_key_eq(a: write.forced.key, b: forced.key)
-      && (write.forced.endpoint.host as NonEmptyStr) == (forced.endpoint.host as NonEmptyStr)
-      && (write.forced.attempt as NonEmptyStr) == (forced.attempt as NonEmptyStr)
-      && (write.forced.login as NonEmptyStr) == (forced.login as NonEmptyStr)
-      && (write.forced.message_id as NonEmptyStr) == (forced.message_id as NonEmptyStr)
-      && content_hash_equal(left: write.forced.response_evidence.digest, right: forced.response_evidence.digest)
-  if !same_run_and_controller {
+  // (1) THE PENDING IS THIS RUN'S. Its key must be this run's AccessDiscover instance for this subject --
+  // a pending carrying the right forced state under another run's or another subject's step key is not
+  // this run's verdict.
+  let pending_is_this_runs = step_instance_key_eq(
+    a: pending.key,
+    b: step_instance_key(run: run, step: access_discover_step_ref, subject: subject),
+  )
+  // (2) THE ATTEMPT IS THIS RUN'S. The fold makes one intake attempt per run (intake_attempt_of_run), so the
+  // attempt the forced state was read under and the approval granted under must BE the run -- not merely
+  // agree with another record about some other run's attempt. That is the matching foreign-run shape.
+  let attempt_is_this_runs =
+    (write.attempt as String) == (intake_attempt_of_run(run: run) as String)
+      && (write.forced.attempt as String) == (write.attempt as String)
+  // (3) THE CONTROLLER IS THIS RUN'S, AND IT IS ONE CONTROLLER ACROSS EVERY READING. The chain is: the
+  // endpoint the 403 was read from == the endpoint the route standing was admitted against == the endpoint
+  // the BMC account observation was taken from == the address the authenticated Manager read this run made
+  // was taken at (rendered the way the AccessDiscover step itself renders it, so the join is to the same
+  // controller the access standing will name). The identity step then binds that accessed endpoint to the
+  // FRU/SMBIOS session it is given (classify_board_serial_agreement refuses a session at another
+  // controller), so the identity reading is joined through the access reading rather than beside it. The
+  // account observation and the application the write returned are the same intake subject -- unit,
+  // assembly, firmware AND attempt -- so a matching pair for another unit cannot borrow this unit's read.
+  // (The archive is not joined here: the fold ties it to the identity receipt by construction, and the
+  // BmcSecure step ties the account observation to that same identity subject -- re-checking it here would
+  // be a validation where construction holds, DESIGN §5.) The
+  // build confirmation in the ladder below is then confirmation of the SAME controller's inference: a
+  // matching pair from another controller (the foreign-controller RED) cannot reach it.
+  let access_read_endpoint = match mtjade1_observed_endpoint(network: read.identity.endpoint) {
+    Present { value: e } => (e.host as String)
+    Absent => ""
+  }
+  let controller_is_this_runs =
+    (write.forced.endpoint.host as String) == (write.standing.endpoint.host as String)
+      && (write.standing.endpoint.host as String) == (bmc.reading.endpoint.host as String)
+      && (bmc.reading.endpoint.host as String) == access_read_endpoint
+      && (write.attempt as String) == (bmc.reading.attempt as String)
+      && (write.attempt as String) == (bmc.reading.subject.attempt_id as String)
+      && transition.application.plan.subject == bmc.reading.subject
+      && (read.identity.subject as String) == (subject as String)
+  // (4) THE WRITE TRANSITION THE PRIOR LIFE IS READ ACROSS IS THIS ADMISSION'S WRITE: the context's leg and
+  // its inference name the same admission field by field, so a transition built over a different -- merely
+  // agreeing -- admission does not take this row.
+  let transition_is_this_write = admitted_forced_first_rotation_eq(a: transition.leg.write, b: write)
+  // (5) THE FORCED STATE THE PENDING CARRIES IS THE ONE THE WRITE WAS ADMITTED FROM (as before: one
+  // controller, one build, one 403, one evidence digest).
+  let forced_state_is_the_writes =
+    bmc_credential_policy_key_eq(a: write.forced.key, b: pending.forced.key)
+      && (write.forced.endpoint.host as NonEmptyStr) == (pending.forced.endpoint.host as NonEmptyStr)
+      && (write.forced.attempt as NonEmptyStr) == (pending.forced.attempt as NonEmptyStr)
+      && (write.forced.login as NonEmptyStr) == (pending.forced.login as NonEmptyStr)
+      && (write.forced.message_id as NonEmptyStr) == (pending.forced.message_id as NonEmptyStr)
+      && content_hash_equal(left: write.forced.response_evidence.digest, right: pending.forced.response_evidence.digest)
+  if !(pending_is_this_runs && attempt_is_this_runs && controller_is_this_runs && transition_is_this_write && forced_state_is_the_writes) {
     none
   } else {
     Present {
       value: ForcedFirstRotationPrecedesPriorLife {
-        row: forced.key,
-        forced: forced,
+        row: pending.forced.key,
+        forced: pending.forced,
         write: write,
         reason: forced_write_preserves_archive_inference(
-          write: write.request,
-          vendor_row: forced.key,
+          write: write,
+          vendor_row: pending.forced.key,
           vendor_behaviour: FactoryLoginForcesPasswordChange {
             requirement: write.forced.requirement,
             evidence: write.forced.policy_evidence,
@@ -1493,12 +1568,12 @@ fn converge_arrival_forced_through_bmc_secure(
   read: CurrentManagerRead,
   inputs: IdentityBindInputs,
   prior_life: PriorLifeInputs,
-  across: PriorLifeForcedWriteContext,
+  transition: ForcedFirstRotationWriteTransition,
   bmc: BmcSecureInputs,
   write: AdmittedForcedFirstRotation,
   locked: InBandRecoveryStanding?,
 ) -> ArrivalPrefixVerdict {
-  match admit_forced_first_rotation_precedes_prior_life(forced: pending.forced, write: write) {
+  match admit_forced_first_rotation_precedes_prior_life(run: run, subject: subject, pending: pending, read: read, write: write, transition: transition, bmc: bmc) {
     Absent => ArrivalForcedRowNotAdmitted { key: pending.forced.key }
     Present { value: row } =>
       match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
@@ -1523,7 +1598,7 @@ fn converge_arrival_forced_through_bmc_secure(
             steps: steps,
             run: run,
             subject: subject,
-            outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, across: Present { value: across }, forced: Present { value: row }, locked: locked),
+            outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc, across: Present { value: prior_life_forced_write_context(inference: row.reason, transition: transition) }, forced: Present { value: row }, locked: locked),
             discharges: discharges,
           )
         }

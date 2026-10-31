@@ -71,8 +71,12 @@ import gunbc.bmc_model {
 import gunbc.clock_read {
   ObserverClockInstant,
   ObserverClockObserved,
+  ObserverInstantSource,
+  ObserverClockReadAtRun,
+  ObserverClockModeled,
   observer_clock_modeled,
   observer_instant_millis,
+  observer_instant_precedes,
 }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.fleet.convergence_fold {
@@ -87,8 +91,22 @@ import gunbc.fleet.convergence_fold {
   leg_budget,
   effect_leg_deadline,
   complete_effect_leg,
+  LegDeadline,
+  leg_deadline_leg,
+  leg_completed_leg,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.bmc_credential_policy {
+  BmcCredentialPolicyKey,
+  FactoryLoginBehaviour,
+  FactoryLoginForcesPasswordChange,
+}
+import gunbc.machine_intake.bmc_rotation_route {
+  AdmittedForcedFirstRotation,
+  admitted_forced_first_rotation_eq,
+  account_write_request_eq,
+}
+import gunbc.machine_intake.bmc_secure { BmcAccountApplication }
 
 // THE PRIOR-LIFE BOUNDARY, ITS ARCHIVE ARM (docs/plans/managed-host-untangle.md, cut O1c-2;
 // docs/plans/machine-intake-design.md §5). Before anything is cleared, the controller's prior-life
@@ -231,6 +249,7 @@ fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: prior_life_dry_realization_name)
@@ -795,6 +814,12 @@ type PriorLifeBoundaryEstablished sole_constructor {
   readback: ArchiveReadBack
   boundary: PriorLifeBoundaryArm
   realization: NonEmptyStr
+  // Present exactly when this prior life was established ACROSS an admitted forced first rotation: the
+  // typed inference the row rested on (the vendor row and behaviour that license believing a password
+  // change leaves the prior life alone). The standing says its own premise instead of leaving the reader
+  // to guess which runs carried one (§4d: an inference stays typed, and it stays on the fact it qualifies).
+  // Absent for every ordinary unit.
+  forced_write_inference: ForcedWritePreservesArchiveInference?
 }
 
 fn prior_life_receipt_key(r: PriorLifeBoundaryEstablished) -> StepInstanceKey {
@@ -981,15 +1006,161 @@ data prior_life_operator_decision_frontier: DissolutionCondition = unbound_disso
   description: "dissolves when an operator decision surface consumes PriorLifeIndeterminateAcrossForcedWrite.options -- an authenticated operator route that records ConfirmFactoryFresh or QuarantineUnit for the named subject as its own sealed fact (with the deciding operator and instant) and admits or quarantines the unit accordingly; NOT satisfied by any run minting either variant itself" as NonEmptyStr,
 )
 
-// THE RUN'S FORCED-WRITE CONTEXT, supplied by the arrival step ONLY when the run took the
-// ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned (the
-// obligation instant the operator decision is about; its single authority is the step that performed the
-// write), and the archive THIS RUN read before that write -- Absent when the pre-write read was refused,
-// which on a forced-change build is the rule, not the exception. The run supplies the SEALED ARCHIVES it
-// holds, never a classification of them: the standing is derived from their content inside the boundary.
-type PriorLifeForcedWriteContext {
-  write_instant: EpochMs
-  pre_write_archive: PriorLifeArchive?
+// THE PREMISE THE FORCED-CHANGE ROW RESTS ON, TYPED AS AN INFERENCE (DESIGN §4d), never asserted as fact:
+// the vendor build's OWN credential-policy row -- the FactoryLoginForcesPasswordChange behaviour the vendor
+// module serves for that (board x firmware) -- is what licenses believing that the forced write is a
+// password change and not a log / virtual-media / telemetry erase, and so that the prior life survives it.
+// It carries the row's SYMBOLS rather than a sentence about them (§4c): the (board x firmware) key and the
+// behaviour arm as the vendor module serves them. It arrives only through the row admission, so no caller
+// can state this premise for a build the vendor module does not force. Consumers: the row's reason
+// (gunbc.machine_intake.arrival_converge ForcedFirstRotationPrecedesPriorLife), the context below, and
+// through it the established receipt -- so an established prior life says which premise it was established
+// on, and the operator decision below carries the same symbols.
+type ForcedWritePreservesArchiveInference sole_constructor {
+  write: AdmittedForcedFirstRotation
+  vendor_row: BmcCredentialPolicyKey
+  vendor_behaviour: FactoryLoginBehaviour
+}
+
+// THE ONE MINT, admitted only to the row admission that infers it: the premise cannot be stated by a
+// caller that has not been admitted to take the row.
+fn forced_write_preserves_archive_inference(write: AdmittedForcedFirstRotation, vendor_row: BmcCredentialPolicyKey, vendor_behaviour: FactoryLoginBehaviour) -> ForcedWritePreservesArchiveInference
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "admit_forced_first_rotation_precedes_prior_life"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "forced_ctx"),
+  ]
+{
+  ForcedWritePreservesArchiveInference { write: write, vendor_row: vendor_row, vendor_behaviour: vendor_behaviour }
+}
+
+// THE FORCED WRITE'S EFFECT LEG, SEALED: the deadline carries the observer instant the write BEGAN, the
+// completion the instant it FINISHED inside that deadline. Minted only by forced_first_rotation_write_leg
+// below, the one function that runs this leg -- because AdmittedForcedFirstRotation is an ADMISSION, not a
+// completion: an approval cannot anchor the moment a write landed, and a caller-supplied EpochMs is an
+// independently supplied instant, which orders nothing. Both instants are stamped by THIS realization's dry
+// clock (dry_prior_life_instant), the same clock that stamps the two archive reads, so the ordering the
+// boundary enforces is one clock end to end (see forced_write_instants_share_clock). Consumers:
+// prior_life_forced_write_context and dry_archive_prior_life_across_forced_write.
+type ForcedFirstRotationWriteLeg sole_constructor {
+  write: AdmittedForcedFirstRotation
+  deadline: LegDeadline
+  completed: LegCompletedWithinDeadline
+}
+
+// THE LEG THE FORCED WRITE RUNS ON: the forced apply route's leg, named by the frontier that owes that
+// route (gunbc.machine_intake.bmc_rotation_route forced_first_rotation_apply_frontier). A budget can only
+// ever be declared for that leg, so the dry realization budgets exactly the effect the live route will run.
+data prior_life_forced_write_leg: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "forced_first_rotation_apply_frontier")
+
+// THE WRITE LEG'S BUDGET: ten seconds for one Redfish password write, the same order as the archive write
+// leg's thirty. The one function that declares it, admitted by gunbc.fleet.convergence_fold leg_budget.
+fn prior_life_forced_write_budget() -> LegBudget {
+  leg_budget(leg: prior_life_forced_write_leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 9999 }))
+}
+
+// RUNNING THE WRITE LEG: it began at began_millis and the observer read its finish at finished_millis, both
+// on this realization's clock. Refuses (none) when the leg did not complete inside its budget, finished
+// before it began, or its finish was unobservable: an attempted write with no grounded completion grounds
+// nothing downstream, and the boundary falls to the operator decision rather than inventing an order.
+// admit_callers: this realization's witnesses. The PRODUCTION caller is the apply route the leg is named
+// for -- bmc_rotation_route forced_first_rotation_apply_frontier (§3c); a witness minting it is the dry
+// realization of that leg, not its discharge.
+fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_millis: EpochMs, finished_millis: EpochMs) -> ForcedFirstRotationWriteLeg?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
+  ]
+{
+  let deadline = effect_leg_deadline(budget: prior_life_forced_write_budget(), started: dry_prior_life_instant(millis: began_millis))
+  match complete_effect_leg(deadline: deadline, finished: ObserverClockObserved { instant: dry_prior_life_instant(millis: finished_millis) }) {
+    LegCompletedWithin { completed: within } => Present { value: ForcedFirstRotationWriteLeg { write: write, deadline: deadline, completed: within } }
+    LegDeadlineElapsed { deadline: _, finished: _ } => none
+    LegFinishedBeforeItStarted { deadline: _, finished: _ } => none
+    LegCompletionUnobserved { deadline: _, detail: _ } => none
+  }
+}
+
+// TWO OBSERVER INSTANTS ARE ON ONE CLOCK when their sources are the same clock: two reads of the run's own
+// observer clock, or two modeled instants of the SAME realization. gunbc.clock_read observer_instant_precedes
+// compares millis and ignores source, so this check is what keeps a modeled instant from one realization (or
+// a measured read, or another realization's dry clock) from being ordered against this run's. Consumers:
+// dry_archive_prior_life_across_forced_write and the RED that mixes a foreign realization's instant.
+fn observer_instant_sources_agree(a: ObserverClockInstant, b: ObserverClockInstant) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_write_instants_share_clock"),
+  ]
+{
+  match a.source {
+    ObserverClockReadAtRun => match b.source { ObserverClockReadAtRun => true  _ => false }
+    ObserverClockModeled { realization: r } => match b.source {
+      ObserverClockModeled { realization: r2 } => (r as String) == (r2 as String)
+      _ => false
+    }
+  }
+}
+
+fn forced_write_instants_share_clock(instants: List<ObserverClockInstant>) -> Bool {
+  let every_pair_agrees = fold(
+    instants,
+    init: true,
+    f: (acc, x) => acc && fold(instants, init: true, f: (inner, y) => inner && observer_instant_sources_agree(a: x, b: y)),
+  )
+  length(xs: instants) > 0 && every_pair_agrees
+}
+
+// THE WRITE TRANSITION THIS RUN PERFORMED, sealed and minted only below: the write's effect leg (begin and
+// completion on one observer clock), the application the write returned (WHICH write landed, on which
+// controller, for which subject and attempt), and the archive THIS RUN read before that write -- Absent when
+// the pre-write read was refused, which on a forced-change build is the rule, not the exception. The run
+// supplies SEALED RECORDS, never a classification of them: the standing and the ordering are derived inside
+// the boundary, and the row's typed inference is attached by the driver admitted to the row (below), never
+// claimed here.
+type ForcedFirstRotationWriteTransition sole_constructor {
+  leg: ForcedFirstRotationWriteLeg
+  application: BmcAccountApplication
+  pre_capture: PriorLifeArchive?
+}
+
+// THE JOINS, MADE AT THE MINT (§5: make the wrong state unwritable, do not validate it): the application must
+// be the write THAT leg's admission licensed (same request), on the controller THAT admission was read from
+// (same endpoint), for the attempt THAT admission was approved under (same attempt identity); and the leg's
+// deadline and completion must be the same leg. A transition whose records merely agree with each other about
+// a different write, controller or attempt does not mint. Consumers: the row admission
+// (gunbc.machine_intake.arrival_converge admit_forced_first_rotation_precedes_prior_life), which joins this to
+// the active run, and dry_archive_prior_life_across_forced_write, which orders the instants.
+fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, application: BmcAccountApplication, pre_capture: PriorLifeArchive?) -> ForcedFirstRotationWriteTransition?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
+  ]
+{
+  if !declaration_ref_eq(a: leg_deadline_leg(d: leg.deadline), b: leg_completed_leg(c: leg.completed)) {
+    none
+  } else if !account_write_request_eq(a: leg.write.request, b: application.plan.managed_write.request) {
+    none
+  } else if (application.plan.endpoint.host as String) != (leg.write.standing.endpoint.host as String) {
+    none
+  } else if (application.plan.subject.attempt_id as String) != (leg.write.attempt as String) {
+    none
+  } else {
+    Present { value: ForcedFirstRotationWriteTransition { leg: leg, application: application, pre_capture: pre_capture } }
+  }
+}
+
+// THE RUN'S FORCED-WRITE CONTEXT: the row's typed inference (item 4) over the transition the run performed,
+// so the established prior life can name the premise it was established on. Minted ONLY by the driver that
+// was admitted to the row -- a caller the row admission refused cannot state the premise, and the driver
+// re-checks that the transition it pairs with the row is that row's own write.
+type PriorLifeForcedWriteContext sole_constructor {
+  inference: ForcedWritePreservesArchiveInference
+  transition: ForcedFirstRotationWriteTransition
+}
+
+fn prior_life_forced_write_context(inference: ForcedWritePreservesArchiveInference, transition: ForcedFirstRotationWriteTransition) -> PriorLifeForcedWriteContext
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_arrival_forced_through_bmc_secure"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "forced_ctx"),
+  ]
+{
+  PriorLifeForcedWriteContext { inference: inference, transition: transition }
 }
 
 // A PRE-WRITE CAPTURE GROUNDS THIS RUN ONLY IF IT IS THIS RUN'S: captures sealed for another subject are
@@ -1005,16 +1176,39 @@ type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
   key: StepInstanceKey
   consumed_identity: StepInstanceKey
   subject: MachineIntakeSubject
-  write_instant: EpochMs
+  // The write the obligation is about, as THIS run's observer clock timed it: when the leg began and when
+  // the observer read it finished. Not a caller-supplied EpochMs -- the same two sealed instants the
+  // ordering was checked against, carried to the operator so the decision is dated by the run's own clock.
+  write_began: ObserverClockInstant
+  write_finished: ObserverClockInstant
+  // WHY nothing pre-write is grounded, as the boundary derived it. The operator decision differs by it: a
+  // capture that is not this run's (another subject, another clock) is not evidence at all and says so; a
+  // capture that IS this run's but sits after the write is the erased-history shape; no capture at all is
+  // the 03.22.00 first-boot shape, where fresh and erased read alike.
+  grounds: PreCaptureGroundsNothing
   standing: PostWriteEntryStanding
   options: List<FactoryFreshOrQuarantine>
 }
+
+// WHY NO PRE-WRITE ENTRY IS GROUNDED, derived by the boundary. Consumers: the verdict above; the REDs that
+// discriminate each arm (w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish,
+// a_pre_capture_on_another_clocks_instant_does_not_establish,
+// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write).
+type PreCaptureGroundsNothing
+  = NoPreCapture {}
+  | PreCaptureOfAnotherSubject {}
+  | WriteNotThisSubjectsAttempt {}
+  | PreCaptureOnAnotherClock {}
+  | PreCaptureNotBeforeTheWrite {}
+  | PreCaptureOrderedForThisRun {}
 
 fn prior_life_indeterminate_across_forced_write(
   key: StepInstanceKey,
   consumed_identity: StepInstanceKey,
   subject: MachineIntakeSubject,
-  write_instant: EpochMs,
+  write_began: ObserverClockInstant,
+  write_finished: ObserverClockInstant,
+  grounds: PreCaptureGroundsNothing,
   standing: PostWriteEntryStanding,
 ) -> PriorLifeIndeterminateAcrossForcedWrite
   admit_callers: [
@@ -1025,30 +1219,42 @@ fn prior_life_indeterminate_across_forced_write(
     key: key,
     consumed_identity: consumed_identity,
     subject: subject,
-    write_instant: write_instant,
+    write_began: write_began,
+    write_finished: write_finished,
+    grounds: grounds,
     standing: standing,
     options: [ConfirmFactoryFresh {}, QuarantineUnit {}],
   }
 }
 
 // THE ARCHIVE ARM FOR A RUN THAT TOOK THE FORCED-FIRST-ROTATION ROW. The archive is read AFTER the
-// admitted forced root write, so an established outcome is trustworthy only if the post-write archive
-// still grounds an entry from before the write. If it does, the establishment stands UNCHANGED -- the
-// archive arm is run in full and its sealed receipt is returned as any other unit's, never re-minted here.
-// If it grounds no such entry -- whether the controller is genuinely factory-fresh (no entries at all) or
-// the write erased its history -- the run takes the indeterminate third outcome instead of being silently
-// established. The standing is DERIVED HERE from the run's own two sealed archives: a caller cannot claim
-// a pre-write entry the archives do not hold, nor hide one they do. A refusal or an incomplete from the
-// archive is returned UNTOUCHED: a refusal is still a refusal and an incomplete is still an incomplete;
-// this arm only re-decides the ESTABLISHED arm, the one place where fresh and erased are indistinguishable
-// from this layer. With `across` Absent (every non-forced unit) the result is identical to
-// dry_archive_prior_life.
+// admitted forced root write, so an established outcome is trustworthy only if the post-write archive still
+// grounds an entry from before the write. If it does, the establishment stands UNCHANGED -- the archive arm
+// is run in full and its sealed receipt is returned as any other unit's, never re-minted here. If it grounds
+// no such entry -- whether the controller is genuinely factory-fresh (no entries at all) or the write erased
+// its history -- the run takes the indeterminate third outcome instead of being silently established.
 //
-// (rung: pure re-decision of one arm over the run's own sealed archives; the discriminating RED is
-// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write in
-// test.claim.machine_intake.machine_intake_prior_life_boundary_witness, paired with the positive control
-// w_a_pre_write_entry_across_the_forced_write_establishes_normally and with the real arrival-path control
-// in test.claim.machine_intake.machine_intake_arrival_converge_witness.)
+// TWO THINGS ARE DERIVED HERE, NEVER SUPPLIED. (1) The standing: derived from the run's own two sealed
+// archives, so a caller cannot claim a pre-write entry the archives do not hold, nor hide one they do.
+// (2) The ORDER, on one observer clock: the pre-capture must be this run's (same subject, same attempt as
+// the write's), stamped on the same clock as the write leg's begin and completion and the post-write read,
+// and it must sit BEFORE the leg began while the post-write read sits AFTER the leg finished. A "pre-capture"
+// that is really the post-write archive -- the shape the reviewer named -- fails the order and grounds
+// nothing, so it reaches the operator instead of establishing. The write's own completion is not compared by
+// instant to the application's applied_at: that instant is stamped by another realization's clock
+// (gunbc.machine_intake.bmc_secure's dry clock), and cross-clock comparability of ObserverClockInstant is a
+// declared follow-up (see the PR note); the application is joined to the write by IDENTITY instead, at the
+// context mint. A refusal or an incomplete from the archive is returned UNTOUCHED: this arm only re-decides
+// the ESTABLISHED arm, the one place where fresh and erased are indistinguishable from this layer. With
+// `across` Absent (every non-forced unit) the result is identical to dry_archive_prior_life.
+//
+// (rung: pure re-decision of one arm over the run's own sealed archives and sealed write leg. The
+// discriminating REDs are w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write,
+// w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish and
+// a_pre_capture_on_another_clocks_instant_does_not_establish, paired with the positive control
+// w_a_pre_write_entry_across_the_forced_write_establishes_normally in
+// test.claim.machine_intake.machine_intake_prior_life_boundary_witness, and with the real arrival-path
+// controls in test.claim.machine_intake.machine_intake_arrival_converge_witness.)
 fn dry_archive_prior_life_across_forced_write(
   key: StepInstanceKey,
   consumed_identity: StepInstanceKey,
@@ -1062,19 +1268,50 @@ fn dry_archive_prior_life_across_forced_write(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_pre_write_entry_across_the_forced_write_establishes_normally"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
   ]
 {
-  let base = dry_archive_prior_life(key: key, consumed_identity: consumed_identity, subject: subject, platform: platform, world: world)
+  let forced_inference = match across {
+    Absent => none
+    Present { value: c } => Present { value: c.inference }
+  }
+  let base = dry_archive_prior_life(key: key, consumed_identity: consumed_identity, subject: subject, platform: platform, world: world, forced_inference: forced_inference)
   match across {
     Absent => base
-    Present { value: ctx } =>
+    Present { value: cx } =>
       match base.outcome {
         PriorLifeArchiveEstablished { receipt: r } => {
           let post = archived_entry_identities(captures: r.archive.captures)
-          let pre = match ctx.pre_write_archive {
+          let tr = cx.transition
+          let began = tr.leg.deadline.started
+          let finished = tr.leg.completed.finished
+          let grounds = match tr.pre_capture {
+            Absent => NoPreCapture {}
+            Present { value: a } =>
+              if !forced_pre_capture_is_of_subject(archive: a, subject: subject) {
+                PreCaptureOfAnotherSubject {}
+              } else if (tr.leg.write.attempt as String) != (subject.attempt_id as String) {
+                WriteNotThisSubjectsAttempt {}
+              } else if !forced_write_instants_share_clock([a.read_at, began, finished, r.archive.read_at]) {
+                PreCaptureOnAnotherClock {}
+              } else if !observer_instant_precedes(earlier: a.read_at, later: began) || !observer_instant_precedes(earlier: finished, later: r.archive.read_at) {
+                PreCaptureNotBeforeTheWrite {}
+              } else {
+                // Ordered, and this run's. Whether it establishes is then decided by the standing alone:
+                // an archive that shares no entry with this run's pre-capture is the erased-then-refilled
+                // shape, and it grounds nothing.
+                PreCaptureOrderedForThisRun {}
+              }
+          }
+          // Only a pre-capture that PASSED every join above is this run's; any other arm leaves the
+          // pre-write side empty, which is exactly what makes the standing indeterminate.
+          let pre = match tr.pre_capture {
+            Present { value: a } => match grounds {
+              PreCaptureOrderedForThisRun {} => archived_entry_identities(captures: a.captures)
+              _ => []
+            }
             Absent => []
-            Present { value: a } => if forced_pre_capture_is_of_subject(archive: a, subject: subject) { archived_entry_identities(captures: a.captures) } else { [] }
           }
           let standing = prior_life_pre_write_standing(post: post, pre: pre)
           match standing {
@@ -1085,7 +1322,9 @@ fn dry_archive_prior_life_across_forced_write(
                   key: key,
                   consumed_identity: consumed_identity,
                   subject: subject,
-                  write_instant: ctx.write_instant,
+                  write_began: began,
+                  write_finished: finished,
+                  grounds: grounds,
                   standing: standing,
                 ),
               },
@@ -1097,7 +1336,9 @@ fn dry_archive_prior_life_across_forced_write(
                   key: key,
                   consumed_identity: consumed_identity,
                   subject: subject,
-                  write_instant: ctx.write_instant,
+                  write_began: began,
+                  write_finished: finished,
+                  grounds: grounds,
                   standing: standing,
                 ),
               },
@@ -1112,7 +1353,7 @@ fn dry_archive_prior_life_across_forced_write(
   }
 }
 
-fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome
+fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, forced_inference: ForcedWritePreservesArchiveInference?) -> PriorLifeArchiveOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "write_then_read_back"),
@@ -1129,6 +1370,7 @@ fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: Machine
       readback: readback,
       boundary: LogsArchivedWithBaselineCursor { cursor: archive.cursor },
       realization: prior_life_dry_realization_name,
+      forced_write_inference: forced_inference,
     },
   }
 }
@@ -1136,7 +1378,7 @@ fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: Machine
 // THE WRITE AND ITS READBACK. The leg's completion is checked first: a write whose clock says it ran
 // past its deadline, finished before it started, or could not be timed is incomplete whatever the
 // store now holds. Then the store is re-read by digest, independently of what the write returned.
-fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld) -> DryPriorLifeStep
+fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld, forced_inference: ForcedWritePreservesArchiveInference?) -> DryPriorLifeStep
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
   ]
@@ -1151,7 +1393,7 @@ fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject
         ArchiveReadBackAbsent { digest: d } => PriorLifeArchiveIncomplete { cause: ArchiveWrittenButNotReadBack { write: written.receipt, digest: d } }
         ArchiveReadBackDiffers { digest: d, read: r } => PriorLifeArchiveIncomplete { cause: ArchiveReadBackDiffersFromWrite { write: written.receipt, digest: d, read: r } }
         ArchiveReadBackHeld { readback: rb } =>
-          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb)
+          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb, forced_inference: forced_inference)
       }
   }
   DryPriorLifeStep { outcome: outcome, store: written.store }
@@ -1168,6 +1410,7 @@ fn dry_archive_prior_life(
   subject: MachineIntakeSubject,
   platform: DeclarationRef,
   world: DryPriorLifeWorld,
+  forced_inference: ForcedWritePreservesArchiveInference?,
 ) -> DryPriorLifeStep
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
@@ -1204,11 +1447,11 @@ fn dry_archive_prior_life(
             Noop =>
               match read_back_archive(store: world.store, archive: o.archive) {
                 ArchiveReadBackHeld { readback: rb } =>
-                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb), store: world.store }
+                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb, forced_inference: forced_inference), store: world.store }
                 ArchiveReadBackAbsent { digest: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
                 ArchiveReadBackDiffers { digest: _, read: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
               }
-            Apply { plan: _ } => write_then_read_back(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, world: world)
+            Apply { plan: _ } => write_then_read_back(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, world: world, forced_inference: forced_inference)
           }
       }
     }

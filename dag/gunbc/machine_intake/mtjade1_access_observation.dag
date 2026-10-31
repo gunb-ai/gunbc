@@ -1,5 +1,6 @@
 module gunbc.machine_intake.mtjade1_access_observation
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyUnobserved,
@@ -11,6 +12,7 @@ import gunbc.machine_intake.mtjade1_factory_network {
   BmcNetworkObservedDhcpLease,
   mtjade1_bmc_observed_network,
   mtjade1_bmc_reconfigured_network,
+  srv13_bmc_observed_network,
 }
 import extdeps.network.mac { Eui48Address }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -64,6 +66,7 @@ import gunbc.machine_intake.megarac_media_attach {
   observe_media_general_share,
 }
 import std.content_hash { sha256_hex_of_text }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 
 // MT. JADE UNIT 1 BMC ACCESS. Every fact below is read from a committed capture; this module invents
 // no host, serial, or board enum arm. The unit key is not a row here: it is derived by
@@ -98,6 +101,8 @@ type RecordedManagerCaptureGap
   | CaptureFieldUnread { field: NonEmptyStr, cause: String }
   | CaptureSubjectLinkUnobserved
   | CaptureBoundToAnotherLink { board_extra: String }
+  | CaptureChassisLinkUnread { field: NonEmptyStr, cause: String }
+  | CaptureBoundToAnotherChassis { chassis: String }
 
 type RecordedManagerDecode
   = RecordedManagerDecoded { observation: ManagerIdentityObservation }
@@ -122,6 +127,8 @@ fn capture_gap_text(gap: RecordedManagerCaptureGap) -> NonEmptyStr {
     CaptureFieldUnread { field: f, cause: c } => join(["the recorded Manager capture does not carry ", f as String, ": ", c], "") as NonEmptyStr
     CaptureSubjectLinkUnobserved => "the subject unit has no observed BMC link address to bind the capture to"
     CaptureBoundToAnotherLink { board_extra: b } => join(["the recorded Manager capture names BoardExtra ", b, ", which is not this unit's observed BMC link"], "") as NonEmptyStr
+    CaptureChassisLinkUnread { field: f, cause: c } => join(["the recorded Manager capture does not carry ", f as String, ": ", c], "") as NonEmptyStr
+    CaptureBoundToAnotherChassis { chassis: c } => join(["the recorded Manager capture is the Manager of chassis ", c, ", not the board this reader declared"], "") as NonEmptyStr
   }
 }
 
@@ -175,6 +182,51 @@ fn board_extra_spelling(link: Eui48Address) -> String {
     board_extra_octet(v: link.octet5),
     board_extra_octet(v: link.octet6),
   ], ":")
+}
+
+// HOW A RECORDED MANAGER CAPTURE IS BOUND TO THE UNIT IT BELONGS TO. The binding is what makes the read
+// THIS UNIT'S and not merely a Manager document, and every vendor family records it differently: MegaRAC
+// echoes the link the controller was reached through into Oem.Amp.FruInformation.BoardExtra; OpenBMC
+// publishes no such field, and its Manager names the chassis its board manages, keyed by the board's cited
+// Redfish chassis id (extdeps.boards.asrock_rack asrock_altrad8ud_redfish_chassis_id). The READER supplies
+// the binding for the unit whose bytes it read -- nothing here guesses a family from a file name.
+type ManagerCaptureBinding
+  = BoundToObservedWireLink { link: Eui48Address? }
+  | BoundToManagedChassis { chassis_odata_id: NonEmptyStr }
+
+fn bind_manager_capture(root: JsonValue, oem: JsonValue, binding: ManagerCaptureBinding) -> RecordedManagerDecode {
+  match binding {
+    BoundToObservedWireLink { link: l } => bind_board_extra(root: root, oem: oem, link: l)
+    BoundToManagedChassis { chassis_odata_id: c } => bind_chassis_board(root: root, oem: oem, chassis_odata_id: c)
+  }
+}
+
+// THE OPENBMC BINDING: the Manager says which chassis it manages, and that member's @odata.id is the board
+// model's Redfish chassis id the reader declared for the unit. A Manager of another board is refused by
+// name, so a capture of a different unit cannot be read as this one's.
+fn bind_chassis_board(root: JsonValue, oem: JsonValue, chassis_odata_id: NonEmptyStr) -> RecordedManagerDecode {
+  let links = json_field(obj: root, key: "Links")
+  match json_field_value(r: links) {
+    Absent => field_unread(field: "Links", cause: read_cause(r: links))
+    Present { value: links_v } => {
+      let chassis = json_field(obj: links_v, key: "ManagerInChassis")
+      match json_field_value(r: chassis) {
+        Absent => RecordedManagerRefused { gap: CaptureChassisLinkUnread { field: "Links.ManagerInChassis", cause: read_cause(r: chassis) } }
+        Present { value: chassis_v } => {
+          let id = json_field_string(obj: chassis_v, key: "@odata.id")
+          match json_field_value(r: id) {
+            Absent => RecordedManagerRefused { gap: CaptureChassisLinkUnread { field: "Links.ManagerInChassis.@odata.id", cause: read_cause(r: id) } }
+            Present { value: observed } =>
+              if observed == (chassis_odata_id as String) {
+                decode_manager_fields(root: root, oem: oem)
+              } else {
+                RecordedManagerRefused { gap: CaptureBoundToAnotherChassis { chassis: observed } }
+              }
+          }
+        }
+      }
+    }
+  }
 }
 
 fn bind_board_extra(root: JsonValue, oem: JsonValue, link: Eui48Address?) -> RecordedManagerDecode {
@@ -255,6 +307,16 @@ fn decode_recorded_manager_capture_for_link(
   expected_sha256: NonEmptyStr,
   link: Eui48Address?,
 ) -> RecordedManagerDecode {
+  decode_recorded_manager_capture_bound(content: content, expected_sha256: expected_sha256, binding: BoundToObservedWireLink { link: link })
+}
+
+// THE SAME DECODE, BOUND BY WHATEVER THE VENDOR FAMILY ACTUALLY RECORDS. This is the general form; the
+// two entry points above are the two bindings this fleet has observed so far.
+fn decode_recorded_manager_capture_bound(
+  content: String,
+  expected_sha256: NonEmptyStr,
+  binding: ManagerCaptureBinding,
+) -> RecordedManagerDecode {
   let observed = sha256_hex_of_text(text: content)
   let expected: String = expected_sha256
   if observed != expected {
@@ -266,7 +328,7 @@ fn decode_recorded_manager_capture_for_link(
         let oem = json_field(obj: root, key: "Oem")
         match json_field_value(r: oem) {
           Absent => field_unread(field: "Oem", cause: read_cause(r: oem))
-          Present { value: oem_v } => bind_board_extra(root: root, oem: oem_v, link: link)
+          Present { value: oem_v } => bind_manager_capture(root: root, oem: oem_v, binding: binding)
         }
       }
     }
@@ -350,21 +412,27 @@ fn controller_clock_of_capture(content: String) -> ControllerClockReading {
 
 // The clock is read only from bytes whose digest and unit binding already held: a reading from a
 // capture that did not decode as this unit is not this controller's clock.
-fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, endpoint: ObservedBmcNetwork, link: Eui48Address?, capture_path: NonEmptyStr) -> CurrentManagerRead
+// THE ONE MINT OF A CurrentManagerRead FROM BYTES. Which unit, which resource, which network it was read
+// through, and how the capture binds to that unit all come from the READER that supplied the bytes: the
+// subject and resource used to be hard-wired here to mtjade1's, which made this module a second producer
+// of mtjade1's identity rather than a reader of whatever controller was captured (plan item 6, controller
+// rows replace the mtjade1 hard-wire). mtjade1's reader passes exactly the values it always did.
+fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, subject: NonEmptyStr, resource: NonEmptyStr, endpoint: ObservedBmcNetwork, binding: ManagerCaptureBinding, capture_path: NonEmptyStr) -> CurrentManagerRead
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
+    decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_srv13_current_manager_read"),
   ]
 {
-  let decoded = decode_recorded_manager_capture_for_link(content: content, expected_sha256: expected_sha256, link: link)
+  let decoded = decode_recorded_manager_capture_bound(content: content, expected_sha256: expected_sha256, binding: binding)
   let clock = match decoded {
     RecordedManagerDecoded { observation: _ } => controller_clock_of_capture(content: content)
     RecordedManagerRefused { gap: g } => ControllerClockUnread { cause: capture_gap_text(gap: g) as String }
   }
   CurrentManagerRead {
     identity: RecordedManagerIdentityObservation {
-      subject: "mtjade1",
+      subject: subject,
       endpoint: endpoint,
-      resource: "/redfish/v1/Managers/Self",
+      resource: resource,
       capture_path: capture_path,
       capture_sha256: expected_sha256,
       decoded: decoded,
@@ -392,9 +460,63 @@ fn read_mtjade1_current_manager_read() -> CurrentManagerRead uses fs: std.resour
       current_manager_read_of(
         content: text,
         expected_sha256: mtjade1_current_manager_capture_sha256,
+        subject: "mtjade1",
+        resource: "/redfish/v1/Managers/Self",
         endpoint: mtjade1_bmc_reconfigured_network,
-        link: observed_bmc_link(network: mtjade1_bmc_observed_network),
+        binding: BoundToObservedWireLink { link: observed_bmc_link(network: mtjade1_bmc_observed_network) },
         capture_path: mtjade1_current_manager_capture_path,
+      )
+  }
+}
+
+// srv13's authenticated Manager read, committed at
+// artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Managers_bmc.json and digested in that
+// directory's SHA256SUMS line "./bmc-3.22.00/root_Managers_bmc.json". FINDINGS.txt records what it is: the
+// first AUTHENTICATED request on the 03.22.00 push answered 403 Base.1.16.0.PasswordChangeRequired with the
+// published credential, the credential was rotated into secret bmc-srv13-admin, and this is the Manager
+// read that followed. So the 403 and this read are the SAME controller on both sides of the forced first
+// write -- which is the join the forced-change arrival row needs, and it is capture-grounded rather than
+// asserted. The binding is the chassis this Manager manages (OpenBMC publishes no BoardExtra), keyed by
+// extdeps.boards.asrock_rack asrock_altrad8ud_redfish_chassis_id.
+//
+// CONSUMER: test.claim.machine_intake.machine_intake_arrival_converge_witness, the one-unit forced-change
+// positive control. The production arrival route for an OpenBMC unit (the change declared by
+// gunbc.machine_intake.arrival_converge forced_change_arrival_route_frontier) is the change that reads this
+// controller live and calls this reader.
+data srv13_current_manager_capture_path: NonEmptyStr = "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Managers_bmc.json"
+
+data srv13_current_manager_capture_sha256: NonEmptyStr = "a2a538b9ac8be12980983f7ad968b10a0d95aac7e62de0acdb9d123b2123ae26"
+
+data srv13_redfish_manager_resource: NonEmptyStr = "/redfish/v1/Managers/bmc"
+
+data srv13_manager_capture_binding: ManagerCaptureBinding = BoundToManagedChassis {
+  chassis_odata_id: join(["/redfish/v1/Chassis/", asrock_altrad8ud_redfish_chassis_id], "") as NonEmptyStr,
+}
+
+fn read_srv13_current_manager_read() -> CurrentManagerRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: srv13_current_manager_capture_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      CurrentManagerRead {
+        identity: RecordedManagerIdentityObservation {
+          subject: "srv13",
+          endpoint: srv13_bmc_observed_network,
+          resource: srv13_redfish_manager_resource,
+          capture_path: srv13_current_manager_capture_path,
+          capture_sha256: srv13_current_manager_capture_sha256,
+          decoded: RecordedManagerRefused { gap: CaptureUnreadable { error: e } },
+        },
+        controller_clock: ControllerClockUnread { cause: e },
+      }
+    FilesystemReadSucceeded { content: text } =>
+      current_manager_read_of(
+        content: text,
+        expected_sha256: srv13_current_manager_capture_sha256,
+        subject: "srv13",
+        resource: srv13_redfish_manager_resource,
+        endpoint: srv13_bmc_observed_network,
+        binding: srv13_manager_capture_binding,
+        capture_path: srv13_current_manager_capture_path,
       )
   }
 }
@@ -426,12 +548,13 @@ type FruDecode
   = FruDecoded { fields: FruIdentityFields }
   | FruRefused { gap: FruCaptureGap }
 
-// SEALED: minted only by read_mtjade1_fru, downstream of the file read, the digest check and the
-// Board Extra binding, and it keeps the subject and exact artifact it was read from.
+// SEALED: minted only by read_mtjade1_fru -- or, for a unit whose identity has no committed capture yet,
+// by witness_recorded_fru_identity below -- downstream of the file read, the digest check and the Board
+// Extra binding. It keeps its subject and WHERE IT CAME FROM, so a consumer can tell a capture from a
+// witness fixture without parsing a path.
 type RecordedFruObservation sole_constructor {
   subject: NonEmptyStr
-  capture_path: NonEmptyStr
-  capture_sha256: NonEmptyStr
+  source: IdentityEvidenceSource
   fields: FruIdentityFields
 }
 
@@ -515,8 +638,11 @@ fn read_mtjade1_fru() -> FruRead uses fs: std.resources.Filesystem {
           FruObserved {
             observation: RecordedFruObservation {
               subject: "mtjade1",
-              capture_path: mtjade1_fru_capture_path,
-              capture_sha256: mtjade1_fru_capture_sha256,
+              source: IdentityFromCommittedCapture {
+                capture_path: mtjade1_fru_capture_path,
+                capture_sha256: mtjade1_fru_capture_sha256,
+                sol_session: none,
+              },
               fields: f,
             },
           }
@@ -620,13 +746,77 @@ fn sol_session_controller(a: SolSessionAttribution) -> BmcControllerEndpoint {
   }
 }
 
-// SEALED: minted only by read_mtjade1_smbios_type2, downstream of the file read and the scoped decode,
-// keeping the subject, the exact artifact and the SOL attribution beside the serial.
+// WHERE AN IDENTITY OBSERVATION CAME FROM. Modelled, not a provenance string parked in a field named
+// capture_path: a field a later reader would trust must mean exactly one thing (DESIGN §3, "Minimization
+// holds only if each fact lives in exactly one place"), and a string saying "witness-supplied" in a path
+// slot is one name with two meanings. The precedent is gunbc.clock_read's ObserverInstantSource, which
+// "travels with every instant so a modeled instant is never read as a measured one": the two identity
+// records below carry this source in place of loose capture_path / capture_sha256 / sol_session fields, so
+// a witness-supplied identity can never be read as a measured one. sol_session is optional because the FRU
+// side has no SOL transcript; the SMBIOS reader always fills it, and a witness-supplied source has none.
+type IdentityEvidenceSource
+  = IdentityFromCommittedCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr, sol_session: SolSessionAttribution? }
+  | IdentityWitnessSupplied { realization: NonEmptyStr }
+
+// THE CONTROLLER THE SMBIOS TRANSCRIPT WAS READ THROUGH, when the observation has a capture behind it.
+// none says only that no SOL attribution exists for this observation -- it is not a claim that the
+// transcript was read through some unnamed controller, so the agreement classifier does not invent one.
+fn smbios_session_controller(source: IdentityEvidenceSource) -> BmcControllerEndpoint? {
+  match source {
+    IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Present { value: a } } => Present { value: sol_session_controller(a: a) }
+    IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Absent } => none
+    IdentityWitnessSupplied { realization: _ } => none
+  }
+}
+
+// WITNESS-ONLY IDENTITY MINTS. A unit whose identity has no committed capture yet -- srv13 and srv14, the
+// ALTRAD8UD units this lane drives, have a Redfish capture set but no ipmitool FRU print and no UEFI
+// smbiosview type-2 transcript -- can still carry an identity through an arrival fold UNDER TEST, because
+// these mint IdentityWitnessSupplied: the values say they are the witness's, and no field pretends to be a
+// digest or a path. Production cannot reach either mint (admit_callers names only the arrival witness), so
+// no production admission changes and no production identity can be minted from a thought.
+fn witness_recorded_fru_identity(subject: NonEmptyStr, fields: FruIdentityFields, realization: NonEmptyStr) -> RecordedFruObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_identity_bind_inputs"),
+  ]
+{
+  RecordedFruObservation {
+    subject: subject,
+    source: IdentityWitnessSupplied { realization: realization },
+    fields: fields,
+  }
+}
+
+fn witness_recorded_smbios_serial(subject: NonEmptyStr, serial: NonEmptyStr, realization: NonEmptyStr) -> RecordedSmbiosObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_identity_bind_inputs"),
+  ]
+{
+  RecordedSmbiosObservation {
+    subject: subject,
+    source: IdentityWitnessSupplied { realization: realization },
+    serial: serial,
+  }
+}
+
+// DISSOLUTION (DESIGN §3c -- these two mints exist only until this dissolves): the ALTRAD8UD FRU and SMBIOS
+// READERS. Trigger: PR 2's live readers on the actual target, or a committed identity capture for
+// srv13/srv14 -- an ipmitool fru print and a UEFI `smbiosview -t 2` SOL transcript, digest-listed in a
+// SHA256SUMS, minting IdentityFromCommittedCapture; at that point the witness mints above lose their only
+// caller and are deleted. Named for the record, NOT consumed here:
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt carries srv14's own
+// in-band dmidecode baseboard serial plus the ipmitool fru board area (BR80S6102300077) and is a candidate
+// grounding, but reading it needs a NEW in-band attribution arm and parser -- a second producer beside the
+// live readers -- so it is PR 2's decision, not this change's.
+data altrad8ud_identity_readers_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when an ALTRAD8UD FRU reader and an ALTRAD8UD SMBIOS type-2 reader mint IdentityFromCommittedCapture for srv13 or srv14 from digest-checked committed captures (PR 2's live readers over the actual target, or committed captures of them); NOT satisfied by the witness mints above, which mint IdentityWitnessSupplied and exist only to carry a tested fold" as NonEmptyStr,
+)
+
+// SEALED: minted only by read_mtjade1_smbios_type2 -- or by witness_recorded_smbios_serial below --
+// downstream of the file read and the scoped decode, keeping its subject and source beside the serial.
 type RecordedSmbiosObservation sole_constructor {
   subject: NonEmptyStr
-  capture_path: NonEmptyStr
-  capture_sha256: NonEmptyStr
-  sol_session: SolSessionAttribution
+  source: IdentityEvidenceSource
   serial: NonEmptyStr
 }
 
@@ -645,9 +835,11 @@ fn read_mtjade1_smbios_type2() -> SmbiosRead uses fs: std.resources.Filesystem {
           SmbiosObserved {
             observation: RecordedSmbiosObservation {
               subject: "mtjade1",
-              capture_path: mtjade1_smbios_type2_capture_path,
-              capture_sha256: mtjade1_smbios_type2_capture_sha256,
-              sol_session: mtjade1_smbios_sol_attribution,
+              source: IdentityFromCommittedCapture {
+                capture_path: mtjade1_smbios_type2_capture_path,
+                capture_sha256: mtjade1_smbios_type2_capture_sha256,
+                sol_session: Present { value: mtjade1_smbios_sol_attribution },
+              },
               serial: sn,
             },
           }
