@@ -107,7 +107,8 @@ fn echo_lines_holding_turn(name: String) -> List<String> {
 
 // THE SAME ECHO, ABLE TO ANSWER AS A STREAM: ?sse=1 answers text/event-stream with the frames below, the
 // usage frame split across two flushes so the router's body filter sees a frame that spans chunks. The
-// frames are declared once; the fixture prints them and the case compares the client's bytes to them.
+// frames are declared once; the fixture prints them and the case compares the client's bytes to them. They are
+// printed inside level-1 long brackets because "data: [DONE]" ends in "]", which closes a level-0 one early.
 fn sse_content_frame() -> String { "data: \{\"choices\":[\{\"delta\":\{\"content\":\"hi\"}}]}" }
 fn sse_usage_head() -> String { "data: \{\"usage\":\{\"prompt_tokens\":7001,\"completion_tokens\":3003," }
 fn sse_usage_tail() -> String { "\"prompt_tokens_details\":\{\"cached_tokens\":5001}}}" }
@@ -119,10 +120,10 @@ fn echo_lines_or_sse(name: String) -> List<String> {
     "ngx.req.read_body()",
     "if ngx.var.arg_sse then",
     "  ngx.header['Content-Type'] = 'text/event-stream'",
-    "  ngx.print([[" + sse_content_frame() + "]] .. '\\n\\n') ngx.flush(true)",
-    "  ngx.print([[" + sse_usage_head() + "]]) ngx.flush(true) ngx.sleep(0.2)",
-    "  ngx.print([[" + sse_usage_tail() + "]] .. '\\n\\n') ngx.flush(true)",
-    "  ngx.print([[" + sse_done_frame() + "]] .. '\\n\\n')",
+    "  ngx.print([=[" + sse_content_frame() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_usage_head() + "]=]) ngx.flush(true) ngx.sleep(0.2)",
+    "  ngx.print([=[" + sse_usage_tail() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_done_frame() + "]=] .. '\\n\\n')",
     "  return",
     "end",
     "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')",
