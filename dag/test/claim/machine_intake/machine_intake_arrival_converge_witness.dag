@@ -20,6 +20,7 @@ import gunbc.machine_intake.mtjade1_access_observation {
   CurrentManagerRead, read_mtjade1_fru, read_mtjade1_smbios_type2, FruObserved, FruReadRefused, SmbiosObserved, SmbiosReadRefused,
   SmbiosBaseBoardDecode, SmbiosBaseBoardSerial, SmbiosBaseBoardRefused, SmbiosSerialLineCount, decode_smbios_type2_capture, sol_session_controller, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
   read_srv13_current_manager_read, witness_recorded_fru_identity, witness_recorded_smbios_serial, FruIdentityFields,
+  RecordedFruObservation, provisional_assembly_of_fru,
 }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
@@ -78,6 +79,7 @@ import gunbc.machine_intake.arrival_converge {
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
+  access_discover_from_read, live_firmware_manifest, intake_attempt_of_run,
   converge_mtjade1_arrival_prefix, converge_mtjade1_arrival_through_bmc_secure, converge_arrival_prefix, converge_arrival_through_bmc_secure, mtjade1_identity_bind_inputs,
   witness_identity_bind_inputs, arrival_bound_unit_keys,
   bmc_secure_step_ref, BmcSecureReceipt,
@@ -1866,32 +1868,48 @@ data srv13_key: StepSubjectKey = "srv13" as StepSubjectKey
 // archives and the leg deadline are sealed on (see the PR body: cross-realization comparability of
 // ObserverClockInstant is a declared follow-up, not this change).
 data t_srv13_pre_capture: EpochMs = 1791158300000
+data t_srv13_pre_capture_returned: EpochMs = 1791158302000
 data t_srv13_write_began: EpochMs = 1791158360000
 data t_srv13_write_finished: EpochMs = 1791158365000
 data t_srv13_post_read: EpochMs = 1791158460000
+data t_srv13_post_read_returned: EpochMs = 1791158462000
 
 // srv13's prior-life world at an observer instant of the run's choosing. The shared dry carrier model; the
 // archive arm is what the boundary reads. The platform row is mtjade1's because no ALTRAD8UD product brief is
 // committed yet -- the row selects which carriers matter, it is not a claim about srv13's firmware.
-fn srv13_prior_life_world(read_at: EpochMs) -> DryPriorLifeWorld {
+// The world read at a chosen observer instant, with its archive write RETURNED on the same leg two seconds
+// later: the return belongs to the read's leg, so moving the read moves the return. A world whose return
+// predates its read, or lands outside the write leg's budget, is an archive write that never completed --
+// the producer refuses it, and no claim may read an archive out of it.
+fn srv13_prior_life_world(read_at: EpochMs, returned_at: EpochMs) -> DryPriorLifeWorld {
   let full = prior_life_full_dry_world()
-  dry_world_at(bmc: full.bmc, store: full.store, read_at: read_at)
+  dry_world_at(bmc: full.bmc, store: full.store, read_at: read_at, returned_at: returned_at)
 }
 
-fn srv13_empty_prior_life_world(read_at: EpochMs) -> DryPriorLifeWorld {
+fn srv13_empty_prior_life_world(read_at: EpochMs, returned_at: EpochMs) -> DryPriorLifeWorld {
   let z = zero_entry_world()
-  dry_world_at(bmc: z.bmc, store: z.store, read_at: read_at)
+  dry_world_at(bmc: z.bmc, store: z.store, read_at: read_at, returned_at: returned_at)
+}
+
+// THE POST-WRITE ARCHIVE WORLD, read a minute after the write finished (so its sealed read_at is after the
+// leg's completion) -- with entries, and with none at all for the indeterminate RED.
+fn srv13_post_world() -> DryPriorLifeWorld {
+  srv13_prior_life_world(read_at: t_srv13_post_read, returned_at: t_srv13_post_read_returned)
+}
+
+fn srv13_empty_post_world() -> DryPriorLifeWorld {
+  srv13_empty_prior_life_world(read_at: t_srv13_post_read, returned_at: t_srv13_post_read_returned)
 }
 
 // THE RUN'S OWN PRE-WRITE CAPTURE: the real archive producer, for srv13's subject, read at `read_at` -- before
 // the write leg begins. Minted, never labelled.
-fn srv13_pre_capture(run: ConvergenceRunId, intake: MachineIntakeSubject, read_at: EpochMs) -> PriorLifeArchive? {
+fn srv13_pre_capture(run: ConvergenceRunId, intake: MachineIntakeSubject, read_at: EpochMs, returned_at: EpochMs) -> PriorLifeArchive? {
   match dry_archive_prior_life(
     key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: srv13_key),
     consumed_identity: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: srv13_key),
     subject: intake,
     platform: mt_jade_platform_ref,
-    world: srv13_prior_life_world(read_at: read_at),
+    world: srv13_prior_life_world(read_at: read_at, returned_at: returned_at),
     forced_inference: none,
   ).outcome {
     PriorLifeArchiveEstablished { receipt: r } => Present { value: prior_life_receipt_archive(r) }
@@ -1899,11 +1917,25 @@ fn srv13_pre_capture(run: ConvergenceRunId, intake: MachineIntakeSubject, read_a
   }
 }
 
-// srv13's identity inputs, WITNESS-SUPPLIED and typed as such (see the banner above): the values srv13's first
-// contact recorded (baseboard product ALTRAD8UD-1L2T, serial BR80S6102300077 -- the same board area srv14's
-// in-band recovery capture carries), with no capture path, digest or SOL attribution implied.
+// srv13's identity inputs, WITNESS-SUPPLIED and typed as such (see the banner above): the board product its
+// first contact recorded (ALTRAD8UD-1L2T) and a board serial MODELED FOR THIS WITNESS -- srv13's real board
+// serial has no committed capture, so no value here may read as a measured one, and borrowing another unit's
+// real serial (srv14's in-band BR80S6102300077) would put a captured fact under srv13's name. The values carry
+// IdentityWitnessSupplied; no capture path, digest or SOL session is implied.
+data srv13_witness_board_serial: NonEmptyStr = "SRV13-WITNESS-BOARD-01" as NonEmptyStr
+
 fn srv13_witness_realization() -> NonEmptyStr {
-  "witness-supplied: srv13 has no committed FRU print and no SOL smbiosview transcript; values as recorded at first contact; PR 2's ALTRAD8UD readers replace this (mtjade1_access_observation.altrad8ud_identity_readers_frontier)" as NonEmptyStr
+  "witness-supplied: srv13 has no committed FRU print and no SOL smbiosview transcript; the board product is as recorded at first contact, the serial is modeled for this witness; PR 2's ALTRAD8UD readers replace this (mtjade1_access_observation.altrad8ud_identity_readers_frontier)" as NonEmptyStr
+}
+
+fn srv13_witness_fru_fields() -> FruIdentityFields {
+  FruIdentityFields {
+    board_serial: srv13_witness_board_serial,
+    board_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
+    board_product: "ALTRAD8UD-1L2T" as NonEmptyStr,
+    chassis_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
+    chassis_serial: srv13_witness_board_serial,
+  }
 }
 
 fn srv13_identity_bind_inputs() -> IdentityBindInputs {
@@ -1911,25 +1943,127 @@ fn srv13_identity_bind_inputs() -> IdentityBindInputs {
     fru: FruObserved {
       observation: witness_recorded_fru_identity(
         subject: "srv13" as NonEmptyStr,
-        fields: FruIdentityFields {
-          board_serial: "BR80S6102300077" as NonEmptyStr,
-          board_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
-          board_product: "ALTRAD8UD-1L2T" as NonEmptyStr,
-          chassis_part_number: "ALTRAD8UD-1L2T" as NonEmptyStr,
-          chassis_serial: "BR80S6102300077" as NonEmptyStr,
-        },
+        fields: srv13_witness_fru_fields(),
         realization: srv13_witness_realization(),
       ),
     },
     smbios: SmbiosObserved {
       observation: witness_recorded_smbios_serial(
         subject: "srv13" as NonEmptyStr,
-        serial: "BR80S6102300077" as NonEmptyStr,
+        serial: srv13_witness_board_serial,
         realization: srv13_witness_realization(),
       ),
     },
     other_units: arrival_bound_unit_keys(),
   )
+}
+
+// THE SAME SUBJECT THE FOLD BINDS, NOT A WITNESS GUESS OF IT. IdentityBindProvisional binds the unit key from
+// the agreed board serial (gunbc.machine_intake.subject bind_unit_key) and derives the assembly from the FRU
+// read and the firmware manifest from THIS run's Manager read; the prior-life boundary and BmcSecure then join
+// their records to THAT subject. So the witness derives it through the same three functions the step uses,
+// from the same inputs -- otherwise the pre-write capture and the write sequence would be joined to a subject
+// the fold never binds, which is the failure class this change is about.
+fn srv13_witness_fru_observation() -> RecordedFruObservation? {
+  match srv13_identity_bind_inputs().fru {
+    FruObserved { observation: o } => Present { value: o }
+    FruReadRefused { gap: _ } => none
+  }
+}
+
+// The authenticated AccessDiscover of the run: the post-write Manager read of the captured controller, through
+// the real step. Its receipt is what the identity step binds from, so the firmware manifest below is the one
+// the fold's IdentityBindProvisional would carry.
+fn srv13_access_of_run(run: ConvergenceRunId) -> AccessDiscoverEstablished? {
+  match access_discover_from_read(
+    key: step_instance_key(run: run, step: access_discover_step_ref, subject: srv13_key),
+    read: read_srv13_current_manager_read(),
+  ) {
+    StepEstablished { receipt: AccessDiscoverReceipt { receipt: a } } => Present { value: a }
+    _ => none
+  }
+}
+
+fn srv13_intake_for_run(run: ConvergenceRunId) -> MachineIntakeSubject? {
+  match srv13_access_of_run(run: run) {
+    Absent => none
+    Present { value: access } =>
+      match srv13_witness_fru_observation() {
+        Absent => none
+        Present { value: fru } =>
+          Present {
+            value: MachineIntakeSubject {
+              subject: qualification_subject_of(
+                unit_key: srv13_witness_board_serial as UnitKey,
+                assembly: provisional_assembly_of_fru(fru: fru),
+                firmware: live_firmware_manifest(access: access),
+              ),
+              attempt_id: intake_attempt_of_run(run: run),
+            },
+          }
+      }
+  }
+}
+
+// ONE RUN'S WHOLE FORCED LEG: the subject that run's IdentityBindProvisional binds, that run's own pre-write
+// archive (read before the write leg begins), and that run's write transition, plan and authenticated
+// readback -- all produced by the real producers under ONE subject and ONE attempt. `captured_unit` picks the
+// controller the producers read at: srv13's own address, or another controller's address for the
+// matching-foreign-controller RED.
+type ForcedRunLeg sole_constructor {
+  subject: MachineIntakeSubject
+  pre_capture: PriorLifeArchive
+  sequence: ForcedWriteSequence
+}
+
+fn captured_leg_for_run(run: ConvergenceRunId, began: EpochMs, finished: EpochMs) -> ForcedRunLeg? {
+  match srv13_intake_for_run(run: run) {
+    Absent => none
+    Present { value: intake } =>
+      match srv13_pre_capture(
+        run: run,
+        intake: intake,
+        read_at: t_srv13_pre_capture,
+        returned_at: t_srv13_pre_capture_returned,
+      ) {
+        Absent => none
+        Present { value: pre } =>
+          match forced_sequence_for_the_captured_unit(
+            subject: intake,
+            pre_capture: Present { value: pre },
+            began_millis: began,
+            finished_millis: finished,
+          ) {
+            Absent => none
+            Present { value: seq } => Present { value: ForcedRunLeg { subject: intake, pre_capture: pre, sequence: seq } }
+          }
+      }
+  }
+}
+
+fn foreign_leg_for_run(run: ConvergenceRunId, began: EpochMs, finished: EpochMs) -> ForcedRunLeg? {
+  match srv13_intake_for_run(run: run) {
+    Absent => none
+    Present { value: intake } =>
+      match srv13_pre_capture(
+        run: run,
+        intake: intake,
+        read_at: t_srv13_pre_capture,
+        returned_at: t_srv13_pre_capture_returned,
+      ) {
+        Absent => none
+        Present { value: pre } =>
+          match forced_sequence_for_the_foreign_unit(
+            subject: intake,
+            pre_capture: Present { value: pre },
+            began_millis: began,
+            finished_millis: finished,
+          ) {
+            Absent => none
+            Present { value: seq } => Present { value: ForcedRunLeg { subject: intake, pre_capture: pre, sequence: seq } }
+          }
+      }
+  }
 }
 
 // THE SEQUENCE FOR THE CAPTURED UNIT: srv13's own -- the controller the committed 403 and the committed
@@ -1947,7 +2081,7 @@ fn forced_sequence_for_the_foreign_unit(subject: MachineIntakeSubject, pre_captu
 
 // BmcSecure's inputs for the forced path: the run's goal, and the AUTHENTICATED read the sequence produced
 // after the write -- not a hand-built "secured" reading.
-fn forced_bmc_inputs(subject: MachineIntakeSubject, readback: BmcAccountStateObservation) -> BmcSecureInputs {
+fn forced_bmc_inputs(readback: BmcAccountStateObservation) -> BmcSecureInputs {
   BmcSecureInputs {
     goal: goal_v1(),
     reading: readback,
@@ -2059,50 +2193,68 @@ fn forced_fold(
   )
 }
 
+// The prior-life standing SAYS WHAT IT RESTED ON: the row's typed inference rides the established receipt, so a
+// reader of the standing sees the premise (an inference, not a fact) instead of having to find the row.
+fn prior_life_established_carries_the_rows_inference(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: prior_life_boundary_step_ref)
+        && match r {
+          PriorLifeBoundaryReceipt { receipt: p } => match p.forced_write_inference {
+            Present { value: _ } => true
+            Absent => false
+          }
+          _ => false
+        }
+    _ => false
+  }
+}
+
 // POSITIVE CONTROL, on the real arrival path. The forced state, the approval, the write, the application, the
 // readback, the archive and the run all describe ONE unit (srv13) and ONE run (run_a, whose intake attempt is
-// the attempt the write was admitted under). The row is taken, the four instances establish in the normal
-// phase order, and BmcSecure's Noop establishes in its normal place.
+// the attempt the write was admitted under): the subject is the one that run's IdentityBindProvisional binds,
+// the pre-write archive is that run's own read, and the transition, plan and authenticated readback are that
+// run's producers' output. The row is taken, the four instances establish in the normal phase order, and
+// BmcSecure's Noop establishes in its normal place -- carrying the row's typed inference on the prior-life
+// standing, so a reader of the standing sees what it rested on.
 // Rung: the real fold driver over the real producers.
 test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs: std.resources.Filesystem {
-  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
-  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
+  match captured_leg_for_run(
+    run: run_a,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
+  ) {
     Absent => false
-    Present { value: pre } =>
-      match forced_sequence_for_the_captured_unit(
-        subject: intake,
-        pre_capture: Present { value: pre },
-        began_millis: t_srv13_write_began,
-        finished_millis: t_srv13_write_finished,
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: access_forced_change_pending(
+          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+          forced: leg.sequence.transition.leg.write.forced,
+        ),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
       ) {
-        Absent => false
-        Present { value: seq } =>
-          match forced_fold(
-            run: run_a,
-            subject: srv13_key,
-            pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: seq.transition.leg.write.forced,
-            ),
-            read: read_srv13_current_manager_read(),
-            bind: srv13_identity_bind_inputs(),
-            world: srv13_prior_life_world(read_at: t_srv13_post_read),
-            transition: seq.transition,
-            write: seq.transition.leg.write,
-            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
-          ) {
-            ArrivalRunFolded { verdict: v } =>
-              match v {
-                RunConverged { run: r } =>
-                  length(xs: r.ledger.instances) == 4
-                    && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
-                      Present { value: s } => bmc_secure_noop_established(s: s)
-                      Absent => false
-                    }
-                _ => false
-              }
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunConverged { run: r } =>
+              length(xs: r.ledger.instances) == 4
+                && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
+                  Present { value: s } => bmc_secure_noop_established(s: s)
+                  Absent => false
+                }
+                && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
+                  Present { value: s } => prior_life_established_carries_the_rows_inference(s: s)
+                  Absent => false
+                }
             _ => false
           }
+        _ => false
       }
   }
 }
@@ -2131,14 +2283,13 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
       match admitted_forced_write_at(endpoint: srv13(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
         Absent => false
         Present { value: write } =>
-          match forced_sequence_for_the_captured_unit(
-            subject: srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity),
-            pre_capture: srv13_pre_capture(run: run_a, intake: srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity), read_at: t_srv13_pre_capture),
-            began_millis: t_srv13_write_began,
-            finished_millis: t_srv13_write_finished,
+          match captured_leg_for_run(
+            run: run_a,
+            began: t_srv13_write_began,
+            finished: t_srv13_write_finished,
           ) {
             Absent => false
-            Present { value: seq } =>
+            Present { value: leg } =>
               match forced_fold(
                 run: run_a,
                 subject: mtjade1_key,
@@ -2149,9 +2300,9 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
                 read: read_mtjade1_current_manager_read(),
                 bind: mtjade1_identity_bind_inputs(),
                 world: prior_life_minimal_dry_world(),
-                transition: seq.transition,
+                transition: leg.sequence.transition,
                 write: write,
-                bmc: forced_bmc_inputs(subject: mtjade1_intake_subject(), readback: seq.post_read),
+                bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
               ) {
                 // mtjade1's authenticated read is not srv13's controller: the join refuses. The non-forcing
                 // build never reaches the row at all -- there is no forced state to carry it.
@@ -2167,15 +2318,13 @@ test fn w_a_non_forcing_build_cannot_take_the_forced_first_rotation_row() -> Boo
 // with each other. Paired positive: the srv13 control above.
 // Rung: the real fold driver.
 test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
-  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
-  match forced_sequence_for_the_captured_unit(
-    subject: intake,
-    pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
-    began_millis: t_srv13_write_began,
-    finished_millis: t_srv13_write_finished,
+  match captured_leg_for_run(
+    run: run_a,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
   ) {
     Absent => false
-    Present { value: seq } =>
+    Present { value: leg } =>
       match admitted_forced_write_at(endpoint: another_controller(), attempt: (run_a as NonEmptyStr) as AttemptIdentity) {
         Absent => false
         // The pending names srv13's forced state; the write was admitted for another controller.
@@ -2185,14 +2334,14 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
             subject: srv13_key,
             pending: access_forced_change_pending(
               key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: seq.transition.leg.write.forced,
+              forced: leg.sequence.transition.leg.write.forced,
             ),
             read: read_srv13_current_manager_read(),
             bind: srv13_identity_bind_inputs(),
-            world: srv13_prior_life_world(read_at: t_srv13_post_read),
-            transition: seq.transition,
+            world: srv13_post_world(),
+            transition: leg.sequence.transition,
             write: foreign,
-            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
+            bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
           ) {
             ArrivalForcedRowNotAdmitted { key: _ } => true
             _ => false
@@ -2208,28 +2357,26 @@ test fn w_a_forced_state_from_another_run_or_controller_cannot_take_the_row() ->
 // Paired positive: w_forced_change_unit_sequence_converges_under_the_row, identical but for the attempt.
 // Rung: the real fold driver.
 test fn w_a_matching_forced_pair_from_another_run_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
-  let foreign_intake = srv13_intake_subject(attempt: (run_b as NonEmptyStr) as AttemptIdentity)
-  match forced_sequence_for_the_captured_unit(
-    subject: foreign_intake,
-    pre_capture: srv13_pre_capture(run: run_b, intake: foreign_intake, read_at: t_srv13_pre_capture),
-    began_millis: t_srv13_write_began,
-    finished_millis: t_srv13_write_finished,
+  match captured_leg_for_run(
+    run: run_b,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
   ) {
     Absent => false
-    Present { value: seq } =>
+    Present { value: foreign } =>
       match forced_fold(
         run: run_a,
         subject: srv13_key,
         pending: access_forced_change_pending(
           key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-          forced: seq.transition.leg.write.forced,
+          forced: foreign.sequence.transition.leg.write.forced,
         ),
         read: read_srv13_current_manager_read(),
         bind: srv13_identity_bind_inputs(),
-        world: srv13_prior_life_world(read_at: t_srv13_post_read),
-        transition: seq.transition,
-        write: seq.transition.leg.write,
-        bmc: forced_bmc_inputs(subject: foreign_intake, readback: seq.post_read),
+        world: srv13_post_world(),
+        transition: foreign.sequence.transition,
+        write: foreign.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: foreign.sequence.post_read),
       ) {
         ArrivalForcedRowNotAdmitted { key: _ } => true
         _ => false
@@ -2237,53 +2384,40 @@ test fn w_a_matching_forced_pair_from_another_run_cannot_take_the_row() -> Bool 
   }
 }
 
-// (ii-b) RED, the MATCHING foreign-CONTROLLER pair. The forced state, the route standing, the approval, the
-// plan, the application and the readback all name srv4 (192.168.1.195) and agree with each other; the run's own
-// authenticated read and account observation name srv13. Nothing is malformed -- the pair simply belongs to
-// another controller, and the endpoint chain across the forced state, the route standing and this run's BMC
-// observation is what refuses.
-// Paired positive: w_forced_change_unit_sequence_converges_under_the_row, identical but for the controller.
+// (ii-b) RED, the MATCHING foreign-CONTROLLER pair: the same shape at another controller's address. Every
+// supporting record agrees with every other; the fold's own access read, identity inputs and prior-life world
+// are srv13's. What refuses is that the whole leg belongs to another controller.
+// Paired positive: the srv13 control, identical but for the address the producers read at.
 // Rung: the real fold driver.
 test fn w_a_matching_forced_pair_for_another_controller_cannot_take_the_row() -> Bool uses fs: std.resources.Filesystem {
-  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
-  match forced_sequence_for_the_captured_unit(
-    subject: intake,
-    pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
-    began_millis: t_srv13_write_began,
-    finished_millis: t_srv13_write_finished,
+  match foreign_leg_for_run(
+    run: run_a,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
   ) {
     Absent => false
-    Present { value: own } =>
-      match forced_sequence_for_the_foreign_unit(
-        subject: intake,
-        pre_capture: srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture),
-        began_millis: t_srv13_write_began,
-        finished_millis: t_srv13_write_finished,
+    Present { value: foreign } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: access_forced_change_pending(
+          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+          forced: foreign.sequence.transition.leg.write.forced,
+        ),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: foreign.sequence.transition,
+        write: foreign.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: foreign.sequence.post_read),
       ) {
-        Absent => false
-        Present { value: foreign } =>
-          match forced_fold(
-            run: run_a,
-            subject: srv13_key,
-            pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: foreign.transition.leg.write.forced,
-            ),
-            read: read_srv13_current_manager_read(),
-            bind: srv13_identity_bind_inputs(),
-            world: srv13_prior_life_world(read_at: t_srv13_post_read),
-            transition: foreign.transition,
-            write: foreign.transition.leg.write,
-            bmc: forced_bmc_inputs(subject: intake, readback: own.post_read),
-          ) {
-            ArrivalForcedRowNotAdmitted { key: _ } => true
-            _ => false
-          }
+        ArrivalForcedRowNotAdmitted { key: _ } => true
+        _ => false
       }
   }
 }
 
-// (iii) RED. Zero pre-write archive entries take the TYPED THIRD OUTCOME, which BLOCKS fleet admission: the fold
+// (iii) RED, THE GAP CLOSED. The post-write archive shows NO entry from before the write instant. The verdict
 // is RunIncomplete (NOT RunStopped -- a plain refusal would brick every factory-fresh unit) with the incomplete
 // cause carrying the PriorLifeIndeterminateAcrossForcedWrite, whose options name the operator decision
 // (confirm factory-fresh vs quarantine). The pre-write capture IS this run's and IS ordered before the write;
@@ -2292,53 +2426,47 @@ test fn w_a_matching_forced_pair_for_another_controller_cannot_take_the_row() ->
 // normally and the run converges).
 // Rung: the real fold driver -- the prior_life instance is Incomplete with that cause, and bmc_secure is not reached.
 test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_real_path() -> Bool uses fs: std.resources.Filesystem {
-  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
-  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
+  match captured_leg_for_run(
+    run: run_a,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
+  ) {
     Absent => false
-    Present { value: pre } =>
-      match forced_sequence_for_the_captured_unit(
-        subject: intake,
-        pre_capture: Present { value: pre },
-        began_millis: t_srv13_write_began,
-        finished_millis: t_srv13_write_finished,
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: access_forced_change_pending(
+          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+          forced: leg.sequence.transition.leg.write.forced,
+        ),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_empty_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(readback: leg.sequence.post_read),
       ) {
-        Absent => false
-        Present { value: seq } =>
-          match forced_fold(
-            run: run_a,
-            subject: srv13_key,
-            pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: seq.transition.leg.write.forced,
-            ),
-            read: read_srv13_current_manager_read(),
-            bind: srv13_identity_bind_inputs(),
-            world: srv13_empty_prior_life_world(read_at: t_srv13_post_read),
-            transition: seq.transition,
-            write: seq.transition.leg.write,
-            bmc: forced_bmc_inputs(subject: intake, readback: seq.post_read),
-          ) {
-            ArrivalRunFolded { verdict: v } =>
-              match v {
-                RunIncomplete { ledger: l, at: at } =>
-                  declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
-                    && match l.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
-                      Present { value: s } => match s {
-                        InstanceIncomplete { key: _, cause: c } => match c {
-                          ForcedWritePriorLifeIndeterminate { verdict: i } =>
-                            match i.grounds { PreCaptureOrderedForThisRun {} => true  _ => false }
-                              && match i.standing { NoPriorLifeEntries {} => true  _ => false }
-                              && (length(xs: i.options) == 2)
-                          PriorLifeBoundaryIncomplete { cause: _ } => false
-                        }
-                        _ => false
-                      }
-                      Absent => false
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunIncomplete { ledger: l, at: at } =>
+              declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
+                && match l.instances |> filter(s => instance_step_is(s: s, step: prior_life_boundary_step_ref)) |> first() {
+                  Present { value: s } => match s {
+                    InstanceIncomplete { key: _, cause: c } => match c {
+                      ForcedWritePriorLifeIndeterminate { verdict: i } =>
+                        match i.grounds { PreCaptureOrderedForThisRun {} => true  _ => false }
+                          && match i.standing { NoPriorLifeEntries {} => true  _ => false }
+                          && (length(xs: i.options) == 2)
+                      PriorLifeBoundaryIncomplete { cause: _ } => false
                     }
-                _ => false
-              }
+                    _ => false
+                  }
+                  Absent => false
+                }
             _ => false
           }
+        _ => false
       }
   }
 }
@@ -2348,53 +2476,82 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_rea
 // Paired positive: w_forced_change_unit_sequence_converges_under_the_row, where the read answers 3.22.00.
 // Rung: the real fold driver -- the bmc_secure instance is refused, with the disagreement as its cause.
 test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse() -> Bool uses fs: std.resources.Filesystem {
-  let intake = srv13_intake_subject(attempt: (run_a as NonEmptyStr) as AttemptIdentity)
-  match srv13_pre_capture(run: run_a, intake: intake, read_at: t_srv13_pre_capture) {
+  match captured_leg_for_run(
+    run: run_a,
+    began: t_srv13_write_began,
+    finished: t_srv13_write_finished,
+  ) {
     Absent => false
-    Present { value: pre } =>
-      match forced_sequence_for_the_captured_unit(
-        subject: intake,
-        pre_capture: Present { value: pre },
-        began_millis: t_srv13_write_began,
-        finished_millis: t_srv13_write_finished,
+    Present { value: leg } =>
+      match forced_fold(
+        run: run_a,
+        subject: srv13_key,
+        pending: access_forced_change_pending(
+          key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
+          forced: leg.sequence.transition.leg.write.forced,
+        ),
+        read: read_srv13_current_manager_read(),
+        bind: srv13_identity_bind_inputs(),
+        world: srv13_post_world(),
+        transition: leg.sequence.transition,
+        write: leg.sequence.transition.leg.write,
+        bmc: forced_bmc_inputs(
+          readback: srv13_read_at_build(subject: leg.subject, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.03.00" as NonEmptyStr)),
+        ),
       ) {
-        Absent => false
-        Present { value: seq } =>
-          match forced_fold(
-            run: run_a,
-            subject: srv13_key,
-            pending: access_forced_change_pending(
-              key: step_instance_key(run: run_a, step: access_discover_step_ref, subject: srv13_key),
-              forced: seq.transition.leg.write.forced,
-            ),
-            read: read_srv13_current_manager_read(),
-            bind: srv13_identity_bind_inputs(),
-            world: srv13_prior_life_world(read_at: t_srv13_post_read),
-            transition: seq.transition,
-            write: seq.transition.leg.write,
-            bmc: forced_bmc_inputs(
-              subject: intake,
-              readback: srv13_read_at_build(subject: intake, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "3.03.00" as NonEmptyStr)),
-            ),
-          ) {
-            ArrivalRunFolded { verdict: v } =>
-              match v {
-                RunStopped { ledger: l, at: at } =>
-                  step_instance_key_eq(a: at, b: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: srv13_key))
-                    && match l.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
-                      Present { value: s } => match s {
-                        InstanceRefused { key: _, cause: c } => match c {
-                          DomainRefused { cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: _, read: _ } } => true
-                          _ => false
-                        }
-                        _ => false
-                      }
-                      Absent => false
+        ArrivalRunFolded { verdict: v } =>
+          match v {
+            RunStopped { ledger: l, at: at } =>
+              step_instance_key_eq(a: at, b: step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: srv13_key))
+                && match l.instances |> filter(s => instance_step_is(s: s, step: bmc_secure_step_ref)) |> first() {
+                  Present { value: s } => match s {
+                    InstanceRefused { key: _, cause: c } => match c {
+                      DomainRefused { cause: BmcSecureForcedBuildDisagreesWithForcedResponse { inferred: _, read: _ } } => true
+                      _ => false
                     }
-                _ => false
-              }
+                    _ => false
+                  }
+                  Absent => false
+                }
             _ => false
           }
+        _ => false
       }
   }
 }
+
+// ── TEMPORARY DIAGNOSTICS (deleted before the final evidence run) ─────────────────────────────
+test fn diag_access_establishes() -> Bool uses fs: std.resources.Filesystem {
+  match srv13_access_of_run(run: run_a) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn diag_identity_establishes() -> Bool uses fs: std.resources.Filesystem {
+  match srv13_access_of_run(run: run_a) {
+    Absent => false
+    Present { value: access } =>
+      match identity_bind_provisional(
+        key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: srv13_key),
+        access: access,
+        inputs: srv13_identity_bind_inputs(),
+      ) {
+        StepEstablished { receipt: IdentityBindReceipt { receipt: bound } } =>
+          match srv13_intake_for_run(run: run_a) {
+            Absent => false
+            Present { value: expected } => bound.subject == expected
+          }
+        _ => false
+      }
+  }
+}
+
+test fn diag_leg_produces() -> Bool uses fs: std.resources.Filesystem {
+  match captured_leg_for_run(run: run_a, began: t_srv13_write_began, finished: t_srv13_write_finished) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+

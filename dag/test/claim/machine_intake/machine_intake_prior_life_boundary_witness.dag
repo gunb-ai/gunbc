@@ -123,9 +123,17 @@ data t_returned_late_p: EpochMs = 1791158445000
 // THE SAME WORLD READ AT A CHOSEN OBSERVER INSTANT. The ordering the forced-write boundary derives is
 // between sealed read_at instants, so a claim that wants a capture taken BEFORE or AFTER the write leg has
 // to say when that world was read -- it cannot relabel a capture after the fact.
-fn dry_world_at(bmc: BmcWorld, store: DryArchiveStore, read_at: EpochMs) -> DryPriorLifeWorld {
-  DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: read_at, write_returned_at_millis: t_returned_p }
+// THE WORLD READ AT A CHOSEN OBSERVER INSTANT, and its archive write RETURNED a fixed two seconds later:
+// the return instant belongs to the same leg as the read, so a caller that moves the read must move the
+// return with it. A world whose return predates its read, or lands outside the write leg's budget, is an
+// archive write that never completed -- the producer refuses it, and no claim may read an archive out of it.
+fn dry_world_at(bmc: BmcWorld, store: DryArchiveStore, read_at: EpochMs, returned_at: EpochMs) -> DryPriorLifeWorld {
+  DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: read_at, write_returned_at_millis: returned_at }
 }
+
+// Two seconds after each read instant below: the archive write's return, on the same leg.
+data t_pre_capture_returned_p: EpochMs = 1791158302000
+data t_after_write_returned_p: EpochMs = 1791158462000
 
 // The forced write's effect leg, on this realization's clock: it begins after the pre-capture below was
 // read and finishes before the post-write archive is read (t_read_p). The boundary reads these off the
@@ -454,8 +462,8 @@ fn pre_capture(world: DryPriorLifeWorld) -> PriorLifeArchive? {
 // THE SAME PRE-WRITE CAPTURE, READ AT A CHOSEN OBSERVER INSTANT. Whether a capture came before the write is
 // a fact about WHEN it was read, and the boundary reads that off the archive's sealed read_at; a claim that
 // wants the before-case, or the after-case, has to say when the world was read.
-fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs) -> PriorLifeArchive? {
-  pre_capture(world: dry_world_at(bmc: world.bmc, store: world.store, read_at: read_at))
+fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs, returned_at: EpochMs) -> PriorLifeArchive? {
+  pre_capture(world: dry_world_at(bmc: world.bmc, store: world.store, read_at: read_at, returned_at: returned_at))
 }
 
 // THE FORCED-WRITE CONTEXT, BUILT FROM THE REAL WRITE TRANSITION. The write, the plan and the application
@@ -525,7 +533,7 @@ fn zero_entry_world() -> DryPriorLifeWorld {
 // NORMALLY -- the same established outcome a non-forced unit gets, with the sealed receipt returned
 // untouched. Rung: classifier (pure derivation over the run's own two sealed archives).
 test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bool {
-  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
       match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
@@ -564,7 +572,7 @@ test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bo
 // archive FULL of entries changes nothing: the standing is derived from the post-write archive itself,
 // which is exactly what review 88155 required to be unwritable.
 test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write() -> Bool {
-  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
       match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
@@ -598,7 +606,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
 // looks like, and it establishes nothing predating the write -- so it is indeterminate too, with the count
 // DERIVED from the post-write archive (not copied in), and it fails closed to the operator (§5).
 test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write() -> Bool {
-  match pre_capture_at(world: zero_entry_world(), read_at: t_pre_capture_p) {
+  match pre_capture_at(world: zero_entry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
       match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
@@ -629,7 +637,7 @@ test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_for
 // read_at and the leg's observer instants instead of believing a field. It does not establish: the
 // pre-write side is grounded on nothing, and the run goes to the operator rather than to fleet admission.
 test fn w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish() -> Bool {
-  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_after_write_p) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_after_write_p, returned_at: t_after_write_returned_p) {
     Absent => false
     Present { value: pre } =>
       match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
@@ -658,7 +666,7 @@ test fn w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish() ->
 // run supplies a full pre-write capture. This control keeps the third outcome from swallowing refusals.
 test fn w_a_refusal_across_the_forced_write_stays_a_refusal() -> Bool {
   let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
-  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p) {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false
     Present { value: pre } =>
       match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p) {
