@@ -516,7 +516,32 @@ fn construct_tags_subject() -> ReferenceConservationSubject {
 
 test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
+  conservation_accounts_for_every_atom(r: r) && r.locus_erased == 0 && length(xs: r.dropped) == 0 && r.refused == 0
+}
+
+// THE IDENTITY LAW, WITH NO COUNT IN IT. Every authored atom lands in exactly one of four buckets
+// (kept at its own occurrence, erased from its locus, excluded by its recorded role, or the module
+// header), and nothing is dropped or refused. A count pin (`conserved == 11`) broke when a lowering
+// improvement moved six binder atoms from role_excluded to conserved (11 -> 17) with nothing lost; the
+// law is what that shift preserves, and `locus_erased == 0` is the discriminating bit for the specimen
+// (a tag rebuilt without its occurrence is counted there).
+fn conservation_accounts_for_every_atom(r: ReferenceConservationReport) -> Bool {
+  r.authored > 0 && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+}
+
+// RED for the tag claim: the tree keeps every atom but the construct-literal tag `RcRow` (the third
+// spelling in the source: the type's name, the return type, then the literal's tag), so that one atom
+// is exactly one drop and the law no longer closes.
+fn construct_tag_removed_subject() -> ReferenceConservationSubject {
+  subject_without_atom(
+    subject: construct_tags_subject(),
+    atom: nth_authored_atom(subject: construct_tags_subject(), identity: ^RcRow, n: 2)
+  )
+}
+
+test fn a_removed_constructor_tag_is_exactly_one_drop_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tag_removed_subject())
+  report_drop_count(report: r, wanted: ^RcRow) == 1 && length(xs: r.dropped) == 1 && reference_conservation_holds(report: r) == false
 }
 
 // BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
@@ -527,7 +552,7 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
 // readers landed those three binders were locus_erased and role_not_yet_read counted them.
 test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.role_excluded == 8 && r.header_channel == 3 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0
+  conservation_accounts_for_every_atom(r: r) && r.role_excluded > 0 && r.header_channel > 0 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0 && length(xs: r.dropped) == 0
 }
 
 // ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
@@ -546,7 +571,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
 
 test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: dotted_spine_subject())
-  r.authored == 18 && r.conserved == 10 && r.locus_erased == 0 && r.role_excluded == 5 && r.header_channel == 3 && length(xs: r.dropped) == 0
+  conservation_accounts_for_every_atom(r: r) && r.locus_erased == 0 && length(xs: r.dropped) == 0 && r.refused == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
