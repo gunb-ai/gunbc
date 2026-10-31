@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spool_queue {
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writer, PrincipalExternalHook, PrincipalDrainer,
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
-  ClaimEligible, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
+  ClaimEligible, ClaimRoleUndeclared, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
@@ -84,6 +84,7 @@ test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
     ClaimAbsent => exit_failure(reason: "a pending entry reads as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "a pending entry reads as terminal")
     ClaimRefused { detail: _ } => exit_failure(reason: "a pending entry is refused")
+    ClaimRoleUndeclared { role: _ } => exit_failure(reason: "a pending entry reads as undeclared")
   }
 }
 
@@ -117,12 +118,21 @@ test fn the_exit_spool_pending_writer_is_the_external_hook() -> ProcessExit {
   }
 }
 
+test fn a_role_the_spool_never_declared_is_refused_not_elected() -> ProcessExit {
+  match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleHandedOff }) {
+    ClaimRoleUndeclared { role: _ } => ExitSuccess
+    ClaimEligible { from: _, into: _ } => exit_failure(reason: "an undeclared role was elected")
+    _ => exit_failure(reason: "an undeclared role has the wrong refusal")
+  }
+}
+
 test fn a_lost_election_is_already_claimed_not_absent() -> ProcessExit {
   match spool_claim_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }) {
     ClaimAlreadyClaimed => ExitSuccess
     ClaimEligible { from: _, into: _ } => exit_failure(reason: "a claimed entry is claimable again")
     ClaimAbsent => exit_failure(reason: "a claimed entry reads as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "a claimed entry reads as terminal")
+    ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: a claimed entry reads as terminal")
     ClaimRefused { detail: _ } => exit_failure(reason: "a claimed entry is refused")
   }
 }
@@ -134,6 +144,7 @@ test fn an_entry_in_two_stages_is_refused_never_picked() -> ProcessExit {
     ClaimAlreadyClaimed => exit_failure(reason: "an ambiguous entry was resolved to claimed")
     ClaimAbsent => exit_failure(reason: "an ambiguous entry was resolved to absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "an ambiguous entry was resolved to terminal")
+    ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: an ambiguous entry was resolved to terminal")
   }
 }
 
@@ -193,6 +204,7 @@ test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit
     ClaimAlreadyClaimed => exit_failure(reason: "pending read as claimed")
     ClaimAbsent => exit_failure(reason: "pending read as absent")
     ClaimTerminal { state: _ } => exit_failure(reason: "pending read as terminal")
+    ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role: pending read as terminal")
     ClaimRefused { detail: _ } => exit_failure(reason: "pending was refused")
   }
 }
@@ -204,6 +216,7 @@ test fn a_refused_entry_is_terminal_and_never_claimable_again() -> ProcessExit {
     ClaimAlreadyClaimed => exit_failure(reason: "refused read as claimed")
     ClaimAbsent => exit_failure(reason: "refused read as absent")
     ClaimRefused { detail: _ } => exit_failure(reason: "refused was refused")
+    ClaimRoleUndeclared { role: _ } => exit_failure(reason: "undeclared role")
   }
 }
 

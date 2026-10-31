@@ -156,6 +156,10 @@ type SpoolEntryState
   | EntryAmbiguous { roles: List<SpoolRole> }
   | EntryObservationUnavailable { detail: String }
 
+fn spool_role_is_declared(kind: SpoolKind, role: SpoolRole) -> Bool {
+  spool_declaration(kind: kind).chain |> any(r => r == role) || spool_role_is_terminal(kind: kind, role: role)
+}
+
 fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
   spool_declaration(kind: kind).terminals |> any(r => r == role)
 }
@@ -198,6 +202,7 @@ type SpoolClaimAssessment
   | ClaimAbsent
   | ClaimAlreadyClaimed
   | ClaimTerminal { state: SpoolEntryState }
+  | ClaimRoleUndeclared { role: SpoolRole }
   | ClaimRefused { detail: String }
 
 fn spool_claim_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimAssessment {
@@ -209,9 +214,13 @@ fn spool_claim_assess(kind: SpoolKind, observed: SpoolEntryState) -> SpoolClaimA
       if spool_role_is_terminal(kind: kind, role: r) {
         ClaimTerminal { state: observed }
       } else {
-        match spool_chain_successor(kind: kind, role: r) {
-          Present { value: next } => ClaimEligible { from: r, into: next }
-          Absent => ClaimAlreadyClaimed
+        if spool_role_is_declared(kind: kind, role: r) {
+          match spool_chain_successor(kind: kind, role: r) {
+            Present { value: next } => ClaimEligible { from: r, into: next }
+            Absent => ClaimAlreadyClaimed
+          }
+        } else {
+          ClaimRoleUndeclared { role: r }
         }
       }
   }
