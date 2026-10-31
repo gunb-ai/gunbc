@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.an_int_argument_inhabits_a_nat_parameter_at_typecheck
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data an_int_argument_inhabits_a_nat_parameter_at_typecheck: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_int_argument_inhabits_a_nat_parameter_at_typecheck" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: the seed accepts an Int-typed argument at a Nat parameter. Int = GroupCompletion<Nat> strictly contains Nat, so Int to Nat is partial; the implicit route is not total, and DESIGN section 4 (coercion is the implicit-safe subset) refuses it. It is admitted ONLY through a declared checked conversion returning Optional (ruling `where_refinements_retire_for_checked_constructors`) or carried evidence, or as an in-range literal introduced at the expected type. Nat to Int, and UInt to Nat (alias), remain admitted.",
+
+    "HARM: a negative Int reaches a Nat consumer; observed as a runtime divergence (call depth 100000) while a non-negative one passes silently, so the wrongness is invisible until a negative occurs. RUNG FOUND AT: silent until a runtime negative (below the ladder). ATTAINABLE CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER: the front-end inhabitance judgment refuses Int at a Nat position unless a declared route is named; the capability restored is expected-type-directed literal introduction replacing the types-only numeric arm.",
+
+    "ROUTE, BY READING (unrun): `v1.compiler.infer` `declared_type_inhabitance` reaches its `declared_realizes_as_kernel_numeric` arm, which asks only the produced numeral type and `v1.compiler.coercion` `provenance_realizes_natively` of the declared provenance. That predicate is types-only, so it cannot tell an Int VALUE from a numeral LITERAL. Repair: replace the numeric arm with literal introduction at the expected type.",
+
+    "EVIDENCE: witness `dag/test/claim/int_argument_at_nat_parameter_witness.dag` (branch int-at-nat-red), UNRUN: RED Int parameter at Nat; controls Nat value, non-negative literal, Nat to Int widening; the negative-literal RED status is unknown until run. Raw outputs and fixtures: zesty-badger-599 ~/zb-evidence, seed sha256 747ed06b.. (f20cdcc799ee), tree 761485283f2f, fixtures 08bfd3da.. and ce388ada.., outputs 9ef686fa.. and 202791d1... The v2 probe there was assembly-rejected including its control: INVALID, no v2 verdict.",
+
+    "SIBLING, CITED NOT DUPLICATED: the `std.integer` UInt8 = Compose<UInt, MachineWidth<8>> phantom hole (transparent to Int; base64_octets [256,0,0]). Also M2c and #15441. The recursion symptom stays with clever T9.",
+
+    "STATED OUT, OWNED BY Q4: a Char value at a declared Int (a branded Int alias) is a distinct case not claimed closed by the numeric-arm repair. Candidate admitting arms, by reading and unrun: (a) `alias_identity_in_judgment`, (b) the terminal `Inhabits` fall-through of `declared_type_inhabitance`. A probe separating them is unrun.",
+  ],
+
+  evidence: [],
+}
