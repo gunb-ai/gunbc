@@ -1128,16 +1128,16 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 //
 // "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
 // alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
-// is this: the interlock triple clear AND every activation receipt held against the pinned base.
+// is this: every interlock release milestone (act0_release_milestones) clear AND every activation receipt held against the pinned base.
 // The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
 // until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
 // stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
 //
-// A NOT-DERIVABLE MILESTONE IN THE TRIPLE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
+// A NOT-DERIVABLE RELEASE MILESTONE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
 // an unanswerable milestone's name into an outstanding list would report an unknown as ordinary
 // pending work, which is the state-space conflation the startability classifier above exists to
 // prevent -- committed at standing grain instead. So the unanswerable half is checked first and
-// carries the union of the causes, and the receipts are only reached once the triple can answer.
+// carries the union of the causes, and the receipts are only reached once those milestones can answer.
 fn act0_release_milestone_names(want: MilestoneStandingClass) -> List<String> {
   fold(act0_release_milestones, init: [], f: fn(acc, m) {
     if standing_class_label(c: standing_class(s: milestone_status(m: m)))
@@ -1182,7 +1182,7 @@ fn act0_release_standing() -> MilestoneStanding {
     Absent =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "ACT-0 RELEASE: the interlock triple clear and every activation receipt held against the pinned base" as NonEmptyStr,
+          subject: "ACT-0 RELEASE: every interlock release milestone (act0_release_milestones) clear and every activation receipt held against the pinned base" as NonEmptyStr,
           outstanding: concat(
             act0_release_milestone_names(want: ClassOutstanding),
             activation_receipts_outstanding(held: held_activation_receipts))
