@@ -16,14 +16,20 @@ import extdeps.bmc.capability {
   release_row_has_capability,
 }
 import extdeps.bmc.megarac { megarac_firmware_0_45_3, megarac_firmware_0_32 }
-import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.megarac_managed_host {
+  megarac_operation_evidence, admit_megarac_host_at_current_build,
+  MegaRacHostAdmitted, MegaRacHostRefused, MegaRacOperationNotGrounded,
+}
 import gunbc.machine_intake.megarac_operation_evidence {
   megarac_operation_evidence_fixture_for,
   megarac_operation_evidence_fixture_none,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.content_hash { content_hash_of_value }
-import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import gunbc.host.megarac_operation_standing {
+  MegaRacOperationEvidence, megarac_operation_evidence_of,
+  MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+}
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionAdmitted,
   VirtualMediaBootSelectionRefused,
@@ -1117,3 +1123,42 @@ test fn w_a_current_row_without_the_power_capability_refuses_the_handoff() -> Bo
 }
 
 
+
+// THE SCREEN AND THE SENSOR PANEL ARE COVERAGE ON THE BOOT'S RECEIPTS, NOT GATES ON ITS POWER-ON. Thin
+// evidence: the SAME readings and transitions the ledger commits, with only the media-attach receipts
+// kept -- no KVM canvas still, no SDR socket naming. On that evidence the boot is STILL admitted, while
+// those two operations refuse as not grounded at the build the reading names. The control beside them:
+// on the committed ledger both DO admit, so the refusal is the missing receipt and not an operation this
+// controller can never perform. What the boot route consumes is the attach admission, and nothing else.
+test fn w_the_boot_reaches_attach_with_the_screen_and_sensor_operations_ungrounded() -> Bool {
+  managed_hosts() |> all(h => {
+    let committed = committed_evidence()
+    let thin = megarac_operation_evidence_of(
+      readings: committed.readings,
+      receipts: filter(committed.receipts, r => match r.operation { MegaRacVirtualMediaAttach => true  _ => false }),
+      transitions: committed.transitions,
+    )
+    let boot_still_admitted = match boot_selection(evidence: thin, host: h) {
+      VirtualMediaBootSelectionRefused { cause: _ } => false
+      VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
+    }
+    let refused_as_ungrounded = match admit_megarac_host_at_current_build(evidence: thin, host: h, operation: MegaRacKvmCanvasStill) {
+      MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true
+      _ => false
+    } && match admit_megarac_host_at_current_build(evidence: thin, host: h, operation: MegaRacSdrSocketNaming) {
+      MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true
+      _ => false
+    }
+    let control_admitted_on_the_committed_ledger = match admit_megarac_host_at_current_build(evidence: committed, host: h, operation: MegaRacKvmCanvasStill) {
+      MegaRacHostAdmitted { host: _ } => true
+      _ => false
+    } && match admit_megarac_host_at_current_build(evidence: committed, host: h, operation: MegaRacSdrSocketNaming) {
+      MegaRacHostAdmitted { host: _ } => true
+      _ => false
+    }
+    // NOT VACUOUS: the thinning really removed receipts, and the attach receipts survived it.
+    (filter(committed.receipts, r => match r.operation { MegaRacVirtualMediaAttach => true  _ => false })).length() > 0
+      && thin.receipts.length() < committed.receipts.length()
+      && boot_still_admitted && refused_as_ungrounded && control_admitted_on_the_committed_ledger
+  }) && count(managed_hosts()) == 1
+}
