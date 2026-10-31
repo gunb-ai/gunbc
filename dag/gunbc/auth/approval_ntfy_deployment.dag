@@ -1,6 +1,6 @@
 module gunbc.auth.approval_ntfy_deployment
 
-import std.types { NonEmptyStr, String, Port }
+import std.types { NonEmptyStr, String, Port, Secret }
 import std.logic { Bool }
 import std.human_intervention {
   HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision,
@@ -13,7 +13,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 import extdeps.uri { Uri, Https }
-import std.types { Secret }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_converge_command,
 }

@@ -1,7 +1,7 @@
 module test.claim.approval_ntfy_deployment_witness
 
 import std.logic { Bool }
-import std.types { Int }
+import std.types { Int, list_length }
 import std.human_intervention {
   ProvisioningHumanBurden, HumanIntervention, FleetOnce, DeviceOnce, EveryProvision,
   BreakGlassOnly, human_intervention_count_at, HumanInterventionIdentity,
