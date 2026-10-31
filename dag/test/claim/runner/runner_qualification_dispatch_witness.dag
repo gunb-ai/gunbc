@@ -1,5 +1,6 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
@@ -41,8 +42,9 @@ import gunbc.runner.runner_qualification_floor_job {
   qualification_attempt_dispatch_input, qualification_floor_revision_guard_step, qualification_guard_script, qualification_guard_mismatch_marker,
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_dispatch_values }
 import gunbc.runner.runner_qualification_dispatch {
-  qualification_revision_dispatch_input, qualification_dispatch_inputs, qualification_dispatch_effect, SubjectRequiredInputUnsupplied,
+  qualification_revision_dispatch_input, qualification_floor_dispatch_spec, qualification_dispatch_effect, SubjectRequiredInputUnsupplied,
   SubjectFloorRevisionGuardNotFirst, SubjectFloorStepRunsPastTheGuard,
   QualificationSubjectAdmitted, QualificationSubjectRefused,
   SubjectSlotForAnotherWorkflow, SubjectAttemptInputUndeclared, SubjectFloorJobAbsent, SubjectFloorRunsOnNotTheAttemptInput,
@@ -169,11 +171,11 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -226,12 +228,12 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && (expected.registered_runner as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
                 && (expected.floor_job_name as String) == "qualification floor"
                 && (expected.revision as String) == (revision as String)
-                && count(map_keys(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision, host: s.host))) == 4
-                && (match map_get(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision, host: s.host), qualification_revision_dispatch_input.name) {
+                && count(map_keys(fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: s.attempt, revision: s.pin.revision, host: s.host)))) == 4
+                && (match map_get(fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: s.attempt, revision: s.pin.revision, host: s.host)), qualification_revision_dispatch_input.name) {
                   Present { value: v } => v == (revision as String)
                   Absent => false
                 })
-                && (match map_get(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision, host: s.host), qualification_attempt_dispatch_input.name) {
+                && (match map_get(fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: s.attempt, revision: s.pin.revision, host: s.host)), qualification_attempt_dispatch_input.name) {
                   Present { value: v } => v == (attempt as String) && (ephemeral_slot_labels(host: h.host, attempt: attempt) |> any(l => l == v))
                   Absent => false
                 })
@@ -261,11 +263,11 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
 test fn the_production_mint_over_the_generated_fleet_converge_workflow_admits_its_floor_job() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
-      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))) {
+      match unit_slot_of(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)) {
       Absent => false
       Present { value: slot } =>
       match dispatch_jit_mint(
-        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))),
+        subject: host_unit_registration_subject(standing: host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)),
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
@@ -411,7 +413,7 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {
-      let standing = host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch))
+      let standing = host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: pin_branch), receipt: ReceiptAbsent)
       let group = group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch))
       match unit_slot_of(standing: standing) {
       Absent => false
@@ -944,10 +946,10 @@ test fn a_required_input_the_dispatch_does_not_carry_refuses_and_is_named() -> B
   }) && (match qualification_floor_admission(workflow: workflow_also_requiring(extra: extra_optional_input), floor_job_id: floor_job_id) {
     QualificationFloorAdmitted { floor_job_name: _ } => true
     QualificationFloorRefused { refusal: _ } => false
-  }) && (match map_get(qualification_dispatch_inputs(attempt: attempt, revision: revision, host: "mtcollins1" as HostIdentity), "mode") {
+  }) && (match map_get(fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: attempt, revision: revision, host: "mtcollins1" as HostIdentity)), "mode") {
     Present { value: v } => v == "qualification_floor"
     Absent => false
-  }) && (match map_get(qualification_dispatch_inputs(attempt: attempt, revision: revision, host: "mtcollins1" as HostIdentity), "host") {
+  }) && (match map_get(fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: attempt, revision: revision, host: "mtcollins1" as HostIdentity)), "host") {
     Present { value: v } => v == "mtcollins1"
     Absent => false
   })

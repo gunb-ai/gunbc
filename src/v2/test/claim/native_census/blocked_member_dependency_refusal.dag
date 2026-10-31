@@ -1,0 +1,280 @@
+module v2.test.claim.native_census.blocked_member_dependency_refusal
+
+// A MEMBER THAT WAS READ AND THEN REFUSED IS NOT A MISSING MODULE.
+//
+// The census acquires every member of a walk (v2.compiler.module_acquisition), and a member whose own front
+// end refuses is recorded as blocked and deliberately excluded from the root population -- it never became
+// a root, because nothing was admitted from it. Resolve then sees only `roots`, so the requester that
+// imported that member is refused with `resolve_module_not_found`, which is a FALSE statement about a module
+// whose bytes were read and whose refusal cause is already held on the blocked member's own row (the live
+// specimen: v2.workflow.roster_import_sweep imports extdeps.git, whose file exists, is enumerated and is
+// read -- 116,078 chars of content in the acquisition block -- and whose row carried
+// resolve_module_not_found). DESIGN section 5 asks for a typed, located statement of the real boundary;
+// section 6b locates the earliest wrong boundary exactly here, where a blocked member's refusal is turned
+// into a missing root.
+//
+// WHAT THESE CLAIMS PIN, and what they deliberately do NOT. They pin the requester's side: the reason symbol,
+// the import's own locus, and the blocked member's IDENTITY in the carrier std.diagnostic already provides
+// (Correction.Unavailable { DeclarerRefused { declarer } }, whose comment says a census joins on that
+// identity rather than reading the refusal's reason text). They do NOT copy the blocked member's cause into
+// the requester's diagnostic -- that cause lives on the blocked member's own refusal row and a copy would be
+// a second authority for it (DESIGN section 3). The last claim is the census side of the same fact: the
+// identity handed to admission is the one the acquisition fold already recorded per read, so no second walk
+// decides which member was blocked.
+
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, empty_map, fold_list, length }
+import std.optional { Optional, optional_absent, optional_present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.name_resolve {
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  ValidatedModuleRoots,
+  admit_imported_modules,
+  validate_module_roots,
+  validated_module_roots_with_blocked_members
+}
+import v2.compiler.native_test_vocabulary { FileRefusalAtWholeFile, FileRefusalLink, NativeTestFileRefusal }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.compiler.source_root_eval { native_test_context_blocked_members }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Correction,
+  DeclarerRefused,
+  Locus,
+  None,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable
+}
+import v2.std.namespace_alias { CapturedImportTarget }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, fold_list_node, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName }
+
+// THE FIXTURES. One accepted root (the requester's own module) and, in the blocked case, a second name that
+// is neither a root nor absent: the member the acquisition read and then refused.
+fn bm_qn(seg: Symbol) -> QualifiedName {
+  Cons { head: seg, tail: Empty }
+}
+
+fn bm_qn_pair(head_seg: Symbol, tail_seg: Symbol) -> QualifiedName {
+  Cons { head: head_seg, tail: Cons { head: tail_seg, tail: Empty } }
+}
+
+fn bm_qn_node(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  )
+}
+
+fn bm_module_root(segments: FreeMonoid<Symbol>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(
+    import_bindings: no_import_bindings(),
+    imported_modules: no_imported_modules(),
+    type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
+    test_markers: test_marker_channel_empty(),
+    root: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+        dag_surface_edge(
+          edge: ^dag_surface_module_header_qualified_name,
+          target: bm_qn_node(segments: segments)
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    diagnostics: None
+  )
+}
+
+// THE ONE LOCUS THE REQUESTER CAN BE POINTED AT: its own import declaration (the specimen's is line 48, the
+// `import extdeps.git` statement). Every refusal here must land on this locus, not on a whole-file one.
+fn bm_located_import(target: QualifiedName) -> CapturedImportTarget {
+  CapturedImportTarget {
+    target: target,
+    at: Textual { file: ^bm_import_file, extent: ByteRange { start: 14, end: 42 } }
+  }
+}
+
+fn bm_initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+// The requester's validated root population, or false when even the requester's own module will not
+// validate -- so a refusal can never pass by fixture luck.
+fn bm_with_validated_roots(f: fn(ValidatedModuleRoots) -> Bool) -> Bool {
+  match bm_module_root(segments: Cons { head: ^bm_subject_seg, tail: Empty }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: subject_root, diagnostics: _ } =>
+      match validate_module_roots(roots: Cons { head: subject_root, tail: Empty }) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } => f(validated)
+      }
+  }
+}
+
+fn bm_admit(roots: ValidatedModuleRoots, target: QualifiedName) -> AdmissionState {
+  admit_imported_modules(
+    roots: roots,
+    modules: Cons { head: bm_located_import(target: target), tail: Empty },
+    state: bm_initial_admission_state(),
+    subject_qn: bm_qn(seg: ^bm_subject_seg),
+    index: source_root_index_empty(),
+    active_roots: Empty
+  )
+}
+
+fn bm_is_import_locus(l: Locus) -> Bool {
+  match l {
+    Textual { file: file, extent: extent } =>
+      (symbol_lexeme(sym: file) == symbol_lexeme(sym: ^bm_import_file))
+        && (match extent {
+          ByteRange { start: start, end: end } => (start == 14) && (end == 42)
+          _ => false
+        })
+    _ => false
+  }
+}
+
+fn bm_names_declarer(c: Correction, declarer: QualifiedName) -> Bool {
+  match c {
+    Unavailable { reason: DeclarerRefused { declarer: named } } =>
+      fold_list(
+        xs: named,
+        empty: true,
+        cons: fn(acc, seg) {
+          if !acc { false } else {
+            fold_list(
+              xs: declarer,
+              empty: false,
+              cons: fn(seen, want) { if seen { true } else { symbol_lexeme(sym: seg) == symbol_lexeme(sym: want) } }
+            )
+          }
+        }
+      )
+    _ => false
+  }
+}
+
+// RED ON MAIN. A requester imports the member the acquisition read and then refused at its front end. Main
+// refuses that import with resolve_module_not_found -- false about a module that was read (its content was
+// in hand, and its refusal cause is already recorded). The row must instead name the refusal it is a
+// dependency of: the typed dependency reason, at the import's own locus, and the blocked member's identity
+// in the carrier std.diagnostic already defines for exactly this join.
+test fn imported_module_blocked_at_front_end_refuses_as_dependency_not_not_found() -> Bool {
+  let blocked = bm_qn_pair(head_seg: ^bm_blocked_org, tail_seg: ^bm_blocked_member)
+  bm_with_validated_roots(f: fn(validated) {
+      match bm_admit(
+        roots: validated_module_roots_with_blocked_members(roots: validated, blocked_members: Cons { head: blocked, tail: Empty }),
+        target: blocked
+      ) {
+        AdmissionAccepted { bindings: _, origins: _ } => false
+        AdmissionRejected { diagnostics: d } =>
+          (d.head.reason == ^resolve_imported_module_refused)
+            && bm_is_import_locus(l: d.head.at)
+            && bm_names_declarer(c: d.head.correction, declarer: blocked)
+      }
+  })
+}
+
+// CONTROL, THE ABSENT CASE STAYS ITSELF. The same import of a name that is neither a root nor a blocked
+// member must keep saying resolve_module_not_found: the fix is a separation, not a suppression, and a
+// module nobody read is still simply not there.
+test fn imported_module_neither_root_nor_blocked_still_refuses_as_not_found() -> Bool {
+  let absent = bm_qn_pair(head_seg: ^bm_absent_org, tail_seg: ^bm_absent_member)
+  bm_with_validated_roots(f: fn(validated) {
+      match bm_admit(roots: validated, target: absent) {
+        AdmissionAccepted { bindings: _, origins: _ } => false
+        AdmissionRejected { diagnostics: d } =>
+          (d.head.reason == ^resolve_module_not_found) && bm_is_import_locus(l: d.head.at)
+      }
+  })
+}
+
+// CONTROL, THE ACCEPTED CASE. The very same fixture admits an import of a module that IS a root, so the
+// refusal above is the blocked member's and not a fixture that refuses on every route.
+test fn import_of_a_real_root_is_still_accepted_on_the_same_fixture() -> Bool {
+  bm_with_validated_roots(f: fn(validated) {
+      match bm_admit(roots: validated, target: bm_qn(seg: ^bm_subject_seg)) {
+        AdmissionAccepted { bindings: _, origins: _ } => true
+        AdmissionRejected { diagnostics: _ } => false
+      }
+  })
+}
+
+// A BLOCKED MEMBER IS NOT A ROOT, AND THE REASON DEPENDS ON THE LOCALITY ALONE. With no blocked members
+// attached, this same name is refused as not_found; with them, as the dependency refusal. Both readings
+// come from one mint, so a row that claimed the dependency without the block, or the block without the
+// dependency, fails one half of this claim.
+test fn the_reason_separates_on_the_block_and_on_nothing_else() -> Bool {
+  let blocked = bm_qn_pair(head_seg: ^bm_blocked_org, tail_seg: ^bm_blocked_member)
+  bm_with_validated_roots(f: fn(validated) {
+      match bm_admit(roots: validated, target: blocked) {
+        AdmissionAccepted { bindings: _, origins: _ } => false
+        AdmissionRejected { diagnostics: plain } =>
+          (plain.head.reason == ^resolve_module_not_found)
+            && (match bm_admit(
+                  roots: validated_module_roots_with_blocked_members(roots: validated, blocked_members: Cons { head: blocked, tail: Empty }),
+                  target: blocked
+                ) {
+                  AdmissionAccepted { bindings: _, origins: _ } => false
+                  AdmissionRejected { diagnostics: carried } =>
+                    carried.head.reason == ^resolve_imported_module_refused
+                })
+      }
+  })
+}
+
+// THE CENSUS SIDE OF THE SAME FACT, WITH NO SECOND WALK. The identity admission is handed is the one the
+// acquisition fold already recorded for the read it blocked: v2.compiler.source_root_eval
+// native_test_context_blocked_members reads the fold's OWN refusal rows -- each of which parsed the module
+// that read declared, once, from the header line the lane's scan reads -- and yields their names. A row with
+// no declared module names nothing and contributes nothing; a read whose header declares a name contributes
+// exactly that name, which is what makes the requester's declarer identity joinable against the blocked
+// member's own row rather than re-derived from the ingest a second time.
+fn bm_refusal_row(module: Optional<QualifiedName>) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: ^bm_blocked_file,
+    module: module,
+    chain: FreeSemigroup {
+      head: FileRefusalLink { reason: ^bm_blocked_refusal_reason, at: FileRefusalAtWholeFile },
+      tail: Empty
+    }
+  }
+}
+
+test fn census_blocked_member_identity_comes_from_the_read_its_own_header_declares() -> Bool {
+  let rows = Cons {
+    head: bm_refusal_row(module: optional_present(value: bm_qn_pair(head_seg: ^bm_blocked_org, tail_seg: ^bm_blocked_member))),
+    tail: Cons {
+      head: bm_refusal_row(module: optional_absent()),
+      tail: Empty
+    }
+  }
+  let carried = native_test_context_blocked_members(rows: rows)
+  (length(xs: carried) == 1)
+    && (match carried {
+      Cons { head: name, tail: Empty } =>
+        match name {
+          Cons { head: first_seg, tail: Cons { head: last_seg, tail: Empty } } =>
+            (symbol_lexeme(sym: first_seg) == symbol_lexeme(sym: ^bm_blocked_org))
+              && (symbol_lexeme(sym: last_seg) == symbol_lexeme(sym: ^bm_blocked_member))
+          _ => false
+        }
+      _ => false
+    })
+}

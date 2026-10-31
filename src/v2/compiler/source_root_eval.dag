@@ -83,6 +83,7 @@ import v2.compiler.occurrence_resolution_census {
 }
 import v2.compiler.name_resolve {
   resolution_context_namespace,
+  resolution_context_with_blocked_members,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
@@ -296,6 +297,7 @@ import v2.compiler.dependency_demand_census {
   demand_census_report,
   demand_census_strip,
   demand_census_unbound_locus_from_diagnostics,
+  demand_census_unbound_site_text,
 }
 import v2.compiler.normalized_tree {
   NormalizedTree,
@@ -1060,18 +1062,38 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
   }
 }
 
+// The members this ingest READ AND THEN REFUSED, as the typed names a requester can be pointed at.
+// `native_test_context_absorb` already records one row per read whose front end refused, with the module
+// that read declared (parsed once, from the header the lane's own scan reads); a row with no declared
+// module names nothing and is skipped. This is the same authority that refusal row is, re-read -- not a
+// second pass over the ingest -- so the blocked member's own row keeps the cause and this yields only the
+// identity `validated_module_root_for_name` needs to refuse an import with the right reason.
+fn native_test_context_blocked_members(rows: FreeMonoid<NativeTestFileRefusal>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.module {
+        Present { value: qn } => list_snoc_item(xs: acc, item: qn)
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn native_test_context_finish(
   state: NativeTestContextFoldState,
   front: NativeTestFrontEnd,
   ingest: SourceRootIngest
 ) -> NativeTestContext {
   NativeTestContext {
-    resolution: resolution_context(
+    resolution: resolution_context_with_blocked_members(
       lm: front.lm,
       roots: state.roots,
       index: state.index,
       active_roots: source_root_set_from_ingest(ingest: ingest),
-      policy: v2.std.resolution_policy.default_name_resolution_policy()
+      policy: v2.std.resolution_policy.default_name_resolution_policy(),
+      blocked_members: native_test_context_blocked_members(rows: state.file_refusals)
     ),
     file_refusals: state.file_refusals,
     accepted_file_advisories: state.accepted_file_advisories,
@@ -3754,11 +3776,17 @@ fn native_census_at_locus(at: FileRefusalAt) -> Optional<SourceLineCol> {
   }
 }
 
-fn native_census_infer_binding_lines(entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
+// The resolve arm names WHICH refusal the module was refused at, by identity, and where the resolver
+// located it: the walk's first_refusal accessor is the one carrier of that, and this renders it into the
+// row's two trailing fields (cause, then locus) so a reader of stdout -- the ambient-name census reader, and
+// through it the namespace-wave binding diff's receipt -- can say which cause a refused module carries
+// without the reader's own stderr line. A row whose outcome is not a resolve refusal (the front-end arm)
+// has no resolve cause to name and keeps the two fields as '-'.
+fn native_census_infer_binding_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
   match outcome {
-    NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end"]
+    NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end\t-\t-"]
     NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: p, loci: l, unbound: u } =>
-      list_snoc_item(xs: list_append(left: occurrence_resolution_partial_lines(module: entry.module, entries: p, loci: l), right: u), item: "binding_unreached\t" + entry.module + "\tresolve")
+      list_snoc_item(xs: list_append(left: occurrence_resolution_partial_lines(module: entry.module, entries: p, loci: l), right: u), item: "binding_unreached\t" + entry.module + "\tresolve\t" + native_census_infer_first_refusal_text(positions: positions, entry: entry, outcome: outcome))
     NativeInferCensusInferred { resolved: r, inferred: _, frontier: _, loci: l } =>
       occurrence_resolution_contribution_lines(c: occurrence_resolution_contribution(module: entry.module, tree: r, loci: l))
     NativeInferCensusInferRefused { resolved: r, chain: _, loci: l } =>
@@ -4382,6 +4410,7 @@ fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
         AmbiguousIntent => optional_absent()
         ExternalContractUnknown => optional_absent()
         CorrectionNotModeled => optional_absent()
+        RequestedModuleMissing { requested: _ } => optional_absent()
       }
   }
 }
@@ -4540,6 +4569,45 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
       NativeCensusCompletenessObserved { observation: ObservationComplete }
     NativeInferCensusInferRefused { resolved: _, chain: _ } =>
       NativeCensusCompletenessObserved { observation: ObservationIncomplete { reason: ^native_census_infer_stops_at_first_fatal } }
+  }
+}
+
+// THE FIRST REFUSAL OF A MODULE THAT REFUSED AT RESOLVE, as the census-infer row carries it: the fatal's
+// reason SYMBOL and the unbound reference the resolver located, at the position the census's own position
+// table gives. WHY IT IS AN ACCESSOR AND NOT A FIELD: the two facts are not derived here. They are the
+// SAME derivation the resolve-standing verdict is made of (native_demand_census_unbound_standing, which is
+// what `gunbc test //gunbc/instruments:dependency-demand-census` prints `at=`/`unbound_ref=` from) --
+// diagnostics_fatal_reason over the fatal plus demand_census_unbound_locus_from_diagnostics, and
+// native_census_locate_fatal for the position -- applied to the outcome's fatal. A row-shaped copy of that
+// walk would be a second authority for which refusal is first (DESIGN section 3), and the two could then
+// disagree about the module the census is reporting.
+//
+// ITS DOMAIN IS THE RESOLVE REFUSAL ALONE. A file refused before resolve has no resolve reason to name,
+// and a module whose resolve ACCEPTED and whose infer then refused carries an infer chain, not a resolve
+// refusal: both answer Absent, so the row never claims a cause it does not have.
+type NativeCensusFirstRefusal {
+  module: String
+  cause: Symbol
+  unbound: Optional<DemandCensusUnboundLocus>
+  at: FileRefusalAt
+}
+
+fn native_census_infer_first_refusal(
+  positions: NativeCensusPositionTable,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> Optional<NativeCensusFirstRefusal> {
+  match outcome {
+    NativeInferCensusResolveRefused { first: first, rest: _, observation: _, partial: _, loci: _, unbound: _ } =>
+      optional_present(value: NativeCensusFirstRefusal {
+        module: entry.module,
+        cause: diagnostics_fatal_reason(d: first),
+        unbound: demand_census_unbound_locus_from_diagnostics(d: first),
+        at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions)
+      })
+    NativeInferCensusFileRefused => Absent
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _, loci: _ } => Absent
+    NativeInferCensusInferRefused { resolved: _, chain: _, loci: _ } => Absent
   }
 }
 
@@ -6738,6 +6806,25 @@ fn census_file_refusal_at_text(at: FileRefusalAt) -> String {
     FileRefusalAtInvariant { invariant: i } => concat("invariant ", symbol_lexeme(sym: i))
     FileRefusalAtDeclaration { declaration: d } => concat("declaration ", qualified_name_to_dotted_string(qn: d))
     FileRefusalAtUnresolvedNode => "unresolved-node"
+  }
+}
+
+// THE FIRST REFUSAL AS THE TWO TRAILING FIELDS OF A binding_unreached ROW: the cause's identity and the
+// locus (module line:column, or the declaration/invariant/whole-file arm) the census located it at. It
+// renders the one carrier native_census_infer_first_refusal is -- census_file_refusal_at_text for the
+// position and demand_census_unbound_site_text for the reference the resolver located, the same two
+// renderers the dependency-demand census prints `at=` and `unbound_ref=` with -- so a wave receipt names
+// the cause BY IDENTITY instead of only saying that resolve refused. A module that did not refuse at
+// resolve prints `-` for both: absence is a fact the row states, not a field it omits.
+fn native_census_infer_first_refusal_text(
+  positions: NativeCensusPositionTable,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> String {
+  match native_census_infer_first_refusal(positions: positions, entry: entry, outcome: outcome) {
+    Present { value: r } =>
+      concat(symbol_lexeme(sym: r.cause), concat("\t", concat(demand_census_unbound_site_text(u: r.unbound), concat(" ", census_file_refusal_at_text(at: r.at)))))
+    Absent => "-\t-"
   }
 }
 

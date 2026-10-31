@@ -148,7 +148,7 @@ fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
 
 fn derive_pxe_with(evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
   match evidence.chain {
-    SitePxeEdgeChainUnpinned { architecture: _, obligation: o } => ArmUnobserved { missing: LoaderChainNotPinned { obligation: o } }
+    SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: o } => ArmUnobserved { missing: LoaderChainNotPinned { obligation: o } }
     SitePxeEdgeChainPinned { chain: c } => match site_pxe_edge_chain_secure_boot(chain: c) {
       ChainSecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
       ChainSecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }

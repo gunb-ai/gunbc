@@ -17,7 +17,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexCurrencyMismatch, flex_bid_admission,
 }
 import product.fabric.flex_market {
-  FlexOwnerLabel, FlexOwnedCard, FlexDestroy, FlexKeep, flex_owner_label_gunbc_flex,
+  FlexOwnerLabel, FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupStaleLoading, flex_owner_label_gunbc_flex,
 }
 import product.fabric.serving_recipe { SelectionQuoteEstablished, SelectionQuoteRefusedUnavailable }
 import product.fabric.flex_vast_shadow { FlexInstancesUnobserved,
@@ -40,8 +40,10 @@ import product.fabric.flex_vast_loop { flex_vast_destroy_target, flex_vast_rente
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
+  flex_vast_template_hashes, flex_vast_template_hash, flex_vast_template_hash_binding, FlexVastTemplateHashBound, FlexVastTemplateHashUnbound,
   FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step, FlexReleaseInputs, FlexPassReleaseReadingsUnread, flex_key_from_custody, FlexPassStopped,
 }
+import product.fabric.flex_vast_template { flex_template_retired_hash, flex_vast_args_launch, flex_vast_onstart_b64_flag, flex_launch_runtype_wire, flex_launch_args, flex_launch_onstart, FlexArgsLaunch, FlexRentLaunch }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, rented_allocation_identity,
@@ -221,6 +223,54 @@ test fn dry_with_a_destroy_due_records_it_and_destroys_nothing() -> Bool {
   } && !w_is_write(p: p)
 }
 
+// ---- DEAD FIRST: the pass consumes flex_market's flex_cleanup_dead. A card still loading past the launch's
+// envelope is destroyed even with room under the cap and no replacement serving — the release-for-value pass
+// holds on all three of those, and the card is being paid for either way. Before this the cleanup function
+// had no production caller at all, so a stuck-loading card sat in the fleet forever.
+test fn a_stale_loading_card_is_destroyed_by_the_pass_even_with_room_and_no_replacement() -> Bool {
+  let input = w_dead_input(loading_age: 7200, outbid: false)
+  match flex_plan_pass(input: input) {
+    FlexPlanDryDestroy { would: FlexDestroy { id: i, why: FlexCleanupStaleLoading } } => (i == "1001")
+    _ => false
+  }
+}
+
+// The same card at 600 s of loading is INSIDE the launch's envelope (an args-mode first boot was seen at
+// about 25 min, an ssh-mode one at 56+ min), so the pass plans nothing. This is the regression the old 600 s
+// cut caused: it destroyed cards that were booting normally, on a card whose rate was already being paid.
+test fn a_card_still_inside_the_launch_envelope_is_left_alone_by_the_pass() -> Bool {
+  let input = w_dead_input(loading_age: 600, outbid: false)
+  match flex_plan_pass(input: input) {
+    FlexPlanIdle => true
+    _ => false
+  }
+}
+
+// An outbid card is dead whatever its loading age, and the pass destroys it.
+test fn an_outbid_card_is_destroyed_by_the_pass() -> Bool {
+  let input = w_dead_input(loading_age: 0, outbid: true)
+  match flex_plan_pass(input: input) {
+    FlexPlanDryDestroy { would: FlexDestroy { id: i, why: _ } } => (i == "1001")
+    _ => false
+  }
+}
+
+fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
+  let stuck = FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex, id: "1001" as NonEmptyStr,
+    vram: byte_size(count: 51539607552),
+    rate: usd_hour(amount: money_amount_micro(count: 2000000)),
+    held: true, running: false, loading: true, outbid: outbid, loading_age: second(count: loading_age),
+  }
+  FlexPassInput {
+    policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
+    gates: w_open, now: 1792008000000, cooldown: none,
+    observation: FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2)]), charges: w_charges(units: 1) },
+    cards: [stuck], allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
+    no_room: false, replacement_serving: false,
+  }
+}
+
 fn w_card(owner: String, id: NonEmptyStr) -> FlexOwnedCard {
   FlexOwnedCard {
     owner: owner as FlexOwnerLabel, id: id, vram: byte_size(count: 51539607552),
@@ -312,6 +362,44 @@ fn w_quote_refusal() -> FlexPassRefusal? {
   let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: SelectionQuoteRefusedUnavailable, admission: i.admission, placement: i.placement }
   let base = w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: intent })
   w_refusal_of(p: flex_plan_pass(input: base))
+}
+
+// ---- THE PER-RENT LAUNCH: the create body carries runtype args, the container command and the base64
+// on-start script in the env; the stored onstart is empty.
+test fn the_create_body_carries_runtype_args_the_args_list_and_onstart_b64() -> Bool {
+  let p = flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) }))
+  match w_plan_create_request(p: p) {
+    Present { value: r } =>
+      (flex_launch_runtype_wire(launch: r.launch.mode) == "args")
+        && (flex_launch_args(launch: r.launch.mode) == flex_vast_args_launch)
+        && (list_length(flex_launch_args(launch: r.launch.mode)) == 3)
+        && (flex_launch_onstart(launch: r.launch.mode) == "")
+        && r.launch.env.contains(flex_vast_onstart_b64_flag())
+        && !r.launch.env.contains("POOL_API_KEY")
+    Absent => false
+  }
+}
+
+// ---- THE HASH BINDING: unbound until flex_template_ensure binds a hash. The retired hash is refused
+// whoever names it, and a create with no bound hash refuses.
+test fn the_binding_is_declared_unbound_and_a_create_with_no_bound_hash_refuses() -> Bool {
+  let unbound = match flex_vast_template_hash_binding { FlexVastTemplateHashUnbound { reason: _ } => true  FlexVastTemplateHashBound { rows: _ } => false }
+  let none_rows = list_length(flex_vast_template_hashes) == 0
+  let refused = match w_wet_refusal(entry: w_established(), admitted: true, gates: w_open, hashes: flex_vast_template_hashes) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateHashUnread } } => true
+    _ => false
+  }
+  unbound && none_rows && refused
+}
+
+test fn the_retired_hash_is_refused_even_when_bound() -> Bool {
+  let retired = [FlexTemplateHashRow { recipe: w_recipe.id, hash: flex_template_retired_hash as String as NonEmptyStr }]
+  let absent = match flex_vast_template_hash(rows: retired, recipe: w_recipe.id) { Present { value: _ } => false  Absent => true }
+  let refused = match w_wet_refusal(entry: w_established(), admitted: true, gates: w_open, hashes: retired) {
+    Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateHashUnread } } => true
+    _ => false
+  }
+  absent && refused
 }
 
 // The wet gates start closed: the key custody stops a create that cleared every wall.
@@ -462,7 +550,8 @@ fn w_request() -> FlexCreateRequest {
     Present { value: r } => r
     Absent => FlexCreateRequest {
       offer_id: 7, machine_id: 42, price: ExactDecimal { units: 0, fraction_digits: 6 }, bid: usd_hour(amount: money_amount_micro(count: 0)),
-      disk: byte_size(count: 34359738368), template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr, reservation: money_amount_micro(count: 0),
+      disk: byte_size(count: 34359738368), template_hash_id: "x" as NonEmptyStr, label: "gunbc-flex" as NonEmptyStr,
+      launch: FlexRentLaunch { mode: FlexArgsLaunch { args: [] }, env: "" }, reservation: money_amount_micro(count: 0),
     }
   }
 }

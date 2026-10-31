@@ -46,8 +46,8 @@ after walls land), §6 (model-before-implement; scaffolds name dissolution trigg
 (behavioral equivalence over byte identity for self-host).
 
 Related:
-[module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)
-(BothWays delta lens) · [post-zero-regen-gate-placement.md](post-zero-regen-gate-placement.md) ·
+[module-identity-storage-binding-design.md](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/module-identity-storage-binding-design.md)
+(BothWays delta lens) · [post-zero-regen-gate-placement.md](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/post-zero-regen-gate-placement.md) ·
 `gunbc.bootstrap` · `gunbc.guarantee_measurement` · `v2.compiler.self_host` ·
 `v2.compiler.self_host.emitter_producer_provenance` · `gunbc.generated_artifact`
 
@@ -73,77 +73,18 @@ Related:
 
 ## 1. Displaced cost (§6)
 
-| Cost today | Mechanism |
-|---|---|
-| **Self-host is one boolean** | Frontier disposition, regen verify, and realized comparison each answer a single match/mismatch bit. A stage-local refusal (infer ok, emit wrong) has no durable receipt tying *which stage* failed — the `#7485` containment class. |
-| **Detects movement, not fix-forward** | Byte gates detect unexpected output movement but cannot answer: *can the last accepted compiler understand and validate the changed requirements needed to build the repair?* A defective generation may be the only one that can rebuild its own old source while being unable to compile the new requirement revision. |
-| **Warm receipts cannot be trusted for merge** | `warm-merge-admission` can stamp resolve/materialization receipts, but has no typed rule for whether an emission delta was *expected* from the PR's source change. Stale-base refusals exist; *undeclared emitter drift* does not. |
-| **Phases pay duplicate prelude work** | `phased-single-process-ci` wants regen, floor, and admission on one substrate. Without per-stage execution receipts, each phase assumes the prior phase might have silently changed upstream facts — discovery/resolve/index rerun anyway. |
-| **Byte gates cannot distinguish intent** | `generated_artifact_drift_gate`, `RegenVerifyGate`, and `self_host_realized_comparison` answer only *match / mismatch*. An intentional emitter migration with regen is indistinguishable from an emitter bug — review becomes the classifier (§5 specification-without-execution). |
-| **Producer provenance is partial** | `EmitterProducer` × `EmissionQualification` and `mint_producer_emission_receipt` land per-module receipts, but digest fields remain scaffold-keyed (`producer_emission_receipt_digest_scaffold_note`) and `emitter_produced_baseline` is zero — no join from PR facts to admitted vs regression disposition. |
-| **Generation is implicit** | `V2EmitterNative { generation: Int }` names a generation index on the producer axis only. There is no graph of *which generation's emitted artifact* a consumer read, no candidate/accepted distinction, and no recovery anchor — so native cutover cannot refuse stale-generation replay without widening to cold rerun. |
-| **The trust root is unstated** | The v1 committed-Rust compiler is what everything is ultimately built by, but nothing names it as the trust root, states its boundary, or enumerates its residuals. An unstated root cannot be reasoned about, and its absence is what makes *declare the current tree promoted* look like a bookkeeping step rather than a self-promotion (§3.4). |
-
----
+Boolean self-host/byte gates detect movement but do not establish stage-local provenance, intended change, successor capability, accepted lineage or a recovery path. Warm reuse and shared CI phases require those receipts rather than repeated discovery or review-classified intent.
 
 ## 2. DFS — existing machinery (reuse, do not fork)
 
-Per DESIGN §2, the concept DAG already carries most of the stage/provenance spine. **§3 names
-the genuinely new obligations**; everything below is live on main — cite, extend, or join it,
-never re-invent.
+Reuse these owners; the new obligations in §3 extend their joins:
 
-### 2.1 Producer × qualification provenance (live)
+- `v2.compiler.self_host.emitter_producer_provenance`: orthogonal `EmitterProducer` and `EmissionQualification`, per-module `ProducerEmissionReceipt`, and sole minter `mint_producer_emission_receipt`. `emitter_producer_mint_admission` refuses V2 labels when realized closure reaches `v1.compiler.emit_rust` (`^v2_emitter_in_seed_emit_rust_closure`). `emitter_produced_baseline` remains 0 until execution-measured verdict digests; `producer_emission_receipt_digest_scaffold_note` names symbol-identity digest scaffolding.
+- `v2.compiler.self_host.canonical_emitted_bytes_digest`, `gunbc.instruments.floor_effect_gate_witness.regen_verify_gate_passes`, `v2.workflow.self_host_realized_comparison_gate`, and `gunbc.ci.ci_spec.RegenVerifyGate`: actual bytes, fail-closed regeneration and curated behavioral/staleness checks. They do not classify intent or establish changed-successor capability.
+- `gunbc.bootstrap.CompilerStage` is the pipeline-stage authority; `ChangeClassification.affects_stages` names affected stages. `FrontierProbeStage` is distinct harness vocabulary. `v2.std.change.ChangeKind` / `ChangeSet` feed `v2.lens.affected_set`.
+- `gunbc.generated_artifact` supplies registry/drift checks; `gunbc.guarantee_measurement` supplies per-path receipts. Extend these rather than minting parallel ledgers. BothWays quotient-delta in [module identity/storage binding](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/module-identity-storage-binding-design.md) is orthogonal to emission admission.
 
-Authority: `v2.compiler.self_host.emitter_producer_provenance`.
-
-| Symbol | Role |
-|---|---|
-| `EmitterProducer` | Orthogonal producer axis: `V1SeedEmitter` \| `V2EmitterInterpreted` \| `V2EmitterNative { generation }` |
-| `EmissionQualification` | Qualification axis: `SourceProduced` \| `CargoGreen` \| `BehavioralEquivalent` \| `ProductionRouted` |
-| `ProducerEmissionReceipt` | Per-module receipt: module/emitter/emitted digests, producer, qualifications, build result, behavioral probe coordinates, `RealizedEmitterClosure` |
-| `emitter_producer_mint_admission` | **Construction wall:** `V2EmitterInterpreted` / `V2EmitterNative` refuse when `v1.compiler.emit_rust` is reachable in `realized_closure` (`^v2_emitter_in_seed_emit_rust_closure`) |
-| `mint_producer_emission_receipt` | Sole minter for `ProducerEmissionReceipt`; refuses when mint admission refuses |
-| `emitter_produced_baseline` | Counted baseline `0` — frontier `EmitterProduced` rows stay empty until execution-measured verdict digests land (`frontier_probe_survey` dissolve-on) |
-| `producer_emission_receipt_digest_scaffold_note` | Honest scaffold: digests still keyed on `symbol_identity_digest` until measured binding |
-
-**What this already buys:** producer/qualification decomposition (replacing `SelfEmitted`
-state-space conflation), a mint wall against hand-authored receipts, and structural refusal
-of mislabeled V2 producers in seed closures.
-
-**What it does not yet buy:** requirement-revision identity, candidate/promoted lifecycle,
-fix-forward validation, recovery anchors, or PR-level declared-change vs regression.
-
-### 2.2 Emitted-byte digest + comparison gates (live)
-
-| Symbol | Role |
-|---|---|
-| `v2.compiler.self_host.canonical_emitted_bytes_digest` | Host-grounded digest over actual emitted bytes (`Medium<String>`) |
-| `gunbc.instruments.floor_effect_gate_witness.regen_verify_gate_passes` | CI floor gate: `RegenVerifyGate` compares regen output to committed Rust |
-| `v2.workflow.self_host_realized_comparison_gate` | Behavioral + staleness gates over realized comparison transport |
-| `gunbc.ci.ci_spec.RegenVerifyGate` | Spec row; regen skip policy keyed on merge-base diff vs regen input closure |
-
-**What this already buys:** fail-closed byte mismatch on the regen path and behavioral
-witnesses on a curated roster.
-
-**What it does not yet buy:** classification of *why* bytes moved, or proof that a new
-generation can build the *changed* successor (not merely reproduce the old one).
-
-### 2.3 Stage vocabulary (live, lightly joined)
-
-| Symbol | Role |
-|---|---|
-| `gunbc.bootstrap.CompilerStage` | Canonical pipeline stages (`Tokenize`…`Emit`) |
-| `gunbc.bootstrap.ChangeClassification.affects_stages` | Bootstrap-authoring: which stages a bootstrap edit may move |
-| `v2.compiler.self_host.frontier_probe_types.FrontierProbeStage` | Harness probe positions (`ProbeStageAssemble` / `ProbeStageEmit` / …) — distinct from `CompilerStage` by design |
-| `v2.std.change.ChangeKind` + `ChangeSet` | Source-graph change kinds; consumed by `v2.lens.affected_set` |
-
-### 2.4 Neighbors (consume, do not redefine)
-
-| Authority | Relationship |
-|---|---|
-| `gunbc.generated_artifact` | Registry + drift witnesses — byte fixed-point; gains a declared-change arm |
-| `gunbc.guarantee_measurement` | Per-path receipts — gains admission verdict projection on emission paths |
-| [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | BothWays quotient-delta lawful edits — orthogonal semantic comparison, not authority-vs-seed |
+The [original design and correction record](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains dated inventories and review provenance. Current contracts and controls follow.
 
 ---
 
@@ -529,38 +470,7 @@ around.
 
 ## 4. Fix-forward de-risk (replaces rollback-only framing)
 
-A prior briefing claimed bricking fear was handled because emitted Rust is committed and
-`rustc` builds it, so checking out an earlier commit suffices. That proves **rollback**, not
-**fix-forward**.
-
-**The actual risk:** generation *N* can rebuild its own old source while unable to understand
-the new source, IR, or requirement revision. The repair to a defective generation *N+1* may be
-buildable only by the defective generation itself — the tree stuck even though `git checkout`
-still works.
-
-**This design's answer:**
-
-1. **Retain** the accepted generation as an immutable `RecoveryAnchor`; release is a separate
-   transition consuming a valid successor-capability receipt (§3.6).
-2. **Bridge** incompatible requirement changes through expand-migrate-contract rather than
-   big-bang promotion.
-3. **Refuse promotion** when only reproduction is proven — digest match without transition
-   exercises derived from the transition's own deltas (§3.8).
-4. **Fail fast** at candidate validation, on total stage-execution receipts that name the
-   failing stage (§3.9), before downstream stages consume a refused artifact.
-5. **Name the deadlock.** When no candidate can establish successor capability against a
-   defective anchor, the state is `NoTrustedFixForwardPath` with enumerated permitted actions
-   (§3.10) — not silence, and not an implicit fallback to the candidate.
-
-**What the evidence is and is not** (operator correction, 2026-08-02): the required fact is
-that the **candidate can produce and validate a changed successor under the new requirement
-revision**. The anchor may also understand the changed source — expected and fine for a
-compatible transition. **An anchor failure is never by itself positive evidence of candidate
-capability.**
-
-Rollback remains a valid operator escape hatch via version control. This design introduces no
-rollback machinery — it introduces **typed successor-capability validation** so promotion cannot
-proceed on reproduction alone.
+Rollback can recover old artifacts without enabling the repair's changed requirements. §§3.6–3.10 therefore require an immutable anchor, bridge for incompatible requirements, transition-derived exercises, total stage receipts and a named deadlock. Reproduction alone cannot promote; anchor failure alone cannot prove candidate capability. Version-control rollback remains independent and introduces no new rollback machinery.
 
 ---
 
@@ -814,39 +724,4 @@ promotion and authoritative admission are gated. Carried into the staged plan as
 
 ## 12. Correction record (2026-08-02)
 
-Nine operator corrections, relayed through still-bat-561. Each names what it supersedes so a
-reader of the merged first revision sees what moved.
-
-| # | Correction | Supersedes |
-|---|---|---|
-| 1 | `FixForwardProof` deleted; `RequirementDelta` + `TransitionExercise` derived from the transition; the complete receipt **is** the proof; five admission conditions; **anchor failure is not positive evidence** | §3.8's `fix_forward_proof` field and its anchor-must-fail reading |
-| 2 | `AcceptedCompilerGeneration = BootstrapGenesis \| PromotedSuccessor`; `GenesisAdmissionReceipt`; the candidate-promotion constructor **cannot** produce a genesis | §3.4's `Candidate \| Promoted` pair, which had no generation zero |
-| 3 | `GenerationContinuityVerdict` with `NoTrustedFixForwardPath` and enumerated permitted actions | §5's silence on anchor-defective-and-no-viable-successor |
-| 4 | `StageExecutionReceipt` as a total result (`Accepted \| Refused \| FallbackUsed`); `StageStamp` is only its content identity; check `gunbc.guarantee_measurement` first | §6.1's untyped `StageStamp`, and any reading where `RefusedStageMismatch` substitutes for a stage's own outcome |
-| 5 | `RequirementRevision` split from `ValidationRevision`; enrollment is validation-only; weakening needs an explicit validation transition | §3.1's single revision carrying `witness_roster_digest` |
-| 6 | `RecoveryAnchor` immutable; `RecoveryAnchorState = AnchorRetained \| AnchorReleaseEligible \| AnchorReleased` | §3.6's `retained_until: PromotedSuccessor` forward reference |
-| 7 | `ByteOnlyAdmissionEvidence` with serializer purity + three reachability-none proofs; unknown reachability ⇒ semantic validation; no authored `formatting_only` | §9 Q2's unqualified formatting-only permission |
-| 8 | Stages reordered 0–10; stage 2 narrowed to within-revision with no promotion authority | §10's ordering, which stated §3.2 admissibility before the generation state existed |
-| 9 | Witness table rewritten with Subject / Fixture / Expected verdict / **mutation that must change the verdict** | §8's table, which called observing a refusal a GREEN control and whose `RefusedRegression` row named no input |
-
-**Three consequences found while applying them**, changed here though not among the nine:
-
-- **Correction 5 silently invalidated a bridge trigger.** §3.7 listed *new witness roster* as an
-  incompatible-requirement trigger; with the roster in `ValidationRevision`, that reading would
-  demand expand-migrate-contract for enrolling a witness. Removed, reason stated inline so it
-  cannot return.
-- **`RefusedRegression` was carrying two causes.** §3.3's table let it mean both *moved without a
-  declaration* and *moved with one but the witness failed*, while `RefusedUndeclaredDelta` sat
-  beside it meaning the first. Two causes with different remedies sharing an arm is the
-  state-space conflation DESIGN §5 names; the table now says which is which.
-- **The first revision's stage 9 was a fork.** Guarantee-path measurement rows are not a
-  separate stage — the new stage 1's stage-execution receipt *is* that measurement, and a second
-  receipt beside `gunbc.guarantee_measurement` is what §2 exists to prevent.
-
-**Kept from the first revision, unchanged:** the §2 DFS-existing-machinery inventory (reuse, do
-not fork); candidate-cannot-promote-itself; the generation lineage graph; rollback-is-not-fix-forward
-(§4); declared change as distinct from behavioral equivalence (§9 Q2's first clause); and probes
-flipping to permanent regression controls rather than retiring (§8).
-
-**Status of the first revision:** merged rough draft, not reverted — it is document-only and no
-promoted generation depends on it.
+The [immutable nine-correction record](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains each superseded statement and the first revision's merged-but-unaccepted standing. The resulting obligations are in §§3.1–3.11, the discriminating controls in §8, decisions in §9 and ordered implementation in §10. In particular, validation-only enrollment needs no bridge; undeclared movement differs from declared behavioral regression; stage execution extends the existing guarantee measurement rather than creating a parallel receipt.

@@ -6,7 +6,8 @@ module test.claim.roadmap.belt_capture_intent_wet_witness
 // attempt (no double capture), and a capture record at the committed head (no lost capture).
 // On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worktree_path_for_instance }
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -21,9 +22,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_attempt_store_root { belt_attempt_member_path, belt_submission_store_slots }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_exec, ExecOk, ExecFailed, ExecRefused,
-  belt_attempt_submission_dir_for_instance,
   belt_scm_capture_candidate_tree, belt_scm_persist_capture, ScmCandidateMinted, ScmCandidateCaptured, ScmCaptureMintRefused, ScmCaptureMintPoisoned,
   belt_commit_staged, StagedCommitRecorded,
   belt_commit_capture_candidate, BeltCommitOutcome, CandidateCaptured,
@@ -81,11 +82,11 @@ fn git_out(dir: String, args: List<String>) -> String {
 
 fn plant_dirty(instance: HostDashboardInstance) -> String {
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt)
-  let state = dispatch_attempt_state_path_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt)
+  let state = attempt_state_directory_text(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, directory: AttemptDirectoryRoot)
   let _root = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   let _wt = shell.Mkdir.Parents(path: worktree as FilePath)
   let _st = shell.Mkdir.Parents(path: state as FilePath)
-  let _sub = shell.Mkdir.Parents(path: belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt) as FilePath)
+  let _sub = shell.Mkdir.Parents(path: belt_attempt_member_path(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, member: belt_submission_store_slots.member) as FilePath)
   let seed = instance.repo_root as String
   let _seed_dir = shell.Mkdir.Parents(path: seed as FilePath)
   let primed = run_git(dir: seed, args: ["init", "-q"])
@@ -169,7 +170,7 @@ fn commit_exists(path: String, ordinal: Int) -> Bool {
 fn capture_file_at_head(instance: HostDashboardInstance, worktree: String) -> Bool {
   let head = base_of(worktree: worktree)
   head != "" && Filesystem.Read(path: join([
-    belt_attempt_submission_dir_for_instance(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt),
+    belt_attempt_member_path(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, member: belt_submission_store_slots.member),
     "/", submission_capture_basename(head_sha: head)], "")).success
 }
 

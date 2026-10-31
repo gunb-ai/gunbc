@@ -4,7 +4,10 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
-pub use crate::std_algebra::{collection_concat_shape, collection_join_shape};
+use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_join_shape, string_compare_canonical, Ordering, TotalOrder,
+};
 pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -51,6 +54,17 @@ pub type Sha1DigestHex = String;
 pub type Sha512DigestHex = String;
 
 pub type Fnv1a64StructuralDigestHex = String;
+
+pub fn fnv1a64_digest_hex_compare(a: String, b: String) -> Ordering {
+    crate::std_algebra::string_compare_canonical(a, b)
+}
+
+pub fn fnv1a64_digest_hex_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(fnv1a64_digest_hex_compare),
+        _phantom: std::marker::PhantomData,
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fnv1a64Structural {

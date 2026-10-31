@@ -2752,6 +2752,25 @@ pub fn int_total_order() -> Rc<TotalOrder<i64>> {
     })
 }
 
+pub fn string_compare_canonical(a: String, b: String) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() > b.clone()) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub fn string_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(string_compare_canonical),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
 pub fn list_sort_by_key<T: Clone, K: Clone>(
     xs: Rc<FreeMonoid<T>>,
     key: impl Fn(T) -> K + Clone,
@@ -3100,38 +3119,55 @@ pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>
     })
 }
 
-pub fn list_init<T: Clone>(mut __tco_loop_xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __trmc_out = Rc::new(vec![]);
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                {
-                    let __fm = __tco_base_xs.clone();
-                    if (__fm.len() - __tco_cursor_xs) == 0 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else if (__fm.len() - __tco_cursor_xs) == 1 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else {
-                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
-                        {
-                            __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
-                            {
-                                let __tco_0 = __tco_cursor_xs + 1;
-                                __tco_cursor_xs = __tco_0;
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ListInitLag<T> {
+    pub kept: Rc<FreeMonoid<T>>,
+    pub pending: Option<T>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListInitLag<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListInitLag")
+            .field("kept", &self.kept)
+            .field("pending", &self.pending)
+            .finish()
     }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListInitLag<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kept == other.kept && self.pending == other.pending
+    }
+}
+
+pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    fold_list(
+        xs,
+        Rc::new(ListInitLag {
+            kept: Rc::new(vec![]),
+            pending: std::option::Option::None,
+            _phantom: std::marker::PhantomData,
+        }),
+        |acc, item| match acc.pending.clone() {
+            std::option::Option::None => Rc::new(ListInitLag {
+                kept: acc.kept.clone(),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+            Some(p) => Rc::new(ListInitLag {
+                kept: v1_rt::rc_list_push(acc.kept.clone(), p.clone()),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        },
+    )
+    .kept
+    .clone()
 }
 
 pub fn bag_eq<T: Clone>(
@@ -3149,37 +3185,74 @@ pub fn bag_eq<T: Clone>(
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ZipEqWalk<T> {
+    pub rest: Rc<FreeMonoid<T>>,
+    pub agreed: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ZipEqWalk<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZipEqWalk")
+            .field("rest", &self.rest)
+            .field("agreed", &self.agreed)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ZipEqWalk<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.agreed == other.agreed
+    }
+}
+
 pub fn zip_eq<T: Clone>(
     a: Rc<FreeMonoid<T>>,
     b: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            {
-                let __fm = b.clone();
+    {
+        let walk = fold_list(
+            a,
+            Rc::new(ZipEqWalk {
+                rest: b.clone(),
+                agreed: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| {
+                let __fm = acc.rest.clone();
                 if __fm.is_empty() {
-                    true
-                } else {
-                    false
-                }
-            }
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    false
+                    Rc::new(ZipEqWalk {
+                        rest: Rc::new(vec![]),
+                        agreed: false,
+                        _phantom: std::marker::PhantomData,
+                    })
                 } else {
                     let hb = (*__fm)[0].clone();
                     let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                    if acc.agreed.clone() {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: eq(item, hb.clone()),
+                            _phantom: std::marker::PhantomData,
+                        })
+                    } else {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: false,
+                            _phantom: std::marker::PhantomData,
+                        })
+                    }
                 }
-            }
-        }
-    })
+            },
+        );
+        (walk.agreed.clone() && is_empty(walk.rest.clone()))
+    }
 }
 
 pub fn zip_map<A: Clone, B: Clone, C: Clone>(

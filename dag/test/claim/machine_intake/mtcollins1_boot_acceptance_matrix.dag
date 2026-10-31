@@ -14,7 +14,9 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count }
+import gunbc.bmc_dry_realization { bmc_bootdev_clear_reply, BmcReplied, BmcReplyFault }
+import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
+import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, ModeledPathStat, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
@@ -52,7 +54,8 @@ import gunbc.runner.runner_browser_toolchain {
   TreeAdmission, TreeAdmitted, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
-import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
+import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -221,7 +224,7 @@ fn bmc_world_cycled(power: BmcPower, off: Second) -> BmcWorld {
     power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: w.sel,
     sol_session_open: w.sol_session_open, cycle_off_interval: off,
     host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
-    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: w.record_surfaces,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: w.record_surfaces, redfish_accounts: w.redfish_accounts,
   }
 }
 
@@ -453,7 +456,7 @@ data first_worker_start: Int = 5000
 fn worker_filesystem() -> ModeledFilesystem {
   worker_process_started(
     fs: ModeledFilesystem {
-      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String],
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", host_state_tree_path(tree: host_state_tree()) as String, unit_hold_store_path(tree: host_state_tree()) as String],
       files: [ModeledFile { path: credential_path, content: "secret" }],
       refused_reads: [],
       stats: [ModeledPathStat { path: runner_temp, mode: runner_temp_mode, owner: runner_principal }],
@@ -508,12 +511,13 @@ fn record_path(r: DispatchRecord) -> String {
 
 fn is_hold_write(r: DispatchRecord) -> Bool {
   r.invocation.at.service == "Filesystem" && starts_with(s: r.invocation.at.operation, prefix: "WriteCreateNew")
-    && starts_with(s: record_path(r: r), prefix: unit_hold_store_root as String)
+    && starts_with(s: record_path(r: r), prefix: unit_hold_store_path(tree: host_state_tree()) as String)
 }
 
 // The effects that change the controller or start a process against it.
 data controller_writes: List<String> = [
   "diagnostic.ipmi.Tool.ChassisPowerControl", "diagnostic.ipmi.Tool.ChassisBootDevWithOptions",
+  "diagnostic.ipmi.Tool.ChassisBootDev",
   "megarac.Media.StartMedia", "megarac.Media.StopMedia", "diagnostic.ipmi.Tool.SolDeactivate",
   "gunbc.machine_intake.sol_hold.ActivateHeld",
 ]
@@ -651,7 +655,7 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_path(tree: host_state_tree()), slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {
@@ -981,7 +985,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
 fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
-  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
@@ -1206,15 +1210,15 @@ test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bo
 // THE WALL CLOCK JUMPS TEN MINUTES FORWARD DURING THE READINESS WAIT. The window reads as closed at the
 // next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
 // buys an unbounded one. The look count follows the route's own schedule before the media wait -- it
-// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it, and from 3 to 2 when the
-// power-on account's pre-power hpm check read (one virtual second, after admission) joined the prefix
-// -- so a later change to that prefix moves it again; what the case holds is the refusal at the look
-// after the jump.
+// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it, from 3 to 2 when the power-on
+// account's pre-power hpm check read (one virtual second, after admission) joined the prefix, and back
+// to 2 (re-measured) when the pre-power retention's mc info and fru print reads joined it; a later
+// change to that prefix moves it again; what the case holds is the refusal at the look after the jump.
 test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
-        && string_contains(s: outcome_reason(a: value), pattern: "(3 looks,")
+        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
         && reached_no_power_action(route: route)
     _ => false
   }
@@ -1410,6 +1414,220 @@ test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool {
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticated") == 0
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticatedCached") == 0
         && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// ─── THE CLEARS AROUND THE SET (boot 7: mtcollins1's lockout) ─────────────────────────────────────
+// THE WORLD AN EARLIER ATTEMPT LEFT BEHIND: parameter 5 still carries a cdrom/EFI next-boot override.
+// This is not a hypothetical state -- boot 5 (run 40258937016) and boot 6 (run 40264233543) both ENDED
+// that way, and boot 5 refused with 'a boot override matching this attempt's was already pending before it
+// was set' while parameter 5 read 'Boot parameter data: a014000000' byte-identical before AND after its
+// set. An override that predates the attempt can never be attributed to it, so the pre-power step clears
+// what it finds pending and reads the clear back BEFORE the set, and every exit after a set clears what the
+// attempt itself set. The two rows below are the two required reds of that ruling (msg_36b81708): each was
+// run against the route WITHOUT the clear (the release gated off) and fails there.
+
+fn world_with_stale_override(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
+  let w = world_with_console(lines: lines)
+  with_bmc(w: w, bmc: bmc_with_override(world: w.bmc, over: BootOverrideCdromEfiNextBoot))
+}
+
+// The two standings as the SINGLE-HOMED vocabulary renders them: a row that pins the words pins the
+// vocabulary, and a rename that skips the text fn turns these rows red instead of quietly reprinting.
+fn override_stale_words(a: MtCollins1BootAttempt) -> String { stale_override_clearance_text(c: a.override_clears.stale) }
+fn override_release_words(a: MtCollins1BootAttempt) -> String { boot_override_clear_text(c: a.override_clears.released) }
+
+fn controller_left_the_override_pending(w: MtCollins1BootWorld?) -> Bool {
+  match w {
+    Absent => false
+    Present { value: world } => match world.bmc.boot_override {
+      BootOverrideNone => false
+      BootOverrideCdromEfiNextBoot => true
+    }
+  }
+}
+
+// (B) A PRE-EXISTING PENDING OVERRIDE IS NEVER Noop'ED. The override seeded here is byte-for-byte this
+// attempt's own selection -- the exact state that made boot 5 skip its clear -- so a route that reasoned
+// 'the bytes already match, nothing to do' would dispatch NO plain ChassisBootDev at all and the row would
+// pass without the clear. It does not: the clear goes out on the plain operation, BEFORE the set, and the
+// stale override is recorded as cleared rather than as a match. The route ends with the controller holding
+// no override at all, and the receipt says the stale one was cleared.
+test fn a_pending_override_is_cleared_before_this_attempt_sets_its_own() -> Bool {
+  match run_attempt(world: world_with_stale_override(lines: [])) {
+    WitnessReturned { value, route, state } =>
+      count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") >= 2
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") >= 0
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && override_stale_words(a: value) == "stale override cleared"
+        && override_release_words(a: value) == "cleared"
+        && !controller_left_the_override_pending(w: state)
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_stale=stale override cleared")
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// (A) A REFUSED ATTEMPT RELEASES WHAT IT SET. This is boot 5's shape: the console never prints a census, so
+// the attempt refuses at its deadline -- the refusal happens AFTER the set, which is the only part of the
+// sequence that matters here. The release clear goes out after the set, the record's release standing is
+// 'cleared' rather than 'not required', and the controller is left holding nothing. With the release gated
+// off, the first two assertions fail: this is the row that makes a param5 left pending across an exit red.
+test fn a_refused_attempt_releases_the_override_it_set() -> Bool {
+  match run_attempt(world: world_with_console(lines: [])) {
+    WitnessReturned { value, route, state } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev")
+        && override_release_words(a: value) == "cleared"
+        && !controller_left_the_override_pending(w: state)
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
+    _ => false
+  }
+}
+
+// THE RELEASE IS OWED ONLY BY AN ATTEMPT THAT SET SOMETHING. An attempt refused before it ever reached the
+// controller -- here a receipt path outside artifacts/receipts/, refused before any BMC read -- dispatches
+// no clear at all and says so, rather than clearing a parameter it never touched: a route that cleared
+// unconditionally would trip the count, and one that claimed 'cleared' without a readback would trip the
+// words. The standing's reason is what the operator reads, so it is pinned too.
+test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
+  // THE PRESENTATION IS WITHDRAWN BETWEEN THE ATTACH AND THE HANDOFF: the route reaches its exit tail --
+  // the SOL and media teardown run, the reads are taken -- but the set was withheld at the pre-handoff
+  // recheck, so this attempt owns no override. It dispatches no clear at all and says why, rather than
+  // clearing a parameter it never touched: an ungated release would trip the count, and a clear claimed
+  // without a readback would trip the words.
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 5) }))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+        && reached_no_power_action(route: route)
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 0
+        && starts_with(s: override_release_words(a: value), prefix: "not required: ")
+    _ => false
+  }
+}
+
+// ─── THE BOOTDEV ECHO CARRIES NO VERDICT (review 87856, DESIGN §4d) ──────────────────────────────────
+// WHAT THE CLEAR PRINTS IS NOT EVIDENCE OF ANYTHING. One of the two bootdev echoes this model answers with
+// is not a capture: `Set Boot Device to none` is built from the shape of two captured echoes of the same
+// command, on one firmware release, and stands until boot 7's real capture retires it
+// (extdeps.bmc.ipmitool_observed_output). A label on the reply would not be a guarantee -- bmc_lift turns
+// any reply into ShellProcessExited, which has nowhere to put one -- so the guarantee here is behavioral:
+// the same run, with the clear's own line replaced by a HOSTILE one, produces the same commands, the same
+// outcome, the same receipt, and the same standings. The world change underneath is the production one; only
+// the printed line lies. If anything ever judges a clear by its echo, this row is the one that goes red.
+fn lying_bootdev_echo_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match bmc_bootdev_clear_reply(world: w.bmc, call: call) {
+    BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+    BmcReplied { world: after } => OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "Set Boot Device to pxe\n", stderr: "" } },
+      state: with_bmc(w: w, bmc: after),
+      elapsed: second(count: 1),
+    }
+  }
+}
+
+fn matrix_lying_bootdev_echo_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let standing = first_where(xs: production.bindings, keep: fn(b) { b.at.operation == "ChassisBootDev" })
+  matrix_frame_over(realization: OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: filter(production.bindings, b => !(b.at.operation == "ChassisBootDev")), ys: match standing {
+      // As above: if the clear ever stops being bound in production, the bindings stand and this row fails
+      // rather than passing on a frame that never swapped anything. The row itself re-checks the swap below.
+      Present { value: b } => [OperationBinding { at: b.at, handler: lying_bootdev_echo_handler }]
+      Absent => []
+    }),
+  })
+}
+
+test fn a_lying_bootdev_echo_moves_no_verdict() -> Bool {
+  let seeded = world_with_stale_override(lines: [])
+  // THE SWAP REALLY HAPPENED -- asserted, not commented: the production realization must carry a plain
+  // ChassisBootDev binding for this frame to have had anything to replace.
+  any(xs: mtcollins1_boot_dry_realization(identity: realization_identity, initial: seeded, epoch: virtual_clock_origin()).bindings, b => b.at.operation == "ChassisBootDev")
+    && match evaluate_in_witness_frame(
+         frame: matrix_lying_bootdev_echo_frame(world: seeded),
+         subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+       ) {
+         WitnessReturned { value: lied, route: lied_route, state: lied_state } =>
+           match run_attempt(world: seeded) {
+             WitnessReturned { value, route, state } =>
+               (outcome_reason(a: lied) == outcome_reason(a: value))
+                 && (override_stale_words(a: lied) == "stale override cleared")
+                 && (override_stale_words(a: lied) == override_stale_words(a: value))
+                 && (override_release_words(a: lied) == "cleared")
+                 && (override_release_words(a: lied) == override_release_words(a: value))
+                 && (count_named(route: lied_route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev"))
+                 && (count_named(route: lied_route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions"))
+                 && !controller_left_the_override_pending(w: lied_state)
+                 && !controller_left_the_override_pending(w: state)
+             _ => false
+           }
+         _ => false
+       }
+}
+
+// ─── THE UNREADABLE INITIAL PARAMETER 5 (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────────────────
+// THE CONTROLLER CANNOT ANSWER ABOUT ITS OWN BOOT PARAMETER. Every parameter-5 read of the run -- the
+// before-read, the clear's readback, the release's readback -- comes back the way an ipmitool session that
+// will not establish does: exit 1, nothing on stdout. 'Clear what is pending' alone was fail-OPEN here: a
+// before-read that owed nothing walked straight into a set over an UNKNOWN controller. The route's invariant
+// is now that the state a set goes in over is positively read as cleared, by the before-read or by the
+// clear's own readback -- so this run attempts the clear, cannot read it back, and refuses the set.
+fn param5_unreadable_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "Unable to establish IPMI v2 / RMCP+ session" } },
+    state: w,
+    elapsed: second(count: 1),
+  }
+}
+
+// SAME PRODUCTION REALIZATION, ONE BINDING SWAPPED -- the parameter-5 read, and only that one. The
+// production binding's own reference is reused so the swap keeps the operation's provenance; the clear's
+// WRITE stays bound, so what fails here is the reading, not the ability to act.
+fn matrix_param5_unreadable_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let standing = first_where(xs: production.bindings, keep: fn(b) { b.at.operation == "ChassisBootParamGet" })
+  matrix_frame_over(realization: OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: filter(production.bindings, b => !(b.at.operation == "ChassisBootParamGet")), ys: match standing {
+      // The binding is there in production; the witness swaps only its answer. If it ever is not, the
+      // production bindings stand and the row below fails rather than passing on a frame that never tested
+      // the fault.
+      Present { value: b } => [OperationBinding { at: b.at, handler: param5_unreadable_handler }]
+      Absent => []
+    }),
+  })
+}
+
+fn run_attempt_with_param5_unreadable(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_param5_unreadable_frame(world: world),
+    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+  )
+}
+
+// NO SET ON AN UNREAD STANDING: the clear is attempted (one plain bootdev dispatch), its readback does not
+// answer, the handoff is withheld, the boot device this attempt wanted is NEVER set, and nothing is owed on
+// the way out because this attempt never drove the controller. The stale words name the failure the operator
+// would have to fix -- an unreadable parameter 5 -- rather than 'none found'.
+test fn an_unreadable_parameter_five_read_sets_nothing() -> Bool {
+  match run_attempt_with_param5_unreadable(world: world_with_stale_override(lines: [])) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 1
+        && string_contains(s: outcome_reason(a: value), pattern: "handoff withheld")
+        && string_contains(s: override_stale_words(a: value), pattern: "unread")
+        && starts_with(s: override_release_words(a: value), prefix: "not required: ")
     _ => false
   }
 }

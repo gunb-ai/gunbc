@@ -120,7 +120,8 @@ data mtcollins1_host_key_read_obligation: NonEmptyStr = concat("scan mtcollins1 
 // witness pins that). Production folds do not route through it yet -- that gap is carried by
 // anchored_host_transport_frontier_rows with its trigger, not hidden here. When the key exists, the
 // transcription lands here as Present { value: anchored_host_trusted_row(...) } -- through the admitted
-// mint below, which is the only door and makes the standing unskippable.
+// mint (gunbc.host.mtcollins1_ssh_host_key_mint, whose receipt names the public half and the fingerprint
+// together), which is the only door and makes the standing unskippable.
 data mtcollins1_anchored_host_row: AnchoredHostRow = AnchoredHostRow {
   host: operator_host_mtcollins1,
   anchor: mtcollins1_host_key_anchor(),
@@ -132,9 +133,10 @@ data mtcollins1_anchored_host_row: AnchoredHostRow = AnchoredHostRow {
 // mtcollins1's anchor. THE VALUE IS ABSENT AND THAT IS THE HONEST STATE (the note above the row): the
 // stable key is not minted yet; when it is, the transcription lands here as
 // Present { value: anchored_host_trusted_row(...) } with the public half and fingerprint read off the
-// minted key -- through the admitted mint below, which is the only door and makes the standing
-// unskippable. (The mint takes the row's COMPONENTS, not the row itself, precisely so this call can
-// exist without the row referring to itself.)
+// minted key -- through the admitted mint (gunbc.host.mtcollins1_ssh_host_key_mint), which is the only door
+// and makes the standing unskippable. THE ANCHOR IS FILLED FROM THE MINT'S RECEIPT AND NOT FROM THE
+// TRANSPORT'S OWN MEMORY: the mint reads this call to decide whether a key already exists, so a row that
+// named a key the store did not have would silence the only thing that could ever create one.
 fn mtcollins1_host_key_anchor() -> KnownHostKeyRow? {
   none
 }
@@ -245,32 +247,17 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
       description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
     )
   ),
-  // THE MINT SHELL'S TRAP BODY, registered as a declared residual (review 85232/85396/85414 finding 2).
-  // WHY ONLY THIS AND NOT THE WHOLE SCRIPT: the mint is EMITTED -- anchored_host_key_mint_shell builds
-  // every leg as a v2.extdeps.languages.bash_build node and runs them through v2.workflow.bash_emit
-  // bash_emit_stmts (manager decision msg_ad22e358, option A): set -e via the emitter's set_e flag, the
-  // tmpfs guard as bash_build_if_from_stmts over bash_build_test_bracket + bash_build_word_cmdsubst +
-  // bash_build_with_redir + bash_build_exit (the old brace-group { echo ...; exit 1; } was NOT required
-  // -- the fold grammar has an if/then production), the cat|gcloud leg as bash_build_pipe, and every
-  // argv leg as bash_build_command_from_lits over the argv builder's own words. The ONE arm that cannot
-  // be a node is the trap BODY: trap on EXIT, INT and TERM is load-bearing for rule Q1 (set -e does not
-  // run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the private half in the
-  // tmpfs dir), and the body is a compound statement list the fold grammar has no node production that
-  // renders bare ("; "-separated commands inside the trap's single quotes). It follows the shipped lane
-  // gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms, the body
-  // passed as ONE word the emitter quotes -- and its words are the render of this module's own cleanup
-  // ArgvCommands. THE
-  // TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396): when the fold grammar
-  // gains a compound-body arm for trap, anchored_host_key_mint_trap is EMITTED (bash_build with a node
-  // list for the body) and the single string literal is deleted byte-identically. Wiring an execution
-  // route that merely carries the bytes does NOT fire this.
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
-    reason: "gunbc.host.anchored_host_transport|anchored_host_key_mint_shell:the trap body is a single string literal (the '; '-joined cleanup commands passed as the trap's one quoted word); every other leg is a bash_build node emitted through bash_emit_stmts",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the bash fold grammar gains a compound-body arm for the trap statement (a node list rendered bare inside the trap's single quotes); anchored_host_key_mint_trap is then EMITTED over that arm and the single cleanup-body string literal is deleted byte-identically. Wiring an execution route that only carries the hand-assembled bytes does NOT fire this"
-    )
-  ),
+  // THE MINT SHELL'S TRAP BODY, WHICH NO LONGER EXISTS (2026-10-28). This row registered the mint's trap as
+  // a declared residual -- a single string literal, the '; '-joined cleanup commands passed as the trap's one
+  // quoted word, because the bash fold grammar had no node production that renders a compound body bare -- and
+  // its trigger named the capability that would retire it (a compound-body arm for trap). The trigger fired by
+  // a route the row did not anticipate: rather than the trap gaining a node production, the MINT stopped being a
+  // shell script at all. The private half's cleanup is now performed by the run itself -- the generation
+  // removes its own create-only directory on every path out, and reports a refusal that could not (
+  // gunbc.host.fleet_keypair_mint fleet_keypair_generate_pair) -- so there is no trap, no emitted script, and
+  // no literal left to dissolve. Deleting the row is the honest act: a frontier row whose decl no longer exists
+  // would not resolve, and a row kept to preserve an audit trail belongs in the retirement note at the foot of
+  // this module rather than in a registry that asserts a live residual.
 ]
 
 type AnchoredHostBinding
@@ -714,247 +701,49 @@ fn anchored_host_transport_live_gated(host: HostIdentity, row: AnchoredHostRow, 
   }
 }
 
-// ── THE MINT ───────────────────────────────────────────────────────────────────────────────────
+// ── THE MINT THAT USED TO LIVE HERE, AND WHAT REPLACED IT ──────────────────────────────────────
 //
-// The one step that CREATES the private host key existed only as hand-written shell in
-// docs/runbooks/mtcollins1-ssh-host-key-mint.md (review 85232, DESIGN §6 scaffold tells: "a
-// hand-authored workflow ... out-of-band actuation" and "raw shell implementing semantics
-// expressible in .dag"). The mint is expressible in .dag -- every leg is an argv command on an
-// admitted extdeps builder -- so the shell is now a RENDERING of this model, and the runbook cites
-// these symbols instead of re-spelling them. The literals the runbook retyped (the secret name and
-// the GCP project) are read from their single authorities here: mtcollins1_ssh_host_key_secret's
-// SecretRef fields and fleet_secrets_gcp_project; a drift between them and the render is impossible
-// because there is no second spelling left to drift from (§3, "each fact lives in exactly one place").
-
-// THE MINT SHELL'S LAYOUT, as data. The working dir is created mode 0700 (never world- or
-// group-readable, and never under $HOME -- an SSD with no TRIM guarantee leaves deleted blocks
-// recoverable, which is why Step 1 verifies the dir is tmpfs-backed before any key is minted
-// there; see the runbook's honest-limits note). The cleanup is a trap on EXIT, INT and TERM, so
-// every failure path removes the key; plain rm is used, not shred, because shred's overwrite is
-// a no-op on SSD/CoW filesystems and pretending otherwise would be a false comfort.
-fn anchored_host_key_mint_directory_command(mint_dir: String) -> ArgvCommand {
-  mkdir_create_only_with_mode_command(path: mint_dir, octal_mode: "0700" as NonEmptyStr)
-}
-
-fn anchored_host_key_mint_tmpfs_check_command(mint_dir: String) -> ArgvCommand {
-  findmnt_fstype_for_path_command(path: mint_dir)
-}
-
-fn anchored_host_key_mint_keygen_command(mint_dir: String) -> ArgvCommand {
-  ssh_keygen_generate_command(
-    key_type: ssh_keygen_ed25519_type,
-    key_file: concat(mint_dir, "/mc_host"),
-    comment: "mtcollins1",
-  )
-}
-
-// The two Secret Manager legs, read from the SecretRef's own fields -- the secret NAME and the
-// PROJECT are never retyped here (review 85232, "duplicated literals"). The create leg carries no
-// --data-file at all (an empty version 1 would be a lie the server happily serves); the add leg is
-// the stdin form.
-fn anchored_host_key_mint_create_command() -> ArgvCommand {
-  gcloud_secrets_create_command(
-    project: mtcollins1_ssh_host_key_secret.project,
-    secret: mtcollins1_ssh_host_key_secret.secret,
-  )
-}
-
-fn anchored_host_key_mint_upload_command() -> ArgvCommand {
-  gcloud_secrets_versions_add_stdin_command(
-    project: mtcollins1_ssh_host_key_secret.project,
-    secret: mtcollins1_ssh_host_key_secret.secret,
-  )
-}
-
-fn anchored_host_key_mint_cleanup_commands(mint_dir: String) -> List<ArgvCommand> {
-  [
-    rm_force_command(path: concat(mint_dir, "/mc_host")),
-    rm_force_command(path: concat(mint_dir, "/mc_host.pub")),
-    rmdir_command(path: mint_dir),
-  ]
-}
-
-// THE MINT, RENDERED -- the runbook's Step 1 block is a CHECKED projection of this function's output:
-// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
-// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
-// this render byte for byte (the fence carries the render minus its trailing newline).
-// The mint dir is a fixed path created with mkdir -m 0700 CREATE-ONLY: it refuses outright when the
-// dir already exists, which means a previous minting session died mid-run. The trap then removes any
-// key found there -- removing a stale private half is the Q1-CORRECT action, not evidence loss (the
-// exposure is the fact the dir existed, which is why the runbook's rotation note says: a minting
-// session killed hard means the key is exposed, rotate the secret). The cat leg carries the private
-// half to gcloud's stdin; the word
-// naming the key PATH is the only place the private file is named, and a path is not key material
-// -- the private key material crosses into the shell as file content on stdin, never as a plain
-// string in any argv word, rendered line, or log line (the class in
-// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag).
-// The trap body joins the cleanup builders' argv WORDS directly rather than through
-// shell_command_render: they sit inside the trap's double quotes here, and every word is a model
-// literal (the fixed mint dir + a fixed file name) with no shell metacharacters -- re-quoting them
-// would nest quotes and corrupt the very cleanup that protects the key.
-fn anchored_host_key_mint_dir() -> String {
-  "/dev/shm/mc-hostkey"
-}
-
-// THE MINT, EMITTED -- every leg is a v2.extdeps.languages.bash_build NODE, serialized by
-// v2.workflow.bash_emit bash_emit_stmts (manager decision msg_ad22e358, option A; review 85414
-// finding 2, medium-as-string). set -e comes from the emitter's set_e flag (not a string), the
-// tmpfs guard is a bash_build_if_from_stmts over a test_bracket with a command substitution and a
-// >&2-redirection refusal (NOT the brace group { ...; exit 1; } the hand-spelled version used --
-// the grammar has an if/then production, so the brace group was never required), the cat|gcloud leg
-// is a bash_build_pipe, and every argv leg is bash_build_command_from_lits over the argv builder's
-// OWN words. The ONE residual string is the trap BODY (see the frontier row): trap on EXIT, INT and
-// TERM is load-bearing for rule Q1 -- set -e does NOT run a trailing cleanup leg on SIGINT or
-// SIGTERM, so a control-C mid-mint would leave the private half in the tmpfs dir -- and the fold
-// grammar has no trap-with-a-signal-list production. The body is a compound statement list, the one
-// form the emitter cannot yet build; it is named, with its trigger, on this module's census-closure
-// frontier row (anchored_host_key_mint_shell). A REJECTED EMISSION IS A TYPED REFUSAL: this returns
-// v2.std.diagnostic Outcome<String> and passes the emitter's Rejected arm through untouched -- no
-// sentinel string smuggles the failure inside the success type (DESIGN §5: every path succeeds fully
-// or fails with a typed, located diagnostic; refuse, never widen). Consumers pattern-match; the
-// runbook's byte-for-byte claim refuses on Rejected rather than comparing against a marker.
-
-fn anchored_host_key_mint_cleanup_body(mint_dir: String) -> String {
-  join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
-}
-
-fn anchored_host_key_mint_tmpfs_guard(mint_dir: String) -> Node {
-  bash_build_if_from_stmts(
-    cond: bash_build_test_bracket(words: [
-      bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_tmpfs_check_command(mint_dir: mint_dir)))),
-      bash_build_word_lit(text: "!="),
-      bash_build_word_lit(text: "tmpfs"),
-    ]),
-    then_stmts: [
-      bash_build_with_redir(
-        inner: bash_build_command_from_lits(lits: ["echo", "mint dir is not tmpfs-backed; refusing to mint"]),
-        redir: ^bash_production_fold_redir_stdout_to_stderr,
-      ),
-      bash_build_exit(code: "1"),
-    ],
-  )
-}
-
-fn anchored_host_key_mint_upload_leg(mint_dir: String) -> Node {
-  bash_build_pipe(
-    left: bash_build_command_from_lits(lits: argv_words(command: cat_file_command(path: concat(mint_dir, "/mc_host")))),
-    right: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_upload_command())),
-  )
-}
-
-// THE ONE RESIDUAL STRING: the trap body. Trap on EXIT, INT and TERM is load-bearing for rule Q1 --
-// set -e does NOT run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the
-// private half in the tmpfs dir -- and the fold grammar has no trap-with-a-signal-list statement
-// production: the emit-lane's own authority row, gunbc.ci.ci_spec
-// gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, lists the arms that ARE ordinary commands
-// on that route ("set -euo pipefail, umask, export and trap are ordinary commands on that route, and
-// the trap body is itself built from nodes and passed as one grammar-quoted word") -- the body word is
-// built, but a SIGNAL LIST after it has no grammar arm, so a multi-signal trap cannot be emitted.
-// So this is the ONE arm that cannot be a node. It follows the SHIPPED lane
-// gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms (the "trap"
-// name, the body passed as ONE word for the emitter to quote ONCE, and the signal list) -- and the body
-// is the render of the model's OWN cleanup ArgvCommands (each word a model literal: the fixed mint dir +
-// a fixed file name, no shell metacharacters), joined with "; " as the Q1-correct cleanup. Everything
-// else in the script is a node.
-fn anchored_host_key_mint_trap(mint_dir: String) -> Node {
-  bash_build_command_with_words(words: [
-    bash_build_word_lit(text: "trap"),
-    bash_build_word_lit(text: anchored_host_key_mint_cleanup_body(mint_dir: mint_dir)),
-    bash_build_word_lit(text: "EXIT"),
-    bash_build_word_lit(text: "INT"),
-    bash_build_word_lit(text: "TERM"),
-  ])
-}
-
-fn anchored_host_key_mint_statements(mint_dir: String) -> List<Node> {
-  [
-    anchored_host_key_mint_trap(mint_dir: mint_dir),
-    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_directory_command(mint_dir: mint_dir))),
-    anchored_host_key_mint_tmpfs_guard(mint_dir: mint_dir),
-    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_keygen_command(mint_dir: mint_dir))),
-    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_create_command())),
-    anchored_host_key_mint_upload_leg(mint_dir: mint_dir),
-  ]
-}
-
-fn anchored_host_key_mint_shell() -> Outcome<String> {
-  bash_emit_stmts(statements: anchored_host_key_mint_statements(mint_dir: anchored_host_key_mint_dir()), set_e: true)
-}
-
-// THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
-// (DESIGN §4c; review 85232's hand-shell gate). The bash above dissolves to a real dispatch once
-// the CAPABILITY THAT RETIRES IT lands -- orchestration-to-shell bash EMISSION (v2.workflow.bash_emit
-// bash_emit_stmts over v2.extdeps.languages.bash_build nodes), NOT merely an execution route that
-// can carry hand-assembled bytes (§4b obligation 3: "the trigger names the CAPABILITY restored";
-// review 85396). The ONE control form this string still spells as a literal -- the trap body -- is
-// named, with its conversion, on this module's fourth census-closure frontier row
-// (anchored_host_key_mint_shell); set -e, the tmpfs guard's if/test/cmdsubst/>&2/exit arms, the
-// cat|gcloud pipe and every argv leg are already nodes, emitted. Until the grammar gains a compound-body
-// arm for the trap, the runbook renders it for a human, and the gate is human actuation: this module's
-// authoring session ran NOTHING; the operator or merry-fox-82 executes what Step 1 renders.
-data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
-}
-
-// THE MINTER'S STEP, typed (review 85232, "model it the same way as the neighbouring mint rows
-// (for example approval_ntfy_publisher_token_mint_intervention)"). The instruction NAMES the model
-// symbol the operator renders rather than transcribing shell -- inside the model there is no second
-// shell text to disagree with the render, exactly as the ntfy mint instruction points at its broker.
-// The runbook's Step 1 block is a CHECKED projection, not an untested copy:
-// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
-// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
-// anchored_host_key_mint_shell(). The mint is FleetOnce: the
-// stable key is minted once per fleet, not per boot (per boot is the DELIVERY, and delivery is the
-// custody arm's job, not this step's).
-fn anchored_host_key_mint_intervention() -> HumanIntervention {
-  HumanIntervention {
-    identity: "mtcollins1_ssh_host_key_mint" as HumanInterventionIdentity,
-    frequency: FleetOnce,
-    subject: "mint the stable ed25519 host keypair in a verified tmpfs directory and publish the private half as one new Secret Manager version of the row's host_key_secret" as NonEmptyStr,
-    instruction: join([
-      "run Step 1 of docs/runbooks/mtcollins1-ssh-host-key-mint.md, which renders this module's anchored_host_key_mint_shell() -- the tmpfs-backed 0700 dir, ssh-keygen, gcloud secrets create WITHOUT a data file, then the key over stdin into versions add; nothing here puts the private half in any argv word, and the trap removes the key on every path",
-      " -- and read the public half back with ", ssh_keygen_public_key_command_label(),
-      " for the anchor transcription in Step 3",
-    ], "") as NonEmptyStr,
-    completion_evidence: NoDischargeSiteModeled,
-  }
-}
-
-fn ssh_keygen_public_key_command_label() -> String {
-  "ssh-keygen -y -f <mint-dir>/mc_host (extdeps.ssh.openssh_client_commands.ssh_keygen_public_key_command)"
-}
-
-// THE MINT'S PRIVILEGED EFFECT (review 85232: "no PrivilegedEffect ... and no PrivilegedEffectSite.
-// That is the kind of gap the census exists to close"). It is built exactly as the census's
-// manual_operator_api_effect builds the ntfy mint row -- ApiSurface, because gcloud IS the
-// (human-driven) API; the frequency is read FROM the intervention, not restated; and
-// IRREVERSIBLE with the loss named, which is the difference from the scan's ReversibleByReapply:
-// the version-destroy/rotation route cannot undo losing the private half while the RAM image
-// holds it and no copy exists -- a destroyed version is gone, and the fleet's anchor and every
-// transport seated on it go with it. MintsResourceScopedCredential: what the mint mints is a key
-// PAIR scoped to one host -- its private half is a credential in the sense that matters (theft
-// impersonates mtcollins1's sshd), and that is why the fold treats the mint like the token mints
-// rather than like a no-reach edit.
-// The irreversibility ACTIVATES the witness gate (an irreversible effect with no witness discharge
-// demands a human who consented to THIS effect), which excludes the patterns with no human behind
-// them; the unbindable workload identity excludes the federated grant. What is left standing when
-// the fold runs -- anchored_host_key_mint_effect through select_authorization_pattern, never
-// hand-picked -- is OperatorApprovedCapability, so the row diverges for exactly the stated reason
-// the ntfy mint row diverges for; nothing is claimed that the fold does not compute.
-fn anchored_host_key_mint_effect() -> PrivilegedEffect {
-  PrivilegedEffect {
-    subject: "create the mtcollins1 stable SSH host keypair and publish its private half as a new Secret Manager version" as NonEmptyStr,
-    frequency: anchored_host_key_mint_intervention().frequency,
-    reversibility: IrreversibleEffect {
-      what_is_lost: "the private half: the mint dir is RAM-backed and trap-deleted, the sole durable copy is the Secret Manager version, and version destroy (or rotation) removes it unrecoverably -- with it the anchor this key grounds and every transport seated on that anchor" as NonEmptyStr,
-    },
-    surface: ApiSurface,
-    workload_identity: WorkloadIdentityUnbindable {
-      cause: "no fleet principal holds Secret Manager create/addVersion for this secret; the mint runs under the operator's own human authority, and no workload identity on any host can be bound to it" as NonEmptyStr,
-    },
-    minted_reach: MintsResourceScopedCredential,
-    billing: NoBillingConsequence,
-    witness_discharge: NoWitnessDischarge,
-  }
-}
+// Until 2026-10-28 this module owned the mint of mtcollins1's stable SSH host key: a modeled human shell
+// (anchored_host_key_mint_shell, emitted leg by leg through bash_emit_stmts), a modeled human step
+// (anchored_host_key_mint_intervention), a privileged effect (anchored_host_key_mint_effect, IRREVERSIBLE
+// with a loss named) and its own dissolution trigger (anchored_host_key_mint_shell_-
+// emit_dissolution_trigger, which said: when orchestration-to-shell emission can build a compound statement
+// list, including a trap, this scaffold is replaced by a fleet-converge workflow_dispatch input and the
+// runbook's Step 1 is DELETED).
+//
+// The trigger fired, and the replacement is stronger than the trigger asked for. The trigger anticipated a
+// SCRIPT the run emits and a human runs. What landed instead is a mint: one keypair-mint policy
+// (gunbc.host.fleet_keypair_mint, delivered as its root design 6b demands -- ONE policy with a row per keypair
+// rather than a second implementation of "the private half never leaves tmpfs") with two subjects,
+// gunbc.host.boot_medium_reader_key_mint and gunbc.host.mtcollins1_ssh_host_key_mint. The operator's ruling is
+// a design_ruling row, the_mint_of_a_fleet_ssh_keypair_is_account_creation ("i don't see why a human needs to
+// do this - this seems just like normal account creation"), and the census row moved with it:
+// gunbc.auth.privileged_effect_census now carries the mint at the new site with
+// RealizedFederatedGrant, and the argument for why the SELECTION flipped from OperatorApprovedCapability to the
+// federated grant -- that the irreversibility forcing a human's consent was a property of the human process
+// rather than of the key -- is made once there, not here.
+//
+// WHAT CARRIED OVER, BECAUSE IT WAS THE PART THAT MATTERED. Every safety property of the retired scaffold is
+// a property of the mint that replaced it, and none was re-derived from scratch:
+//   - the tmpfs guard (the directory's filesystem is READ from findmnt and required to be tmpfs BEFORE
+//     ssh-keygen runs, never assumed from a path string that a bind mount could betray);
+//   - trap cleanup (the directory is removed on every path out of the generation, and a refusal that could
+//     not remove a directory it created says so, because an existing directory's owner is the run that made
+//     it and deleting somebody else's would destroy the evidence of an unaccounted key);
+//   - the private half on stdin only, into AddVersion, base64'd -- never in argv where any process on a
+//     self-hosted runner can read it, never in a log, never on a durable path. The argv RED is
+//     dag/test/claim/host/fleet_keypair_mint_witness.dag; the Q1 RED is the tmpfs gate's;
+//   - the verify-before-upload rule (a public line that is not one ssh-ed25519 key, or a fingerprint that is
+//     not SHA256-shaped, refuses before anything is stored);
+//   - BOTH PIN HALVES, IN ONE COMMIT -- which is why the new receipt carries the fingerprint rather than
+//     leaving it to be transcribed by hand into this module's anchor row.
+//
+// WHAT IS GONE, AND WHY NOTHING MAY TAKE ITS PLACE: no script is emitted here, and no human pastes a mint for
+// a fleet key. The minting identity's secretVersionAdder arrives as a row of
+// gunbc.auth.fleet_secret_accessor_roster converged by gunbc.auth.gcp_iam_converge, never as a console edit --
+// a hand-made grant is unmodeled authority that nothing lists, nothing revokes, and that would make this
+// census a description of a fleet that does not exist. Dispatching the mint remains an OPERATOR GO.
+//
+// The anchor row above is untouched and still unskippable: a minted key with no anchor is a live credential
+// nothing can prove it holds, and a transport that cannot verify the host it is connecting to has lost the
+// only property that makes the connection mean anything.

@@ -1247,6 +1247,45 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
+/// UNIQUELY OWNED CARRIERS ARE DRAINED EVEN WHEN A `Weak` HANDLE IS OUTSTANDING.
+///
+/// `Rc::get_mut` is the obvious test for "nobody else can observe this carrier", and it is too strict
+/// for THIS interpreter: it returns `None` whenever any `Weak` exists, even with the strong count at
+/// one, and this interpreter deliberately keeps `Weak` handles on live carriers (`CompositeWeak` in the
+/// recompute memo, taken by `Rc::downgrade` in the `EvalRecomputeFrameKind` finalizers). So a carrier
+/// can be uniquely owned and still refuse `get_mut`; its members were then never moved to the worklist,
+/// and `Value::drop`'s own return released them through drop glue -- one host frame per value level,
+/// which is the abort this function exists to prevent.
+///
+/// THE INSTRUMENT FOR THAT CLAIM is this module's `a_weak_held_list_chain_drops` and
+/// `a_weak_held_variant_chain_drops`: a 262,144-level chain whose every carrier is uniquely owned but
+/// has a `Weak` outstanding. Take the three fallback arms out and they abort the test process with a
+/// host stack overflow; with them they pass, and they pass in one module run beside the pre-existing
+/// `a_deep_variant_chain_drops` / `a_deep_list_drops` guards, which already passed with and without
+/// this change -- that pair is what says the escape was specific to `Weak`-held carriers rather than
+/// to deep values in general.
+///
+/// `Rc::try_unwrap` is the route that works, and that is pinned rather than assumed:
+/// `an_outstanding_weak_blocks_get_mut_but_not_try_unwrap` asserts that a `Weak` blocks `get_mut` and
+/// does NOT block `try_unwrap`, and says so if a future std changes either way. It is also the honest
+/// route, because it re-checks ownership itself instead of trusting the guard above it: it returns
+/// `Err` unless the strong count is one, so a genuinely SHARED carrier is left in place for its other
+/// owners -- the invariant the `VALUE_DROP_INLINE_DEPTH` note above states, pinned on the shared side
+/// by this module's `a_shared_deep_chain_drops_once_per_owner`, by `slice_cost_tests`'
+/// `dropping_a_slice_of_a_shared_list_moves_no_member` /
+/// `the_detaching_drop_moves_the_slice_members` pair, and on this fallback's own side by
+/// `a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner`. The `strong_count` test
+/// above is what keeps the common shared case off the `try_unwrap` path entirely; the `Err` branch only
+/// reverts to the previous behaviour, and restores the carrier.
+///
+/// A `Weak` OBSERVER OF A DRAINED CARRIER SEES WHAT IT WOULD SEE AFTER AN ORDINARY DROP:
+/// `strong_count` 0. Draining the members does not resurrect the carrier or keep the chain alive, so
+/// the recompute memo's liveness check — `CompositeWeak::alive`, which consults `strong_count` and
+/// never the contents — reads the same answer it read before this change.
+///
+/// This is NARROW by construction: it adds a fallback where the drain previously did nothing. It does
+/// not touch `value_depth_guarded` or any `stacker::maybe_grow` site, so the separate unfired-guard
+/// item (an interpreted recursion whose frames keep allocating) is NOT retired here.
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
         Value::List(items) if detach_carriers => {
@@ -1254,6 +1293,18 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
+            } else if Rc::strong_count(items) == 1 {
+                // Uniquely owned but `Weak`-held: take the carrier out and put it back if the unwrap
+                // refuses, so no path can leave this value looking at an emptied carrier.
+                let carrier = std::mem::replace(items, Rc::new(RrbVector::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(mut owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(std::mem::take(&mut owned));
+                    }
+                    Err(restored) => *items = restored,
+                }
             }
         }
         Value::Map(entries) if detach_carriers => {
@@ -1261,11 +1312,27 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
+            } else if Rc::strong_count(entries) == 1 {
+                let carrier = std::mem::replace(entries, Rc::new(HamtMap::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(owned.into_iter().map(|(_, v)| v));
+                    }
+                    Err(restored) => *entries = restored,
+                }
             }
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             if let Some(fields) = Rc::get_mut(fields) {
                 pending.extend(fields.drain(..).map(|(_, v)| v));
+            } else if Rc::strong_count(fields) == 1 {
+                let carrier = std::mem::replace(fields, Rc::new(Vec::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => pending.extend(owned.into_iter().map(|(_, v)| v)),
+                    Err(restored) => *fields = restored,
+                }
             }
         }
         _ => {}
@@ -1327,6 +1394,54 @@ impl PartialEq for Value {
 pub struct Env {
     bindings: HashMap<Symbol, Value>,
     parent: Option<Rc<Env>>,
+}
+
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
 }
 
 impl Env {
@@ -1396,6 +1511,14 @@ pub enum InterpError {
     },
     TypeError {
         msg: String,
+    },
+    /// The interpreted call chain reached `CALL_DEPTH_LIMIT`. Its own variant, not a `TypeError`
+    /// string: the count is the refusal's whole content, and a sentence cannot be told apart from
+    /// any other type error by a caller or a witness classifier. `at` names the fn, or the closure
+    /// application, whose frame crossed the limit.
+    CallDepthExceeded {
+        limit: u32,
+        at: String,
     },
     CrossRepresentationEquality {
         detail: String,
@@ -1718,6 +1841,11 @@ impl fmt::Display for InterpError {
                     elapsed_ms, budget_ms
                 )
             }
+            InterpError::CallDepthExceeded { limit, at } => write!(
+                f,
+                "call depth exceeded {} at {} -- the interpreted call chain did not terminate within the limit (a divergent chain, or a host seam whose realization this binary lacks); refused, never a host stack overflow",
+                limit, at
+            ),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -7710,13 +7838,9 @@ fn call_function_guarded(
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: format!("fn '{}'", fn_node.name),
         });
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
@@ -25440,13 +25564,9 @@ fn apply_closure(
     });
     if depth > CALL_DEPTH_LIMIT {
         CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: "closure application".to_string(),
         });
     }
     let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
@@ -30030,9 +30150,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
         portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30079,6 +30199,138 @@ mod value_depth_walker_tests {
             value = list_value(vec![value]);
         }
         value
+    }
+
+    // THE RED: A UNIQUELY OWNED CARRIER HELD BY A `Weak` STILL REACHES THE WORKLIST.
+    //
+    // `Rc::get_mut` refuses any carrier with an outstanding `Weak`, even at strong count one, and this
+    // interpreter keeps such handles on live carriers on purpose (`CompositeWeak` in the recompute
+    // memo). Before the fallback in detach_owned_children, no level's members were moved, so
+    // `Value::drop`'s return released them through drop glue and the 262,144-deep chain aborted the
+    // process on the default 2 MiB test-thread stack -- the same host abort the wet lane shows after a
+    // reported refusal. Remove the fallback and THIS test aborts; that is its discriminating input.
+    #[test]
+    fn a_weak_held_list_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // Same through the fields carrier, which detach_owned_children drains at EVERY depth rather than
+    // only past VALUE_DROP_INLINE_DEPTH, so it is the arm the wet-lane Variant/Record values take.
+    #[test]
+    fn a_weak_held_variant_chain_drops() {
+        let ctx = fresh_ctx();
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..DEPTH {
+            let fields = Rc::new(vec![(next, value)]);
+            weaks.push(Rc::downgrade(&fields));
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields,
+            };
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HashMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HashMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
+    // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
+    // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
+    // chain is dropped, each retained carrier still holds its one member. Widen the fallback to ignore
+    // the strong count and this fails instead of passing.
+    #[test]
+    fn a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner() {
+        const SHARED_DEPTH: usize = 1_024;
+        let mut retained: Vec<Rc<im::Vector<Value>>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..SHARED_DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            retained.push(Rc::clone(&carrier));
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        assert_eq!(
+            retained.iter().map(|carrier| carrier.len()).sum::<usize>(),
+            SHARED_DEPTH,
+            "a shared carrier was drained from under its other owner"
+        );
+        drop(retained);
+        drop(weaks);
+    }
+
+    // WHY try_unwrap AND NOT A STRONGER get_mut TEST: the fallback rests on `Weak` not blocking
+    // `Rc::try_unwrap` while it does block `Rc::get_mut`. That is std behaviour this file now depends
+    // on, so it is pinned here rather than trusted: if a future std made `Weak` block try_unwrap, the
+    // two deep tests above would abort again and THIS one would say why.
+    #[test]
+    fn an_outstanding_weak_blocks_get_mut_but_not_try_unwrap() {
+        let mut carrier: Rc<Vec<(crate::v1_interpreter::Symbol, Value)>> = Rc::new(vec![]);
+        let weak = Rc::downgrade(&carrier);
+        let extra = Rc::clone(&carrier);
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "two strong owners must not grant get_mut"
+        );
+        drop(extra);
+        assert_eq!(
+            Rc::strong_count(&carrier),
+            1,
+            "the extra owner was not released"
+        );
+        assert_eq!(Rc::weak_count(&carrier), 1, "the Weak handle vanished");
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "Weak stopped blocking get_mut: the fallback arm this pins is then dead weight"
+        );
+        assert!(
+            Rc::try_unwrap(carrier).is_ok(),
+            "std started letting Weak block try_unwrap: uniquely owned carriers stop draining \
+             and the deep drops abort again"
+        );
+        assert_eq!(weak.strong_count(), 0, "the carrier survived its unwrap");
     }
 
     #[test]
@@ -30474,5 +30726,186 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod t9_host_recursion_probes {
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{no_span, Cardinality, Connective, ExprData, Node};
+
+    use super::{list_value, map_value, Env, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn body_node() -> Rc<Node> {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "body".to_string(),
+            span: no_span(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
+        std::env::var("T9_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
+    }
+
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
+    fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
+        Value::Closure {
+            params: vec![],
+            body: body.clone(),
+            env,
+        }
+    }
+
+    /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
+    #[test]
+    fn probe_env_parent_chain_drops() {
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
+    }
+
+    /// Each closure captures an env binding the previous closure.
+    #[test]
+    fn probe_closure_capture_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
+    }
+
+    /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
+    #[test]
+    fn probe_closure_via_env_parent_chain_drops() {
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
+    }
+
+    /// Closure env binds a List holding the previous closure.
+    #[test]
+    fn probe_closure_env_list_of_closures_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let env = Env::with_binding(&Env::empty(), f, list_value(vec![value]));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Closure env binds a Map whose value is the previous closure.
+    #[test]
+    fn probe_closure_env_map_value_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let mut entries = super::HamtMap::new();
+            entries.insert(
+                super::CanonKey::new(super::str_value("k")).expect("canonical key"),
+                value,
+            );
+            let env = Env::with_binding(&Env::empty(), f, map_value(entries));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Positive control: shallow chain drops fine (proves the probe builds what it claims).
+    #[test]
+    fn control_shallow_closure_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..1_000 {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
     }
 }

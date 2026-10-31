@@ -86,6 +86,12 @@ import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
+import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
+import gunbc.compute.compute_producer_lease {
+  ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
+  ComputeProducerLeaseReleased, ComputeProducerLeaseKept,
+  compute_producer_leases, compute_producer_lease_path, compute_producer_lease_acquire, compute_producer_lease_release_current,
+}
 import std.measure { kibibyte }
 import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, refused_identity_components_text, request_canonical_digest, request_kind, request_judgment_contract, compute_work_binary_output }
 import std.cache_identity { ArtifactKindId }
@@ -104,7 +110,9 @@ import std.materialization_object {
   StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
   StoreCommitAddressRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
   StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
-  StoreCommitCleanupOutstanding,
+  StoreCommitCleanupOutstanding, StoreCommitAtCapacity,
+  StoreLookupOutputContentRefused, StoreCommitOutputContentRefused,
+  StoreOutputContentRefusal, StoreRequiredBytePartMissing, StoreRequiredBytePartDifferent,
   StoreFault, store_lookup_payload,
 }
 import extdeps.realization.materialization_store_local {
@@ -152,21 +160,11 @@ type ComputeLayout {
   work_dir: String
   checkout: String
   out_dir: String
-  leases_dir: String
-  lease_path: String
+  leases: ComputeProducerLeasesReading
+  identity_hex: String
   staging_dir: String
   target_dir: String
-  log_path: String
-  consumption_path: String
-}
-
-// THE PRODUCER LEASE'S LOCATION IS DERIVED ONCE: the layout and the discharge both read it here.
-fn compute_leases_dir(root: String) -> String {
-  join([root, "/leases"], "")
-}
-
-fn compute_lease_path(leases_dir: String, identity_hex: String) -> String {
-  join([leases_dir, "/", identity_hex], "")
+  records: ComputeWorkRecords
 }
 
 // THE LAYOUT EXISTS ONLY FOR AN INSTANCE THAT DECLARES A STORE, because its staging directory is
@@ -180,15 +178,16 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
 
 fn compute_layout_in(instance: HostDashboardInstance, store_root: MaterializationStoreRoot, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
-  let work_root = join([root, "/work"], "")
-  let work_dir = join([work_root, "/", identity_hex], "")
+  let work_root = compute_work_root(instance: instance)
+  let records = compute_work_records(instance: instance, identity: identity_hex)
+  let work_dir = compute_work_dir(records: records)
   ComputeLayout {
     root: root,
     work_dir: work_dir,
     checkout: join([work_dir, "/src"], ""),
     out_dir: join([work_dir, "/out"], ""),
-    leases_dir: compute_leases_dir(root: root),
-    lease_path: compute_lease_path(leases_dir: compute_leases_dir(root: root), identity_hex: identity_hex),
+    leases: compute_producer_leases(instance: instance),
+    identity_hex: identity_hex,
     staging_dir: materialization_store_staging_root_path(root: store_root),
     // The writable target belongs to THIS IDENTITY (C4), not to the host: it is the owned cargo
     // target partition gunbc.owned_cargo_target.owned_cargo_target_dir applied to the compute work root and
@@ -202,8 +201,7 @@ fn compute_layout_in(instance: HostDashboardInstance, store_root: Materializatio
     // outputs are returned and the store settlement has landed, while the lease is still held, so
     // cross-request reuse lives in the shared sccache and the result store, never in a target.
     target_dir: owned_cargo_target_dir(base_root: work_root, owner: identity_hex),
-    log_path: join([work_dir, "/log"], ""),
-    consumption_path: join([work_dir, "/consumption"], ""),
+    records: records,
   }
 }
 
@@ -1635,8 +1633,8 @@ fn compute_run_and_settle(
     verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: outcome) },
     detail: join([unit_termination_wire(t: termination), "; ", compute_release_wire(r: returned)], ""))
   let dropped = compute_drop_producer_lease(layout: layout)
-  let measured = Filesystem.Write(
-    path: layout.consumption_path,
+  let measured = compute_work_consumption_write(
+    records: layout.records,
     content: join([
       compute_capacity_standing_wire(s: standing), "\n",
       compute_peak_sample_wire(instance: instance, identity: identity, op: op, grant: grant, summary: attempt.summary),
@@ -1647,10 +1645,9 @@ fn compute_run_and_settle(
       match dropped { LeaseDropped => ""  LeaseNotDropped { detail: d } => compute_stale_lease_note(layout: layout, error: d) },
     ], ""))
   provide_result_with_host_record(
-    r: if measured.success {
-      settled
-    } else {
-      compute_with_lost_host_record(settled: settled, layout: layout, dropped: dropped, error: measured.error)
+    r: match measured {
+      ComputeWorkRecordWritten => settled
+      ComputeWorkRecordUnwritten { error: e } => compute_with_lost_host_record(settled: settled, layout: layout, dropped: dropped, error: e)
     },
     carried: attempt_settlement_host_record(s: closed))
 }
@@ -1686,11 +1683,11 @@ fn compute_with_lost_host_record(
   error: String,
 ) -> ProvideResult {
   let detail = join([
-    "this host's record at ", layout.consumption_path, " could not be written: ", error,
+    "this host's record at ", compute_work_consumption_path(records: layout.records), " could not be written: ", error,
     "; the consumption reading is lost, and ",
     match dropped {
       LeaseDropped => "the producer lease was dropped, so nothing else is outstanding"
-      LeaseNotDropped { detail: d } => join(["THE PRODUCER LEASE AT ", layout.lease_path, " IS ALSO STILL HELD (", d, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
+      LeaseNotDropped { detail: d } => join(["THE PRODUCER LEASE AT ", compute_producer_leases_reading_label(reading: layout.leases, identity: layout.identity_hex), " IS ALSO STILL HELD (", d, ") AND NOTHING NOW RECORDS THAT IT IS STALE: an operator must remove the name before this identity can be produced again"], "")
     },
   ], "")
   provide_result_with_host_record(r: settled, carried: HostRecordLost { detail: detail })
@@ -1709,7 +1706,7 @@ fn compute_with_lost_host_record(
 // stale name only blocks a request that must PRODUCE again.
 fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
   join([
-    "STALE PRODUCER LEASE: ", layout.lease_path, " could not be dropped: ", error,
+    "STALE PRODUCER LEASE: ", compute_producer_leases_reading_label(reading: layout.leases, identity: layout.identity_hex), " could not be dropped: ", error,
     "; the record for this identity is committed in the materialization store under that identity and is authoritative, ",
     "and a caller reaching that record ATTACHES to it -- the attach is decided before this name is ",
     "consulted. The stale name matters only to a request that must PRODUCE again, which it will ",
@@ -1881,14 +1878,14 @@ type LeaseDrop
   | LeaseNotDropped { detail: String }
 
 fn compute_drop_producer_lease(layout: ComputeLayout) -> LeaseDrop {
-  compute_drop_lease_at(lease_path: layout.lease_path)
-}
-
-// THE ONE DELETE. The layout-shaped door above and the seat discharge (which holds a leases directory
-// and an attempt record's identity, never a layout) both land here, so the lease is dropped by one effect.
-fn compute_drop_lease_at(lease_path: String) -> LeaseDrop {
-  let dropped = Filesystem.Delete(path: lease_path)
-  if dropped.success { LeaseDropped } else { LeaseNotDropped { detail: dropped.error } }
+  match layout.leases {
+    ComputeProducerLeasesUnready { detail: d } => LeaseNotDropped { detail: d }
+    ComputeProducerLeasesReady { leases: leases } =>
+      match compute_producer_lease_release_current(leases: leases, identity: layout.identity_hex) {
+        ComputeProducerLeaseReleased => LeaseDropped
+        ComputeProducerLeaseKept { detail: d } => LeaseNotDropped { detail: d }
+      }
+  }
 }
 
 fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostRecordStatus {
@@ -1974,7 +1971,7 @@ type ComputeMaterialization {
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
   match local_store_family_budget(budgets: materialization_store_durable_family_budgets, family: family) {
-    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
+    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget, at_capacity: b.at_capacity)]
     Absent => []
   }
 }
@@ -2118,10 +2115,10 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
     ComputeMemoized =>
       match outcome {
         WorkSucceeded { identity: _, outputs, log_path: _ } => {
-          let log = Filesystem.Read(path: layout.log_path)
-          if !log.success {
-            ComputeCommitRefused { detail: join(["the run log at ", layout.log_path, " could not be read, and a record without its log is not the run that happened: ", log.error], "") }
-          } else {
+          match compute_work_log_read(records: layout.records) {
+          ComputeWorkRecordUnread { error: e } =>
+            ComputeCommitRefused { detail: join(["the run log at ", compute_work_log_path(records: layout.records), " could not be read, and a record without its log is not the run that happened: ", e], "") }
+          ComputeWorkRecordPresent { content: log_content } => {
             match compute_store_open(store: materialization.store) {
               ComputeStoreOpenRefused { detail } => ComputeCommitRefused { detail: detail }
               ComputeStoreOpened { opening } =>
@@ -2132,7 +2129,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
                       let parts = compute_binary_parts(layout: layout, op: op)
                       let committed = local_store_commit(capability: capability, req: materialization.request, payloads: [
                         ArtifactPayload { id: output_compute_work_outcome, content: document },
-                        ArtifactPayload { id: output_compute_work_log, content: log.content },
+                        ArtifactPayload { id: output_compute_work_log, content: log_content },
                         ArtifactPayload { id: output_compute_work_outputs, content: compute_outputs_manifest(outputs: outputs) },
                       ], parts: parts).commit
                       let unstaged = compute_unstage(parts: parts)
@@ -2145,6 +2142,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
                     }
                 }
             }
+          }
           }
         }
         WorkFailed { identity: _, exit_code: _, log_path: _ } => ComputeCommitNotOwed
@@ -2231,8 +2229,16 @@ fn compute_store_unavailable_detail(c: LocalStoreUnavailableCause) -> String {
   }
 }
 
+fn compute_store_output_content_refusal_detail(cause: StoreOutputContentRefusal) -> String {
+  match cause {
+    StoreRequiredBytePartMissing { part } => join(["required byte part missing: ", part as String], "")
+    StoreRequiredBytePartDifferent { part, expected, found } => join(["byte content differs for ", part as String, ": expected SHA-256 ", expected.hex as String, ", found ", found.hex as String], "")
+  }
+}
+
 fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
   match r {
+    StoreLookupOutputContentRefused { cause } => compute_store_output_content_refusal_detail(cause: cause)
     StoreLookupObjectUnavailable { fault } => join(["object unavailable: ", compute_store_fault_detail(f: fault)], "")
     StoreLookupObjectMalformed { cause } => join(["object malformed: ", cause], "")
     StoreLookupManifestUninterpretable { decode: _ } => "manifest uninterpretable"
@@ -2247,6 +2253,7 @@ fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
 
 fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
   match r {
+    StoreCommitOutputContentRefused { cause } => compute_store_output_content_refusal_detail(cause: cause)
     StoreCommitManifestUninterpretable { decode: _ } => "manifest uninterpretable"
     StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
     StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
@@ -2257,6 +2264,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")
     StoreCommitBudgetUndeclared { family } => join(["no budget is declared for family ", family as String], "")
     StoreCommitDidNotFit { artifact_bytes: a, budget: b } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) exceeds the family budget (", to_string(value: byte_size_count(b: b)), " bytes)"], "")
+    StoreCommitAtCapacity { artifact_bytes: a, available: b } => join(["store at capacity: the record needs ", to_string(value: byte_size_count(b: a)), " bytes; ", to_string(value: byte_size_count(b: b)), " bytes are available"], "")
     StoreCommitCleanupOutstanding { artifact_bytes: a, budget: b, undeleted: u } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) does not fit the family budget (", to_string(value: byte_size_count(b: b)), " bytes) while ", to_string(value: byte_size_count(b: u)), " bytes of evicted entries are still undeleted"], "")
     StoreCommitOccupancyUnavailable { cause } => join(["occupancy record unavailable: ", cause], "")
   }
@@ -2336,13 +2344,20 @@ fn compute_provide_produce(
   op: WorkOperation,
   dependency: ComputeDependency,
 ) -> ProvideResult {
-  if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_seat_dir(instance: instance, seat: ComputeFlatSeat)) {
+  match layout.leases {
+    ComputeProducerLeasesUnready { detail: d } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: d } }, subject: subject, op: op)
+    ComputeProducerLeasesReady { leases: leases } => {
+  if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: leases.root as String) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_seat_dir(instance: instance, seat: ComputeFlatSeat)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([compute_seat_holder_line(instance: instance, seat: compute_seat_of(owner: owner)), commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
-    if !lease.success {
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
-    } else {
+    let lease = compute_producer_lease_acquire(leases: leases, identity: identity, owner: join([compute_seat_holder_line(instance: instance, seat: compute_seat_of(owner: owner)), commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
+    match lease {
+      ComputeProducerLeaseOccupied { holder: _ } =>
+        compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: compute_producer_lease_path(leases: leases, identity: identity) } }, subject: subject, op: op)
+      ComputeProducerLeaseRefused { detail: d } =>
+        compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: d } }, subject: subject, op: op)
+      ComputeProducerLeaseAcquired => {
       let reread = compute_read_stored_outcome(materialization: materialization)
       match reread {
         ComputeStoreServed { ending: _, identity: _, document: _ } =>
@@ -2352,6 +2367,9 @@ fn compute_provide_produce(
         ComputeStoreAbsent => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
         ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
       }
+      }
+    }
+  }
     }
   }
 }
@@ -2767,7 +2785,7 @@ fn compute_spawn_and_collect(
       }
     ComputeUnitRunExecuted { run: unit_run } => {
   let run = unit_run.exec
-  let log = Filesystem.Write(path: layout.log_path, content: match run {
+  let log = compute_work_log_write(records: layout.records, content: match run {
     ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
     ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
   })
@@ -2775,11 +2793,11 @@ fn compute_spawn_and_collect(
   ComputeAttempt {
     outcome: match run {
       ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>
-        compute_failed_unit_outcome(summary: summary, identity: identity, exit_code: exit_code, op: op, granted: granted, grant_was_ceiling: grant_was_ceiling, log_path: layout.log_path)
+        compute_failed_unit_outcome(summary: summary, identity: identity, exit_code: exit_code, op: op, granted: granted, grant_was_ceiling: grant_was_ceiling, log_path: compute_work_log_path(records: layout.records))
       ComputeExecOk { stdout: _, stderr: _ } =>
         match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
           OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
-          OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: if log.success { layout.log_path } else { "" } }
+          OutputsReturned { outputs } => WorkSucceeded { identity: identity, outputs: outputs, log_path: match log { ComputeWorkRecordWritten => compute_work_log_path(records: layout.records)  ComputeWorkRecordUnwritten { error: _ } => "" } }
         }
     },
     summary: summary,
@@ -2930,9 +2948,6 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // a field read off a layout: a layout is built around one work identity and recovery arrives
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
 // would work and would also be a second spelling of the same path (DESIGN 3).
-fn compute_leases_root(instance: HostDashboardInstance) -> String {
-  compute_leases_dir(root: compute_root(instance: instance) as String)
-}
 
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT
 // MATTERS. The attempt can settle -- history written, generation advanced -- and the seat can still
@@ -3016,9 +3031,9 @@ fn unit_source_after_stop(source: UnitLifecycleSource) -> UnitLifecycleSource {
 }
 
 fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyStr) -> ComputeRecovery {
-  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+  match compute_capacity_subject(instance: instance) {
     ComputeSubjectHostUnresolved { host: h } => RecoveryRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subj } =>
+    ComputeSubjectResolved { subject: subj, appropriation: _ } =>
       compute_recover_attempt_resolved(instance: instance, subject: subj, reference: reference)
   }
 }

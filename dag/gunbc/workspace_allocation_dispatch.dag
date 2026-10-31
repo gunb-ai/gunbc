@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive, workspace_launch_directive_text, workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
 import gunbc.workspace_reconcile_once { workspace_reconcile_prepare }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_store }
 import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
 import gunbc.workspace_allocation_policy { workspace_installed_policy }
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
@@ -53,7 +53,7 @@ fn workspace_allocation_prepare(host: NonEmptyStr, release_dir: NonEmptyStr) -> 
 
 // A preparation that could not select publishes its located reason for the owner's view and stops.
 fn workspace_publish_preparation_wait(allocation: WorkspaceAllocation, reason: String) -> WorkspaceConvergenceObservation {
-  match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
+  match workspace_record_preparation_wait(store: workspace_allocation_store(binding: fabric_state_storage_binding()), request: allocation.request, reason: reason) {
     WorkspaceStoreWritten { allocation: _ } => WorkspaceConvergenceUnobserved { reason: reason }
     WorkspaceStoreConflict => WorkspaceConvergenceUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
     WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }

@@ -166,6 +166,21 @@ fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
   }
 }
 
+// THE ONE RENDERING OF A STORE FAILURE as detail text, every arm kept: the unreadable arm through
+// cas_unreadable_slot_detail above, the refused publication as the store's own detail, and the exhausted
+// generation space with the head it stopped at. Consumers prefix their own location; none folds an arm
+// away. Three modules carried a local copy of this rendering; two remain, each left for a named follow-up: gunbc.host.host_boot_attempt_admission cas_store_failure_text, where that module's import of this
+// one is next rewritten, and gunbc.auth.gcp_iam_bootstrap_journal journal_store_failure_text, which is a PREFIXED
+// variant rather than a copy (it prefixes two arms and hides the third behind a wildcard), once that module's
+// witnesses compile again.
+fn cas_store_failure_detail(cause: CasStoreFailure) -> String {
+  match cause {
+    CasSlotObservationRefused { cause: u } => cas_unreadable_slot_detail(cause: u)
+    CasGenerationPublicationRefused { detail: d } => d as String
+    CasGenerationSpaceExhausted { head: h } => join(["the slot's generation space is exhausted at ", to_string(cas_generation_count(g: h))], "")
+  }
+}
+
 // WHY THE STORE FAILED, AND READING AND WRITING ARE TWO WAYS FOR IT TO FAIL.
 //
 // `CasStoreRefused` used to carry a `CasUnreadableSlot` directly, which was right while the only way

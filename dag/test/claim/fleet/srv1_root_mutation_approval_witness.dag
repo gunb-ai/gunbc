@@ -4,17 +4,21 @@ import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.scoped_authorization { AuthorizationRequest }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
 import extdeps.github.actions { Job, Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied }
 import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
+  microvm_controller_install_root_scopes, srv1_root_write_scope,
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
-  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect,
+  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
 }
-import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row }
+import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
+import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
@@ -82,7 +86,7 @@ test fn a_refused_gate_fails_the_step_before_any_root_step() -> Bool {
     request: deploy, observed_at: "2026-10-26T12:01:00Z",
   )
   let expired = approval_gate_from_poll(poll: PollExpired, request: deploy, observed_at: "2026-10-26T12:01:00Z")
-  all([denied, expired], g => match srv1_root_mutation_after_gate(gate: g, request: deploy) {
+  all([denied, expired], g => match srv1_root_mutation_after_gate(gate: g, request: deploy, receipt_path: "fixture-unwritten-receipt.txt") {
     ExitSuccess => false
     ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "no root step runs")
   })
@@ -126,6 +130,15 @@ test fn the_gate_step_renders_from_nodes_and_exports_only_the_submission_key() -
     && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
     && !string_contains(s: text, pattern: "dissolve-on")
     && !string_contains(s: text, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+    && !string_contains(s: text, pattern: "/artifacts")
+}
+
+// THE UPLOADED PATH AND THE WRITTEN PATH ARE ONE TEMPLATE, checked against spellings stated here
+// independently: GitHub's expression syntax for the upload, and a supplied RUNNER_TEMP for the write.
+// Both sit outside the checkout, which is what the deploy's clean-tree check needs.
+test fn the_receipt_is_uploaded_from_where_it_is_written_outside_the_checkout() -> Bool {
+  srv1_root_mutation_approval_artifact_glob == "${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt"
+    && srv1_root_mutation_approval_receipt_path(runner_temp_dir: "/fixture/runner-temp") == Present { value: "/fixture/runner-temp/srv1-root-mutation-approval-receipt.txt" }
 }
 
 // THE APPROVAL BINDS THE SELECTION (review 5649820707): one job, one attempt, one commit, two plans.
@@ -200,4 +213,76 @@ test fn a_non_srv1_dispatch_never_reaches_the_credential_steps() -> Bool {
   job_admits_srv1_only(j: fleet_converge_dashboard_deploy_job())
     && job_admits_srv1_only(j: fleet_converge_approval_broker_dark_install_job())
     && job_admits_srv1_only(j: fleet_converge_microvm_controller_install_job())
+}
+
+// ── AN INHERITING STEP'S GRANT (srv1_root_mutation_inheritance), with supplied standings ────────────
+// The microVM controller install re-reads its job's decision and admits the install only when the
+// grant covers every scope the install exercises. Each claim supplies the poll standing and decides
+// with the same fold the install runs.
+
+fn inherit_with(poll_request: AuthorizationRequest<Srv1RootMutationApproval>, own: AuthorizationRequest<Srv1RootMutationApproval>, required: List<AuthorizationScope>) -> Bool {
+  let approved = PollApproved { revision: request_revision_of(request: poll_request), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
+  match srv1_root_mutation_inheritance(
+    gate: approval_gate_from_poll(poll: approved, request: own, observed_at: "2026-10-26T12:01:00Z"),
+    request: own,
+    required: required,
+    observed_at: "2026-10-26T12:01:00Z",
+  ) {
+    Srv1InheritedGrantAdmitted { grant: _ } => true
+    Srv1InheritedGrantRefused { reason: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the job's own approval admits the controller install's scopes.
+test fn the_job_approval_admits_the_controller_install_scopes() -> Bool {
+  let install = fixture_request(job: "microvm_controller_install", attempt: "1")
+  inherit_with(poll_request: install, own: install, required: microvm_controller_install_root_scopes)
+}
+
+// THE REDS: another job's approval does not admit it, a scope outside the approved trees does not, and
+// a write that states no scope is not covered vacuously.
+test fn another_job_approval_an_unapproved_scope_and_an_empty_scope_list_refuse() -> Bool {
+  let install = fixture_request(job: "microvm_controller_install", attempt: "1")
+  let deploy = fixture_request(job: "dashboard_deploy", attempt: "1")
+  !inherit_with(poll_request: deploy, own: install, required: microvm_controller_install_root_scopes)
+    && !inherit_with(poll_request: install, own: install, required: [srv1_root_write_scope(path: ["srv", "outside"])])
+    && !inherit_with(poll_request: install, own: install, required: [])
+}
+
+// THE CENSUS ROW AND THE INSTALL ASK FOR ONE VALUE: the controller install's row requires exactly the
+// scopes the install authorizes against.
+test fn the_census_row_requires_the_scopes_the_install_authorizes() -> Bool {
+  any(privileged_effect_census, row =>
+    declaration_ref_display_key(ref: row.site) == "gunbc.host.host_effect_realize::microvm_controller_staged_write_steps"
+      && match row.effect.witness_discharge {
+        EntailedByApprovedConvergence { root: _, required_scopes: r } => r == microvm_controller_install_root_scopes
+        _ => false
+      })
+}
+
+fn step_name_of(st: Step) -> String {
+  match st {
+    RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    UsesStep { name: Present { value: n }, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    _ => ""
+  }
+}
+
+fn is_key_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "Materialize fleet key in-run") }
+fn is_key_cleanup_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "kill the in-run ssh-agent") }
+
+// THE ADMINISTRATOR'S KEY EXISTS ONLY IN AN APPROVED RUN, read off the emitted job: the gate, then the
+// key, then the install, and the agent's teardown last. A key step before the gate leaves the fold
+// sticky at -1; a job with no key step, or no teardown after the install, never reaches 4.
+test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> Bool {
+  let j = fleet_converge_microvm_controller_install_job()
+  let reached = fold(j.steps, init: 0, f: fn(at, st) {
+    if at < 0 { at }
+    else if step_id_of(st: st) == "srv1_root_mutation_approval" { if at == 0 { 1 } else { at } }
+    else if is_key_step(st: st) { if at == 1 { 2 } else { 0 - 1 } }
+    else if step_id_of(st: st) == "microvm_controller_install" { if at == 2 { 3 } else { 0 - 1 } }
+    else if is_key_cleanup_step(st: st) { if at == 3 { 4 } else { 0 - 1 } }
+    else { at }
+  })
+  reached == 4
 }
