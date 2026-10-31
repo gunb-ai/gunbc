@@ -2846,6 +2846,7 @@ fn dry_read_bmc_account_state(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_secured_read"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)

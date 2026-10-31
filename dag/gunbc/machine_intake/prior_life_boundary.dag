@@ -2,6 +2,7 @@ module gunbc.machine_intake.prior_life_boundary
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
 import std.algebra { FreeSemigroup, Empty, length }
@@ -837,15 +838,278 @@ type PriorLifeIncomplete
   | ArchiveWrittenButNotReadBack { write: ArchiveWriteReceipt, digest: ContentHash }
   | ArchiveReadBackDiffersFromWrite { write: ArchiveWriteReceipt, digest: ContentHash, read: ContentHash }
 
+// THE FOURTH ARM IS NOT A REFUSAL AND NOT A PASS. It exists only for a run that took arrival_converge's
+// ForcedFirstRotationPrecedesPriorLife row, where the archive is read AFTER the forced root write. See
+// the "ACROSS A FORCED FIRST ROTATION" section below.
 type PriorLifeArchiveOutcome
   = PriorLifeArchiveEstablished { receipt: PriorLifeBoundaryEstablished }
   | PriorLifeArchiveRefused { cause: PriorLifeRefusal }
   | PriorLifeArchiveIncomplete { cause: PriorLifeIncomplete }
+  | PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: PriorLifeIndeterminateAcrossForcedWrite }
 
 // ONE DRY RUN OF THE PHASE AND THE STORE IT LEAVES, so a refusal can be shown to have written nothing.
 type DryPriorLifeStep {
   outcome: PriorLifeArchiveOutcome
   store: DryArchiveStore
+}
+
+// ── ACROSS A FORCED FIRST ROTATION ───────────────────────────────────────────────────────────────────
+//
+// (the forced-change arrival divergence, gunbc.machine_intake.arrival_converge
+// ForcedFirstRotationPrecedesPriorLife; merry-fox-82 approved 2026-10-29.) On a build whose
+// credential-policy row forces a password change on first login, AccessDiscover runs UNAUTHENTICATED and
+// the prior life cannot be read until the managed root credential is written. arrival_converge admits
+// exactly that one write BEFORE the PriorLifeBoundary standing, so the archive this phase reads is read
+// AFTER the write. The obligation "the post-write archive has entries timestamped before the write
+// instant" then cannot, from this layer, tell a genuinely factory-fresh controller (which has no prior
+// entries at all) from one whose history the write erased: BOTH read as no entry before the write. This
+// layer is not the place that decision lives, so neither verdict is taken here.
+//
+// WHY NEITHER PASS NOR REFUSAL: passing the zero-pre-write archive as established would admit a BMC whose
+// history the write erased into the fleet unexamined; refusing it would brick every genuinely new unit,
+// whose pre-write archive is legitimately empty. The ambiguity therefore becomes this typed third
+// outcome, which STOPS fleet admission (the arrival step maps it to an incomplete, so the run is
+// incomplete and the unit never enters the fleet) WITHOUT being a plain refusal (which says the boundary
+// failed; this says it cannot yet be decided and names the decision that would decide it).
+//
+// WHY ENTRIES-PRESENT-BUT-NONE-BEFORE-THE-WRITE IS ALSO INDETERMINATE: an archive holding entries none of
+// which this run held before the write is exactly what an erased-then-refilled history looks like; it
+// cannot establish that any entry predates the write, which is the whole obligation. So both non-present
+// arms reach the operator. Only an entry the run's OWN pre-write capture held establishes.
+//
+// (rung: pure derivation over two sealed archives this run holds. The discriminating RED is
+// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write, and its positive
+// control w_a_pre_write_entry_across_the_forced_write_establishes_normally, both in
+// test.claim.machine_intake.machine_intake_prior_life_boundary_witness.)
+
+// AN ENTRY OF AN ARCHIVE, KEPT AS THE VENDOR SERVED IT. An entry's identity is the content the archive
+// captured for it: a SEL record's own served fields, a log entry's (Id, Severity, Message) under its log
+// service's Id, an account event's (Id, Severity, Message). No string stands in for a reference (§2), and
+// no caller supplies one: the standing below is DERIVED inside this module from the two sealed archives,
+// because a caller that could name a pre-write entry could name one over an archive whose history the
+// write erased -- the exact run the third outcome exists to stop (§3, §5: unwritable, not caught).
+// WHY NOT A TIMESTAMP COMPARISON, as an outside review proposed: an entry's served time is the
+// CONTROLLER's clock, which orders nothing (extdeps.bmc.redfish_telemetry, on RedfishLogEntry.Created:
+// "Created is the BMC's clock and orders nothing") and which this project has observed wrong at the
+// factory; comparing it to an observer-side write instant would read an ordering out of a fact the vendor
+// module itself declares unordered (§5, no fabricated defaults). The ONE grounded ordering fact this layer
+// holds is whether THIS RUN captured the entry BEFORE the write. Consumers: PostWriteEntryStanding and
+// prior_life_pre_write_standing below.
+type ArchivedEntryIdentity
+  = SelEntryIdentity { record: BmcSelRecord }
+  | LogServiceEntryIdentity { service: NonEmptyStr, entry: RedfishLogEntry }
+  | AccountEventEntryIdentity { entry: RedfishLogEntry }
+
+// SEL records are modeled, not wire-served, so they carry no OData Id: their identity is their content.
+fn bmc_sel_record_eq(a: BmcSelRecord, b: BmcSelRecord) -> Bool {
+  ((a.id_hex as String) == (b.id_hex as String)) && ((a.date as String) == (b.date as String)) && ((a.time as String) == (b.time as String)) && ((a.sensor as String) == (b.sensor as String)) && ((a.event as String) == (b.event as String)) && ((a.state as String) == (b.state as String))
+}
+
+// Two Redfish log entries are the same entry when the service served the same (Id, Severity, Message).
+fn redfish_log_entry_eq(a: RedfishLogEntry, b: RedfishLogEntry) -> Bool {
+  a.id == b.id && (a.severity as String) == (b.severity as String) && (a.message as String) == (b.message as String)
+}
+
+fn archived_entry_identity_eq(a: ArchivedEntryIdentity, b: ArchivedEntryIdentity) -> Bool {
+  match a {
+    SelEntryIdentity { record: ra } => match b { SelEntryIdentity { record: rb } => bmc_sel_record_eq(a: ra, b: rb)  _ => false }
+    LogServiceEntryIdentity { service: sa, entry: ea } => match b { LogServiceEntryIdentity { service: sb, entry: eb } => (sa as String) == (sb as String) && redfish_log_entry_eq(a: ea, b: eb)  _ => false }
+    AccountEventEntryIdentity { entry: ea } => match b { AccountEventEntryIdentity { entry: eb } => redfish_log_entry_eq(a: ea, b: eb)  _ => false }
+  }
+}
+
+// THE ENTRIES AN ARCHIVE CAPTURED, read off its own sealed carrier captures: the SEL records, every log
+// service's entries under that service's Id, and the account events. A captured gap contributes nothing.
+// Consumers: prior_life_pre_write_standing below and, through it, the forced-write archive arm.
+fn archived_entry_identities(captures: List<CarrierCapture>) -> List<ArchivedEntryIdentity> {
+  fold(captures, init: [], f: fn(acc, c) {
+    match c {
+      CarrierGap { carrier: _, cause: _ } => acc
+      CarrierCaptured { carrier: _, payload: p } => match p {
+        SelPayload { records: rs } => concat(acc, map(rs, r => SelEntryIdentity { record: r }))
+        LogServicesPayload { services: ss } => concat(acc, fold(ss, init: [], f: fn(inner, s) { concat(inner, map(s.entries, e => LogServiceEntryIdentity { service: s.id, entry: e })) }))
+        AccountEventsPayload { entries: es } => concat(acc, map(es, e => AccountEventEntryIdentity { entry: e }))
+        BmcClockPayload { date_time: _ } => acc
+        BootOverridePayload { boot_override: _ } => acc
+        VirtualMediaPayload { members: _ } => acc
+        PowerStatePayload { power: _ } => acc
+        SensorSnapshotPayload { points: _ } => acc
+      }
+    }
+  })
+}
+
+// WHAT THE POST-WRITE ARCHIVE SHOWS AGAINST THE RUN'S OWN PRE-WRITE CAPTURE -- derived inside this module
+// from the two sealed archives, never supplied. Consumers: dry_archive_prior_life_across_forced_write,
+// which re-decides only the Established arm with it, and the third-outcome verdict, which carries it to
+// the operator verbatim so the decision arrives named rather than as a bare no.
+type PostWriteEntryStanding
+  = PreWriteEntryPresent { entry: ArchivedEntryIdentity }
+  | EntriesPresentNoneBeforeWrite { entries_seen: Int }
+  | NoPriorLifeEntries {}
+
+// THE DERIVATION. An entry of the post-write archive counts as pre-write when the SAME served content --
+// not a timestamp, whose source orders nothing -- appears in the archive this run captured before the
+// write. No pre-write capture grounds NOTHING: that is the 03.22.00 first-boot case, where the
+// authenticated read answers the forced 403 until the write, and a factory-fresh controller and an
+// erased one read identically from here; so neither is claimed, and the operator is asked (§5 fail
+// closed, and item 6: not a pass, not a plain refusal). Consumer: dry_archive_prior_life_across_forced_write.
+fn prior_life_pre_write_standing(post: List<ArchivedEntryIdentity>, pre: List<ArchivedEntryIdentity>) -> PostWriteEntryStanding {
+  match post |> filter(e => 0 < length(xs: pre |> filter(p => archived_entry_identity_eq(a: e, b: p)))) |> first() {
+    Present { value: e } => PreWriteEntryPresent { entry: e }
+    Absent => match post |> first() {
+      Present { value: _ } => EntriesPresentNoneBeforeWrite { entries_seen: length(xs: post) }
+      Absent => NoPriorLifeEntries {}
+    }
+  }
+}
+
+// THE TWO RESOLUTIONS THE OPERATOR MUST CHOOSE BETWEEN, named on the verdict so the run says WHICH
+// decision it needs rather than failing with a bare no (item 6). NULLARY: the variants ARE the decision;
+// the operator's confirmation or quarantine lands as its own sealed fact through the operator's decision
+// route when one exists, and prose receipts prefilled here would be commentary stored as data (§4c).
+// Consumer: the third outcome below; trigger for receipts: an operator decision surface (frontier below).
+type FactoryFreshOrQuarantine
+  = ConfirmFactoryFresh {}
+  | QuarantineUnit {}
+
+// The operator decision this third outcome asks for has no minting surface yet: no production caller
+// reads a PriorLifeArchiveIndeterminateAcrossForcedWrite and answers it. Until one exists the verdict
+// stands (it blocks fleet admission by being an incomplete the fold never establishes), and the options
+// stay nullary -- a prefilled receipt would fabricate the very decision the operator owes.
+data prior_life_operator_decision_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when an operator decision surface consumes PriorLifeIndeterminateAcrossForcedWrite.options -- an authenticated operator route that records ConfirmFactoryFresh or QuarantineUnit for the named subject as its own sealed fact (with the deciding operator and instant) and admits or quarantines the unit accordingly; NOT satisfied by any run minting either variant itself" as NonEmptyStr,
+)
+
+// THE RUN'S FORCED-WRITE CONTEXT, supplied by the arrival step ONLY when the run took the
+// ForcedFirstRotationPrecedesPriorLife row: the instant THIS run's forced root write returned (the
+// obligation instant the operator decision is about; its single authority is the step that performed the
+// write), and the archive THIS RUN read before that write -- Absent when the pre-write read was refused,
+// which on a forced-change build is the rule, not the exception. The run supplies the SEALED ARCHIVES it
+// holds, never a classification of them: the standing is derived from their content inside the boundary.
+type PriorLifeForcedWriteContext {
+  write_instant: EpochMs
+  pre_write_archive: PriorLifeArchive?
+}
+
+// A PRE-WRITE CAPTURE GROUNDS THIS RUN ONLY IF IT IS THIS RUN'S: captures sealed for another subject are
+// no pre-write evidence at all (they fall to nothing-grounds, the same as an absent capture). Consumer:
+// dry_archive_prior_life_across_forced_write.
+fn forced_pre_capture_is_of_subject(archive: PriorLifeArchive, subject: MachineIntakeSubject) -> Bool {
+  ((archive.subject.subject.unit_key as NonEmptyStr) == (subject.subject.unit_key as NonEmptyStr)) && ((archive.subject.attempt_id as NonEmptyStr) == (subject.attempt_id as NonEmptyStr))
+}
+
+// THE TYPED THIRD OUTCOME. Not a refusal, not a pass: it stops fleet admission and names the operator
+// decision. Minted only by the archive arm of a forced-write run (see the mint's admit_callers).
+type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
+  key: StepInstanceKey
+  consumed_identity: StepInstanceKey
+  subject: MachineIntakeSubject
+  write_instant: EpochMs
+  standing: PostWriteEntryStanding
+  options: List<FactoryFreshOrQuarantine>
+}
+
+fn prior_life_indeterminate_across_forced_write(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  write_instant: EpochMs,
+  standing: PostWriteEntryStanding,
+) -> PriorLifeIndeterminateAcrossForcedWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life_across_forced_write"),
+  ]
+{
+  PriorLifeIndeterminateAcrossForcedWrite {
+    key: key,
+    consumed_identity: consumed_identity,
+    subject: subject,
+    write_instant: write_instant,
+    standing: standing,
+    options: [ConfirmFactoryFresh {}, QuarantineUnit {}],
+  }
+}
+
+// THE ARCHIVE ARM FOR A RUN THAT TOOK THE FORCED-FIRST-ROTATION ROW. The archive is read AFTER the
+// admitted forced root write, so an established outcome is trustworthy only if the post-write archive
+// still grounds an entry from before the write. If it does, the establishment stands UNCHANGED -- the
+// archive arm is run in full and its sealed receipt is returned as any other unit's, never re-minted here.
+// If it grounds no such entry -- whether the controller is genuinely factory-fresh (no entries at all) or
+// the write erased its history -- the run takes the indeterminate third outcome instead of being silently
+// established. The standing is DERIVED HERE from the run's own two sealed archives: a caller cannot claim
+// a pre-write entry the archives do not hold, nor hide one they do. A refusal or an incomplete from the
+// archive is returned UNTOUCHED: a refusal is still a refusal and an incomplete is still an incomplete;
+// this arm only re-decides the ESTABLISHED arm, the one place where fresh and erased are indistinguishable
+// from this layer. With `across` Absent (every non-forced unit) the result is identical to
+// dry_archive_prior_life.
+//
+// (rung: pure re-decision of one arm over the run's own sealed archives; the discriminating RED is
+// w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write in
+// test.claim.machine_intake.machine_intake_prior_life_boundary_witness, paired with the positive control
+// w_a_pre_write_entry_across_the_forced_write_establishes_normally and with the real arrival-path control
+// in test.claim.machine_intake.machine_intake_arrival_converge_witness.)
+fn dry_archive_prior_life_across_forced_write(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  platform: DeclarationRef,
+  world: DryPriorLifeWorld,
+  across: PriorLifeForcedWriteContext?,
+) -> DryPriorLifeStep
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_pre_write_entry_across_the_forced_write_establishes_normally"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
+  ]
+{
+  let base = dry_archive_prior_life(key: key, consumed_identity: consumed_identity, subject: subject, platform: platform, world: world)
+  match across {
+    Absent => base
+    Present { value: ctx } =>
+      match base.outcome {
+        PriorLifeArchiveEstablished { receipt: r } => {
+          let post = archived_entry_identities(captures: r.archive.captures)
+          let pre = match ctx.pre_write_archive {
+            Absent => []
+            Present { value: a } => if forced_pre_capture_is_of_subject(archive: a, subject: subject) { archived_entry_identities(captures: a.captures) } else { [] }
+          }
+          let standing = prior_life_pre_write_standing(post: post, pre: pre)
+          match standing {
+            PreWriteEntryPresent { entry: _ } => base
+            EntriesPresentNoneBeforeWrite { entries_seen: _ } => DryPriorLifeStep {
+              outcome: PriorLifeArchiveIndeterminateAcrossForcedWrite {
+                verdict: prior_life_indeterminate_across_forced_write(
+                  key: key,
+                  consumed_identity: consumed_identity,
+                  subject: subject,
+                  write_instant: ctx.write_instant,
+                  standing: standing,
+                ),
+              },
+              store: base.store,
+            }
+            NoPriorLifeEntries {} => DryPriorLifeStep {
+              outcome: PriorLifeArchiveIndeterminateAcrossForcedWrite {
+                verdict: prior_life_indeterminate_across_forced_write(
+                  key: key,
+                  consumed_identity: consumed_identity,
+                  subject: subject,
+                  write_instant: ctx.write_instant,
+                  standing: standing,
+                ),
+              },
+              store: base.store,
+            }
+          }
+        }
+        PriorLifeArchiveRefused { cause: _ } => base
+        PriorLifeArchiveIncomplete { cause: _ } => base
+        PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: _ } => base
+      }
+  }
 }
 
 fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome
@@ -907,6 +1171,7 @@ fn dry_archive_prior_life(
 ) -> DryPriorLifeStep
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life_across_forced_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
@@ -916,6 +1181,8 @@ fn dry_archive_prior_life(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "pre_capture"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_pre_capture"),
   ]
 {
   match prior_life_policy_for(platform: platform) {
