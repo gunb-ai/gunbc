@@ -37,8 +37,12 @@ type SpoolKind
   | SpoolPublication
 
 // The closed set of places an entry can stand. HostSpoolStage (gunbc.durable_handoff_host) is the exit spool's
-// private five-stage enum and DISSOLVES into this one (inbox = RolePending, queued = RoleHandedOff, running =
-// RoleClaimed, done = RoleDone, refused = RoleRefused); no second stage enum survives beside it (DESIGN section 3).
+// private five-stage enum (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed, done = RoleDone,
+// refused = RoleRefused). STAGED, not yet cut: HostSpoolStage still exists at this revision, and the witness
+// claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
+// because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
+// roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
+// (parent jolly-hawk-60, design approval). That PR deletes HostSpoolStage in the same change (DESIGN section 3).
 type SpoolRole
   = RolePending
   | RoleHandedOff
