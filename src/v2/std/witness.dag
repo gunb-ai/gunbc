@@ -23,8 +23,8 @@ fn witness_from_optional<T>(opt: Optional<T>, absent: Diagnostic) -> Witness<T> 
 // sites emitted a located refusal. Constructing through this fn puts the variant in a
 // Witness-headed position -- the same shape witness_from_optional already emits -- and lets the
 // carrier unify at the call instead. Dissolves into bare constructions once inference records
-// per-call type-argument substitutions (the __applied_type_args channel named as the next-rung
-// trigger in src/v1/05_emit_rust.dag's rust_witness_carrier_from_witness_headed_type_node note).
+// per-call type-argument substitutions (the next-rung trigger named in src/v1/05_emit_rust.dag's
+// rust_witness_carrier_from_witness_headed_type_node note).
 fn witness_violates<C>(diagnostic: Diagnostic) -> Witness<C> {
   Violates { diagnostic: diagnostic }
 }
