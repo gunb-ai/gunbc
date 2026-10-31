@@ -1,6 +1,6 @@
 module product.zone_thermal_curve
 
-import std.types { Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Absent, Present }
@@ -24,7 +24,7 @@ import std.measure { Celsius, Percent, Second, second_count, celsius, celsius_co
 // (sha256 4ff02eb223003349): bash integer d0 + (t-t0)*(100-d0)/(t1-t0), truncating toward zero, and
 // the witness pins the interior to it. That script is an observed behaviour this module reproduces
 // and replaces at cutover; it is not the authority, and the cutover deletes it.
-type ZoneCurve {
+type ZoneCurve sole_constructor {
   floor: Percent
   flat_until: Celsius
   full_at: Celsius
@@ -47,6 +47,34 @@ fn zone_hottest(readings: List<Celsius>) -> Celsius? {
   }
 }
 
+// A CURVE EXISTS ONLY IF IT IS A CURVE (the carrier is sole_constructor, as std.interval
+// OrderedClosedInterval is): floor within 100 and flat_until strictly below full_at. zone_curve is the
+// one mint and refuses with every constraint that failed, never repairing to the floor, so a
+// malformed configuration has no ZoneCurve to be read as successful curve-following.
+type ZoneCurveRefusal
+  = ZoneCurveFloorOverFullDuty
+  | ZoneCurveThresholdsNotAscending
+
+type ZoneCurveConstruction
+  = ZoneCurveReady { curve: ZoneCurve }
+  | ZoneCurveRefused { causes: List<ZoneCurveRefusal> }
+
+fn zone_curve(floor: Percent, flat_until: Celsius, full_at: Celsius) -> ZoneCurveConstruction {
+  let causes = concat(
+    if percent_count(floor) > 100 { [ZoneCurveFloorOverFullDuty] } else { no_refusals() },
+    if celsius_count(flat_until) < celsius_count(full_at) { no_refusals() } else { [ZoneCurveThresholdsNotAscending] },
+  )
+  if length(causes) == 0 {
+    ZoneCurveReady { curve: ZoneCurve { floor: floor, flat_until: flat_until, full_at: full_at } }
+  } else {
+    ZoneCurveRefused { causes: causes }
+  }
+}
+
+fn no_refusals() -> List<ZoneCurveRefusal> {
+  []
+}
+
 fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
   let lo = celsius_count(curve.flat_until)
   let hi = celsius_count(curve.full_at)
@@ -55,7 +83,7 @@ fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
   if at <= lo {
     curve.floor
   } else {
-    if at >= hi || hi <= lo {
+    if at >= hi {
       zone_full_duty()
     } else {
       match checked_int_to_nat(n: floor + (100 - floor) * (at - lo) / (hi - lo)) {
@@ -66,10 +94,54 @@ fn zone_curve_duty(curve: ZoneCurve, t: Celsius) -> Percent {
   }
 }
 
-fn zone_duty(curve: ZoneCurve, readings: List<Celsius>) -> ZoneDuty {
-  match zone_hottest(readings: readings) {
-    Absent => ZoneFailSafe
-    Present { value: t } => ZoneFollowsCurve { hottest: t, duty: zone_curve_duty(curve: curve, t: t) }
+// A ZONE'S REQUIRED SENSORS ARE OBSERVED, AND AN UNREAD ONE IS A VALUE, NOT AN OMISSION. The list can
+// repeat a sensor, so exactly one observation per required sensor is demanded (below), not assumed.
+// zone_duty proves completeness against the required set before it computes the hottest, so one cool
+// reading beside an unread required sensor is ZoneFailSafe and no adapter has to invent a convention
+// of replacing a failure with an empty list.
+type ZoneSensorStatus
+  = ZoneSensorRead { temperature: Celsius }
+  | ZoneSensorUnread
+
+type ZoneSensorObservation {
+  sensor: NonEmptyStr
+  status: ZoneSensorStatus
+}
+
+fn zone_sensor_read_temperature(o: ZoneSensorObservation) -> Celsius? {
+  match o.status {
+    ZoneSensorRead { temperature: t } => Present { value: t }
+    ZoneSensorUnread => Absent
+  }
+}
+
+// THE TEMPERATURE A REQUIRED SENSOR CONTRIBUTES, ABSENT UNLESS IT HAS EXACTLY ONE OBSERVATION AND IT IS
+// A READ. A list can write a sensor twice, so a duplicate (Unread beside Read, or two Reads) is
+// contradictory evidence and counts as unread: absence of agreement is never a reading.
+fn zone_required_temperature(observations: List<ZoneSensorObservation>, sensor: NonEmptyStr) -> Celsius? {
+  let mine = filter(observations, o => o.sensor == sensor)
+  match first(mine) {
+    Absent => Absent
+    Present { value: o } => if length(mine) == 1 { zone_sensor_read_temperature(o: o) } else { Absent }
+  }
+}
+
+fn zone_required_readings(required: List<NonEmptyStr>, observations: List<ZoneSensorObservation>) -> List<Celsius> {
+  fold(required, init: [], f: (acc, n) => match zone_required_temperature(observations: observations, sensor: n) {
+    Absent => acc
+    Present { value: t } => concat(acc, [t])
+  })
+}
+
+fn zone_duty(curve: ZoneCurve, required: List<NonEmptyStr>, observations: List<ZoneSensorObservation>) -> ZoneDuty {
+  let readings = zone_required_readings(required: required, observations: observations)
+  if length(required) == 0 || length(readings) != length(required) {
+    ZoneFailSafe
+  } else {
+    match zone_hottest(readings: readings) {
+      Absent => ZoneFailSafe
+      Present { value: t } => ZoneFollowsCurve { hottest: t, duty: zone_curve_duty(curve: curve, t: t) }
+    }
   }
 }
 

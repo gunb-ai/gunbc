@@ -62,6 +62,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_exec_refused,
   dashboard_local_exec,
   dashboard_target_probe,
+  dashboard_target_run,
+  dashboard_exec_result_of_ran,
+  TargetExec,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -191,28 +194,9 @@ fn dashboard_target_exec(
   program: FilePath,
   args: List<String>,
 ) -> DashboardExecResult {
-  match instance.provision_transport {
-    DashboardLocalProvision =>
-      dashboard_local_exec(
-        workdir: dashboard_instance_controller_workdir(instance: instance),
-        program: program,
-        args: args,
-      )
-    DashboardSshProvision { host } =>
-      match typed_argv_exec_over_ssh(
-        host: host,
-        argv: concat([program as String], args),
-      ) {
-        TypedArgvExecConverged { result } =>
-          DashboardExecResult {
-            success: result.success,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }
-        TypedArgvExecRefused { reason } =>
-          dashboard_exec_refused(detail: reason)
-      }
-  }
+  dashboard_exec_result_of_ran(
+    ran: dashboard_target_run(instance: instance, program: program, args: args, mode: TargetExec),
+  )
 }
 
 type DashboardArgv {

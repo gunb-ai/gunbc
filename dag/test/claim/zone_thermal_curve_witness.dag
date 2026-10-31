@@ -1,22 +1,62 @@
 module test.claim.zone_thermal_curve_witness
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { Second, celsius, percent, percent_count, second }
 import std.optional { Absent, Present }
-import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, zone_curve_for_load, zone_duty, zone_duty_percent }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_rows_of_class, census_total_count }
+import std.types { String }
+import product.zone_thermal_curve { ZoneCurve, ZoneLoadCurves, ZoneSensorObservation, ZoneSensorRead, ZoneSensorStatus, ZoneSensorUnread, ZoneCurveReady, ZoneCurveRefused, ZoneCurveRefusal, ZoneCurveFloorOverFullDuty, ZoneCurveThresholdsNotAscending, zone_curve, zone_curve_duty, zone_curve_for_load, zone_duty, zone_duty_percent }
 
 // SUPPLIED: readings. EXECUTED: the real zone_duty fold. The curves are the two live h11 zone curves
 // (a16-fan.sh, read 2026-10-30): CPU zone 20% to 60 C, 100% at 85 C; GPU idle 20% to 75 C, 100% at 88 C.
-fn cpu_curve() -> ZoneCurve {
-  ZoneCurve { floor: percent(20), flat_until: celsius(60), full_at: celsius(85) }
+fn cpu_curve() -> ZoneCurve? {
+  curve_of(floor: 20, lo: 60, hi: 85)
 }
 
-fn gpu_idle_curve() -> ZoneCurve {
-  ZoneCurve { floor: percent(20), flat_until: celsius(75), full_at: celsius(88) }
+fn gpu_idle_curve() -> ZoneCurve? {
+  curve_of(floor: 20, lo: 75, hi: 88)
 }
 
-fn duty_at(curve: ZoneCurve, temps: List<Int>) -> Int {
-  percent_count(zone_duty_percent(zone_duty(curve: curve, readings: map(temps, t => celsius(t))))) as Int
+fn sensor_a() -> NonEmptyStr {
+  "a" as NonEmptyStr
+}
+
+fn sensor_b() -> NonEmptyStr {
+  "b" as NonEmptyStr
+}
+
+// Each temp is a read of its own required sensor s0, s1, ..., so the zone follows the hottest.
+fn sensor_n(i: Int) -> NonEmptyStr {
+  ("s" + to_string(i)) as NonEmptyStr
+}
+
+fn no_obs() -> List<ZoneSensorObservation> {
+  []
+}
+
+// A fixture curve that the checked route refused is Absent, and every duty is -1: a typed red in the
+// dependent assertion, never a loop.
+fn duty_with(curve: ZoneCurve?, required: List<NonEmptyStr>, obs: List<ZoneSensorObservation>) -> Int {
+  match curve {
+    Absent => 0 - 1
+    Present { value: c } => percent_count(zone_duty_percent(zone_duty(curve: c, required: required, observations: obs))) as Int
+  }
+}
+
+fn duty_at(curve: ZoneCurve?, temps: List<Int>) -> Int {
+  let obs = fold(temps, init: no_obs(), f: (acc, t) => concat(acc, [ZoneSensorObservation { sensor: sensor_n(i: length(acc)), status: ZoneSensorRead { temperature: celsius(t) } }]))
+  duty_with(curve: curve, required: map(obs, o => o.sensor), obs: obs)
+}
+
+// THE ONLY ROUTE TO A CURVE IS THE CHECKED ONE. The fixtures below are valid by construction; an invalid
+// triple has no ZoneCurve, so the supplied curves cannot be malformed. A refusal is Absent and reds the dependent assertion.
+fn curve_of(floor: Nat, lo: Int, hi: Int) -> ZoneCurve? {
+  match zone_curve(floor: percent(floor), flat_until: celsius(lo), full_at: celsius(hi)) {
+    ZoneCurveReady { curve: c } => Present { value: c }
+    ZoneCurveRefused { causes: _ } => Absent
+  }
 }
 
 // THE FAIL-SAFE RED: no reading must drive 100, on every curve, and a floor-only answer is the failure.
@@ -46,16 +86,21 @@ test fn witness_interior_truncates_like_the_live_script() -> Bool {
 }
 
 // THE LIVE GPU ZONE, a16-fan.sh: loaded 25% to 70 C, idle 20% to 75 C, both 100 at 88 C, hold 60 s.
-fn gpu_curves() -> ZoneLoadCurves {
-  ZoneLoadCurves {
-    loaded: ZoneCurve { floor: percent(25), flat_until: celsius(70), full_at: celsius(88) }
-    idle: gpu_idle_curve()
-    hold: second(60)
+fn gpu_curves() -> ZoneLoadCurves? {
+  match curve_of(floor: 25, lo: 70, hi: 88) {
+    Absent => Absent
+    Present { value: loaded } => match gpu_idle_curve() {
+      Absent => Absent
+      Present { value: idle } => Present { value: ZoneLoadCurves { loaded: loaded, idle: idle, hold: second(60) } }
+    }
   }
 }
 
 fn load_duty(since: Second?, t: Int) -> Int {
-  duty_at(curve: zone_curve_for_load(curves: gpu_curves(), since_loaded: since), temps: [t])
+  match gpu_curves() {
+    Absent => 0 - 1
+    Present { value: cs } => duty_at(curve: Present { value: zone_curve_for_load(curves: cs, since_loaded: since) }, temps: [t])
+  }
 }
 
 // STEPS DOWN ONLY AFTER 60 s: at 72 C loaded answers 25+2*75/18 = 33, idle 20; 59 s is still loaded,
@@ -63,4 +108,80 @@ fn load_duty(since: Second?, t: Int) -> Int {
 test fn witness_loaded_steps_down_only_after_the_hold() -> Bool {
   load_duty(since: Present { value: second(0) }, t: 72) == 33 && load_duty(since: Present { value: second(59) }, t: 72) == 33
     && load_duty(since: Present { value: second(60) }, t: 72) == 20 && load_duty(since: Absent, t: 72) == 20
+}
+
+// PARTIAL SENSOR FAILURE: one cool reading beside an unread required sensor is 100, and the same cool
+// reading with every required sensor read follows the curve (floor), so the 100 is the completeness
+// check. An observation of a sensor outside the required set cannot stand in for a missing one.
+fn two_sensor_duty(b: ZoneSensorObservation) -> Int {
+  duty_with(
+    curve: gpu_idle_curve(),
+    required: [sensor_a(), sensor_b()],
+    obs: [ZoneSensorObservation { sensor: sensor_a(), status: ZoneSensorRead { temperature: celsius(40) } }, b],
+  )
+}
+
+test fn witness_partial_sensor_failure_drives_full_duty() -> Bool {
+  two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorUnread }) == 100
+    && two_sensor_duty(b: ZoneSensorObservation { sensor: "c" as NonEmptyStr, status: ZoneSensorRead { temperature: celsius(40) } }) == 100
+    && two_sensor_duty(b: ZoneSensorObservation { sensor: sensor_b(), status: ZoneSensorRead { temperature: celsius(40) } }) == 20
+}
+
+// CONTRADICTORY EVIDENCE: one required sensor observed twice, Unread beside Read 40, or two Reads, is not a
+// reading. Both must be 100; a single Read of the same value is the control (floor).
+fn one_sensor_duty(obs: List<ZoneSensorObservation>) -> Int {
+  duty_with(curve: gpu_idle_curve(), required: [sensor_a()], obs: obs)
+}
+
+fn a_obs(status: ZoneSensorStatus) -> ZoneSensorObservation {
+  ZoneSensorObservation { sensor: sensor_a(), status: status }
+}
+
+test fn witness_duplicate_observation_of_a_required_sensor_drives_full_duty() -> Bool {
+  one_sensor_duty(obs: [a_obs(status: ZoneSensorUnread), a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 100
+    && one_sensor_duty(obs: [a_obs(status: ZoneSensorRead { temperature: celsius(40) }), a_obs(status: ZoneSensorUnread)]) == 100
+    && one_sensor_duty(obs: [a_obs(status: ZoneSensorRead { temperature: celsius(40) }), a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 100
+    && one_sensor_duty(obs: [a_obs(status: ZoneSensorRead { temperature: celsius(40) })]) == 20
+}
+
+
+// THE CHECKED ROUTE REFUSES WITH ITS CAUSES, not only with absence: floor over 100, reversed and equal
+// thresholds each name the constraint that failed, both failing names both, and valid boundaries build.
+fn refusal_causes(floor: Nat, lo: Int, hi: Int) -> List<ZoneCurveRefusal> {
+  match zone_curve(floor: percent(floor), flat_until: celsius(lo), full_at: celsius(hi)) {
+    ZoneCurveReady { curve: _ } => []
+    ZoneCurveRefused { causes: cs } => cs
+  }
+}
+
+fn builds(floor: Nat, lo: Int, hi: Int) -> Bool {
+  length(refusal_causes(floor: floor, lo: lo, hi: hi)) == 0
+}
+
+test fn witness_invalid_curves_refuse_with_the_failed_constraint() -> Bool {
+  refusal_causes(floor: 120, lo: 60, hi: 85) == [ZoneCurveFloorOverFullDuty]
+    && refusal_causes(floor: 20, lo: 85, hi: 60) == [ZoneCurveThresholdsNotAscending]
+    && refusal_causes(floor: 20, lo: 70, hi: 70) == [ZoneCurveThresholdsNotAscending]
+    && refusal_causes(floor: 120, lo: 85, hi: 60) == [ZoneCurveFloorOverFullDuty, ZoneCurveThresholdsNotAscending]
+    && builds(floor: 20, lo: 60, hi: 85) && builds(floor: 100, lo: 60, hi: 61)
+}
+
+// EXTERNAL CONSTRUCTION IS REJECTED BY THE COMPILER. A record literal of the sealed ZoneCurve in another
+// module is a SoleConstructorViolation (the 120 percent curve of review included), and the same module
+// using the checked route has none: the control that the refusal is the literal's and not the import's.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_curve_source: String = "module probe_forged_curve\nimport product.zone_thermal_curve { ZoneCurve }\nimport std.measure { celsius, percent }\nfn forged() -> ZoneCurve { ZoneCurve { floor: percent(120), flat_until: celsius(60), full_at: celsius(85) } }\n"
+
+data checked_curve_source: String = "module probe_checked_curve\nimport product.zone_thermal_curve { ZoneCurveConstruction, zone_curve }\nimport std.measure { celsius, percent }\nfn checked() -> ZoneCurveConstruction { zone_curve(floor: percent(120), flat_until: celsius(60), full_at: celsius(85)) }\n"
+
+test fn witness_external_curve_literal_is_rejected_and_checked_route_is_not() -> Bool {
+  violation_count(source: forged_curve_source) >= 1 && violation_count(source: checked_curve_source) == 0
 }

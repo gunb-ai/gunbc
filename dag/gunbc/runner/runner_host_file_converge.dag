@@ -7,7 +7,7 @@ import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_si
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
@@ -21,6 +21,8 @@ import std.types { EpochMs }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps {
   cap_dropin_content,
+  control_shadow_residue_paths,
+  runner_slot_cap_properties,
   CapMember,
   derived_runner_slot_cap_members,
   cap_raise_standing,
@@ -120,6 +122,8 @@ import gunbc.runner.runner_unit {
   runner_unit_suffix,
   runner_unit_name_of_registration,
 }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import gunbc.runner.runner_unit_file {
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -144,7 +148,7 @@ import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
 import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename, actions_runner_state_paths }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
@@ -403,6 +407,34 @@ fn runner_host_superseded_dropin_paths(host: HostIdentity) -> List<String> {
   map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => runner_unit_slot_role_superseded_dropin_path(slot: s) as String)
 }
 
+// THE SET-PROPERTY SHADOWS OF THE CAPS THIS CONVERGE OWNS retire by the same rule. `systemctl set-property`
+// on a runner unit (the root-era caps of 2026-08-11) leaves 50-<Property>.conf under the unit's .d in
+// /etc/systemd/system.control or /run/systemd/system.control, and those directories outrank the
+// template's cap drop-ins, so a shadow of a cap property is a second writer of that cap. This converge is
+// the runner-unit drop-ins' one writer, so it removes exactly those files for its desired units and the
+// properties its cap members set (gunbc.host.host_axis_caps control_shadow_residue_paths,
+// runner_slot_cap_properties) -- never the unit's other drop-ins, which `systemctl revert` would take
+// (gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names).
+fn runner_host_control_shadow_paths(subject: RunnerHostFileSubject) -> List<String> {
+  flat_map(subject.desired_units, u => map(control_shadow_residue_paths(unit: u, properties: runner_slot_cap_properties()), p => p as String))
+}
+
+// A SHADOW IS REMOVED ONLY OVER SETTLED CAPS. Removing a set-property shadow exposes the template's cap
+// drop-ins; while the cap phase has not settled them (reload_barred), that could raise a slot's effective
+// caps to bytes nobody admitted, so an apply refuses the path instead of removing it, and an observe-only
+// run reads it as usual.
+fn retire_control_shadow_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, caps_settled: Bool, path: String) -> SupersededDropinResult {
+  match mode {
+    FleetHostFilesObserveOnly => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+    FleetHostFilesApply =>
+      if caps_settled {
+        retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+      } else {
+        SupersededDropinRefused { path: path, reason: "not removed: the slot memory-cap phase has not settled the template cap drop-ins, so removing a set-property shadow could expose unadmitted caps" }
+      }
+  }
+}
+
 fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, path: String) -> SupersededDropinResult {
   match retired_path_standing_over(subject: subject, context: context, path: path) {
     HostFilePathAbsent => SupersededDropinAbsent { path: path }
@@ -457,10 +489,10 @@ fn superseded_dropin_removed(r: SupersededDropinResult) -> Bool {
 
 fn superseded_dropin_line(r: SupersededDropinResult) -> String {
   match r {
-    SupersededDropinAbsent { path: p } => join(["superseded-dropin path=", p, " absent"], "")
-    SupersededDropinRemoved { path: p } => join(["superseded-dropin path=", p, " removed-and-read-back"], "")
-    SupersededDropinPresentObserved { path: p } => join(["superseded-dropin path=", p, " PRESENT (observe-only)"], "")
-    SupersededDropinRefused { path: p, reason: r } => join(["superseded-dropin path=", p, " REFUSED ", r], "")
+    SupersededDropinAbsent { path: p } => join(["retired-dropin path=", p, " absent"], "")
+    SupersededDropinRemoved { path: p } => join(["retired-dropin path=", p, " removed-and-read-back"], "")
+    SupersededDropinPresentObserved { path: p } => join(["retired-dropin path=", p, " PRESENT (observe-only)"], "")
+    SupersededDropinRefused { path: p, reason: r } => join(["retired-dropin path=", p, " REFUSED ", r], "")
   }
 }
 
@@ -552,8 +584,9 @@ fn runner_host_files_with_optional_depriv(
 fn runner_host_file_desired_population_from_uid_reading(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
-  match runner_host_unit_files_desired(host: host, reading: reading) {
+  match runner_host_unit_files_desired(host: host, reading: reading, receipt: receipt) {
     RunnerHostFilesDesiredRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     RunnerHostFilesDesired { files: fs, withheld: ws } =>
       match runner_slot_cpu_desired(host: host) {
@@ -585,6 +618,7 @@ fn runner_host_files_deliver_fragment(files: List<FleetHostFileDesired>) -> Bool
 fn runner_host_unit_files_desired(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
@@ -599,7 +633,7 @@ fn runner_host_unit_files_desired(
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
         RunnerHostDeployFound { deploy: d } =>
-          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
+          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host, receipt: receipt) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
               match gunbc_runner_unit_depriv_dropin_text_from_reading(deploy: d, host: host, reading: reading) {
@@ -1271,8 +1305,26 @@ fn slot_load_state_has_no_unit_file(load: String) -> Bool {
   }
 }
 
-// NO UNIT FILE (LoadState Masked or NotFound only), INACTIVE, NO CGROUP -- all three read
-// from the unit's own block; any key missing is not inert.
+// NO UNIT FILE (LoadState Masked or NotFound only), STOPPED, NO CGROUP -- all three read
+// from the unit's own block; any key missing is not inert. Stopped is ActiveState inactive OR failed: a
+// unit whose last run failed has no process either, and with a blank ControlGroup a reload reaches nothing.
+// Inactive alone read srv1-02 (masked after crash-looping, ActiveState=failed, no cgroup) as reaching a
+// live cgroup, which withheld the cap phase, which barred the reload its own role drop-in needed (L2 run
+// 41154097819, 2026-10-31). Activating, deactivating and reloading are not stopped, whatever the cgroup.
+fn slot_active_state_is_stopped(active: String) -> Bool {
+  match parse_systemd_unit_active_state(raw: active) {
+    Absent => false
+    Present { value: st } => match st {
+      Inactive => true
+      Failed => true
+      Active => false
+      Activating => false
+      Deactivating => false
+      Reloading => false
+    }
+  }
+}
+
 fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
   fold(split(s: show_stdout, delimiter: "\n\n"), init: false, f: (acc, b) => {
     let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
@@ -1290,7 +1342,7 @@ fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
                 Present { value: act } =>
                   match show_block_value(lines: lines, property: ControlGroup) {
                     Absent => false
-                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && trim(s: act) == "inactive" && trim(s: cg) == ""
+                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && slot_active_state_is_stopped(active: trim(s: act)) && trim(s: cg) == ""
                   }
               }
           }
@@ -1540,7 +1592,8 @@ fn run_fleet_host_leg(subject: FleetHostFileSubject, context: FleetSshExecutionC
 fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFileDesired>, residue: RetiredHostResidue) -> List<FleetHostRemoteLeg> {
   let population = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: [])
   concat(
-    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }],
+    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }]
+      + list_flat_map(runner_host_control_shadow_paths(subject: subject), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]),
     concat(
       list_flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
@@ -2205,13 +2258,16 @@ fn deploy_slot_runner_stage_fetch_commands(stage: String, url: String, tarball: 
   ]
 }
 
+// The extract leaves the tree's own mode alone (extdeps.tools.tar tar_extract_command):
+// the runner archive's `./` entry carries 0755, and a default extract re-applied it to the 0700 tree
+// (gunbc.recurring_failure_mode an_archive_extract_reapplies_its_directory_mode_to_the_destination).
 fn deploy_slot_tree_rebuild_commands(slot_dir: String, stage: String, tarball: String) -> List<ArgvCommand> {
   [
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: slot_dir as NonEmptyStr }),
     executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
       path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: runner_slot_job_role_tree_mode(role: DeployJobSlot),
     }),
-    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
+    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0, existing_directories: TarNoOverwriteDir))),
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
   ]
 }
@@ -3808,7 +3864,10 @@ fn run_runner_host_files_admitted(
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
   let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
-  let superseded = map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p))
+  let superseded = concat(
+    map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p)),
+    map(runner_host_control_shadow_paths(subject: subject), p => retire_control_shadow_over(subject: subject, context: context, mode: mode, privilege: privilege, caps_settled: !reload_barred, path: p)),
+  )
   let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) }
   let admission = match mode {
     FleetHostFilesObserveOnly => ActuationAdmitted
@@ -4021,7 +4080,8 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
             FleetSshContextReady { context: context, receipt: context_receipt } => {
               let uid_reading = observe_runner_job_user_uid(subject: subject, context: context)
-              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading) {
+              // THE CONVERGE'S OWN EFFECT EDGE reads the receipt, once, at this leg's read time.
+              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading, receipt: runner_user_session_receipt_observed(host: raw_host as HostIdentity)) {
                 RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
                 RunnerHostFilesDesired { files: files, withheld: withheld } =>
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {
