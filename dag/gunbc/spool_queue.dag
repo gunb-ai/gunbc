@@ -2,6 +2,19 @@ module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
 import std.optional { Optional, Present, Absent }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
+}
 
 // THE QUEUE CONTRACT FOR THE CROSS-PRIVILEGE SPOOLS, as PURE TRANSITION SEMANTICS with no store, no filesystem
 // and no codec in it (the shape std.durable_exclusive_hold has for its occupancy question). Three spools are
