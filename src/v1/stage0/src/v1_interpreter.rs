@@ -30729,6 +30729,8 @@ mod t9_host_recursion_probes {
     //! T9 (A1) probes: drop of a closure/Env chain deeper than the host stack. `Env` has no Drop and
     //! `detach_owned_children` has no Closure arm, so these abort (rc=134) until A1 lands. Each is
     //! #[ignore]d so the default suite does not run a 1M-deep build; run with `-- --ignored --exact`.
+    //! One discipline with `impl Drop for Value` and `impl Drop for PortableValue`: the outermost
+    //! drop drains a worklist (Value: local Vec; Env: thread-local queue) so host stack stays flat.
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
@@ -30777,11 +30779,21 @@ mod t9_host_recursion_probes {
         })
     }
 
-    fn depth() -> usize {
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
         std::env::var("T9_DEPTH")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(262_144)
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
     }
 
     fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
@@ -30797,7 +30809,7 @@ mod t9_host_recursion_probes {
     #[ignore = "T9 probe"]
     fn probe_env_parent_chain_drops() {
         let mut env = Env::empty();
-        for _ in 0..depth() {
+        for _ in 0..parent_depth() {
             env = Env::extend(&env, HashMap::new());
         }
         drop(env);
@@ -30823,7 +30835,7 @@ mod t9_host_recursion_probes {
         let ctx = fresh_ctx();
         let (f, body) = (ctx.sym("f"), body_node());
         let mut env = Env::empty();
-        for _ in 0..depth() {
+        for _ in 0..parent_depth() {
             let c = closure(&body, env.clone());
             env = Env::with_binding(&env, f, c);
         }
