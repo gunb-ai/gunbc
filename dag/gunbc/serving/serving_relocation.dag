@@ -1,0 +1,110 @@
+module gunbc.serving.serving_relocation
+
+// FABRIC-GOVERNED CONVERSATION RELOCATION AT TURN BOUNDARIES — the model.
+//
+// Operator ruling 2026-10-31: "never move a session" is the wrong invariant. The invariant is:
+// never LOSE or DUPLICATE a session's obligations while moving it. This module is the model of one
+// operation that re-places a conversation's continuation, through fabric, when an admissible
+// transition improves useful fleet throughput, while preserving its execution and retention
+// obligations. The between-turn handoff is the first supported boundary; it is not a preference for
+// inactive conversations. The realization is gunbc.serving.router_dev_policy (a manually invoked
+// operation) and its falsifier is //gunbc/instruments:router-proxy-falsifier.
+//
+// REUSE, DO NOT RE-MINT. This module does not re-declare placement or residency: those live in
+// gunbc.serving.turn_admission, and the durable handoff fence lives in gunbc.serving.caller_backlog.
+// A conversation's long-lived retention reservation (its ServingSessionRecord) is kept distinct from
+// a turn's execution grant (ServingGroupAdmission). A binding is not evidence of a warm cache: the
+// incumbent enters the comparison on its serving_session_residency, never on its binding, and an
+// unprobed owner pins the session rather than relocating it (serving_unread_when_owner_unprobed).
+
+import std.types { Int, Bool, NonEmptyStr, brand }
+
+// ── LOGICAL IDENTITY ────────────────────────────────────────────────────────────────────────────
+
+// A conversation's identity is logical work, not a transport or a connection. One conversation is
+// named by one brand; the durable handoff is keyed on it so a retried command lands on the same
+// record. It is deliberately a distinct brand from LogicalWorkId: the conversation outlives any
+// single turn's logical work, and collapsing them would let a turn's identity double as a move fence.
+type ConversationId = NonEmptyStr where brand("ConversationId")
+type PlacementRevision = Int
+
+// ── THE THREE SEPARATE STANDINGS (amendment 2) ─────────────────────────────────────────────────
+// These NEVER collapse into one "idle" flag. Each is a different thing to go and observe, and the
+// objective reads all three. The existing turn_admission distinction between last-turn reuse and
+// present residency is reused verbatim (ServingSessionResidency) — a binding is not warmth.
+
+// EXECUTION: did the previous turn run, and can we say it finished. "No tokens arriving" does not
+// establish completion; an unresolved turn is its own arm, never folded into completed.
+type ExecutionStanding
+  = Executing
+  | QueuedNotDispatched
+  | Completed
+  | UnresolvedAfterTimeout
+
+// DEMAND: is there a continuation waiting, and on what. A tool return and a person typing are
+// different readiness events; neither is the execution standing.
+type DemandStanding
+  = NextTurnReady
+  | AwaitingTool
+  | AwaitingPerson
+  | Finished
+
+// RETAINED STATE is carried by ServingSessionResidency from turn_admission (what usable state exists,
+// where, for which prefix and launch). This is only the OBSERVED readiness that feeds the objective;
+// it never replaces residency as the source of truth.
+type RetainedStateReadiness = UsableStateEstablished | UsableStateAbsent | UsableStateUnread
+
+// ── STATE-ESTABLISHMENT METHODS ─────────────────────────────────────────────────────────────────
+
+// Two methods, and only two. The first is a declared method with NO admitted case: no cross-engine
+// KV transfer is established today. The second is the first realization.
+type StateEstablishmentMethod
+  = RestoreCompatibleSavedState
+  | ReconstructFromCompleteRequest
+
+// The first realization is reconstruct-from-the-complete-request. It is admitted ONLY when the request
+// carries everything needed to continue on a fresh engine AND the destination satisfies the model and
+// quality contract. A router alias shared with the source is NOT that evidence.
+type ReconstructionEvidence {
+  carries_history: Bool
+  carries_tool_definitions: Bool
+  carries_tool_results: Bool
+  carries_reasoning_and_template_settings: Bool
+  carries_referenced_inputs: Bool
+  destination_meets_model_contract: Bool
+  destination_meets_quality_contract: Bool
+}
+
+fn reconstruction_is_complete(e: ReconstructionEvidence) -> Bool {
+  e.carries_history && e.carries_tool_definitions && e.carries_tool_results
+    && e.carries_reasoning_and_template_settings && e.carries_referenced_inputs
+    && e.destination_meets_model_contract && e.destination_meets_quality_contract
+}
+
+// RETENTION MOVEMENT (freeing memory) is a DIFFERENT capability from EXECUTION MOVEMENT. Reconstruct
+// on the next real request re-establishes the conversation's continuation on the destination; it does
+// NOT evacuate the retained KV state that still sits on the source, and it must never claim memory was
+// freed. Only restore-compat-ible-saved-state could move retained state, and it has no admitted case.
+fn method_evacuates_retained_state(method: StateEstablishmentMethod) -> Bool {
+  match method {
+    RestoreCompatibleSavedState => false // declared, no admitted case; it is never exercised as an evacuation
+    ReconstructFromCompleteRequest => false // the continuation is re-read; the source's resident KV is left in place
+  }
+}
+
+// Whether a method is admissible at all, right now. restore is declared but unadmitted; reconstruct
+// is admissible only on complete request evidence.
+type MethodAdmission = MethodAdmitted { method: StateEstablishmentMethod } | MethodNotAdmitted { reason: NonEmptyStr }
+
+fn admit_state_method(method: StateEstablishmentMethod, evidence: ReconstructionEvidence) -> MethodAdmission {
+  match method {
+    RestoreCompatibleSavedState =>
+      MethodNotAdmitted { reason: "no cross-engine KV transfer is established; restore-compat-ible-saved-state is a declared method with no admitted case" as NonEmptyStr }
+    ReconstructFromCompleteRequest =>
+      if reconstruction_is_complete(e: evidence) {
+        MethodAdmitted { method: ReconstructFromCompleteRequest }
+      } else {
+        MethodNotAdmitted { reason: "the request does not carry everything needed to continue, or the destination has not been established against the model and quality contract" as NonEmptyStr }
+      }
+  }
+}
