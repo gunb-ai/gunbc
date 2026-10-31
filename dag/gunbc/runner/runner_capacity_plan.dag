@@ -26,6 +26,7 @@ import gunbc.fleet.fleet_runner_connectivity {
   SlotConnectivityUnknown,
 }
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation {
   identity_is_fabric_execution_member,
@@ -232,11 +233,12 @@ fn find_local_incarnation_for_slot(slot: RunnerSlotIdentity) -> LocalRunnerSlotI
 fn connectivity_replace_action(
   slot: RunnerSlotIdentity,
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerCapacityAction? {
   match find_local_incarnation_for_slot(slot: slot) {
     Absent => none
     Present { value: inc } =>
-      match runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster) {
+      match runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt) {
         SlotConnectivityDetached { slot: s, registration_id: _ } =>
           Present {
             value: RunnerIncarnationReplace {
@@ -248,7 +250,7 @@ fn connectivity_replace_action(
           Present {
             value: RunnerIncarnationReplace {
               slot: s,
-              cause: "GitHub registration online under labels other than runner_registration_labels for its host"
+              cause: "GitHub registration online under labels other than runner_evidence_gated_registration_labels for its host"
             }
           }
         SlotConnectivityOrphaned { slot: s } =>
@@ -291,6 +293,7 @@ type ConnectivityActionsOutcome
 
 fn accumulate_connectivity_action(
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
   acc: ConnectivityActionsOutcome,
   slot: RunnerSlotIdentity,
 ) -> ConnectivityActionsOutcome {
@@ -301,7 +304,7 @@ fn accumulate_connectivity_action(
       match find_local_incarnation_for_slot(slot: slot) {
         Absent => ConnectivityActionsUnaccountedRegistration { slot: slot }
         Present { value: _ } =>
-          match connectivity_replace_action(slot: slot, roster: roster) {
+          match connectivity_replace_action(slot: slot, roster: roster, receipt: receipt) {
             Present { value: a } => ConnectivityActionsPlanned { actions: concat(acts, [a]) }
             Absent => ConnectivityActionsPlanned { actions: acts }
           }
@@ -316,6 +319,7 @@ fn accumulate_connectivity_action(
 // replace action -- so the false restart is cut at the verdict rather than by widening here.
 fn connectivity_actions_for_observed(
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
   observed: List<RunnerSlotIdentity>,
 ) -> ConnectivityActionsOutcome {
   match roster {
@@ -324,13 +328,13 @@ fn connectivity_actions_for_observed(
       fold(
         observed,
         init: ConnectivityActionsPlanned { actions: [] },
-        f: (acc, slot) => accumulate_connectivity_action(roster: roster, acc: acc, slot: slot)
+        f: (acc, slot) => accumulate_connectivity_action(roster: roster, receipt: receipt, acc: acc, slot: slot)
       )
     RosterObserved { observed_on: _, registrations: _ } =>
       fold(
         observed,
         init: ConnectivityActionsPlanned { actions: [] },
-        f: (acc, slot) => accumulate_connectivity_action(roster: roster, acc: acc, slot: slot)
+        f: (acc, slot) => accumulate_connectivity_action(roster: roster, receipt: receipt, acc: acc, slot: slot)
       )
   }
 }
@@ -536,6 +540,7 @@ fn plan_runner_capacity_host(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> HostCapacityPlanOutcome {
   match committed_slot_identities(host: host) {
     CommittedPopulationWidthUnresolved { host: _, cause: c } =>
@@ -547,6 +552,7 @@ fn plan_runner_capacity_host(
         host: host,
         requested_width: requested_width,
         roster: roster,
+        receipt: receipt,
         members: members,
       )
   }
@@ -556,6 +562,7 @@ fn plan_runner_capacity_host_over_population(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
   members: List<RunnerSlotIdentity>,
 ) -> HostCapacityPlanOutcome {
   let admission = admit_runner_capacity_width(committed: length(members), requested: requested_width)
@@ -586,6 +593,7 @@ fn plan_runner_capacity_host_over_population(
         host: host,
         requested_width: requested_width,
         roster: roster,
+        receipt: receipt,
         admission: admission,
         members: members,
         observed: observed,
@@ -597,6 +605,7 @@ fn plan_runner_capacity_host_against_observation(
   host: HostIdentity,
   requested_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
   admission: WidthAdmission,
   members: List<RunnerSlotIdentity>,
   observed: List<RunnerSlotIdentity>,
@@ -618,7 +627,7 @@ fn plan_runner_capacity_host_against_observation(
         SlotPopulationRefused { reason: r } =>
           HostCapacityPlanRefused { reason: r }
         SlotPopulationReconciled =>
-          match connectivity_actions_for_observed(roster: roster, observed: observed) {
+          match connectivity_actions_for_observed(roster: roster, receipt: receipt, observed: observed) {
             ConnectivityActionsRosterUnavailable { reason: _ } =>
               HostCapacityPlanRefused {
                 reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
@@ -649,11 +658,13 @@ fn runner_capacity_plan(
   srv3_width: Int,
   srv4_width: Int,
   roster: OrganizationRunnerRosterEvidence,
+  srv3_receipt: RunnerUserSessionReceiptInput,
+  srv4_receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerCapacityPlan {
-  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster) {
+  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster, receipt: srv3_receipt) {
     HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
     HostCapacityPlanReady { plan: srv3 } =>
-      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster) {
+      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster, receipt: srv4_receipt) {
         HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
         HostCapacityPlanReady { plan: srv4 } => PlanReady { hosts: [srv3, srv4] }
       }
