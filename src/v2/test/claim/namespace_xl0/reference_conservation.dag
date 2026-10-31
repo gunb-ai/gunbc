@@ -524,9 +524,11 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
 // header), and nothing is dropped or refused. A count pin (`conserved == 11`) broke when a lowering
 // improvement moved six binder atoms from role_excluded to conserved (11 -> 17) with nothing lost; the
 // law is what that shift preserves, and `locus_erased == 0` is the discriminating bit for the specimen
-// (a tag rebuilt without its occurrence is counted there).
+// (a tag rebuilt without its occurrence is counted there). It is AGGREGATE conservation, not identity grain: an
+// authored reference wrongly classed role_excluded would still balance the equation, so per-atom role-to-identity
+// completeness is NOT established here (the row names its own restoration trigger).
 fn conservation_accounts_for_every_atom(r: ReferenceConservationReport) -> Bool {
-  r.authored > 0 && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+  r.authored > 0 && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored && length(xs: r.unmeasured) == 0
 }
 
 // RED for the tag claim: the tree keeps every atom but the construct-literal tag `RcRow` (the third
