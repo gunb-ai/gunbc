@@ -44,6 +44,21 @@ test fn a_record_default_at_a_nat_parameter_must_refuse() -> Bool {
   pdw_refusal_count(source: pdw_source(default: "Wrap { n: 1 }")) >= 1
 }
 
+fn pdw_wrap_source(default: String) -> String {
+  "module pdw.probe\n\nimport std.types { Int, String }\n\ntype Wrap = Wrap { n: Int }\n\nfn h(v: Wrap = " + default + ") -> Int {\n  0\n}\n"
+}
+
+// RED: a record default with a wrong-kind field at a record parameter must refuse (a record literal with a wrong field is
+// refused everywhere it is inferred; the specimen h of the recurring-failure row).
+test fn a_record_default_with_a_wrong_field_must_refuse() -> Bool {
+  pdw_refusal_count(source: pdw_wrap_source(default: "Wrap { n: \"x\" }")) >= 1
+}
+
+// CONTROL: a well-formed record default at a record parameter is accepted.
+test fn a_well_formed_record_default_at_a_record_parameter_is_accepted() -> Bool {
+  pdw_refusal_count(source: pdw_wrap_source(default: "Wrap { n: 1 }")) == 0
+}
+
 // CONTROL: a non-negative literal default at Nat is accepted (the refusal is not a blanket one).
 test fn a_non_negative_literal_default_at_a_nat_parameter_is_accepted() -> Bool {
   pdw_refusal_count(source: pdw_source(default: "3")) == 0
