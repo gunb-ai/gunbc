@@ -176,6 +176,25 @@ fn router_dev_init_lines(state_dir: String, model_alias: String) -> List<String>
     "    ROUTER_EFFORT[u.model] = t",
     "  end",
     "end",
+    // RELOCATION reconcile. The state dir is needed by the log-phase commit, which has no parameter of
+    // its own; keep it in the dict. Then replay the durable handoff file in order, last record per
+    // session wins: a pending record with no later done record is repopulated as UNRECONCILED (the dict
+    // was wiped by a container restart, so the destination's live standing is gone and the access phase
+    // refuses it). On an HUP the dict still holds the live reconciled record, so an existing entry is
+    // never overwritten -- that is the difference between reload and restart.
+    "state:set('relocate:dir', dir)",
+    "local seen = \{}",
+    "for line in (slurp(dir .. '/handoffs.json') or ''):gmatch('[^\\r\\n]+') do",
+    "  local r = cjson.decode(line)",
+    "  if type(r) == 'table' and type(r.session) == 'string' then",
+    "    if r.done then seen[r.session] = nil else seen[r.session] = r end",
+    "  end",
+    "end",
+    "for s, r in pairs(seen) do",
+    "  if not state:get('handoff:' .. s) then",
+    "    state:set('handoff:' .. s, cjson.encode(\{dest = r.dest, revision = r.revision, reconciled = false}))",
+    "  end",
+    "end",
   ])
 }
 
@@ -214,7 +233,10 @@ fn router_dev_models_lines() -> List<String> {
 }
 
 fn router_dev_access_lines() -> List<String> {
-  [
+  // The routing helpers (session, candidates, forwarded, serve, begin_turn) are built first; the
+  // relocation handoff check is spliced in next (it is the one authoritative record while a handoff is
+  // pending, so it must run before the binding/pick logic); then the binding and pick logic follow.
+  let head = [
     "local cjson = require('cjson.safe')",
     "local function refuse(status, kind, msg) ngx.status = status ngx.header['Content-Type'] = 'application/json' ngx.say(cjson.encode(\{error = \{message = msg, type = kind}})) return ngx.exit(status) end",
     "local h = ngx.var.http_authorization or ''",
@@ -387,6 +409,8 @@ fn router_dev_access_lines() -> List<String> {
     "  return bound_counts[name] or 0",
     "end",
     "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
+  ]
+  let tail = [
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
     // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
@@ -421,6 +445,7 @@ fn router_dev_access_lines() -> List<String> {
     "end",
     "return serve(pick, session, out, effort)",
   ]
+  concat(concat(head, router_dev_relocation_access_lines()), tail)
 }
 
 // The log phase releases the turn and tallies the outcome: every answered request by status, and each
@@ -537,7 +562,7 @@ fn router_dev_body_filter_lines() -> List<String> {
 }
 
 fn router_dev_log_lines() -> List<String> {
-  [
+  let log_head = [
     "local state = ngx.shared.router_state",
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
     "local u = ngx.ctx.route",
@@ -578,6 +603,9 @@ fn router_dev_log_lines() -> List<String> {
     "  end",
     "end",
   ]
+  // The relocation commit runs after the turn is released, so the destination's active count is settled
+  // before the binding is advanced.
+  concat(log_head, router_dev_relocation_log_lines())
 }
 
 // How long an engine that just failed stays out of the pick. Long enough to cover a retry storm, short
@@ -704,6 +732,118 @@ type RouterDevConfig
   = RouterDevConfigRendered { text: String }
   | RouterDevConfigRefused { token: String }
 
+// ── RELOCATION: the fabric-governed conversation handoff, in its own Lua blocks ──────────────────
+// Kept separate from the access/stats functions so a rebase across the parity PR stays mechanical.
+// The move intent is the MODEL's rendered output (serving_relocation.render_move_intent); the router
+// verifies its SHAPE and PLACEMENT REVISION and never re-decides (DESIGN 3d: one decision authority).
+// The handoff record lives in the shared dict, which survives an nginx HUP; a durable file carries the
+// fact that a handoff was pending across a container restart, where the dict (and the destination's live
+// standing) is gone — so a restart mid-handoff is an explicit typed refusal, never a new conversation
+// and never a double dispatch.
+
+// The /router/relocate control. Token-gated (the token is a secret in the state dir, like client_keys —
+// never rendered into the config). Parses the rendered intent, verifies its shape and that its placement
+// revision matches the session's current revision (a stale intent is a different decision and is
+// refused), and that the destination is a live in-service row. It records the handoff and advances
+// nothing yet; it deletes no binding.
+fn router_dev_relocate_lines(state_dir: String) -> List<String> {
+  [
+    "local cjson = require('cjson.safe')",
+    "local dir = '" + state_dir + "'",
+    "local state = ngx.shared.router_state",
+    "local function refuse(status, kind, msg) ngx.status = status ngx.header['Content-Type'] = 'application/json' ngx.say(cjson.encode(\{error = \{message = msg, type = kind}})) return ngx.exit(status) end",
+    "local f0 = io.open(dir .. '/relocate_token', 'r') local want_token = f0 and (f0:read('*a') or ''):gsub('%s+$', '') or nil if f0 then f0:close() end",
+    "if not want_token or want_token == '' then return refuse(503, 'invalid_request_error', 'relocation is not commissioned on this router') end",
+    "local h = ngx.var.http_authorization or ''",
+    "if h ~= 'Bearer ' .. want_token then return refuse(401, 'authentication_error', 'relocate requires the relocation token') end",
+    "ngx.req.read_body()",
+    "local raw = ngx.req.get_body_data() or ''",
+    // Parse the rendered key=value;key=value payload into a table.
+    "local intent = \{}",
+    "for kv in raw:gmatch('[^;]+') do local k, v = kv:match('^([^=]+)=(.*)$') if k then intent[k] = v end end",
+    // Shape: every field the model renders must be present. A missing field is a malformed intent, not a
+    // decision to move.
+    "for _, k in ipairs(\{'conversation','from','revision','destination','method','authorization','allowance_micros','receipt_selected','receipt_policy'}) do",
+    "  if intent[k] == nil or intent[k] == '' then return refuse(400, 'invalid_request_error', 'intent missing field: ' .. k) end",
+    "end",
+    // Method: only reconstruct is admitted today; restore has no admitted case.
+    "if intent.method ~= 'reconstruct' then return refuse(400, 'invalid_request_error', 'state-establishment method not admitted: ' .. intent.method) end",
+    // Destination must be a live in-service row.
+    "local dest = nil",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do if u.name == intent.destination and u.in_service ~= false then dest = u end end",
+    "if not dest then return refuse(400, 'invalid_request_error', 'intent destination is not a live in-service row') end",
+    "local session = intent.conversation",
+    // Placement revision: the intent must name the session's CURRENT revision. A retried or stale intent
+    // (different revision) is a different decision and cannot move the session twice.
+    "local cur = tonumber(state:get('rev:' .. session) or '0')",
+    "local want = tonumber(intent.revision)",
+    "if want == nil then return refuse(400, 'invalid_request_error', 'intent revision is not a number') end",
+    "if want ~= cur then return refuse(409, 'invalid_request_error', 'stale placement revision: intent names ' .. intent.revision .. ', current is ' .. tostring(cur)) end",
+    // Idempotency: one outstanding handoff per conversation. A duplicate move command sees the existing
+    // handoff and is refused rather than starting a second one.
+    "if state:get('handoff:' .. session) then return refuse(409, 'invalid_request_error', 'a handoff is already pending for this conversation') end",
+    // Record the handoff (dict, survives HUP) and the durable fact (file, survives restart). The dict
+    // entry is the live record; the file only says a handoff was pending.
+    "local rec = cjson.encode(\{dest = intent.destination, revision = want, method = intent.method, allowance = tonumber(intent.allowance_micros), reconciled = true})",
+    "state:set('handoff:' .. session, rec)",
+    "local f = io.open(dir .. '/handoffs.json', 'a') if f then f:write(cjson.encode(\{session = session, dest = intent.destination, revision = want}) .. '\\n') f:close() end",
+    "ngx.header['Content-Type'] = 'application/json'",
+    "ngx.say(cjson.encode(\{relocated = session, to = intent.destination, revision = want, method = 'reconstruct', retained_state_evacuated = false}))",
+  ]
+}
+
+// The access-phase handoff check, spliced in after the routing helpers are defined and BEFORE the
+// binding/pick logic. While a handoff is pending it is the ONE authoritative record: the request goes to
+// the destination (the authorized reconstruction), and a competing request cannot pick either side. The
+// source binding is not consulted. A handoff left unreconciled by a container restart is refused.
+fn router_dev_relocation_access_lines() -> List<String> {
+  [
+    "local ho_raw = state:get('handoff:' .. session)",
+    "if ho_raw and ho_raw ~= '' then",
+    "  local ho = cjson.decode(ho_raw)",
+    "  if type(ho) ~= 'table' then return refuse(500, 'invalid_request_error', 'handoff record corrupt') end",
+    // A handoff repopulated from the durable file after a restart has no live destination standing: it is
+    // an explicit interrupted/recovery state. Refuse; never treat the conversation as new, never re-dispatch.
+    "  if ho.reconciled ~= true then return refuse(409, 'invalid_request_error', 'a handoff for this conversation was interrupted by a controller restart and cannot be reconciled; the conversation is refused, not treated as new') end",
+    "  local dest = candidates[ho.dest]",
+    // The pending handoff is the one authoritative record: if its destination is not available, refuse
+    // rather than fall back to the source or a fresh pick (that would pick a side).
+    "  if not dest or not available(dest) then return refuse(429, 'rate_limit_error', 'a handoff is pending and its destination is not available; the turn is not sent to either other side') end",
+    "  local out, effort = forwarded(dest)",
+    "  if not out then return unspliceable() end",
+    "  if not begin_turn(dest) then return refuse(429, 'rate_limit_error', 'handoff destination at its active-turn cap') end",
+    // Mark the turn as the handoff's reconstruction dispatch, so the log phase commits on success.
+    "  ngx.ctx.relocation = ho",
+    "  ngx.ctx.relocation_dest = dest",
+    "  ngx.ctx.relocation_session = session",
+    "  return serve(dest, session, out, effort)",
+    "end",
+  ]
+}
+
+// The log-phase commit: after the destination completes a reconstruction turn successfully and its
+// retained-state standing is established (a 2xx), atomically advance the placement revision, record the
+// destination as the binding, and retire the handoff through its own record. A non-2xx leaves the handoff
+// pending (the next request retries the destination); it never falls back to the source.
+fn router_dev_relocation_log_lines() -> List<String> {
+  [
+    "if ngx.ctx.relocation and ngx.status >= 200 and ngx.status < 300 then",
+    "  local ho = ngx.ctx.relocation",
+    "  local session = ngx.ctx.relocation_session",
+    "  local dir = state:get('relocate:dir')",
+    "  if session and dir then",
+    // Advance the revision exactly once (idempotent against a retried decision), rebind to the
+    // destination, and retire the handoff. The source reservation is retired through its own record.
+    "    state:incr('rev:' .. session, 1, 0)",
+    "    state:set('session:' .. session, ngx.ctx.relocation_dest.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
+    "    state:delete('handoff:' .. session)",
+    // Mark the handoff done in the durable file, so a later restart does not resurrect a committed handoff.
+    "    local df = io.open(dir .. '/handoffs.json', 'a') if df then df:write(cjson.encode(\{session = session, done = true}) .. '\\n') df:close() end",
+    "  end",
+    "end",
+  ]
+}
+
 fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVariable, sni: NginxVariable, auth: NginxToken, host: NginxToken, bearer: NginxToken, http: NginxToken, ca: NginxToken, v1: NginxToken) -> NginxDirective {
   LocationBlock { matching: PrefixMatch { path: v1 }, body: [
     SetEmptyVariable { variable: up },
@@ -736,7 +876,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
 fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
-  match tok(text: site.state_dir) { Absent => RouterDevConfigRefused { token: "state_dir" } Present { value: _ } =>
+  match tok(text: site.state_dir) { Absent => RouterDevConfigRefused { token: "state_dir" } Present { value: state_dir } =>
   match tok(text: site.model_alias) { Absent => RouterDevConfigRefused { token: "model_alias" } Present { value: _ } =>
   match tok(text: site.listen_address) { Absent => RouterDevConfigRefused { token: "addr" } Present { value: addr } =>
   match tok(text: site.state_dir + "/tls/cert.pem") { Absent => RouterDevConfigRefused { token: "cert" } Present { value: cert } =>
@@ -747,6 +887,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: "/router/trim-bindings") { Absent => RouterDevConfigRefused { token: "trim" } Present { value: trim } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
+  match tok(text: "/router/relocate") { Absent => RouterDevConfigRefused { token: "relocate" } Present { value: relocate } =>
   match tok(text: "Authorization") { Absent => RouterDevConfigRefused { token: "auth" } Present { value: auth } =>
   match tok(text: "Host") { Absent => RouterDevConfigRefused { token: "host" } Present { value: host } =>
   match tok(text: "Bearer") { Absent => RouterDevConfigRefused { token: "bearer" } Present { value: bearer } =>
@@ -771,11 +912,12 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
           LocationBlock { matching: ExactMatch { path: models }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_models_lines() }, LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() }] },
           LocationBlock { matching: ExactMatch { path: stats }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_stats_lines() }] },
           LocationBlock { matching: ExactMatch { path: trim }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_trim_lines() }] },
+          LocationBlock { matching: ExactMatch { path: relocate }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_relocate_lines(state_dir: state_dir) }] },
           router_dev_location(up: up, scheme: scheme, key: key, sni: sni, auth: auth, host: host, bearer: bearer, http: http, ca: ca, v1: v1),
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
