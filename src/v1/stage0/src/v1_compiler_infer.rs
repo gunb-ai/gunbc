@@ -13082,6 +13082,21 @@ pub fn extend_scope_with_pattern_node(
     })
 }
 
+pub fn fold_accumulator_has_unit_placeholder(n: Rc<Node>) -> bool {
+    {
+        let mut __found = false;
+        for c in n.children.clone().iter().cloned() {
+            if (crate::v1_compiler_infer_types::is_unit_like(c.clone())
+                || (c.ident_span.clone() == std::option::Option::None))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
     (((n.params.clone().len() as i64) > 0)
         && ((n.connective.clone() == Connective::Disj)
@@ -15834,11 +15849,14 @@ Rc::new(InferResult {
                                 };
                                 let refined_call_fold_acc_type = match call_fold_acc_type.clone() {
                                     Some(acc) => {
-                                        if (!crate::v1_compiler_infer_types::is_fully_resolved(
+                                        if ((!crate::v1_compiler_infer_types::is_fully_resolved(
                                             acc.clone(),
                                             scope.type_env.source_indices.clone(),
-                                        ) || fold_accumulator_is_unapplied_generic(acc.clone()))
-                                        {
+                                        ) || fold_accumulator_is_unapplied_generic(
+                                            acc.clone(),
+                                        )) || fold_accumulator_has_unit_placeholder(
+                                            acc.clone(),
+                                        )) {
                                             match Rc::new({
                                                 let mut __result = Vec::new();
                                                 for a in typed_args.iter().cloned() {

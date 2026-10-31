@@ -30572,17 +30572,39 @@ pub fn emit_rust_fold_method_call(
             scope.clone(),
             fold_emit_info.clone(),
         );
+        let result_acc_type_str = match contextual_acc_type.clone() {
+            Some(result_node) => rust_fold_declarable_acc_type(
+                result_node.clone(),
+                shared_types.clone(),
+                scope.clone(),
+                fold_emit_info.clone(),
+            ),
+            std::option::Option::None => "_".to_string(),
+        };
+        let step_acc_type_str = match (*fold_lambda_node.expr_data.clone()).clone() {
+            ExprData::ExprLambda => {
+                let step_body = crate::v1_std_core::lambda_body(fold_lambda_node.clone());
+                match step_body.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved {
+                        node: step_type, ..
+                    }) => rust_fold_declarable_acc_type(
+                        step_type.clone(),
+                        shared_types.clone(),
+                        scope.clone(),
+                        fold_emit_info.clone(),
+                    ),
+                    _ => "_".to_string(),
+                }
+            }
+            _ => "_".to_string(),
+        };
         let lambda_acc_type_str = if (init_acc_type_str.clone() != "_".to_string()) {
             init_acc_type_str.clone()
         } else {
-            match contextual_acc_type.clone() {
-                Some(result_node) => rust_fold_declarable_acc_type(
-                    result_node.clone(),
-                    shared_types.clone(),
-                    scope.clone(),
-                    fold_emit_info.clone(),
-                ),
-                std::option::Option::None => "_".to_string(),
+            if (result_acc_type_str.clone() != "_".to_string()) {
+                result_acc_type_str.clone()
+            } else {
+                step_acc_type_str.clone()
             }
         };
         let fold_elem_type_str = if elem_render_has_spurious_generic.clone() {
