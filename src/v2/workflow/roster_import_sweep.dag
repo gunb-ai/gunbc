@@ -2099,7 +2099,7 @@ type RosterExpandWalk {
 }
 
 type RosterCatchAllPlan
-  = CatchAllEdit { edit: RosterLabelEdit }
+  = CatchAllEdit { edit: RosterLabelEdit, module: String, tags: List<String> }
   | CatchAllRefused { reason: RosterRefusalReason }
 
 fn roster_catch_all_plan_one(row: RosterHeadRow, binder: String, path: String, text: String, starts: List<Int>, key: String, owner: RosterOwnerTags, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>) -> RosterCatchAllPlan {
@@ -2120,7 +2120,7 @@ fn roster_catch_all_plan_one(row: RosterHeadRow, binder: String, path: String, t
       } else {
         match owner {
           OwnerTagsUnderivable { detail: _ } => CatchAllRefused { reason: RefusalBinderOccurrenceUnparsed { path: path, binder: binder } }
-          OwnerTagsRead { module: _, tags: tags, nullary: nullary } => {
+          OwnerTagsRead { module: module_name, tags: tags, nullary: nullary } => {
             let earlier = fold_list(xs: all_caps, empty: [], cons: fn(acc, c) {
               let r = roster_cap_range(cap: c, spans: spans)
               if r.start >= 0 && r.start < arm.start && roster_list_has_span(xs: sibs, r: r) { list_snoc_item(xs: acc, item: roster_arm_tag(cap: c)) } else { acc }
@@ -2133,7 +2133,7 @@ fn roster_catch_all_plan_one(row: RosterHeadRow, binder: String, path: String, t
               match fold_list(xs: remainder, empty: Absent, cons: fn(acc, t) { match acc { Present { value: x } => Present { value: x }
                 Absent => if roster_list_has(xs: nullary, x: t) { Absent } else { Present { value: t } } } }) {
                 Present { value: t } => CatchAllRefused { reason: RefusalCatchAllRemainderNotNullary { path: path, tag: t } }
-                Absent => roster_catch_all_text(binder: binder, path: path, text: text, starts: starts, remainder: remainder, cap: cap, arm: arm, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported)
+                Absent => roster_catch_all_text(module: module_name, binder: binder, path: path, text: text, starts: starts, remainder: remainder, cap: cap, arm: arm, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported)
               }
             }
           }
@@ -2147,7 +2147,7 @@ fn roster_list_has_span(xs: List<RosterByteSpan>, r: RosterByteSpan) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, y) { acc || (y.start == r.start && y.end == r.end) })
 }
 
-fn roster_catch_all_text(binder: String, path: String, text: String, starts: List<Int>, remainder: List<String>, cap: Node, arm: RosterByteSpan, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>) -> RosterCatchAllPlan {
+fn roster_catch_all_text(module: String, binder: String, path: String, text: String, starts: List<Int>, remainder: List<String>, cap: Node, arm: RosterByteSpan, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>) -> RosterCatchAllPlan {
   let unparsed = CatchAllRefused { reason: RefusalBinderOccurrenceUnparsed { path: path, binder: binder } }
   let sites = roster_value_sites(sites: collect_scoped_module_reference_sites(root: normalized_root, imported: list_map(xs: imported, f: fn(b) { b.binding })).sites, call: binder)
   let inside = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
@@ -2190,7 +2190,7 @@ fn roster_catch_all_text(binder: String, path: String, text: String, starts: Lis
             match arms {
               Absent => unparsed
               Present { value: parts } =>
-                CatchAllEdit { edit: RosterLabelEdit { start: arm.start, end: arm.end, from: original, to: roster_join(xs: parts, sep: "\n" + pad), relocation: Absent } }
+                CatchAllEdit { module: module, tags: remainder, edit: RosterLabelEdit { start: arm.start, end: arm.end, from: original, to: roster_join(xs: parts, sep: "\n" + pad), relocation: Absent } }
             }
           }
         }
@@ -2224,10 +2224,10 @@ fn roster_indent_before(starts: List<Int>, text: String, at: Int) -> Optional<St
 // THE CATCH-ALL OUTCOME of a file: every ExpandCatchAll row's gated arms, planned; the first refusal stops the file, no
 // row planned is Clean, otherwise one RosterLabelEdits carrying each arm's expansion.
 fn roster_catch_all_outcome(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, gates: List<RosterSiteGate>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> RosterOutcome {
-  let planned = fold_list(xs: candidates, empty: RosterLabelEdits { edits: [] }, cons: fn(acc, row) {
-    match acc {
-      RosterRefused { reason: r } => RosterRefused { reason: r }
-      RosterLabelEdits { edits: es } =>
+  let planned = fold_list(xs: candidates, empty: RosterCatchAllRun { edits: [], needs: [], refused: Absent }, cons: fn(acc, row) {
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent =>
         match row.head {
           ExpandCatchAll { binder: binder } =>
             match roster_gate_for(gates: gates, row: row) {
@@ -2235,27 +2235,88 @@ fn roster_catch_all_outcome(path: String, text: String, prepared: PreparedGramma
               Present { value: g } => {
                 let owner = roster_owner_tags(owner: roster_qn_text(qn: row.home) + "." + roster_type_of_catch_all_key(key: row.key), prepared: prepared, lex: lex)
                 fold_list(xs: roster_keys_for_path(keys: g.keys, path: g.path), empty: acc, cons: fn(a2, key) {
-                  match a2 {
-                    RosterRefused { reason: r } => RosterRefused { reason: r }
-                    RosterLabelEdits { edits: es2 } =>
-                      match roster_catch_all_plan_one(row: row, binder: binder, path: path, text: text, starts: g.starts, key: key, owner: owner, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported) {
-                        CatchAllRefused { reason: r } => RosterRefused { reason: r }
-                        CatchAllEdit { edit: e } => RosterLabelEdits { edits: list_snoc_item(xs: es2, item: e) }
-                      }
-                    other => other
-                  }
+                  roster_catch_all_step(acc: a2, row: row, binder: binder, path: path, text: text, starts: g.starts, key: key, owner: owner, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported)
                 })
               }
             }
           _ => acc
         }
-      other => other
     }
   })
-  match planned {
-    RosterLabelEdits { edits: es } => if is_empty(xs: es) { RosterClean } else { RosterLabelEdits { edits: es } }
-    other => other
+  match planned.refused {
+    Present { value: r } => RosterRefused { reason: r }
+    Absent =>
+      if is_empty(xs: planned.edits) { RosterClean } else { roster_catch_all_with_imports(run: planned, path: path, parse_root: parse_root, spans: spans, imported: imported) }
   }
+}
+
+type RosterCatchAllRun {
+  edits: List<RosterLabelEdit>
+  needs: List<RosterCatchAllNeed>
+  refused: Optional<RosterRefusalReason>
+}
+
+type RosterCatchAllNeed {
+  module: String
+  tag: String
+}
+
+fn roster_catch_all_step(acc: RosterCatchAllRun, row: RosterHeadRow, binder: String, path: String, text: String, starts: List<Int>, key: String, owner: RosterOwnerTags, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>) -> RosterCatchAllRun {
+  match acc.refused {
+    Present { value: _ } => acc
+    Absent =>
+      match roster_catch_all_plan_one(row: row, binder: binder, path: path, text: text, starts: starts, key: key, owner: owner, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported) {
+        CatchAllRefused { reason: r } => RosterCatchAllRun { edits: acc.edits, needs: acc.needs, refused: Present { value: r } }
+        CatchAllEdit { edit: e, module: m, tags: ts } =>
+          RosterCatchAllRun { edits: list_snoc_item(xs: acc.edits, item: e), needs: list_append(left: acc.needs, right: list_map(xs: ts, f: fn(t) { RosterCatchAllNeed { module: m, tag: t } })), refused: Absent }
+      }
+  }
+}
+
+// THE IMPORT NEED OF AN EXPANSION, from each tag's declared home (the row's type's module), decided in the same plan as the
+// edit so no round leaves the file with ambient tags. A tag already imported from that home needs nothing; a tag the file binds
+// from ANOTHER module refuses TagHomeAmbiguous (never picked); otherwise the home's import gains the tag, cycle-checked like
+// the companion pass. A tag the file DECLARES itself is not read here (a modeling limit stated in the PR).
+fn roster_catch_all_with_imports(run: RosterCatchAllRun, path: String, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>) -> RosterOutcome {
+  let ambiguous = fold_list(xs: run.needs, empty: Absent, cons: fn(acc, n) {
+    match acc {
+      Present { value: t } => Present { value: t }
+      Absent => if roster_tag_bound_elsewhere(imported: imported, module: n.module, tag: n.tag) { Present { value: n.tag } } else { Absent }
+    }
+  })
+  match ambiguous {
+    Present { value: t } => RosterRefused { reason: RefusalTagHomeAmbiguous { path: path, tag: t } }
+    Absent => {
+      let wanted = fold_list(xs: run.needs, empty: [], cons: fn(acc, n) {
+        if roster_tag_imported_from(imported: imported, module: n.module, tag: n.tag) || roster_list_has(xs: acc, x: n.tag) { acc } else { list_snoc_item(xs: acc, item: n.tag) }
+      })
+      let module = fold_list(xs: run.needs, empty: "", cons: fn(acc, n) { if acc == "" { n.module } else { acc } })
+      if is_empty(xs: wanted) {
+        RosterLabelEdits { edits: run.edits }
+      } else {
+        match roster_module_cycle_refusal(parse_root: parse_root, closures: [roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: ""))], home: module) {
+          Present { value: reason } => RosterRefused { reason: reason }
+          Absent =>
+            match roster_import_names_edit(parse_root: parse_root, spans: spans, home: qualified_name_from_dotted_string(dotted: module), wanted: wanted) {
+              RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
+                match roster_import_and_labels_disjoint(start: st, end: en, text: tx, labels: run.edits) {
+                  Present { value: r } => RosterRefused { reason: r }
+                  Absent => RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: run.edits }
+                }
+              other => other
+            }
+        }
+      }
+    }
+  }
+}
+
+fn roster_tag_imported_from(imported: List<AliasBindingRow>, module: String, tag: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, b) { found || (symbol_lexeme(sym: b.binding) == tag && roster_qn_text(qn: b.target) == module + "." + tag) })
+}
+
+fn roster_tag_bound_elsewhere(imported: List<AliasBindingRow>, module: String, tag: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, b) { found || (symbol_lexeme(sym: b.binding) == tag && roster_qn_text(qn: b.target) != module + "." + tag) })
 }
 
 // THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. The pipe sites of the parse are indexed ONCE
@@ -3684,6 +3745,7 @@ fn roster_catch_all_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -
   let not_last = head + "    Http => Http\n    other => other\n    Https => Https\n" + tail
   let stale = head + "    Http => Http\n    Bogus => Bogus\n    other => other\n" + tail
   let shadow = head + "    Http => Http\n    Https => Https\n    other => { let other = Http\n other }\n" + tail
+  let ambiguous_src = "module c.catchall\n\nimport extdeps.uri { UriScheme, Http, Https }\nimport extdeps.firmware.uefi_shell { Tftp }\n\nfn f(s: UriScheme) -> UriScheme {\n  match s {\n    Http => Http\n    Https => Https\n    other => other\n  }\n}\n"
   let optional_src = "module c.catchall\n\nimport std.optional { Optional, Absent }\n\nfn f(o: Optional<Int>) -> Optional<Int> {\n  match o {\n    Absent => Absent\n    other => other\n  }\n}\n"
   [
     roster_control_verdict(name: "catch-all-expands-to-the-declared-remainder", fail: roster_catch_all_expect_text(name: "catch-all-expands-to-the-declared-remainder", text: src, keys: key, after: expanded, prepared: prepared, lex: lex)),
@@ -3692,6 +3754,7 @@ fn roster_catch_all_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -
     roster_control_verdict(name: "catch-all-stale-earlier-tag-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-stale-earlier-tag-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: stale, keys: key, want_prefix: "catch-all-remainder-stale", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "catch-all-inner-rebinding-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-inner-rebinding-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: shadow, keys: key, want_prefix: "binder-occurrence-unparsed", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "catch-all-payload-remainder-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-payload-remainder-refuses", rows: roster_catch_all_row(binder: "other", type_name: "Optional", home: "std.optional"), home: "std.optional", type_name: "Optional", text: optional_src, keys: ["control/catchall.dag:8:5"], want_prefix: "catch-all-remainder-not-nullary", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "catch-all-tag-home-ambiguous-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-tag-home-ambiguous-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: ambiguous_src, keys: ["control/catchall.dag:10:5"], want_prefix: "tag-home-ambiguous", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "catch-all-key-off-the-pattern-atom-refuses", fail: roster_catch_all_expect_reason(name: "catch-all-key-off-the-pattern-atom-refuses", rows: roster_catch_all_row(binder: "other", type_name: "UriScheme", home: "extdeps.uri"), home: "extdeps.uri", type_name: "UriScheme", text: src, keys: ["control/catchall.dag:9:14"], want_prefix: "binder-occurrence-unparsed", prepared: prepared, lex: lex))
   ]
 }
