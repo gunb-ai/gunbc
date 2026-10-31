@@ -1748,11 +1748,17 @@ fn roster_gate_unmet(sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, c
         })
         // AN ExpandCatchAll ROW'S KEYS NAME AN ARM PATTERN ATOM, not a value-position site: the catch-all pass meets them
         // against the parsed arms (roster_arm_at_key), so this gate leaves a row set made only of such rows to that pass.
-        let all_catch_all = !is_empty(xs: gated) && for_all(xs: gated, predicate: fn(row) { match row.head { ExpandCatchAll { binder: _ } => true
-          _ => false } })
+        let all_catch_all = !is_empty(xs: gated) && fold_list(xs: gated, empty: true, cons: fn(all, row) { all && roster_row_is_catch_all(row: row) })
         if all_catch_all { Absent } else { roster_gate_keys_all_met(gate: g, sites: editable, spans: spans, already_imported: row_imported) }
     }
   })
+}
+
+fn roster_row_is_catch_all(row: RosterHeadRow) -> Bool {
+  match row.head {
+    ExpandCatchAll { binder: _ } => true
+    _ => false
+  }
 }
 
 fn roster_site_is_value_position(st: ScopedReferenceSite) -> Bool {
@@ -1990,14 +1996,16 @@ fn roster_cap_range(cap: Node, spans: SpanIndex) -> RosterByteSpan {
 
 // The smallest arm range that strictly contains `arm` (its parent arm), or Absent for an outermost arm.
 fn roster_enclosing_arm(arm: RosterByteSpan, ranges: List<RosterByteSpan>) -> Optional<RosterByteSpan> {
-  fold_list(xs: ranges, empty: Absent, cons: fn(best, r) {
-    if r.start <= arm.start && arm.end <= r.end && !(r.start == arm.start && r.end == arm.end) {
-      match best {
-        Present { value: b } => if r.end - r.start < b.end - b.start { Present { value: r } } else { best }
-        Absent => Present { value: r }
-      }
-    } else { best }
-  })
+  fold_list(xs: ranges, empty: Absent, cons: fn(best, r) { roster_tighter_enclosing(best: best, r: r, arm: arm) })
+}
+
+fn roster_tighter_enclosing(best: Optional<RosterByteSpan>, r: RosterByteSpan, arm: RosterByteSpan) -> Optional<RosterByteSpan> {
+  if r.start <= arm.start && arm.end <= r.end && !(r.start == arm.start && r.end == arm.end) {
+    match best {
+      Present { value: b } => if r.end - r.start < b.end - b.start { Present { value: r } } else { best }
+      Absent => Present { value: r }
+    }
+  } else { best }
 }
 
 fn roster_same_span(a: Optional<RosterByteSpan>, b: Optional<RosterByteSpan>) -> Bool {
@@ -2191,11 +2199,17 @@ fn roster_catch_all_text(binder: String, path: String, text: String, starts: Lis
 }
 
 fn roster_sorted_spans(xs: List<RosterByteSpan>) -> List<RosterByteSpan> {
-  fold_list(xs: xs, empty: [], cons: fn(acc, x) {
-    let before = fold_list(xs: acc, empty: [], cons: fn(b, y) { if y.start < x.start { list_snoc_item(xs: b, item: y) } else { b } })
-    let after = fold_list(xs: acc, empty: [], cons: fn(b, y) { if y.start < x.start { b } else { list_snoc_item(xs: b, item: y) } })
-    list_append(left: list_snoc_item(xs: before, item: x), right: after)
-  })
+  fold_list(xs: xs, empty: [], cons: fn(acc, x) { roster_insert_span(acc: acc, x: x) })
+}
+
+fn roster_insert_span(acc: List<RosterByteSpan>, x: RosterByteSpan) -> List<RosterByteSpan> {
+  let before = fold_list(xs: acc, empty: [], cons: fn(b, y) { roster_keep_span_if(b: b, y: y, keep: y.start < x.start) })
+  let after = fold_list(xs: acc, empty: [], cons: fn(b, y) { roster_keep_span_if(b: b, y: y, keep: !(y.start < x.start)) })
+  list_append(left: list_snoc_item(xs: before, item: x), right: after)
+}
+
+fn roster_keep_span_if(b: List<RosterByteSpan>, y: RosterByteSpan, keep: Bool) -> List<RosterByteSpan> {
+  if keep { list_snoc_item(xs: b, item: y) } else { b }
 }
 
 // The spaces between the start of `at`'s line and `at`; Absent when the arm does not begin its line or the indent holds a non-space.
