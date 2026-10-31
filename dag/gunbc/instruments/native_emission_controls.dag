@@ -1,7 +1,7 @@
 module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
-import std.algebra { length }
+import std.algebra { length, FinitePowerSet }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
@@ -677,6 +677,23 @@ fn list_payload_enum_cases() -> List<NativeEmissionCase> {
 type ControlMixedSetEnum<K> = ControlMixedSetNone | ControlMixedSetPresent { sequence: List<K>, members: Set<K> }
 type ControlMixedSetRecord<K> { sequence: List<K> members: Set<K> }
 
+type ControlOnlySetRecord<K> { members: Set<K> }
+
+// The canonical FinitePowerSet<K> spelling renders the structural record, not an OrdSet, so a fn over it
+// owes its element no Ord. ControlOpaqueElement holds a callable and has none; the body is emitted and
+// type-checked by rustc even though no case runs it, which is the control (K: Ord on the fn would refuse
+// at the ControlOpaqueElement call).
+type ControlOpaqueElement { run: fn(Int) -> Int }
+
+fn control_forward_power<K>(value: FinitePowerSet<K>) -> FinitePowerSet<K> {
+  value
+}
+
+fn control_forward_power_over_opaque(value: FinitePowerSet<ControlOpaqueElement>) -> Bool {
+  let forwarded = control_forward_power(value: value)
+  true
+}
+
 fn control_int_set(xs: List<Int>) -> Set<Int> {
   xs |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
@@ -686,6 +703,8 @@ fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase { identity: "mixed_set_enum_equal_members_in_another_order", held: ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [2, 1]) } },
     NativeEmissionCase { identity: "mixed_set_enum_red_member_differs", held: !(ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 3]) }) },
     NativeEmissionCase { identity: "mixed_set_record_equal_members_in_another_order", held: ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "only_set_record_equal_members_in_another_order", held: ControlOnlySetRecord { members: control_int_set(xs: [1, 2]) } == ControlOnlySetRecord { members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "only_set_record_red_member_differs", held: !(ControlOnlySetRecord { members: control_int_set(xs: [1, 2]) } == ControlOnlySetRecord { members: control_int_set(xs: [1, 3]) }) },
     NativeEmissionCase { identity: "mixed_set_record_red_sequence_differs", held: !(ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetRecord { sequence: [2], members: control_int_set(xs: [1, 2]) }) },
   ]
 }
@@ -845,6 +864,8 @@ data native_emission_expected_identities: List<String> = [
   "mixed_set_enum_equal_members_in_another_order",
   "mixed_set_enum_red_member_differs",
   "mixed_set_record_equal_members_in_another_order",
+  "only_set_record_equal_members_in_another_order",
+  "only_set_record_red_member_differs",
   "mixed_set_record_red_sequence_differs",
 ]
 

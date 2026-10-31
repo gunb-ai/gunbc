@@ -7,7 +7,7 @@ import std.dissolution {
 
 import v1.compiler.emit { to_pascal, emit_ident }
 import v1.compiler.artifact { Rust }
-import v1.compiler.infer_types { child_type_node, is_coproduct_type, resolved_type }
+import v1.compiler.infer_types { node_is_collection, child_type_node, is_coproduct_type, resolved_type }
 import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 import v1.compiler.infer_emit_info {
@@ -669,14 +669,16 @@ fn v1_set_element_params(
   )
 }
 
-// Set<T> is FinitePowerSet<T> by alias (std.types), realized as im::OrdSet, so a payload written
-// either way owes P: Ord. Asked of the same roster as v1_type_expr_is_free_monoid_carrier, never a
-// literal spelling.
+// Set<T> is FinitePowerSet<T> by alias (std.types), realized as im::OrdSet ONLY where the renderer
+// selects the host container: node_is_collection (the alias roster) is the decision it consumes, so the
+// canonical FinitePowerSet<T> spelling renders the structural record and owes no Ord. Algebra from the
+// roster, representation from the renderer's own predicate, never a literal spelling.
 fn v1_type_expr_is_finite_power_set_carrier(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
-    Present { value: algebra } => algebra == "FinitePowerSet"
-    Absent => false
-  }
+  node_is_collection(n: type_expr, source_indices: source_indices)
+    && match container_template_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))) {
+      Present { value: algebra } => algebra == "FinitePowerSet"
+      Absent => false
+    }
 }
 
 fn v1_set_unroutable_row_refusal() -> String {
@@ -2782,27 +2784,20 @@ fn v1_emit_struct_from_capability_table(
     )
     StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
   } else {
-    let ord_propagated_params = if has_fn_fields || map_key_required
-      || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
-      || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
-      []
-    } else {
-      v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
-    }
-    if (ord_propagated_params |> count) > 0 {
+    if (ord_params |> count) > 0 {
       let base = if declared_shared { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
       let set_row_refusal = v1_set_unroutable_row_refusal()
       let derived_traits = v1_set_filter_hand_written(traits: base)
       let derive_attr = concat(
         set_row_refusal,
         rust_trait_derive_attr_from_traits(derived_traits),
-        v1_set_serde_bound_attr_for_traits(traits: base, generic_param_names: generic_param_names, set_params: ord_propagated_params)
+        v1_set_serde_bound_attr_for_traits(traits: base, generic_param_names: generic_param_names, set_params: ord_params)
       )
       let impl_bodies = concat(
         "\n\n",
-        v1_set_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
+        v1_set_struct_debug_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices),
         "\n\n",
-        v1_set_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_propagated_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
+        v1_set_struct_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: ord_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
       )
       StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
     } else {

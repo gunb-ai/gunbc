@@ -45,7 +45,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     resolve_type_decl_leaf, resolve_type_decl_reference, type_decl_identities_of_leaf,
     TypeDeclIndex, TypeDeclResolution,
 };
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
+pub use crate::v1_compiler_infer_types::{
+    child_type_node, is_coproduct_type, node_is_collection, resolved_type,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
@@ -1112,13 +1114,16 @@ pub fn v1_type_expr_is_finite_power_set_carrier(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match crate::std_types::container_template_algebra(crate::v1_std_core::authored_name_at(
-        source_indices,
-        type_expr,
-    )) {
-        Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
-        std::option::Option::None => false,
-    }
+    (crate::v1_compiler_infer_types::node_is_collection(type_expr.clone(), source_indices.clone())
+        && match crate::std_types::container_template_algebra(
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                type_expr.clone(),
+            )),
+        ) {
+            Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
+            std::option::Option::None => false,
+        })
 }
 
 pub fn v1_set_unroutable_row_refusal() -> String {
@@ -4805,7 +4810,7 @@ pub fn v1_emit_struct_from_capability_table(
                 v1_item_ord_propagated_param_names(
                     generic_param_names.clone(),
                     field_type_exprs.clone(),
-                    type_decl_items.clone(),
+                    type_decl_items,
                     source_indices.clone(),
                 ),
             ))
@@ -4867,92 +4872,79 @@ pub fn v1_emit_struct_from_capability_table(
                 })
             }
         } else {
-            {
-                let ord_propagated_params = if (((has_fn_fields.clone()
-                    || map_key_required.clone())
-                    || rust_symbol_wrapped_ord_carrier_shape_eligible(
-                        children.clone(),
-                        source_indices.clone(),
-                    ))
-                    || crate::std_trait_derive_shape::repr_grounding_group_completion_carrier(
-                        module_path.clone(),
-                        name.clone(),
-                    )) {
-                    Rc::new(vec![])
-                } else {
-                    v1_item_ord_propagated_param_names(
-                        generic_param_names.clone(),
-                        field_type_exprs.clone(),
-                        type_decl_items.clone(),
-                        source_indices.clone(),
-                    )
-                };
-                if ((ord_propagated_params.clone().len() as i64) > 0) {
-                    {
-                        let base = if declared_shared.clone() {
-                            v1_record_derive_traits_heap_for_construction(
-                                deserialize_forbidden.clone(),
-                            )
-                        } else {
-                            v1_record_derive_traits_copy_for_construction(
-                                deserialize_forbidden.clone(),
-                            )
-                        };
-                        let set_row_refusal = v1_set_unroutable_row_refusal();
-                        let derived_traits = v1_set_filter_hand_written(base.clone());
-                        let derive_attr = v1_rt::concat(v1_rt::concat(set_row_refusal.clone(), crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(derived_traits)), v1_set_serde_bound_attr_for_traits(base.clone(), generic_param_names.clone(), ord_propagated_params.clone()));
-                        let impl_bodies = v1_rt::concat(
+            if ((ord_params.clone().len() as i64) > 0) {
+                {
+                    let base = if declared_shared.clone() {
+                        v1_record_derive_traits_heap_for_construction(deserialize_forbidden.clone())
+                    } else {
+                        v1_record_derive_traits_copy_for_construction(deserialize_forbidden.clone())
+                    };
+                    let set_row_refusal = v1_set_unroutable_row_refusal();
+                    let derived_traits = v1_set_filter_hand_written(base.clone());
+                    let derive_attr = v1_rt::concat(
+                        v1_rt::concat(
+                            set_row_refusal.clone(),
+                            crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
+                                derived_traits,
+                            ),
+                        ),
+                        v1_set_serde_bound_attr_for_traits(
+                            base.clone(),
+                            generic_param_names.clone(),
+                            ord_params.clone(),
+                        ),
+                    );
+                    let impl_bodies = v1_rt::concat(
+                        v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    "\n\n".to_string(),
-                                    v1_set_struct_debug_impl(
-                                        name.clone(),
-                                        generic_param_names.clone(),
-                                        header_clone_param_names.clone(),
-                                        ord_propagated_params.clone(),
-                                        children.clone(),
-                                        field_type_exprs.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                ),
                                 "\n\n".to_string(),
+                                v1_set_struct_debug_impl(
+                                    name.clone(),
+                                    generic_param_names.clone(),
+                                    header_clone_param_names.clone(),
+                                    ord_params.clone(),
+                                    children.clone(),
+                                    field_type_exprs.clone(),
+                                    source_indices.clone(),
+                                ),
                             ),
-                            v1_set_struct_partial_eq_impl(
-                                name.clone(),
-                                generic_param_names.clone(),
-                                header_clone_param_names.clone(),
-                                ord_propagated_params.clone(),
-                                children.clone(),
-                                field_type_exprs.clone(),
-                                source_indices.clone(),
-                            ),
-                        );
-                        Rc::new(StructCapabilityEmit {
-                            derive_attr: derive_attr.clone(),
-                            impl_bodies: impl_bodies.clone(),
-                        })
-                    }
-                } else {
-                    {
-                        let derive_attr = v1_emit_struct_derives(
+                            "\n\n".to_string(),
+                        ),
+                        v1_set_struct_partial_eq_impl(
                             name.clone(),
+                            generic_param_names.clone(),
+                            header_clone_param_names.clone(),
+                            ord_params.clone(),
                             children.clone(),
-                            declared_shared.clone(),
-                            has_fn_fields.clone(),
-                            map_key_required.clone(),
-                            deserialize_forbidden.clone(),
+                            field_type_exprs.clone(),
                             source_indices.clone(),
-                        );
-                        let impl_bodies = if (crate::std_trait_derive_shape::repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
-                            crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(((header_clone_param_names.clone().len() as i64) > 0))
-                        } else {
-                            "".to_string()
-                        };
-                        Rc::new(StructCapabilityEmit {
-                            derive_attr: derive_attr.clone(),
-                            impl_bodies: impl_bodies.clone(),
-                        })
-                    }
+                        ),
+                    );
+                    Rc::new(StructCapabilityEmit {
+                        derive_attr: derive_attr.clone(),
+                        impl_bodies: impl_bodies.clone(),
+                    })
+                }
+            } else {
+                {
+                    let derive_attr = v1_emit_struct_derives(
+                        name.clone(),
+                        children.clone(),
+                        declared_shared.clone(),
+                        has_fn_fields.clone(),
+                        map_key_required.clone(),
+                        deserialize_forbidden.clone(),
+                        source_indices.clone(),
+                    );
+                    let impl_bodies = if (crate::std_trait_derive_shape::repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
+                        crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(((header_clone_param_names.clone().len() as i64) > 0))
+                    } else {
+                        "".to_string()
+                    };
+                    Rc::new(StructCapabilityEmit {
+                        derive_attr: derive_attr.clone(),
+                        impl_bodies: impl_bodies.clone(),
+                    })
                 }
             }
         }
