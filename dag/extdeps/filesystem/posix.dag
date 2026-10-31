@@ -47,8 +47,8 @@ fn posix_entry_kind(t: PosixFileType) -> EntryKind {
 // POSIX sys/stat.h: st_dev identifies the device containing the file and st_ino the inode on that
 // device; neither number alone identifies a file. dev_t and ino_t are unsigned (64-bit on the Linux
 // hosts this repository realizes), but a host channel carries Int and std.integer has no UInt64 value
-// transport, so the fields are Int and the sole mint of a handle (extdeps.filesystem.filesystem_io
-// filesystem_handle_open) REFUSES a negative reading, which is how an unsigned value above i64::MAX
+// transport, so (trigger: std.integer UInt64 host transport) the fields are Int and the sole mint of a handle (the Filesystem.Open handler, extdeps.filesystem.filesystem_io
+// FilesystemHandle) REFUSES a negative reading, which is how an unsigned value above i64::MAX
 // would arrive; it never wraps one into a plausible identity. This is a reading of a retained inode, not a permanent name
 // after unlink and inode reuse: it identifies the file only while some descriptor holds it open.
 type PosixFileIdentity {

@@ -265,8 +265,8 @@ fn filesystem_link_create_new(
 // gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls: a check on a path is
 // itself a resolution, so check-then-open and open-then-reopen both leave a window in which the name is
 // repointed. The repair is construction, not a better check: `FilesystemHandle` is sole_constructor and
-// its one mint, `filesystem_handle_open`, folds the host's open(path, O_NOFOLLOW) observation, so a
-// handle exists only for a descriptor the host actually returned. Every handle operation below takes the
+// its one mint is the `Filesystem.Open` operation's handler (open(path, O_NOFOLLOW)), so a handle
+// exists only for a descriptor the host actually returned. Every handle operation below takes the
 // HANDLE and never a path, so validate-then-reopen has no spelling: there is no path parameter to pass.
 //
 // The final component is never followed (O_NOFOLLOW; O_PATH where the file itself must not be read), so
@@ -278,7 +278,7 @@ fn filesystem_link_create_new(
 // on the copy's descriptor) are realized by extdeps.filesystem.rust_realization in the change that
 // follows this one; its consumers are std.fabric_blob read_staged_fabric_blob (via
 // extdeps.realization.materialization_store_local), the capacity-recovery symlink reader and the
-// executor's staged-file intake. Until then the folds are exercised by their witness only.
+// executor's staged-file intake. 
 type FilesystemHandle sole_constructor {
   fd: Int
   identity: PosixFileIdentity
@@ -293,30 +293,6 @@ type FilesystemOpen
   | FilesystemOpenRefused { path: String, kind: FilesystemFailureKind, error: String }
   | FilesystemOpenKindUnrecognized { path: String, observed: String, error: String }
   | FilesystemOpenIdentityUnrepresentable { path: String, st_dev: Int, st_ino: Int }
-
-// THE SOLE MINT. `st_dev`/`st_ino` are those of the descriptor just returned, read in the same host
-// call as the open, so a handle never carries an identity the descriptor does not have.
-fn filesystem_handle_open(
-  path: String,
-  success: Bool,
-  fd: Int,
-  identity: PosixFileIdentity,
-  error: String,
-  error_kind: String,
-) -> FilesystemOpen {
-  if success && (identity.st_dev < 0 || identity.st_ino < 0 || fd < 0) {
-    FilesystemOpenIdentityUnrepresentable { path: path, st_dev: identity.st_dev, st_ino: identity.st_ino }
-  } else if success {
-    FilesystemOpened(FilesystemHandle { fd: fd, identity: identity })
-  } else {
-    match admit_filesystem_failure_kind(observed: error_kind) {
-      FilesystemFailureKindUnrecognized { observed: o } =>
-        FilesystemOpenKindUnrecognized { path: path, observed: o, error: error }
-      FilesystemFailureKindAdmitted { kind: k } =>
-        FilesystemOpenRefused { path: path, kind: k, error: error }
-    }
-  }
-}
 
 // fstat ON THE HANDLE: owner, mode, type and identity of the inode the handle holds.
 type FilesystemHandleStat
@@ -338,31 +314,6 @@ type FilesystemHandleCopy
   = FilesystemCopied { dest: String, source: PosixFileIdentity, identity: PosixFileIdentity, digest: Sha256Digest }
   | FilesystemCopyDestinationOccupied { dest: String, source: PosixFileIdentity }
   | FilesystemCopyRefused { dest: String, source: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
-
-fn filesystem_handle_symlink(
-  identity: PosixFileIdentity,
-  success: Bool,
-  is_symlink: Bool,
-  text: String,
-  target: SymlinkTarget,
-  error: String,
-  error_kind: String,
-) -> FilesystemHandleSymlink {
-  if success {
-    if is_symlink {
-      FilesystemSymlinkObserved { identity: identity, target: target, text: text }
-    } else {
-      FilesystemNotASymlink { identity: identity }
-    }
-  } else {
-    match admit_filesystem_failure_kind(observed: error_kind) {
-      FilesystemFailureKindUnrecognized { observed: o } =>
-        FilesystemHandleSymlinkRefused { identity: identity, kind: FilesystemOtherFailure, error: join(["unrecognized kind ", o, ": ", error], "") }
-      FilesystemFailureKindAdmitted { kind: k } =>
-        FilesystemHandleSymlinkRefused { identity: identity, kind: k, error: error }
-    }
-  }
-}
 
 data filesystem_read_outcome_adoption_standing: String ="RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. CLASSES EXCLUDED FROM THE TARGET POPULATION, recorded so exclusion is a decision and not a blind spot: a site whose read projections already flow through the separate exact-read authority filesystem_exact_read's own typed shape is exact_read_typed and is not a target of this lane -- that authority owns it; a site that routes a raw read through a domain-specific fold of the same shape -- gunbc.machine_intake proc_read_outcome into ProcRead | ProcReadRefused, which additionally carries error_kind -- is domain_read_fold: it is a typed outcome, not a silent default, but a second read-outcome fold beside this one is a DESIGN 3 fork, recorded to be unified later by growing the shared fold, and those sites are targets of that unification, not of this lane; a site whose two read-result branches take the same action at every remaining caller is argued_collapse -- absent and unreadable change the message, not the behaviour, and the argument is owned at the site, not by this row: gunbc.roadmap.roadmap_belt_actuate belt_read_or_empty, whose argument is the annotation above its definition (review 45271) and whose exemption filesystem_absence_establishment_adoption_standing already records, and gunbc.roadmap.roadmap_served_observation attempt_launch_revision_hex, whose argument is the presentation note in gunbc.roadmap.roadmap_presentation that an unreadable launch record dims nothing, pinned by dag/test/claim/roadmap/roadmap_presentation_witness.dag -- if a caller is found where the two branches would now act differently, that falsifies the argument and the site becomes a target: report it, do not convert silently. Counted, not excluded: gunbc.roadmap.roadmap_belt_actuate's admission and spawn-failure evidence reads in belt_workflow_attempt_evidence_for_key are debt -- a read refusal is carried in the attempt evidence wire's text field because that wire has no cause slot; they stay in the remainder below, unconverted and counted, until the wire gains a typed evidence outcome, and the wire and its consumers are owned by gunbc.roadmap.roadmap_belt_actuate, which owes that shape change. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba with the recipe below; the run's numbers live with the run that measured them, not in this authority, and #13106 verified the recipe's parity at that anchor. REMAINDER: no committed producer supplies a live remainder. The node-grain census over decl_facts is PARKED, and it will not name an automated producer: its park state, structural trigger and population are the typed guarantee stall gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall, and its irreducible rationale is the annotation above that stall. The recipe below remains the named manual recount procedure, comparable at the baseline grain; a regex census over source is the heuristic DESIGN 5/6 rules out and is not adopted as a producer. dag/test/claim fixtures are not corpus and are not targets. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
 
