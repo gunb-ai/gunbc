@@ -1,0 +1,15 @@
+module test.claim.distinct_string_count_witness
+
+import gunbc.guarantee_measurement { distinct_string_count }
+
+// Does gunbc.guarantee_measurement distinct_string_count count DISTINCT strings? Its step is
+// append(acc, [v]) with an ELEMENT receiver, so the accumulator holds one-element lists and the
+// membership test compares a list with a string. The duplicate case is the discriminating input; the
+// distinct case is the control that a correct and an incorrect implementation both pass.
+test fn distinct_string_count_collapses_a_duplicate() -> Bool {
+  distinct_string_count(values: ["a", "a"]) == 1
+}
+
+test fn distinct_string_count_keeps_distinct_values() -> Bool {
+  distinct_string_count(values: ["a", "b"]) == 2
+}
