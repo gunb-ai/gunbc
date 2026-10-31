@@ -4369,7 +4369,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 // stands for it unchanged.
 //
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
-// PositionParameterDefault, PositionCallableReturn. These occur solely in
+// PositionCallableReturn. These occur solely in
 // declared_type_position_label's match, which renders a name and judges nothing.
 //
 // WHY AN UNPRODUCED POSITION IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: it is a
@@ -4380,7 +4380,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 // InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
 // same inflation aimed at this relation's own self-description.
 //
-// NEXT-RUNG TRIGGERS. For the five: a producer at that grammar seam that builds a
+// NEXT-RUNG TRIGGERS. For the unproduced positions above: a producer at that grammar seam that builds a
 // DeclaredTypeObligation. For the four: the seam's older chain is measured against
 // declared_type_inhabitance on the corpus and replaced by declared_type_obligation_diags, which
 // deletes both that chain and optional_at_required_obligation_diags' call there. The decision
@@ -15502,6 +15502,38 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
   }
 }
 
+// A PARAMETER DEFAULT IS A DECLARED-TYPE POSITION (PositionParameterDefault). It was resolved and
+// emitted but never inferred, so `fn f(v: Nat = "x")` was accepted silently
+// (gunbc.recurring_failure_mode a_parameter_default_value_is_never_judged_against_its_parameter_type).
+// The default is inferred with the declared parameter type as `expected` (so a literal is introduced
+// at the carrier like any other expected position) and judged by the same obligation every other
+// position builds. A generic-declaring parameter or a formal carrying an unbound type variable has no
+// closed declared type at this seam and is left to the older path, as the direct-call argument chain does.
+fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions {
+  infer_emissions_concat_all(chunks: item.params |> map(p =>
+    match param_node_default_value(n: p) {
+      Absent => infer_emissions_empty()
+      Present { value: default_expr } =>
+        if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) || direct_call_formal_has_unbound_type_variable(n: param_node_type_expr(n: p)) {
+          infer_emissions_empty()
+        } else {
+          let declared = resolved_type(n: param_node_type_expr(n: p))
+          let r = infer_expr(texpr: default_expr, scope: scope, expected: Present { value: declared })
+          infer_emissions_concat(
+            left: r.emissions,
+            right: infer_emissions_of_diagnostics(diagnostics: declared_type_obligation_diags(
+              obligation: DeclaredTypeObligation {
+                position: PositionParameterDefault,
+                subject: authored_name_at(source_indices: scope.type_env.source_indices, node: p),
+                declared: declared,
+                produced: expression_value_type(e: r.typed),
+                span: r.typed.span
+              },
+              scope: scope)))
+        }
+    }))
+}
+
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
@@ -15570,7 +15602,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
         match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags)])
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags), parameter_default_emissions(item: item, scope: scope)])
     }
   }
   else if item.body != none && item.params |> count == 0 {
