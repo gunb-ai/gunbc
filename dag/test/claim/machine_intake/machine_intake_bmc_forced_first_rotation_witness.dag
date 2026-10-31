@@ -545,7 +545,10 @@ test fn the_forced_first_write_transition_is_produced_by_the_real_producers() ->
         && (s.transition.application.plan.subject.subject.unit_key as String) == "srv13"
         && (s.transition.application.plan.endpoint.host as String) == (srv13().host as String)
         && account_write_request_eq(a: s.transition.leg.write.request, b: s.transition.application.plan.managed_write.request)
-        && (s.transition.application.plan.managed_write.request.account as String) == "root"
+        && match s.transition.application.plan.managed_write.request {
+             RedfishAccountPasswordWrite { account: acct, transport_operation: _, action_shape: _ } => (acct as String) == "root"
+             _ => false
+           }
         // The post-write read is of the same controller, subject and attempt the write names, and it is the
         // sequence's own -- the fold's BmcSecure step is handed this, not a world picked to look secured.
         && (s.post_read.endpoint.host as String) == (srv13().host as String)

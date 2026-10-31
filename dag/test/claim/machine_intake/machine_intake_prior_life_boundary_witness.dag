@@ -640,7 +640,7 @@ test fn w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish() ->
           ).outcome {
             PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
               match v.grounds { PreCaptureNotBeforeTheWrite {} => true  _ => false }
-                && (match v.standing { PreWriteEntryPresent { entry_receipt: _ } => false  _ => true })
+                && (match v.standing { PreWriteEntryPresent { entry: _ } => false  _ => true })
                 && length(xs: v.options) == 2
             _ => false
           }

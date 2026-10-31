@@ -1951,21 +1951,47 @@ fn forced_bmc_inputs(subject: MachineIntakeSubject, readback: BmcAccountStateObs
   BmcSecureInputs {
     goal: goal_v1(),
     reading: readback,
-    managed_user: root_user,
-    managed_route: none,
-    approval: none,
-    plan: none,
+    grant: none,
+    capability: none,
     apply: none,
-    published_user: root_user,
-    published_password: published_password,
-    published_account: PublishedAccountRetired,
-    break_glass_password: generation_1,
-    published_reading: derive_over(served: redfish_only),
-    managed_fetch: none,
-    published_fetch: none,
-    channel_close: none,
-    planned_at: none,
-    declared_retries: [],
+    hold_release: none,
+  }
+}
+
+// AN ADMISSION OF THE FORCED FIRST WRITE, read at `endpoint` under `attempt`: the 403 the vendor build
+// answers, the route candidate the response cites, and one approval under QualifyByRotation. The
+// mismatched-pair RED consumes it; the matching-pair REDs use the sequence's own admission instead.
+fn controller_forced_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> PublishedCredentialChangeForced? {
+  admit_published_credential_change_forced(
+    reading: controller_reading(
+      endpoint: endpoint,
+      attempt: attempt,
+      board: asrock_altrad8ud_board_authority,
+      login: "root" as NonEmptyStr,
+      status: 403,
+      body: srv13_forced_change_body,
+      capture: srv13_capture,
+      firmware: ForcedChangeBuildUnreadable,
+    ),
+  )
+}
+
+fn admitted_forced_write_at(endpoint: BmcControllerEndpoint, attempt: AttemptIdentity) -> AdmittedForcedFirstRotation? {
+  match controller_forced_at(endpoint: endpoint, attempt: attempt) {
+    Absent => none
+    Present { value: forced } => {
+      let request = root_write()
+      let standing = candidate(endpoint: endpoint, firmware: build_3_22(), request: request)
+      match admit_forced_first_rotation(
+        forced: forced,
+        standing: standing,
+        request: request,
+        approval: go(standing: standing, request: request, purpose: QualifyByRotation),
+      ) {
+        ForcedFirstRotationAdmitted { admitted: a } => Present { value: a }
+        ForcedFirstRotationRefused { cause: _ } => none
+      }
+    }
   }
 }
 
