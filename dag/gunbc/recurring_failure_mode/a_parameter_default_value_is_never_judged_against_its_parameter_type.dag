@@ -19,7 +19,9 @@ data a_parameter_default_value_is_never_judged_against_its_parameter_type: Recur
 
     "WHY IT SURVIVES: argument positions are judged by direct_call_argument_inhabitance_diags (and, since Q1d, builtin arguments); the default expression is never routed through it, so it is a fourth unjudged route beside the literal-introduction routes. E1b and E1 do not reach it: they act where an expected type is supplied, and a default is never given one.",
 
-    "NEXT-RUNG TRIGGER: supply the parameter's declared type as `expected` to the default expression and run the argument obligation on it. RED: the four defaults above; positive control: `3`."
+    "NEXT-RUNG TRIGGER: supply the parameter's declared type as `expected` to the default expression and run the argument obligation on it. RED: the four defaults above; positive control: `3`.",
+
+    "SECOND TRIGGER, stated so it is not a silent gap: the repair on q1-param-default-obligation keeps only the default's DIAGNOSTICS; the typed default is not stored back on the param node and emission still reads the untyped default, so a literal introduced at its carrier (Q1b E1b) does not yet reach an emitted default. Visibility is module scope only: stage0 call_function_inner evaluates a default in the caller-supplied env, and v1.compiler.emit_rust fill_default_args / fill_op_default_args splice it at the call site; neither binds a sibling parameter."
   ],
 
   evidence: [],
