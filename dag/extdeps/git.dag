@@ -1181,7 +1181,7 @@ fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand
   argv_command(program: git_program(), arguments: git_ls_files_args(repository_dir: repository_dir, pathspec: pathspec))
 }
 
-// WHICH TRACKED FILES DECLARE A CLAIM. The second read the outside-roots census needs, because the listing
+// WHICH TRACKED FILES DECLARE A CLAIM. The second read of the tracked-claim question, because the listing
 // above answers only "which paths are tracked": a `.dag` that declares no `test fn` is a helper inventory,
 // not an uncovered claim, and reporting it as one is a fabricated finding. Some files under the note's
 // subject are exactly that, and some outside it are files whose text merely MENTIONS the phrase in a
@@ -1191,11 +1191,8 @@ fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand
 //
 // THE PATTERN IS A PARAMETER because the rule belongs to the caller, and a transport that fixes it becomes a
 // second census. BE HONEST ABOUT WHAT IT IS: this is a TEXT test by git. The interpreter's own marker read,
-// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. The two agree on the
-// current population -- re-checked every run against the v1 emitter's own registry by the witness claims in
-// src/v2/test/claim/outside_discovery_roots_census_witness.dag, so the agreement is measured, never
-// transcribed -- and the census does not claim
-// more than that. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
+// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. This call does not claim
+// they agree. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
 // above replaces this call (the same drop `floor_pure_producer_share`'s pairing row names for
 // `acquisition_test_markers`, interpreted route, C4-E).
 fn git_grep_files_with_matches_args(repository_dir: String, pattern: String, pathspec: String) -> List<String> {
