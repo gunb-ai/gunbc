@@ -573,8 +573,6 @@ fn primitive_egress_census_seed_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
 }
 
-}
-
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
 // `fixtures/bare_reference_channel`, one per condition, asserting per entry whether the bare half
 // RAN and which modules it PULLED. The fixture set landed in gunbc#11943 as a set a reader
