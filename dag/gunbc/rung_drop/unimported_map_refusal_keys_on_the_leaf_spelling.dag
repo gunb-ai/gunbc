@@ -1,0 +1,34 @@
+module gunbc.rung_drop.unimported_map_refusal_keys_on_the_leaf_spelling
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// DECLARED 2026-10-30 with the refusal it describes (gunb-ai/gunbc#14876). The refusal that a module
+// spelling the built-in container `Map` without having `Map` in its own visible names is decided by
+// asking whether the authored spelling IS the built-in's, and the only available answer is the leaf
+// name: v1.compiler.infer_resolve map_builtin_spelling compares the spelled name against the one literal
+// "Map". The visibility half of the refusal is already declaration-keyed (import_visible_name, the
+// predicate the unlisted-import check reads); the spelling half is not. Its harm direction is bounded
+// -- the site only concatenates one error node, so it can refuse a spelling and can never render a
+// look-alike as the built-in -- and that bound is why it is declared rather than left. The previous
+// rung is the one DESIGN section 4 states for compatibility ("keys on the exact declaration a
+// position resolves to, never its leaf name"); the rung the evidence supports at this one site is a
+// spelling comparison with an executed RED, hence mechanically preventable.
+
+data unimported_map_refusal_keys_on_the_leaf_spelling: RungDrop = RungDrop {
+  identity: "unimported_map_refusal_keys_on_the_leaf_spelling" as NonEmptyStr,
+
+  subject: "the refusal of a Map spelling that the module does not have in its visible names decides whether the authored spelling is the built-in container by comparing the leaf name Map, not by the declaration the name resolves to",
+
+  declared: "2026-10-30",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "the declared-identity visibility rule (the global_bare_lookup visibility rule keyed on the resolved declaration) replaces the spelling checks" },
+    population: Enumerated { members: FreeSemigroup { head: "v1.compiler.infer_resolve.map_builtin_spelling", tail: [] } },
+    restoration_trigger: "THE CAPABILITY: the seed decides whether a spelled container name is the built-in by the declaration it resolves to, through the declared-identity visibility rule that replaces the leaf-spelling checks, so no seed site compares the leaf name Map. SUFFICIENT FOR: unimported_map_diagnostics refusing an unimported Map by that rule with map_builtin_spelling deleted, the executed RED that a look-alike declaration named Map is not refused as the built-in, and the accepted control that an imported std.algebra spelling is not refused. Nothing smaller retires this row: renaming the literal or adding a second spelling to the comparison does not."
+  } }
+}

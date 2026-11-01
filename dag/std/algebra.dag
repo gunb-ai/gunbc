@@ -265,20 +265,20 @@ type FinitelySupportedFunction<K, V> {
 // this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
 // (v2.std.map_introduction map_introduction_duplicate_key). A caller that bypasses that writer and
 // calls this directly with a repeated key gets insert's semantics, which is what it asked for.
-// The result is spelled `Map<K, V>`, the kernel container spelling this module already uses bare
-// (kernel_algebra_profile_value), because the seed types `empty_map()` only under a keyed-collection
-// expectation; it names this carrier (std.types Map = FinitelySupportedFunction).
+// The result is spelled `FinitelySupportedFunction<K, V>`, this module's own declaration (std.types
+// Map is an alias of it, and std.algebra cannot import std.types), so no bare kernel Map is named
+// here (gunbc.design_ruling kernel_map_is_the_host_realization_of_the_finitely_supported_function).
 type MapIntroductionEntry<K, V> {
   key: K
   value: V
 }
 
-fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
-  let entries_seed: Map<K, V> = empty_map()
+fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {
+  let entries_seed: FinitelySupportedFunction<K, V> = empty_map()
   entries |> fold(init: entries_seed, f: map_entry_insert)
 }
 
-fn map_entry_insert<K, V>(acc: Map<K, V>, entry: MapIntroductionEntry<K, V>) -> Map<K, V> {
+fn map_entry_insert<K, V>(acc: FinitelySupportedFunction<K, V>, entry: MapIntroductionEntry<K, V>) -> FinitelySupportedFunction<K, V> {
   map_insert(acc, entry.key, entry.value)
 }
 
@@ -848,8 +848,8 @@ fn carrier_spelling_row_present(m: CarrierRowMembership) -> Bool {
   }
 }
 
-fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
-  let carrier_seed: Map<String, AlgebraProfile> = empty_map()
+fn kernel_algebra_profile_value() -> FinitelySupportedFunction<String, AlgebraProfile> {
+  let carrier_seed: FinitelySupportedFunction<String, AlgebraProfile> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.method_surface) {
@@ -859,8 +859,8 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
       }))
 }
 
-fn carrier_container_algebra_rows() -> Map<String, String> {
-  let carrier_seed: Map<String, String> = empty_map()
+fn carrier_container_algebra_rows() -> FinitelySupportedFunction<String, String> {
+  let carrier_seed: FinitelySupportedFunction<String, String> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
@@ -870,8 +870,8 @@ fn carrier_container_algebra_rows() -> Map<String, String> {
       }))
 }
 
-fn carrier_container_alias_rows() -> Map<String, String> {
-  let carrier_seed: Map<String, String> = empty_map()
+fn carrier_container_alias_rows() -> FinitelySupportedFunction<String, String> {
+  let carrier_seed: FinitelySupportedFunction<String, String> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_alias_row) {
@@ -881,8 +881,8 @@ fn carrier_container_alias_rows() -> Map<String, String> {
       }))
 }
 
-fn carrier_container_roster_map() -> Map<String, Bool> {
-  let carrier_seed: Map<String, Bool> = empty_map()
+fn carrier_container_roster_map() -> FinitelySupportedFunction<String, Bool> {
+  let carrier_seed: FinitelySupportedFunction<String, Bool> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_roster_name) {
@@ -895,8 +895,8 @@ fn carrier_container_roster_map() -> Map<String, Bool> {
 // The arity is DERIVED from the profile's own type parameters rather than restated as a number:
 // `FinitePowerSet` is unary because `algebra_type_param_names` says `["T"]`, so a carrier cannot
 // declare an arity that disagrees with its algebra.
-fn carrier_container_arity_rows() -> Map<String, Int> {
-  let carrier_seed: Map<String, Int> = empty_map()
+fn carrier_container_arity_rows() -> FinitelySupportedFunction<String, Int> {
+  let carrier_seed: FinitelySupportedFunction<String, Int> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_arity_row) {
@@ -977,8 +977,8 @@ fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
   }
 }
 
-fn carrier_container_equality_rows() -> Map<String, Bool> {
-  let carrier_seed: Map<String, Bool> = empty_map()
+fn carrier_container_equality_rows() -> FinitelySupportedFunction<String, Bool> {
+  let carrier_seed: FinitelySupportedFunction<String, Bool> = empty_map()
   algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
@@ -988,7 +988,7 @@ fn carrier_container_equality_rows() -> Map<String, Bool> {
       }))
 }
 
-data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
+data kernel_algebra_profile: FinitelySupportedFunction<String, AlgebraProfile> = kernel_algebra_profile_value()
 
 // A total order is one law with one row. OrderedRing and ApproximateField COMPOSE it rather than
 // restating `compare`: a ring that is ordered, and a field that is ordered, are each a ring/field
@@ -1465,16 +1465,16 @@ fn list_sort_by_key<T, K>(xs: FreeMonoid<T>, key: fn(T) -> K, order: TotalOrder<
   )
 }
 
-fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
+fn empty_map_primitive_delegate<K, V>() -> FinitelySupportedFunction<K, V> {
   empty_map_primitive_delegate()
 }
-fn empty_map<K, V>() -> Map<K, V> {
+fn empty_map<K, V>() -> FinitelySupportedFunction<K, V> {
   empty_map_primitive_delegate()
 }
-fn map_insert_primitive_delegate<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+fn map_insert_primitive_delegate<K, V>(m: FinitelySupportedFunction<K, V>, key: K, value: V) -> FinitelySupportedFunction<K, V> {
   map_insert_primitive_delegate(m: m, key: key, value: value)
 }
-fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+fn map_insert<K, V>(m: FinitelySupportedFunction<K, V>, key: K, value: V) -> FinitelySupportedFunction<K, V> {
   map_insert_primitive_delegate(m: m, key: key, value: value)
 }
 
@@ -1487,17 +1487,17 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
 // nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
 // removes the arm rather than asking every caller to dispose of it honestly.
-fn map_lookup_primitive_delegate<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+fn map_lookup_primitive_delegate<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Optional<V> {
   map_lookup_primitive_delegate(m: m, key: key)
 }
-fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+fn map_lookup<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Optional<V> {
   map_lookup_primitive_delegate(m: m, key: key)
 }
 
 // KEY MEMBERSHIP, the one presence predicate over a map: whether `key` has an entry, without its value.
 // Callers that store a marker value (a map used as a set of paths) read membership here rather than
 // each matching map_lookup's Optional to a Bool.
-fn map_contains_key<K, V>(m: Map<K, V>, key: K) -> Bool {
+fn map_contains_key<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Bool {
   match map_lookup(m: m, key: key) {
     Present { value: _ } => true
     Absent => false
@@ -1548,8 +1548,16 @@ fn list_at_reference<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
 
 // The key set of a map: the support of its FinitelySupportedFunction. A method call to the `map_keys`
 // primitive (std.primitives map_keys_contract), so the realization is the one the method already has.
-fn map_support_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
+fn map_support_keys<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<K> {
   m |> map_keys
+}
+
+// The values of a map, one per supported key: the total read of the finitely supported function's
+// range, a method call to the `map_values` primitive (std.primitives map_values_contract). A caller
+// folding over every entry reads it here, not map_support_keys then map_lookup, whose Absent arm
+// is unreachable and would bind to a domain answer.
+fn map_support_values<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<V> {
+  m |> map_values
 }
 
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {

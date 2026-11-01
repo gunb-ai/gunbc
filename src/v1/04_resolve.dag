@@ -50,7 +50,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic,
+  env_with_type_variable_bindings, bare_name_miss_diagnostic, import_visible_name,
   type_ref_measure_binding_authority, TypeRefMeasureBinding, TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
@@ -506,15 +506,65 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// THE ROSTER OF BUILT-IN CONTAINER SPELLINGS THAT THE UNIMPORTED-USE REFUSAL BELOW COVERS. It is a test
+// on the SPELLED LEAF NAME and it is the one leaf-name key this branch adds, so it is named and described
+// as what it is: it asks whether the authored spelling is the built-in container's, comparing against the
+// single literal in the body. It decides no more than that -- not what a resolved name MEANS, and not
+// whether the name resolved (see the refusal's note: a name can resolve and still be refused here).
+// ITS ONLY EFFECT IS TO CONCATENATE ONE ERROR NODE, so a roster line can refuse a spelling but can never
+// render a look-alike as the built-in. That bounded harm is what makes a spelling roster acceptable at
+// this site and nowhere else: the site that CAN route a use site to the kernel realization asks a
+// different predicate, and that one is a spelling test too -- see the rung note there
+// (node_is_keyed_algebra_spelling compares container_template_algebra on the last name segment, NOT a
+// declaration comparison; its RESIDUE note in v1.compiler.types says so, and
+// gunbc.recurring_failure_mode emitter_keyed_container_lowering_is_keyed_by_leaf_spelling names the
+// declaration-keyed hardening as its next rung).
+fn map_builtin_spelling(name: String) -> Bool {
+  name == "Map"
+}
+
+
+// THE REFUSAL: a built-in container spelling used WITHOUT THE MODULE HAVING IT IN ITS OWN VISIBLE NAMES.
+// Both conjuncts are needed and neither is decorative. Measured, so the note does not overstate it: an
+// unimported name is NOT necessarily unresolvable -- global_bare_lookup can still bind it, and the
+// existing gate that refuses global-bare resolution for an unlisted name
+// (bare_free_call_requires_listed_import, read by import_visible_name) covers one spelling only. So this
+// is a VISIBILITY refusal, not an unbound-name refusal, and it is deliberately able to fire where a
+// declaration did resolve somewhere in the index. Judging it by visibility rather than by resolution is
+// the point: a spelling the module never imported must be named in its import list, not picked up from
+// anywhere in the corpus.
+// The visible-name map is the module's own (local declarations plus its imports, built by build_type_env)
+// and is asked through import_visible_name, the SAME predicate the unlisted-import check reads, so one
+// fact has one source. Never node.ident, which can carry a binding from outside the module's imports. An
+// EMPTY visible set is the strongest case for the refusal, not an escape: absence is judged by the
+// predicate alone, never by 'the set is non-empty and misses it'. Harm direction stays refuse-only.
+fn unimported_map_diagnostics(env: TypeEnv, n: Node, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if map_builtin_spelling(name: name) && import_visible_name(env: env, name: name) == false {
+    [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
+  } else { [] }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
-      // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
-      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
+      // BOTH ARMS READ THE SPELLED NAME, AND THAT IS STATED RATHER THAN CLAIMED AWAY (DESIGN 4b).
+      // is_container_type asks container_type_arity, the carrier roster of which NAMES are containers at
+      // all -- a name-membership question, which is why FreeMonoid, declared in the corpus, keeps
+      // answering "not a user generic". node_is_keyed_algebra_spelling compares
+      // container_template_algebra on the last name segment, so a record whose own declaration is spelled
+      // FinitelySupportedFunction<K, V> is admitted here as the kernel keyed container whatever its
+      // module -- per gunbc.design_ruling
+      // kernel_map_is_the_host_realization_of_the_finitely_supported_function, which is exactly what makes
+      // a directly spelled receiver dispatch the keyed container, and exactly the surface a look-alike
+      // shares. The harm is not unbounded: the alias SETTLING, where a look-alike's own declaration is
+      // compared, refuses in v1.compiler.types node_type_compatible (the RED
+      // the_reviewer_named_element_type_pair_refuses_at_the_join). Hardening either arm to declaration
+      // identity is the named next rung in gunbc.recurring_failure_mode
+      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling -- until then this is a spelling test,
+      // not a declaration comparison, and it is not claimed to be one.
       if is_container_type(name: n.name) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
@@ -776,7 +826,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       NodeResolveResult {
         resolved: stamp_kernel_collection(n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData }),
-        diagnostics: concat(key_diags, val_diags)
+        diagnostics: concat(unimported_map_diagnostics(env: env, n: n, name: type_name, span: n.span, module_name: module_name), key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
     let type_name = authored_name(env: env, node: n)
