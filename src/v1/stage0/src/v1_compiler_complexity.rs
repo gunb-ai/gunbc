@@ -32,9 +32,9 @@ use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
-    catamorphism_bound, cost_constant, cost_poly, derive_bound, sub_value_to_call_pattern,
-    sub_value_to_evidence, sub_value_to_lowering_target, AtomicCost, CostBound, PolynomialExponent,
-    SubValueRelation,
+    call_descent_evidence, catamorphism_bound, cost_constant, cost_poly, derive_bound,
+    sub_value_to_call_pattern, sub_value_to_evidence, sub_value_to_lowering_target, AtomicCost,
+    CostBound, PolynomialExponent, SubValueRelation,
 };
 pub use crate::std_measure::{byte_size, byte_size_count, ByteSize};
 use crate::std_syntax::BinOp::*;
@@ -10110,21 +10110,10 @@ pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -
     all_calls.iter().cloned().fold(
         DescentEvidence::Strict,
         |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
-            let call_best = call_ev.iter().cloned().fold(
-                DescentEvidence::DescentUnknown,
-                |best: DescentEvidence, rel: Rc<SubValueRelation>| {
-                    let ev = crate::std_induction::sub_value_to_evidence(rel.clone());
-                    match ev.clone() {
-                        DescentEvidence::Strict => DescentEvidence::Strict,
-                        _ => match best {
-                            DescentEvidence::Strict => DescentEvidence::Strict,
-                            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-                            _ => ev.clone(),
-                        },
-                    }
-                },
-            );
-            crate::std_termination::descent_evidence_lattice_meet(worst, call_best.clone())
+            crate::std_termination::descent_evidence_lattice_meet(
+                worst,
+                crate::std_induction::call_descent_evidence(call_ev.clone()),
+            )
         },
     )
 }

@@ -94,8 +94,8 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
-    compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence, InductiveField, RecursionShape, SubValueRelation,
+    call_descent_evidence, compose_sub_value, compose_sub_value_relations, join_sub_value,
+    meet_sub_value, sub_value_to_evidence, InductiveField, RecursionShape, SubValueRelation,
 };
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{
@@ -162,10 +162,11 @@ use crate::std_target_representation::VariantParentKey::{
     VariantParentDeclaration, VariantParentKernelType,
 };
 pub use crate::std_target_representation::{VariantParentIdentity, VariantParentKey};
+use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
-    PositiveDescentAmount,
+    DescentEvidence, PositiveDescentAmount,
 };
 pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
@@ -25951,6 +25952,104 @@ pub fn populate_output_provenance(
     }
 }
 
+pub fn descent_evidence_label(e: DescentEvidence) -> String {
+    match e.clone() {
+        DescentEvidence::Strict => "Strict".to_string(),
+        DescentEvidence::NonIncreasing => "NonIncreasing".to_string(),
+        DescentEvidence::DescentUnknown => "DescentUnknown".to_string(),
+    }
+}
+
+pub fn self_call_without_descent_diags_in(
+    body: Rc<Node>,
+    fn_name: String,
+    module_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall {
+                descent_evidence: de,
+                ..
+            } => match de.clone() {
+                Some(evidence) => {
+                    if (crate::v1_std_core::expr_call_func_at(body.clone(), si.clone())
+                        == fn_name.clone())
+                    {
+                        {
+                            let call_evidence =
+                                crate::std_induction::call_descent_evidence(evidence.clone());
+                            match call_evidence.clone() {
+                                DescentEvidence::Strict => Rc::new(vec![]),
+                                _ => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::SelfCallWithoutDescent {
+                                        function: fn_name.clone(),
+                                        evidence: descent_evidence_label(call_evidence.clone()),
+                                        span: body.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                            }
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            own.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in body.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*self_call_without_descent_diags_in(
+                            child.clone(),
+                            fn_name.clone(),
+                            module_name.clone(),
+                            si.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn self_call_without_descent_diags(
+    items: Rc<Vec<Rc<Node>>>,
+    module_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in items.iter().cloned() {
+            __result.extend(
+                (*if (item.is_self_recursive.clone()
+                    && (item.body.clone() != std::option::Option::None))
+                {
+                    self_call_without_descent_diags_in(
+                        item.body.clone().clone().unwrap(),
+                        crate::v1_std_core::authored_name_at(si.clone(), item.clone()),
+                        module_name.clone(),
+                        si.clone(),
+                    )
+                } else {
+                    Rc::new(vec![])
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn annotate_descent_evidence(
     body: Rc<Node>,
     fn_name: String,
@@ -35447,8 +35546,11 @@ pub fn typecheck_module(
             }
             __result
         });
-        let grounded =
-            ground_kernel_views(reannotated_items, env.clone(), resolved_module_name.clone());
+        let grounded = ground_kernel_views(
+            reannotated_items.clone(),
+            env.clone(),
+            resolved_module_name.clone(),
+        );
         let module_type_env_cache = Rc::new(TypeEnvCache {
             deps_map: env_cache.deps_map.clone(),
             str_bindings: env_cache.str_bindings.clone(),
@@ -35496,8 +35598,15 @@ pub fn typecheck_module(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
-                                infer_emissions.diagnostics.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(env_diags.clone(), ctx.diagnostics.clone()),
+                                    infer_emissions.diagnostics.clone(),
+                                ),
+                                self_call_without_descent_diags(
+                                    reannotated_items.clone(),
+                                    resolved_module_name.clone(),
+                                    source_indices.clone(),
+                                ),
                             ),
                             grounded.diagnostics.clone(),
                         ),

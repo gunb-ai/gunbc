@@ -94,6 +94,23 @@ pub enum SubValueRelation {
     SubValueUnknown,
 }
 
+pub fn call_descent_evidence(relations: Rc<Vec<Rc<SubValueRelation>>>) -> DescentEvidence {
+    relations.iter().cloned().fold(
+        DescentEvidence::DescentUnknown,
+        |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+            let ev = sub_value_to_evidence(rel.clone());
+            match ev.clone() {
+                DescentEvidence::Strict => DescentEvidence::Strict,
+                _ => match best {
+                    DescentEvidence::Strict => DescentEvidence::Strict,
+                    DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+                    _ => ev.clone(),
+                },
+            }
+        },
+    )
+}
+
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
     match (*relation.clone()).clone() {
         SubValueRelation::StrictSubValue { factor: f, .. } => match (*f.clone()).clone() {
