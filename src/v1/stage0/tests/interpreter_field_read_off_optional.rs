@@ -14,8 +14,12 @@ const SOURCE: &str = "module test.claim.zz_scratch\n\
 type ZzRow = ZzRow { status: String }\n\
 data zz_rows: List<ZzRow> = [ZzRow { status: \"ok\" }]\n\
 data zz_none: List<ZzRow> = []\n\
+data zz_map: Map<String, ZzRow> = {\"k\": ZzRow { status: \"ok\" }}\n\
 test fn zz_present_read() -> Bool {\n  zz_rows.first().status == \"ok\"\n}\n\
-test fn zz_absent_read() -> Bool {\n  zz_none.first().status == \"ok\"\n}\n";
+test fn zz_absent_read() -> Bool {\n  zz_none.first().status == \"ok\"\n}\n\
+test fn zz_map_present_read() -> Bool {\n  zz_map.get(\"k\").status == \"ok\"\n}\n\
+test fn zz_map_absent_read() -> Bool {\n  zz_map.get(\"z\").status == \"ok\"\n}\n\
+test fn zz_map_match() -> Bool {\n  match zz_map.get(\"k\") { Present { value: v } => v.status == \"ok\"  Absent => false }\n}\n";
 
 fn outcomes() -> Vec<v1_compiler::cli_run::ClaimRouteMember> {
     let dir = v1_compiler::cli_run::workspace_root()
@@ -56,5 +60,20 @@ fn a_field_read_off_a_present_first_holds_and_off_an_absent_first_refuses() {
             "must be the typed refusal, got: {message}"
         ),
         other => panic!("RED: a field read off an Absent first must refuse, got {other:?}"),
+    }
+    assert!(
+        matches!(find("zz_map_present_read").outcome, ClaimOutcome::Pass),
+        "CONTROL: a field read off a Present map get must peel and hold"
+    );
+    assert!(
+        matches!(find("zz_map_match").outcome, ClaimOutcome::Pass),
+        "CONTROL: match on map get answers Present/Absent by value"
+    );
+    match &find("zz_map_absent_read").outcome {
+        ClaimOutcome::RuntimeError { message, .. } => assert!(
+            message.contains("read off an Absent optional"),
+            "must be the typed refusal, got: {message}"
+        ),
+        other => panic!("RED: a field read off an Absent map get must refuse, got {other:?}"),
     }
 }

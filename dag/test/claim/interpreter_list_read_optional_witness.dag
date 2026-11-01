@@ -8,6 +8,8 @@ data ilro_items: List<String> = ["a", "b", "c"]
 
 data ilro_none: List<String> = []
 
+data ilro_map: Map<String, String> = {"k": "v"}
+
 // The interpreter's list reads are the declared Optional<T> (v2 `list_at_optional` is the
 // referent): Present in range, Absent otherwise, never a bare element or host null. Each RED
 // below is false on the pre-fix interpreter (bare element / Null compared with a Present or
@@ -52,4 +54,16 @@ test fn a_rendered_present_read_equals_the_rendering_of_a_present_literal() -> B
 
 test fn a_rendered_absent_read_equals_the_rendering_of_an_absent_literal() -> Bool {
   to_string(ilro_none.first()) == to_string(Absent)
+}
+
+// MAP `.get` is the same declared Optional<V> as the list reads: one constructor, not the bare
+// value/Null second representation.
+test fn map_get_hit_is_present_and_miss_is_absent() -> Bool {
+  ilro_map.get("k") == Present { value: "v" } && ilro_map.get("z") == Absent
+}
+
+// POSITIVE CONTROL: eliminating a map `.get` by match answers by value.
+test fn a_match_on_map_get_answers_by_value() -> Bool {
+  (match ilro_map.get("k") { Present { value: v } => v == "v"  Absent => false })
+    && (match ilro_map.get("z") { Present { value: v } => false  Absent => true })
 }

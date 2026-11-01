@@ -922,9 +922,10 @@ fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
 }
 
 impl RawMapLookup {
-    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
-    /// builtins) don't observe the `Optional` contract at all — they want
-    /// exactly what was found, miss-as-`Null` included.
+    /// Exactly two callers, both where the checker's declared type is the map's
+    /// value type and NOT `Optional<V>`: `extract_field` on a `Value::Map`
+    /// (field access) and the `[]` index arm. Every `.get`/`lookup` arm the
+    /// checker types `Optional<V>` goes through `map_lookup_as_optional`.
     fn into_raw(self) -> Value {
         match self {
             RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
@@ -14193,7 +14194,7 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -14517,7 +14518,7 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
                     Ok(list_get_at_optional(&items, idx, &$ctx))
@@ -14525,7 +14526,7 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 }
             },
 
