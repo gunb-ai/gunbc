@@ -200,10 +200,7 @@ fn workspace_actor_takeover_decision(plan: WorkspaceReservationPlan, hold: Durab
 fn workspace_actor_takeover_unheld(prior: WorkspacePriorActorStanding, intent: WorkspaceActorIntent) -> WorkspaceActorTakeoverDecision {
   match prior {
     PriorActorRunning => TakeoverRetain { reason: "the elected acquisition actor is still running" }
-    PriorActorUnobservable { reason } => match intent {
-      ActorIntentAcquire => TakeoverRetain { reason: reason }
-      ActorIntentRetire => TakeoverCancelActor
-    }
+    PriorActorUnobservable { reason } => TakeoverRetain { reason: reason }
     PriorActorTerminal => match intent {
       ActorIntentAcquire => TakeoverRearmActor
       ActorIntentRetire => TakeoverCancelActor

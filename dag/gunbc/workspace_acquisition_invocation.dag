@@ -64,9 +64,9 @@ fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> U
       Absent => none
       Present { value: pid } => if trim(s: actual) != "" && trim(s: before.value) == trim(s: actual)
         && trim(s: after.value) == trim(s: actual) && trim(s: main.value) == pid && pid != "0" {
-        match unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: actual) {
-          UnitInvocationPresent { run: r } => Present { value: r }
-          UnitInvocationAbsent => none
+        match unit_invocation_observation(manager: SystemManager, unit: unit as NonEmptyStr, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: actual) {
+          UnitInvocationPresent { unit: _, run: r } => Present { value: r }
+          UnitInvocationAbsent { unit: _, manager: _ } => none
           UnitInvocationUnreadable { cause: _ } => none
         }
       } else { none }
@@ -207,12 +207,18 @@ fn workspace_slot_invocation_reading(plan: WorkspaceReservationPlan) -> UnitInvo
   if !observed.success || !boot.success || !stat.success {
     UnitInvocationUnreadable { cause: "the slot unit's run is unreadable; the elected actor may still be running" as NonEmptyStr }
   } else {
-    unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: observed.value)
+    unit_invocation_observation(manager: SystemManager, unit: unit as NonEmptyStr, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: observed.value)
   }
 }
 
-fn workspace_prior_actor_standing(recorded: UnitRunIdentity, slot: UnitInvocationObservation) -> WorkspacePriorActorStanding {
-  match unit_invocation_holder_liveness(recorded: recorded, observed: slot) {
+// The unit the elected actor runs in: the slot's unit instance. An observation of any other unit, or of another
+// manager, is a foreign subject for this holder (unit_invocation_holder_liveness).
+fn workspace_slot_unit(plan: WorkspaceReservationPlan) -> NonEmptyStr {
+  microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: workspace_reservation_plan_reservation(plan: plan).slot)) as NonEmptyStr
+}
+
+fn workspace_prior_actor_standing(recorded: UnitRunIdentity, plan: WorkspaceReservationPlan, slot: UnitInvocationObservation) -> WorkspacePriorActorStanding {
+  match unit_invocation_holder_liveness(recorded: recorded, holder_unit: workspace_slot_unit(plan: plan), observed: slot) {
     HolderObservedLive { evidence: _ } => PriorActorRunning
     HolderObservedDead { evidence: _ } => PriorActorTerminal
     HolderLivenessUnobservable { cause: c } => PriorActorUnobservable { reason: c }

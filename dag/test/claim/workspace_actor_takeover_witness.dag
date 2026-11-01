@@ -12,7 +12,7 @@ import gunbc.workspace_allocation_plan {
   ActorIntentAcquire, ActorIntentRetire,
 }
 import gunbc.workspace_acquisition_invocation {
-  workspace_prior_actor_standing, workspace_recorded_actor_decode, RecordedActorLegacyBareId, RecordedActorUnreadable,
+  workspace_prior_actor_standing, workspace_slot_unit, workspace_recorded_actor_decode, RecordedActorLegacyBareId, RecordedActorUnreadable,
   WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
 }
 import gunbc.systemd_unit_invocation_liveness { SystemManager, UnitRunIdentity, UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable, unit_invocation_observation, unit_run_wire }
@@ -21,12 +21,12 @@ import test.claim.workspace_launch_directive_witness { launch_fixture_allocation
 data fixture_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
 data fixture_proc_stat: String = "cpu 1 2 3\nbtime 1792000000\nprocesses 5\n"
 
-fn fixture_slot(invocation: String) -> UnitInvocationObservation {
-  unit_invocation_observation(manager: SystemManager, boot_id_text: fixture_boot_id, proc_stat_text: fixture_proc_stat, invocation_text: invocation)
+fn fixture_slot(unit: NonEmptyStr, invocation: String) -> UnitInvocationObservation {
+  unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: fixture_boot_id, proc_stat_text: fixture_proc_stat, invocation_text: invocation)
 }
 
-fn fixture_run(invocation: String) -> UnitRunIdentity? {
-  match fixture_slot(invocation: invocation) { UnitInvocationPresent { run: r } => Present { value: r }  _ => none }
+fn fixture_run(unit: NonEmptyStr, invocation: String) -> UnitRunIdentity? {
+  match fixture_slot(unit: unit, invocation: invocation) { UnitInvocationPresent { unit: _, run: r } => Present { value: r }  _ => none }
 }
 
 fn takeover_plan() -> WorkspaceReservationPlan? {
@@ -63,13 +63,13 @@ test fn live_or_unobservable_actor_is_never_replaced() -> Bool {
   && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "fixture" }, retire: false))
 }
 
-// The operator's release (desired=Retired) admits an UNOBSERVABLE holder for cancellation, whatever the
-// cause (a legacy bare-id record maps to the same standing); a LIVE holder is refused even then, and
-// without the release the unobservable holder still refuses.
-test fn operator_release_admits_unobservable_and_never_a_live_holder() -> Bool {
-  is_cancel(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "legacy" }, retire: true))
+// An UNOBSERVABLE holder (a legacy bare-id record maps to the same standing) retains the acquisition obligation
+// under BOTH intents: retirement does not fence an acquisition the elected actor may already have admitted.
+test fn unobservable_holder_retains_under_acquire_and_retire() -> Bool {
+  is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "legacy" }, retire: true))
   && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "legacy" }, retire: false))
   && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: true))
+  && is_cancel(d: decided(hold: HoldSlotAbsent, prior: PriorActorTerminal, retire: true))
 }
 
 // A bare pre-carrier InvocationID is its own typed reading, never a run and never garbage.
@@ -99,16 +99,26 @@ test fn matching_hold_recovers_and_foreign_hold_retains() -> Bool {
   }
 }
 
-// The slot unit's InvocationID decides the prior actor's standing.
+// The slot unit's InvocationID decides the prior actor's standing; an observation of another unit or manager is
+// foreign to the holder and never terminal.
 test fn prior_actor_standing_follows_the_slot_invocation() -> Bool {
   let old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   let new = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-  match fixture_run(invocation: old) {
+  match takeover_plan() {
     Absent => false
-    Present { value: r } =>
-      (match workspace_prior_actor_standing(recorded: r, slot: fixture_slot(invocation: new)) { PriorActorTerminal => true _ => false })
-      && (match workspace_prior_actor_standing(recorded: r, slot: UnitInvocationAbsent) { PriorActorTerminal => true _ => false })
-      && (match workspace_prior_actor_standing(recorded: r, slot: fixture_slot(invocation: old)) { PriorActorRunning => true _ => false })
-      && (match workspace_prior_actor_standing(recorded: r, slot: UnitInvocationUnreadable { cause: "fixture" as NonEmptyStr }) { PriorActorUnobservable { reason: _ } => true _ => false })
+    Present { value: plan } => {
+      let u = workspace_slot_unit(plan: plan)
+      let foreign = "other-slot.service" as NonEmptyStr
+      match fixture_run(unit: u, invocation: old) {
+        Absent => false
+        Present { value: r } =>
+          (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: u, invocation: new)) { PriorActorTerminal => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationAbsent { unit: u, manager: SystemManager }) { PriorActorTerminal => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: u, invocation: old)) { PriorActorRunning => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationUnreadable { cause: "fixture" as NonEmptyStr }) { PriorActorUnobservable { reason: _ } => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: foreign, invocation: new)) { PriorActorUnobservable { reason: _ } => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationAbsent { unit: foreign, manager: SystemManager }) { PriorActorUnobservable { reason: _ } => true _ => false })
+      }
+    }
   }
 }

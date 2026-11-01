@@ -150,13 +150,14 @@ fn workspace_take_over_actor(store: FabricStorageBinding, cells: FabricAllocatio
       ActorIntentAcquire => TakeoverRefused { reason: "acquisition actor was cancelled" }
     }
     RecordedActorUnreadable { reason } => TakeoverRefused { reason: reason }
-    RecordedActorInvocation { generation, run } => workspace_take_over_recorded(store: store, cells: cells, plan: plan, intent: intent, generation: generation, prior: workspace_prior_actor_standing(recorded: run, slot: slot), prior_wire: unit_run_wire(run: run) as NonEmptyStr)
+    RecordedActorInvocation { generation, run } => workspace_take_over_recorded(store: store, cells: cells, plan: plan, intent: intent, generation: generation, prior: workspace_prior_actor_standing(recorded: run, plan: plan, slot: slot), prior_wire: unit_run_wire(run: run) as NonEmptyStr)
     RecordedActorLegacyBareId { generation, invocation_id } => workspace_take_over_recorded(store: store, cells: cells, plan: plan, intent: intent, generation: generation, prior: PriorActorUnobservable { reason: "the acquisition actor record is a pre-carrier bare InvocationID; its unit run cannot be observed" }, prior_wire: invocation_id as String as NonEmptyStr)
   } }
 }
 
-// Retired intent is the operator's release (workspace_request_release_at records desired=Retired): an
-// UNOBSERVABLE holder (any cause) is then admitted for cancellation, while a LIVE one never is.
+// An UNOBSERVABLE holder (a legacy bare-id record, an unreadable slot, a foreign-subject observation) retains the
+// acquisition obligation under BOTH intents: cancelling its record does not fence an acquisition it already had
+// admitted, so only observed termination clears it.
 fn workspace_take_over_recorded(store: FabricStorageBinding, cells: FabricAllocationStore, plan: WorkspaceReservationPlan, intent: WorkspaceActorIntent, generation: CasGeneration, prior: WorkspacePriorActorStanding, prior_wire: NonEmptyStr) -> WorkspaceActorTakeoverOutcome {
   let hold = workspace_reservation_hold_observation(cells: cells, plan: plan)
   match workspace_actor_takeover_decision(plan: plan, hold: hold, prior: prior, intent: intent) {
