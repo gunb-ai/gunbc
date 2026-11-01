@@ -183,10 +183,13 @@ fn rehome_pool_roots() -> List<String> {
 }
 
 fn rehome_pair_verdict(row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
-  match rehome_sole_fact(home: row.from_home, name: row.name) {
+  let from_name = row.from_home + "." + row.name
+  let to_name = row.to_home + "." + row.name
+  let facts = decl_facts_at(pool_roots: rehome_pool_roots(), qualified_names: [from_name, to_name], type_names: [])
+  match rehome_sole_fact(qualified_name: from_name, facts: facts) {
     RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
     RehomeFactFound { fact: from } =>
-      match rehome_sole_fact(home: row.to_home, name: row.name) {
+      match rehome_sole_fact(qualified_name: to_name, facts: facts) {
         RehomeFactRefused { reason: r } => RehomePairRefused { reason: r }
         RehomeFactFound { fact: to } =>
           match row.representation {
@@ -201,12 +204,12 @@ type RehomeFactLookup
   = RehomeFactFound { fact: DeclFact }
   | RehomeFactRefused { reason: RehomeRefusal }
 
-// THE DECLARATION AT <home>.<name>: a plain keyed read. v2.std.decl_index keys a declaration by its module's own
-// qualified name, v2. included (#14584), so exactly one row answers a declared home; none is unresolved and several is
-// ambiguous, each refused typed.
-fn rehome_sole_fact(home: String, name: String) -> RehomeFactLookup {
-  let qualified_name = home + "." + name
-  match decl_facts_at(pool_roots: rehome_pool_roots(), qualified_names: [qualified_name], type_names: []) {
+// THE DECLARATION AT <home>.<name>, from ONE keyed read of both homes. v2.std.decl_index keys a declaration by its
+// module's own qualified name, v2. included (#14584), and its keys are a set (#15158), so a pair costs one pass over the
+// pool, not one per home. Exactly one row answers a declared home; none is unresolved and several is ambiguous, each
+// refused typed.
+fn rehome_sole_fact(qualified_name: String, facts: List<DeclFact>) -> RehomeFactLookup {
+  match fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.qualified_name == qualified_name { list_snoc_item(xs: acc, item: f) } else { acc } }) {
     Empty => RehomeFactRefused { reason: RehomeTargetUnresolved { qualified_name: qualified_name } }
     Cons { head: f, tail: Empty } => RehomeFactFound { fact: f }
     _ => RehomeFactRefused { reason: RehomeTargetAmbiguous { qualified_name: qualified_name } }
@@ -1199,14 +1202,11 @@ fn rehome_control_record() -> String {
 // THE INHABITANCE CLAIM for the supplied pair verdicts: v2.std.decl_index, on the real corpus, resolves the N7 Int pair to
 // two declarations of one kind whose shapes differ (GroupCompletion record vs NonNegative | Negative), so the real path
 // refuses it as a signature change -- tidy-ant-251's ruling A.
-// WHILE THE ALIAS GAP IS OPEN the pair refuses on its KIND instead: decl_index reads the alias v2.std.integer.Int
-// (= GroupCompletion<Nat>) as OtherItem against std.integer.Int's TypeItem. Both arms are "not a rename". TRIGGER: when
-// adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the RehomeKindDiffers arm below, so the
-// control pins the signature arm alone.
+// The alias gap closed with #14584 (aliased type declarations read TypeItem), so the kind arm is gone and this control
+// pins the signature arm alone.
 fn rehome_control_pair_inhabited(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match rehome_pair_verdict(row: RehomeRow { name: "Int", from_home: "v2.std.integer", to_home: "std.integer", representation: Absent }, prepared: prepared, lex: lex) {
     RehomePairRefused { reason: RehomeSignatureDiffers } => ""
-    RehomePairRefused { reason: RehomeKindDiffers } => ""
     RehomePairRefused { reason: r } => "CONTROL-FAIL rehome pair-inhabited: the real Int pair refused " + rehome_refusal_text(r: r) + "\n"
     RehomePairSame => "CONTROL-FAIL rehome pair-inhabited: the real Int pair read as the same shape\n"
   }
