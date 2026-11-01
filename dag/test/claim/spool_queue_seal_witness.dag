@@ -4,14 +4,20 @@ import std.types { Bool, Int, String, List, NonEmptyStr }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.optional { Present, Absent }
+import std.algebra { is_empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.roster_frontier { frontier_subject_key }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.spool_queue {
+  spool_out_of_corpus_writers_frontier_rows,
+  spool_declaration_wellformed, SpoolDeclaration, SpoolStage, PrincipalRequester,
+  spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
-  SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
-  ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, CompleteRoleHasNoDirectory, SpoolOutcomeRefused, spool_role_dir, SpoolEntryFile, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
+  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
+  ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
-  ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
+  ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
@@ -138,7 +144,6 @@ test fn the_publication_spool_has_no_claim_and_refuses_one_typed() -> ProcessExi
 test fn the_unit_refusal_has_no_directory_so_completing_into_it_is_refused_typed() -> ProcessExit {
   match spool_complete_assess(kind: SpoolAttemptUnit, observed: EntryStanding { role: RoleClaimed }, outcome: SpoolOutcomeRefused { cause: "x" }) {
     CompleteRoleUndeclared { role: _ } => ExitSuccess
-    CompleteRoleHasNoDirectory { role: _ } => ExitSuccess
     _ => exit_failure(reason: "a refusal into a role with no directory was admitted")
   }
 }
@@ -151,10 +156,17 @@ test fn the_publication_refusal_retires_a_pending_request_in_place() -> ProcessE
 }
 
 test fn the_publication_entry_is_a_file_with_a_refused_directory_and_no_claimed_one() -> ProcessExit {
-  if (spool_declaration(kind: SpoolPublication).entry_kind == SpoolEntryFile) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleClaimed)) && spool_role_dir_present(kind: SpoolPublication, role: RoleRefused) {
+  if spool_entry_is_file(kind: SpoolPublication) && (!spool_role_dir_present(kind: SpoolPublication, role: RoleClaimed)) && spool_role_dir_present(kind: SpoolPublication, role: RoleRefused) {
     ExitSuccess
   } else {
     exit_failure(reason: "the publication spool disk shape is misdeclared")
+  }
+}
+
+fn spool_entry_is_file(kind: SpoolKind) -> Bool {
+  match spool_declaration(kind: kind).entry_kind {
+    SpoolEntryDirectory => false
+    SpoolEntryFile { wire_suffix: _ } => true
   }
 }
 
@@ -162,6 +174,23 @@ fn spool_role_dir_present(kind: SpoolKind, role: SpoolRole) -> Bool {
   match spool_role_dir(kind: kind, role: role) {
     Present { value: _ } => true
     Absent => false
+  }
+}
+
+test fn the_publication_single_drainer_assumption_ends_when_a_second_drainer_appears() -> ProcessExit {
+  if (!spool_needs_claim_stage(kind: SpoolPublication, drainers: 1)) && spool_needs_claim_stage(kind: SpoolPublication, drainers: 2) && (!spool_needs_claim_stage(kind: SpoolAttemptExit, drainers: 5)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the second-drainer trigger does not fire for the agreement spool alone")
+  }
+}
+
+test fn claim_realization_agrees_with_the_declared_exclusion() -> ProcessExit {
+  let rename_spools_claim = !(spool_claim_assess(kind: SpoolAttemptExit, observed: EntryAbsent) == ClaimNotRealized)
+  if rename_spools_claim && (spool_claim_assess(kind: SpoolPublication, observed: EntryAbsent) == ClaimNotRealized) && (spool_declaration(kind: SpoolPublication).exclusion != ExclusiveByRename) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "a spool's claim stage disagrees with its declared exclusion")
   }
 }
 
@@ -290,7 +319,7 @@ test fn a_foreign_name_does_not_decode_to_a_key() -> ProcessExit {
 }
 
 test fn a_minted_name_decodes_to_the_same_key() -> ProcessExit {
-  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "node-1+abc") {
+  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "node1+abc") {
     SpoolKeyMinted { key: _ } => ExitSuccess
     SpoolKeyRefused { detail: d } => exit_failure(reason: d)
   }
@@ -347,4 +376,76 @@ test fn the_stale_stop_effect_resolves() -> ProcessExit {
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
+}
+
+// ENROLMENT IS A DIFFERENT FACT FROM DECLARATION: the writer-confinement row is joined against the census closure by
+// subject key. Dropping spool_out_of_corpus_writers_frontier_rows from census_closure_frontier_row_groups reds it.
+test fn the_out_of_corpus_writers_frontier_row_is_enrolled_in_the_census_closure() -> Bool {
+  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
+  length(xs: spool_out_of_corpus_writers_frontier_rows) == 1
+    && spool_out_of_corpus_writers_frontier_rows |> all(row =>
+      census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
+}
+
+test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
+  if spool_declaration_wellformed(declaration: spool_declaration(kind: SpoolAttemptUnit)) && spool_declaration_wellformed(declaration: spool_declaration(kind: SpoolAttemptExit)) && spool_declaration_wellformed(declaration: spool_declaration(kind: SpoolPublication)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "a declared spool has a malformed stage graph")
+  }
+}
+
+// NEGATIVE CONTROL: a role in both chain and terminals, and a non-positive key part count
+// are each refused by the same decision.
+test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
+  let base = spool_declaration(kind: SpoolAttemptUnit)
+  let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
+  let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
+  if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
+    exit_failure(reason: "a malformed stage graph was admitted")
+  } else {
+    ExitSuccess
+  }
+}
+
+// DISCRIMINATING: a role the spool does not declare has no writers (the unit spool declares no done role, the
+// publication spool no claimed role), while a declared role still has them.
+test fn the_writers_column_names_no_writer_for_an_undeclared_role() -> ProcessExit {
+  if is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleDone)) && is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleClaimed)) && (!is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleClaimed))) && (!is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleRefused))) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the writers column answers for an undeclared role, or omits a declared one")
+  }
+}
+
+// The publication spool's entry is a file: its wire name carries the declared suffix, a bare name is foreign, and a
+// directory spool's wire name is its key name unchanged.
+test fn the_wire_name_carries_the_declared_entry_kind() -> ProcessExit {
+  match spool_entry_key_of_wire_name(kind: SpoolPublication, wire_name: "abc.json") {
+    SpoolKeyMinted { key: k } =>
+      match spool_entry_key_of_wire_name(kind: SpoolPublication, wire_name: "abc") {
+        SpoolKeyMinted { key: _ } => exit_failure(reason: "a file entry name without the suffix was admitted")
+        SpoolKeyRefused { detail: _ } =>
+          if spool_entry_wire_name(key: k) == "abc.json" {
+            ExitSuccess
+          } else {
+            exit_failure(reason: "the wire name does not round-trip")
+          }
+      }
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+  }
+}
+
+// The live bytes are `<node_id>+<attempt_key>` (attempt_system_unit_request_entry_name); node ids carry hyphens, so the separator
+// must be '+' for the key to be injective over real names.
+test fn a_hyphenated_node_id_round_trips_and_the_on_disk_name_parses() -> ProcessExit {
+  match spool_entry_key(kind: SpoolAttemptUnit, parts: ["adhoc-ec4fbad6-dec", "attempt-1"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "adhoc-ec4fbad6-dec+attempt-1") {
+        SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+        SpoolKeyMinted { key: k2 } => if (k == k2) && ((k.name as String) == "adhoc-ec4fbad6-dec+attempt-1") && (spool_entry_key_parts(key: k) == ["adhoc-ec4fbad6-dec", "attempt-1"]) { ExitSuccess } else { exit_failure(reason: "a hyphenated node id did not round-trip through the on-disk name") }
+      }
+    }
+  }
 }
