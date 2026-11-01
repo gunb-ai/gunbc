@@ -97,7 +97,8 @@ type RosterHeadRow {
   head: RosterHeadRewrite
   // A SPELLING THE SWEEP CANNOT DECIDE ALONE IS NEVER SWEPT BY SPELLING. The sweep matches no type, and two classes of row
   // turn on information the spelling does not carry: (a) a DUAL-TYPED name whose ambient signature admits two argument kinds
-  // (append: `[ReceiverSelf, ReceiverElementOrSelf]`, src/v1/stage0/src/std_algebra.rs:1969) has halves that mean different
+  // -- the ambient `append` is `[ReceiverSelf, ReceiverElementOrSelf]` in its AlgebraFieldTemplate row of
+  // `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) -- has halves that mean different
   // things; (b) an IDENTITY-SPLIT spelling carried by SEVERAL rows of one call and home, told apart by the identity of an
   // argument (sort_by: a Symbol, String or digest key selects which row's appended order is correct -- applying another
   // row's would sort a digest by lexeme, silently wrong, review 89793 follow-up from tidy-ant-251). In both classes the
@@ -480,20 +481,21 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] }, site_gated: false },
     RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] }, site_gated: false },
     RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] }, site_gated: false },
-    // append is the ambient list join AND the ambient element snoc: its v1 template types the second argument
-    // `[ReceiverSelf, ReceiverElementOrSelf]` (src/v1/stage0/src/std_algebra.rs:1969), so ONE SPELLING carries two operations
+    // append is the ambient list join AND the ambient element snoc: its v1 template -- the `append` AlgebraFieldTemplate row
+    // of `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) -- types the second argument
+    // `[ReceiverSelf, ReceiverElementOrSelf]`, so ONE SPELLING carries two operations
     // and the sweep -- which matches no type -- cannot tell them apart. This row claims only the CONCATENATION half, whose
-    // operation std.algebra already DECLARES (list_append(left, right) = left |> concat(right), dag/std/algebra.dag:171), so
+    // operation std.algebra already DECLARES (`list_append(left, right)` = `left |> concat(right)`), so
     // the call moves to that declaration: no new body, no seam. The snoc half is deliberately NOT here -- its declaration is
-    // std.algebra list_push, a HostRealizedSeam (line 186), and a wave that claimed both would join lists where the site
+    // std.algebra `list_push`, a HostRealizedSeam of its own, and a wave that claimed both would join lists where the site
     // meant to add one element. Hence site_gated: the row can only be applied at the occurrence keys a typed census
     // enumerated (roster_site_gated_site_refusal); a run that keys no site refuses at the site it would have rewritten. The judgment for the
-    // five src/v2 sites is cited per site in the PR: both operands are the same List<T> (Xl2EntriesBuilt.entries,
-    // xl2_member -> List<Step0SubjectMember>:33, xl2_real_manifest -> List<Xl2ManifestEntry>:22), and an element-shaped call
+    // five src/v2 sites is cited per site in the PR: both operands are the same List<T> -- `Xl2EntriesBuilt.entries` in
+    // `xl2_tree_hex`, and `xl2_member` / `xl2_real_manifest` in the xl2 witness -- and an element-shaped call
     // under this row would not even typecheck, because list_append types BOTH operands as FreeMonoid<T> with the same T.
     // The `items:` label is the home's parameter `right`, so the row carries that rename: the label pass rewrites it and the
     // rename plan admits it because the row itself declares it (roster_named_arg_label_admitted). Scoped to src/v2: the
-    // ambient contract row (dag/std/primitives.dag:386), the interpreter arm, the emitter's concat-form predicate and the
+    // ambient `append_contract` row of std.primitives (dag/std/primitives.dag), the interpreter arm, the emitter's concat-form predicate and the
     // dag/ population stay on the ambient spelling until v1's own list heads are rehomed (tidy-ant-251's F6 batch A).
     RosterHeadRow { call: "append", key: "append/list", import_name: "list_append", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "items", to: "right" }], head: RenameHead { to: "list_append", positional: ["left", "right"], appended: [] }, site_gated: true },
   ]
@@ -809,11 +811,7 @@ fn roster_key_outside_paths(paths_csv: String, scope: RosterHomeScope) -> Option
 fn roster_selection_and_paths_refusal(paths_csv: String, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
   match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
     Present { value: r } => Present { value: r }
-    Absent =>
-      match roster_key_outside_paths(paths_csv: paths_csv, scope: scope) {
-        Present { value: r } => Present { value: r }
-        Absent => Absent
-      }
+    Absent => roster_key_outside_paths(paths_csv: paths_csv, scope: scope)
   }
 }
 
@@ -3144,13 +3142,14 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     // POSITION (`items:` first, where the row's first parameter is `left`) refuses rather than remapping -- which would
     // silently swap the concatenation's two operands -- and a short call refuses rather than guessing an operand.
     roster_control_verdict(name: "collection-head-append", fail: roster_head_expect(name: "collection-head-append", row: "append/list", call: "append", sig: "xs: List<Int>, ys: List<Int>", arg: "xs, items: ys", to: "list_append", out: "List<Int>", labeled: "left: xs, right: ys", prepared: prepared, lex: lex)),
-    // THE SITE GATE IS THE JUDGMENT, NOT THE SPELLING (review 89793). append's ambient template types its second argument
-    // `[ReceiverSelf, ReceiverElementOrSelf]` (src/v1/stage0/src/std_algebra.rs:1969), so the SAME spelling is a join at one
+    // THE SITE GATE IS THE JUDGMENT, NOT THE SPELLING (review 89793). append's AlgebraFieldTemplate row in
+    // `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) types its second argument
+    // `[ReceiverSelf, ReceiverElementOrSelf]`, so the SAME spelling is a join at one
     // site and a snoc at the next, and the sweep reads no type. The row therefore claims only the join half and can only be
     // applied at census keys. Three arms pin what that means: a key naming the JOIN site rewrites that site and leaves (i)
     // the SNOC site in the same file byte-for-byte alone -- its `items:` is not even relabelled, which is what a label pass
     // ignoring the gate would have done -- and (ii) the METHOD spelling beside them (`parts.append(part)`, the shape at
-    // src/v2/compiler/emit_module.dag:90) because `x.call` is never a primary head; and (iii) a whole-call selection, which
+    // `emit_contribution_parts_step` in src/v2/compiler/emit_module.dag) because `x.call` is never a primary head; and (iii) a whole-call selection, which
     // would rewrite both halves on the strength of the spelling, refuses. The refusals below then pin that the row's label
     // admission is positional, not a global relabel: a label the row does not rename (`parts:`) refuses, a renamed label USED
     // OUT OF POSITION (`items:` first, where the row's first parameter is `left`) refuses rather than remapping -- which would
