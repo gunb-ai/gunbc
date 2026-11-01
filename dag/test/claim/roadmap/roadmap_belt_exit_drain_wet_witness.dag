@@ -46,7 +46,7 @@ fn record(root: String, name: String) -> Bool {
 }
 
 fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
-  match attempt_exit_stage_list(instance_root: root, stage: if stage_is_queued { RoleHandedOff } else { RolePending }) {
+  match spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: if stage_is_queued { RoleHandedOff } else { RolePending }) {
     SpoolListed { names } => names
     SpoolListingUnreadable { reason: _ } => ["<unreadable>"]
   }
