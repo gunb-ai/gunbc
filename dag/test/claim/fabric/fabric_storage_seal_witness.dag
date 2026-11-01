@@ -83,9 +83,9 @@ data file_root_cast: String = "module probe_file_root_cast\nimport std.types { N
 
 data file_root_path_mint: String = "module probe_file_root_path_mint\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
 
-data file_root_lawful_mint: String = "module probe_file_root_lawful_mint\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"lawful\"\n}\n"
+data file_root_lawful_mint: String = "module probe_file_root_lawful_mint\nimport std.types { String }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots, FabricStoreReady, FabricStoreUnready }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> String {\n  match fabric_store_open(members: fabric_storage_slots, instance: i, entry_mode: none) {\n    FabricStoreReady { store: _ } => \"lawful\"\n    FabricStoreUnready { area: a, detail: _ } => a\n  }\n}\n"
 
-data file_root_baseline: String = "module probe_file_root_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"lawful route: the one mint over a declared chain and a business key\"\n}\n"
+data file_root_baseline: String = "module probe_file_root_baseline\nimport std.types { String }\nimport gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_storage_slots, FabricStoreReady, FabricStoreUnready }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> String {\n  \"lawful route: the one mint over a declared chain and a business key\"\n}\n"
 
 // THE SEAL IS WHAT REFUSES, not something else in the probe: the same construction over an UNSEALED twin of the
 // record -- same fields, no sole_constructor -- is accepted, zero SoleConstructorViolations. The seal on
