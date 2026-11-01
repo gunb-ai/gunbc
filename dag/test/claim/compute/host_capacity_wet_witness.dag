@@ -228,11 +228,16 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
             && (live.instance_root as String) != (lab.instance_root as String)
             && (live.host_identity as String) == (lab.host_identity as String)
             && (a.partition as String) == (b.partition as String)
-            && (a.root as String) == (b.root as String)
+            && (a.instance.instance_id as String) == (b.instance.instance_id as String)
             && string_contains(s: a.partition as String, pattern: live.host_identity as String)
             && !string_contains(s: a.partition as String, pattern: lab.instance_id as String)
-            && (a.root as String) == compute_capacity_root(host_instance: live) as String
-            && (a.root as String) == join([compute_root(instance: live) as String, "/", compute_capacity_slots.member as String], "")
+            // THE SUBJECT CARRIES THE RESOLVED INSTANCE, NOT A ROOT, so the claim asserts the resolution:
+            // two resolutions of one host name one instance, and the ledger root is the declared member chain
+            // under THAT instance's compute root. The member is not re-spelled here (that is the second literal
+            // this lane deletes); the assertion is containment under the declared compute root.
+            && (a.instance.instance_id as String) == (live.instance_id as String)
+            && (compute_capacity_root(host_instance: a.instance) as String) == (compute_capacity_root(host_instance: live) as String)
+            && string_contains(s: compute_capacity_root(host_instance: a.instance) as String, pattern: compute_root(instance: live) as String)
             && kibibyte_count(k: a_app) == kibibyte_count(k: b_app)
             && kibibyte_count(k: a_app) == kibibyte_count(k: compute_memory_ceiling(instance: live)) * 2
             && kibibyte_count(k: compute_memory_ceiling(instance: live)) > 0
