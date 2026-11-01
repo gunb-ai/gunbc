@@ -1,0 +1,68 @@
+module gunbc.recurring_failure_mode.a_heap_reference_borrows_its_pointees_clone_impl
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A HEAP REFERENCE DOES NOT OWE ITS POINTEE'S TRAITS, AND A WALK THAT FORGETS THAT OVER-BOUNDS
+// EVERYTHING BEHIND IT.
+//
+// The emitter decides, per generic item, which of its parameters a capability impl actually needs,
+// and puts exactly those in the impl headers and in the serde bound. That decision is a walk over the
+// item's field types, and the walk had one model for every type former: a container bounds its
+// argument. That model is wrong for a heap reference. `impl<T: ?Sized> Clone for Rc<T>` and
+// `impl<T: ?Sized> Clone for Arc<T>` are unconditional -- cloning the handle clones no pointee -- so
+// an `Rc<...>` field asks nothing of what it points at, and nothing behind it either. The walk
+// descended through the handle as though it were a bounding container and demanded the parameter's
+// Clone anyway.
+//
+// WHY THIS IS A CLASS AND NOT ONE BAD LINE. The over-bound is not wrong in isolation: it is a bound
+// that is merely unnecessary, and it stays invisible until a use site cannot satisfy it. So the
+// emitted item looks well-formed, reviews clean, and refuses later, somewhere else, with a message
+// that names the parameter and not the walk. The demand also propagates through the fixpoint: once a
+// type is (wrongly) recorded as bounding its parameter, every item that names that type inherits the
+// demand. One wrong model at one type former therefore reaches serde bounds, hand-written Debug and
+// PartialEq impl headers, accessor impls and fn headers at once.
+//
+// THE SHAPE WAS DORMANT FOR A REASON, AND THE FIX IS NOT THE ONLY THING THAT MOVED IT. The walk was
+// reached for this shape only after the FreeMonoid carrier test was widened from the authored
+// spelling to the algebra roster, which made List a carrier. Before that, a generic type holding a
+// List of a generic element never entered the walk at all, so the wrong model had no specimen. A
+// repair to a predicate can activate a dormant predicate beside it; the class here is the second
+// predicate's bug, found only because the first was fixed.
+//
+// ONE POPULATION NOTE WORTH STATING, BECAUSE IT CHANGES WHAT A CONTROL CAN ASK FOR. This emitter wraps
+// every occurrence of a generic declared type in Rc, including a container's element: a field written
+// List<Route<H>> emits as Rc<Vec<Rc<Route<H>>>>. So a demand through a List is owed in exactly two
+// shapes -- a bare parameter as the element (Rc<Vec<H>>, whose Clone is conditional on H's own), and a
+// declared element whose OWN declaration carries the bound (List<OwedLeaf<H>> where OwedLeaf<P> has a
+// bare P field, so naming OwedLeaf<H> is ill-formed unless H: Clone) -- and it is never owed through a
+// declared element that carries no bound of its own, because the handle is already there. A control that
+// asks for a demand through the second shape is asking for the repair's own red, and a control that asks
+// for one through the third shape is asking for something rustc does not require.
+data a_heap_reference_borrows_its_pointees_clone_impl: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_heap_reference_borrows_its_pointees_clone_impl" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a required route that emits every product on the release-bins roster and compiles each emitted crate, so a bound no use site can satisfy refuses on every pull request rather than on the fleet lane" } },
+
+  receipts: [
+    "INVALID STATE: a generic item with a heap-referenced container of a generic element is emitted with a Clone demand on its parameter that nothing in the item requires -- in the serde bound, in the hand-written Debug and PartialEq impl headers, in the accessor impl header and in the fn headers that name the type. The bound is satisfiable only where the parameter happens to be Clone, so the emitted crate refuses at the first use site that cannot prove it: 5x rustc E0277 'the trait bound H: Clone is not satisfied' plus 1x E0369 'binary operation == cannot be applied to &Rc<ServedRouteTable<H>>', in the emitted crate for gunbc.auth.approval_device_crypto_serve.",
+    "EARLIEST UNJUSTIFIED LINK (DESIGN section 6b): not the emitted file, and not the product. v1.compiler.trait_derive_emit v1_type_expr_clone_impl_needs_param modelled every type former as bounding its argument, and a heap reference is not one: impl<T: ?Sized> Clone for Rc<T> and impl<T: ?Sized> Clone for Arc<T> are unconditional in T, cited at std_rc_clone_impl_authority and std_arc_clone_impl_authority. The walk descended through the handle and demanded the pointee's capability for the handle's own capability.",
+    "HOW IT STAYED HIDDEN: the over-bound is only unnecessary, never wrong, until a use site cannot satisfy it, and it propagates -- once a type is recorded as bounding a parameter, every item naming that type inherits the demand, so one wrong model at one type former reaches four kinds of emitted header at once. The shape was also unreachable until the FreeMonoid carrier test was widened from the literal spelling to the std.algebra roster (which made List a carrier): a repair to one predicate activated a dormant neighbour, and the neighbour's bug is what this row files.",
+    "REPAIR, at the language layer: the demand propagates to a parameter only through the element type's own impl requirement. Rc and Arc are rows in rust_heap_reference_unconditional_bound_rows carrying their std impl page as authority -- keyed on the same leaf test the renderer's own peel already uses, so the fact is one fact -- and the walk stops there instead of descending. Vec keeps asking, of its element. A declared type asks what its own derive or impl bounds declare, recursively through the least-fixpoint bounds the emitter already computes. No new predicate on the emission path: the constructor asks a roster.",
+    "CONTROL, both directions. Over-bound (the red): test.claim.generic_item_clone_bound_witness heap_reference_carrier_owes_no_clone_bound emits the minimized specimen -- a generic enum's element inside a List inside a generic struct -- and refuses the emitted spellings that carry the demand (the serde bound clause naming H: Clone, and the hand-written Debug and PartialEq impl headers); it is red at the defective emission and green after the repair, verified by emitting the same fixture with a seed built at origin/main and a seed built at the repair. Under-bound (the control that must not relax): owed_element_bound_survives_the_repair pins OwedLeaf<P> { value: P } -- whose own declaration carries P: Clone -- inside a List, where the demand IS owed and the emitted field Rc<Vec<Rc<OwedLeaf<H>>>> is ill-formed if the repair drops it. fn_level_value_clone_bound_still_renders pins the fn-level bound as it is today (see the residual receipt), so changing that is a deliberate act with a red to hit. The behavior side is enrolled in the native emission controls (gunbc.instruments.native_emission_controls heap_reference_carrier_cases): the carrier is compared, counted and cloned through the handle, and the owed element keeps compiling.",
+    "RESIDUAL, named rather than papered over: the FN-level Clone bound is a different claim and this repair does not touch it. The emitted lowering of a match on a value is match (*c.clone()).clone() { .. } -- it clones the coproduct itself -- and the derive supplies impl<H: Clone> Clone for the coproduct, so the fn genuinely needs H: Clone even though the type-level records do not bound it (an enum's declaration prints bare and derive carries the bound per impl). In the product that is load-bearing: served_route_method<H: Clone>(r: Rc<ServedRoute<H>>) at the emitted extdeps_http_server.rs line 769 does exactly that clone, serve_select_route clones RouteSelection<H> the same way, and serve_allowed_methods needs the bound transitively to call them. Those bounds come from separate fn-level arms (v1_fn_param_wf_needs_clone, v1_fn_param_type_needs_clone_bound, v1_fn_generic_clone_bound_via_referenced_decl); relaxing them to the requirement rule moves the refusal into the fn bodies, because post-repair no type record bounds H for ServedRoute or RouteSelection. Repairing that properly needs a body-aware analysis, not this predicate.",
+    "RUNG FOUND AT: mitigatable -- a typed rustc refusal, not silent wrongness, and it was repaired at the producer. CEILING: mechanically preventable, and the blocker is that no required route compiles the emitted crate of every product on the release-bins roster; this class surfaced on the fleet lane, three days of main after the widening that exposed it, and the step that caught it carried no compiler diagnostics (see a_required_build_step_that_hides_the_compiler_diagnostics). NEXT TRIGGER: a required route that emits and compiles each roster product, so an unsatisfiable bound refuses on every pull request.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_type_expr_clone_impl_needs_param"),
+    decl_ref(module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_type_expr_clone_unconditional_heap_reference"),
+    decl_ref(module_path: "v1.compiler.trait_derive_emit", decl_name: "v1_freemonoid_element_params"),
+    decl_ref(module_path: "extdeps.languages.rust.derive_contracts", decl_name: "rust_heap_reference_unconditional_bound_rows"),
+    decl_ref(module_path: "test.claim.generic_item_clone_bound_witness", decl_name: "heap_reference_carrier_owes_no_clone_bound"),
+    decl_ref(module_path: "gunbc.instruments.native_emission_controls", decl_name: "heap_reference_carrier_cases"),
+  ],
+}
