@@ -58,11 +58,13 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 // mode publishes at the writing process's umask, which is what a single-principal fixture wants and
 // what a store with two principals must not rely on.
 // SEALED CONSTRUCTION: only this module builds the record. A forged record literal or cast elsewhere is a SoleConstructorViolation. The path mints that used to live here are
-// DELETED: the only route to this record is the ONE declaration-driven mint below, so no caller can be
-// handed a store over a directory it chose. The ambient residual (any module can still build a plain store
-// over a literal path with Filesystem + file_slot_store_over) stands and is recorded once in
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module; no rung is claimed
-// for it. The rung claimed here is construction: a consumer of these stores cannot be handed a forged one.
+// DELETED: the only route to this record is the ONE declaration-driven mint below. The rung established
+// is construction: a consumer cannot be handed a FORGED store record. It is not a claim that no caller can
+// choose the directory: HostDashboardInstance has no sole constructor and isolated_dashboard_instance
+// accepts any root, so fabric_store_open can still be reached over a chosen directory, and any module can
+// still build a plain store over a literal path with Filesystem + file_slot_store_over. That residual is
+// recorded once in gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module
+// (route 3, owned by the ambient-authority lane); no rung is claimed for it.
 type FabricStorageOperations sole_constructor {
   objects: NonEmptyStr
   heads: NonEmptyStr
