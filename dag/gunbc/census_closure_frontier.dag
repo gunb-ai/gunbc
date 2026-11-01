@@ -54,6 +54,7 @@ import gunbc.roadmap.roadmap_dispatch_destination { attempt_admission_subject_fr
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
 import extdeps.pin { pin_frontier_rows }
 import extdeps.colo.types { colo_types_frontier_rows }
+import extdeps.llm.openai { openai_chat_completion_wire_frontier_rows }
 import extdeps.pricing.hetzner_dedicated { cpu_description_string_leaf_frontier_rows }
 import extdeps.router.verizon_cr1000a {
   cr1000a_dhcp_lease_transport_frontier_rows,
@@ -181,6 +182,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_permission_group_observation_frontier_rows,
     http_status_where_clause_names_declaration_frontier_rows,
     colo_types_frontier_rows,
+    openai_chat_completion_wire_frontier_rows,
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,

@@ -1,0 +1,147 @@
+module test.claim.extdeps.openai_chat_completion_wire_witness
+
+// What the OpenAI chat-completions wire model must never do, and what it must never claim.
+//
+// Every row below EXECUTES a decision function of the model -- the reasoning-effort parse and its
+// re-emission, the chunk's `object` checked constructor, and the number-lexeme constructor the sampling
+// members are typed with -- and each row names, in the words under its name, the mutation that turns it
+// red. Where a row could be satisfied by a constant comparing with itself, it does not: a set that only
+// ever returns true is indistinguishable from a placeholder, which is the failure `gunbc.recurring_failure_mode`
+// a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take records.
+//
+// These are `test fn`, not `@test fn`: `@test` is the Rust seed's annotation (the compiler reports
+// `expected item declaration` for it in a .dag), and the claim harness collects these by declaration.
+
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import extdeps.llm.openai {
+  OpenAiReasoningEffort, OpenAiReasoningEffortNone, OpenAiReasoningEffortMinimal,
+  OpenAiReasoningEffortLow, OpenAiReasoningEffortMedium, OpenAiReasoningEffortHigh,
+  OpenAiReasoningEffortXHigh, OpenAiReasoningEffortMax, OpenAiReasoningEffortUndocumented,
+  parse_openai_reasoning_effort, openai_reasoning_effort_wire,
+  openai_chat_completion_chunk_object
+}
+import extdeps.languages.json.grammar { json_number_lexeme }
+
+// Which arm a name lands in, as a number; 8 means the parse refused. The rows ask this rather than
+// comparing the label that comes back, because the undocumented arm re-emits whatever name it was given:
+// a round trip on the STRING alone would stay green with every documented arm missing from the parse.
+fn effort_arm_number(arm: OpenAiReasoningEffort) -> Int {
+  match arm {
+    OpenAiReasoningEffortNone => 0
+    OpenAiReasoningEffortMinimal => 1
+    OpenAiReasoningEffortLow => 2
+    OpenAiReasoningEffortMedium => 3
+    OpenAiReasoningEffortHigh => 4
+    OpenAiReasoningEffortXHigh => 5
+    OpenAiReasoningEffortMax => 6
+    OpenAiReasoningEffortUndocumented { raw: _ } => 7
+  }
+}
+
+fn effort_arm(name: String) -> Int {
+  match parse_openai_reasoning_effort(raw: name) {
+    Absent => 8
+    Present { value: arm } => effort_arm_number(arm: arm)
+  }
+}
+
+// The name goes in, a variant comes out, and the variant re-emits that exact string.
+fn effort_round_trips(name: String) -> Bool {
+  match parse_openai_reasoning_effort(raw: name) {
+    Absent => false
+    Present { value: arm } => openai_reasoning_effort_wire(effort: arm) == name
+  }
+}
+
+// Does the chunk's checked constructor yield a carrier for this value?
+fn chunk_object_builds(value: String) -> Bool {
+  match openai_chat_completion_chunk_object(s: value) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Does the grammar's checked constructor accept this text as a JSON number lexeme?
+fn lexeme_builds(value: String) -> Bool {
+  match json_number_lexeme(s: value) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE DOCUMENTED SET IS ALL SEVEN, EACH IN ITS OWN ARM. Upstream's reasoning effort is
+// none|minimal|low|medium|high|xhigh|max; a model with four arms had no inhabitant for a valid request
+// that asks for "xhigh". RED WHEN: any documented arm is dropped from the parse chain -- that name then
+// falls to the undocumented arm, 7 -- or two names share an arm.
+test fn every_documented_effort_lands_in_its_own_arm() -> Bool {
+  let a = effort_arm(name: "none") == 0
+  let b = effort_arm(name: "minimal") == 1
+  let c = effort_arm(name: "low") == 2
+  let d = effort_arm(name: "medium") == 3
+  let e = effort_arm(name: "high") == 4
+  let f = effort_arm(name: "xhigh") == 5
+  let g = effort_arm(name: "max") == 6
+  if a && b && c && d && e && f && g { true } else { false }
+}
+
+// EVERY DOCUMENTED NAME SURVIVES A ROUND TRIP THROUGH THE MODEL, and keeps the upstream spelling: the
+// name goes in, a variant comes out, and the variant re-emits that exact string. This is the behaviour
+// check, not the constant: comparing a wire constant with the literal it was written as would only
+// detect someone editing both. RED WHEN: a name is routed to another arm's constant -- pointing
+// OpenAiReasoningEffortLow at the medium spelling turns "low" into "medium" here -- or a re-emission arm
+// is dropped.
+test fn every_documented_effort_round_trips_to_its_own_spelling() -> Bool {
+  if effort_round_trips(name: "none") && round_trips(name: "minimal") && round_trips(name: "low")
+    && round_trips(name: "medium") && round_trips(name: "high") && round_trips(name: "xhigh")
+    && round_trips(name: "max") { true } else { false }
+}
+
+// AN UNDOCUMENTED NAME IS KEPT WHOLE IN BOTH DIRECTIONS, not read as one of the seven and not refused:
+// this model reports the endpoint's shape and the endpoint decides what to do with an effort it does not
+// know. The example is a name upstream does NOT document, which "xhigh" was not. RED WHEN: the parse
+// defaults an unknown name to a documented arm -- the likeliest accident is the first one, `low`, which
+// would put "ultra" in arm 2 and fail both halves.
+test fn an_undocumented_effort_stays_whole_and_unnamed() -> Bool {
+  let kept = effort_arm(name: "ultra") == 7
+  let whole = effort_round_trips(name: "ultra")
+  if kept && whole { true } else { false }
+}
+
+// AN EMPTY NAME REFUSES THE PARSE. It is not carried as a name, because `raw` is a NonEmptyStr and that
+// refinement is enforced at literal sites only, so a carrier holding "" would be a type lying about its
+// name; and it is not defaulted, because a name that is absent and a name that is undocumented are
+// different facts a caller may need to tell apart (§5 refuses silently widening a failure arm). The
+// refusal goes through ONE checked constructor shared by this module's enumerated members,
+// openai_documented_wire_name, not a hand-written guard per member. RED WHEN: the shared constructor
+// stops refusing the empty string -- "" then lands in the undocumented arm, 7 -- and the second half
+// checks the refusal does not swallow real names.
+test fn an_empty_effort_name_refuses_the_parse() -> Bool {
+  let empty_refuses = effort_arm(name: "") == 8
+  let named_stay_named = (effort_arm(name: "ultra") == 7) && (effort_arm(name: "max") == 6)
+  if empty_refuses && named_stay_named { true } else { false }
+}
+
+// THE CHUNK'S `object` IS CHECKED, AND THE OTHER ENDPOINTS' VALUES ARE REFUSED. The member's type is a
+// carrier obtainable only through this constructor, so "chat.completion", "text_completion" and the empty
+// string cannot inhabit OpenAiChatCompletionChunkBody -- a reader no longer has to trust, or re-branch on,
+// a free String to tell a chunk from a whole answer or from the text endpoint. RED WHEN: the constructor's
+// `else` arm yields Present for anything (the refusals go red), or its check is widened to the wrong
+// constant (the acceptance goes red).
+test fn the_chunk_object_constructor_accepts_only_the_streamed_shape() -> Bool {
+  if chunk_object_builds(value: "chat.completion.chunk") && !chunk_object_builds(value: "chat.completion")
+    && !chunk_object_builds(value: "text_completion") && !chunk_object_builds(value: "") { true } else { false }
+}
+
+// A SAMPLING PARAMETER IS A JSON NUMBER LEXEME, BUILT BY CHECKING, AND NOTHING HERE EVALUATES IT. The
+// four sampling members of the request are typed `JsonNumberLexeme`, obtainable only through the grammar's
+// checked constructor, so the position no request-building claim reached before is exercised here: a token
+// that is not a JSON number is refused rather than carried, and a value like "-1.5e10" keeps its exact
+// spelling because it was never parsed into a number. RED WHEN: the request's carrier is swapped for
+// something that accepts any text (the two refusals go red), or a read evaluates the lexeme into a number
+// and re-emits it differently (the byte-identity half goes red, including a float's habit of writing
+// "-1.5e10" as "-15000000000").
+test fn a_sampling_parameter_is_a_checked_number_lexeme_and_keeps_its_bytes() -> Bool {
+  if lexeme_builds(value: "0.7") && lexeme_builds(value: "-1.5e10") && !lexeme_builds(value: "hot")
+    && !lexeme_builds(value: "-") { true } else { false }
+}
