@@ -1,7 +1,12 @@
 module test.claim.repository_ci_profile_witness
 
 import gunbc.heal_workflow { heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused }
-import gunbc.heal_publisher_workflow { heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
+import gunbc.heal_publisher_workflow {
+  heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,
+  heal_publisher_route_steps, HealPublisherBoundStep
+}
+import gunbc.ci.ci_materialization { step_display_name }
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
@@ -15,12 +20,16 @@ import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.repository_ci_profile {
   RepositoryCiProfile, RosterGate, RosterRoute, ComposedOverlayInterpreterRoster, InstrumentLabelRows,
   PublicSeed, OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal, HealPublisherPolicy,
+  PublisherBuildRoute, Own_checkout_under_witness_floor, Declared_seed,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
   fleet_runner_group_target,
   github_hosted_publisher_runner_target,
   profile_with_roster_runner, profile_with_heal_runner, profile_with_drift_runner,
+  profile_with_publisher_build_route,
   profile_with_publisher_runner, profile_with_required_context,
 }
+import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
+import extdeps.github.actions { PermWrite }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.witness.witness_roster {
@@ -344,9 +353,14 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           timeout: minute(45),
           trigger_workflow: "projection-drift",
           candidate_artifact: "repair-candidate",
-          admit: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" } },
-          publish: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" } },
-          compose: Absent
+          admit_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" },
+          publish_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" },
+          // The fixture borrows the public federation rather than inventing a provider path: the claim is
+          // about the SHAPE the emitter accepts, and a made-up provider string here would be a fact the
+          // witness does not own.
+          federation: public_heal_publisher_federation(),
+          pull_requests: PermWrite,
+          build_route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
         }
       }
     } else {
@@ -994,6 +1008,88 @@ test fn the_four_gunbc_emitters_admit_the_row_before_rendering() -> Bool {
 // claim requires the refusal to SAY so, and if the emitter's admission call is deleted the negative renders
 // a workflow and the claim goes red. The claim also asserts the job is declared at all, because an updater
 // on an absent arm changes nothing and a control that mutated nothing would pass by proving nothing.
+// A BUILD ROUTE THAT NAMES A SEED THE ROW DOES NOT DECLARE IS REFUSED, by the row and by the emitter that
+// would otherwise render it. The negative is gunbc's OWN row with that single field changed by the profile
+// module's updater, so the refusal can only be that field's; the claim requires its words rather than any
+// refusal, asserts the publisher is declared at all (an edit to an absent arm changes nothing and proves
+// nothing), and requires gunbc's untouched row still to compose through the same emitter.
+// THE BUILD ROUTE IS THE AUTHORITY OVER THE BUILD STEPS - NOT WHICH OTHER FIELDS HAPPEN TO BE PRESENT,
+// which is exactly how this module once gave one repository another repository's build. ONE PROFILE, ONE
+// FIELD CHANGED: the route that names the profile's own seed yields the seed's checkout, the floor's
+// toolchain and the seed's build command; the route that names this checkout yields the toolchain-home
+// isolation, the floor's toolchain, the rustup pin and this checkout's self-build. THE TWO SETS MUST BE
+// DISJOINT - an emitter that picked a build by whether a seed was declared would produce the same steps for
+// both routes and go red here, rather than shipping gunbc's build under a mirror's row or a mirror's seed
+// build under gunbc's. The names asserted are read from the row (the seed's own build step) and from the
+// builders the emitter calls, so the claim is about which steps were SELECTED, not about a substring of
+// rendered YAML.
+fn publisher_route_step_names(row: RepositoryCiProfile) -> Optional<List<String>> {
+  match row.publisher {
+    Absent => Absent
+    Present { value: job } =>
+      match heal_publisher_route_steps(profile: row, job: job) {
+        Absent => Absent
+        Present { value: steps } =>
+          Present { value: list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) }) }
+      }
+  }
+}
+
+test fn the_publisher_build_route_selects_the_build_steps_and_not_the_presence_of_a_seed() -> Bool {
+  let seed_route = publisher_route_step_names(
+    row: profile_with_publisher_build_route(profile: mirror_profile(seal: true, publish: true), route: Declared_seed)
+  )
+  let own_route = publisher_route_step_names(
+    row: profile_with_publisher_build_route(
+      profile: mirror_profile(seal: true, publish: true),
+      route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
+    )
+  )
+  match seed_route {
+    Absent => false
+    Present { value: seed_names } =>
+      match own_route {
+        Absent => false
+        Present { value: own_names } =>
+          // The isolation step is in ONE list and not the other, and the seed's own build step is in the
+          // other and not that one. Both directions are required: a single-direction check would pass if
+          // the emitter simply always emitted the checkout route, and the second pair rules out always
+          // emitting the seed route.
+          any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
+            all(seed_names, n => n != step_display_name(s: toolchain_home_isolation_step())) &&
+            any(seed_names, n => n == fixture_seed().build_step_name as String) &&
+            all(own_names, n => n != fixture_seed().build_step_name as String)
+      }
+  }
+}
+
+data build_route_refusal_phrase: String = "profile declares no seed to build"
+
+fn publisher_row_on_undeclared_seed_route() -> RepositoryCiProfile {
+  profile_with_publisher_build_route(profile: gunbc_repository_ci_profile(), route: Declared_seed)
+}
+
+test fn a_build_route_naming_a_seed_the_row_does_not_declare_is_refused_by_the_row_and_the_emitter() -> Bool {
+  match gunbc_repository_ci_profile().publisher {
+    Absent => false
+    Present { value: _ } =>
+      match repository_ci_profile_refusal(profile: publisher_row_on_undeclared_seed_route()) {
+        Absent => false
+        Present { value: why } =>
+          string_contains(s: why as String, pattern: build_route_refusal_phrase) &&
+            match heal_publisher_workflow_yml_for(profile: publisher_row_on_undeclared_seed_route()) {
+              HealPublisherWorkflowGenerationRefused { reason: r } =>
+                string_contains(s: r, pattern: build_route_refusal_phrase) &&
+                  match heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+                    HealPublisherWorkflowGenerationRefused { reason: _ } => false
+                    HealPublisherWorkflowGenerated { content: _ } => true
+                  }
+              HealPublisherWorkflowGenerated { content: _ } => false
+            }
+      }
+  }
+}
+
 data emitter_group_refusal_phrase: String = "runner group that gunbc.runner.runner_group_restriction_ensure does not declare"
 
 fn undeclared_group_runner() -> CiRunnerTarget {

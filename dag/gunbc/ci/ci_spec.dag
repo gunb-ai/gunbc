@@ -2624,6 +2624,20 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
   )
 }
 
+// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
+// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
+// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
+// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
+fn heal_publisher_cgroup_prelude_script() -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: heal_publisher_cgroup_prelude(),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
+}
+
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
   concat(concat(concat(concat(concat(concat(concat(
     [
@@ -4416,21 +4430,6 @@ fn gunbc_ci_seed_build_artifacts_regen_invoke() -> String {
     receipt_rel: none
   )
 }
-
-
-// THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
-// federates, so a candidate that does not admit never causes a token to be minted.
-fn gunbc_ci_heal_publication_admit_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: heal_publisher_cgroup_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_publication_admit_target.entry,
-    function: gunbc_ci_heal_publication_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
@@ -4473,22 +4472,6 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
     "\n"
   )
 }
-
-// THE PUBLISHER'S ENTRY MINTS ITS OWN TOKEN, in the .dag: gunbc.github_effect_perform
-// mint_publisher_installation_token reads the App key under the workflow's WIF access token, signs,
-// and exchanges for a contents:write token on this repository alone. This step therefore carries only
-// the cgroup prelude; no credential is rendered into shell.
-fn gunbc_ci_heal_publication_publish_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: heal_publisher_cgroup_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_publication_publish_target.entry,
-    function: gunbc_ci_heal_publication_publish_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 
 fn gunbc_ci_namecheap_observe_invoke() -> String {
   gunbc_run_step_script(

@@ -74,7 +74,7 @@ data mirror_lane_module_rows: List<FrontierRow> = [
 
 // THE MIRROR LANE INSIDE A PUBLIC MODULE. Half of gunbc.ci.repository_ci_profile is read by gunbc's own
 // four emitters -- the required-context accessor, the runner target, the four job records, the invocation
-// helper -- and those are deliberately NOT here. These seven are the arms no public row constructs. Every
+// helper -- and those are deliberately NOT here. These eight are the arms no public row constructs. Every
 // name here is a top-level declaration of that module: a frontier subject is a declaration, so the lane's
 // composed-overlay route is rostered as its owning declaration `RosterRoute` (whose
 // ComposedOverlayInterpreterRoster alternative is the arm the mirror selects) rather than as the alternative's
@@ -86,10 +86,11 @@ data profile_mirror_arm_rows: List<FrontierRow> = frontier_rows_for_decls(
     "OverlayIngest" as NonEmptyStr,
     "HealSeal" as NonEmptyStr,
     "RosterRoute" as NonEmptyStr,
+    "PublisherBuildRoute" as NonEmptyStr,
     "profile_public_seed" as NonEmptyStr,
     "repository_ci_profile_refusal" as NonEmptyStr,
   ],
-  reason: "no public row constructs or executes these. gunbc's own profile row sets public_seed, heal.seal and publisher to Absent and selects RosterRoute InstrumentLabelRows, so these arms are dead in the public repository by that row's construction rather than by omission. The single consumer is the mirror repository's profile row, which builds a Present PublicSeed, a Present OverlayIngest inside RosterRoute ComposedOverlayInterpreterRoster and a Present HealSeal, and reads them back through profile_public_seed, while the emitters themselves match the arms rather than asking a Bool whether they are present. ONE REASON RATHER THAN ONE PER NAME: these names are one fact -- a lane of the profile only the mirror exercises -- and per-name copies would imply seven facts.",
+  reason: "no public row constructs or executes these. gunbc's own profile row sets public_seed, heal.seal and publisher to Absent and selects RosterRoute InstrumentLabelRows, so these arms are dead in the public repository by that row's construction rather than by omission. The single consumer is the mirror repository's profile row, which builds a Present PublicSeed, a Present OverlayIngest inside RosterRoute ComposedOverlayInterpreterRoster and a Present HealSeal, and reads them back through profile_public_seed, while the emitters themselves match the arms rather than asking a Bool whether they are present; PublisherBuildRoute is rostered for the same reason as RosterRoute - the DECLARATION is used by gunbc's row through its Own_checkout_under_witness_floor alternative, and it is the Declared_seed alternative, which builds the publisher's compiler from the profile's public seed, that no public row selects. ONE REASON RATHER THAN ONE PER NAME: these names are one fact -- a lane of the profile only the mirror exercises -- and per-name copies would imply seven facts.",
   dissolution: mirror_lane_dissolution,
 )
 
