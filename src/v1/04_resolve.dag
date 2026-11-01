@@ -580,93 +580,6 @@ data resolve_node_bounded_masked_boundary: String = "Selective-import fail-close
 // UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on:
 // gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger.
 
-// The structured-declaration arm of resolve_node_bounded: resolves a record's or variant's field types under `env`.
-fn resolve_declaration_structure(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
-  let is_product = n.connective == Conj
-  if is_product {
-    if n.type_annotation != none {
-      match n.children |> first {
-        Present { value: base } =>
-          let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1, masked: masked)
-          let base_resolved = base_result.resolved
-          let base_diags = base_result.diagnostics
-          NodeResolveResult {
-            resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: [base_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
-            diagnostics: base_diags
-          }
-        Absent => NodeResolveResult { resolved: n, diagnostics: [] }
-      }
-    } else {
-      let child_results = map(n.children, child =>
-        if child.inferred == none {
-          NodeResolveResult { resolved: child, diagnostics: [] }
-        } else {
-          let child_rt = resolved_type(n: child)
-          let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
-          let rt_resolved = rt_result.resolved
-          let rt_diags = rt_result.diagnostics
-          NodeResolveResult {
-            resolved: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
-            diagnostics: rt_diags
-          }
-        }
-      )
-      let resolved_children = map(child_results, cr => cr.resolved)
-      let all_diags = flat_map(child_results, cr => cr.diagnostics)
-      NodeResolveResult {
-        resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: resolved_children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
-        diagnostics: all_diags
-      }
-    }
-  } else {
-    let is_optional = n.return_cardinality == CardOptional
-    if is_optional {
-      let inner = with_required_cardinality(n: n)
-      let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked)
-      let inner_resolved = inner_result.resolved
-      let inner_diags = inner_result.diagnostics
-      NodeResolveResult {
-        resolved: with_optional_cardinality(n: inner_resolved),
-        diagnostics: inner_diags
-      }
-    } else {
-      let variant_results = map(n.children, variant_child =>
-        let field_results = map(variant_child.children, field_child =>
-          if field_child.inferred == none {
-            NodeResolveResult { resolved: field_child, diagnostics: [] }
-          } else {
-            let field_rt = resolved_type(n: field_child)
-            let is_self_ref = authored_name(env: env, node: field_rt) == authored_name(env: env, node: n) && field_rt.children |> count > 0
-            let rt_result = if is_self_ref {
-              NodeResolveResult { resolved: field_rt, diagnostics: [] }
-            } else {
-              resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
-            }
-            let rt_resolved = rt_result.resolved
-            let rt_diags = rt_result.diagnostics
-            NodeResolveResult {
-              resolved: Node { occurrence_identity: field_child.occurrence_identity, name: field_child.name, span: field_child.span, ident_span: field_child.ident_span, children: field_child.children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field_child.module_item_kind, declaration_marker: field_child.declaration_marker, declaration: field_child.declaration, expr_data: NoExprData },
-              diagnostics: rt_diags
-            }
-          }
-        )
-        let resolved_fields = map(field_results, fr => fr.resolved)
-        let field_diags = flat_map(field_results, fr => fr.diagnostics)
-        NodeResolveResult {
-          resolved: Node { occurrence_identity: variant_child.occurrence_identity, name: variant_child.name, span: variant_child.span, ident_span: variant_child.ident_span, children: resolved_fields, connective: variant_child.connective, params: variant_child.params, inferred: variant_child.inferred, return_cardinality: variant_child.return_cardinality, uses: variant_child.uses, body: variant_child.body, transport: variant_child.transport, properties: variant_child.properties, type_annotation: variant_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: variant_child.module_item_kind, declaration_marker: variant_child.declaration_marker, declaration: variant_child.declaration, expr_data: NoExprData },
-          diagnostics: field_diags
-        }
-      )
-      let resolved_variants = map(variant_results, vr => vr.resolved)
-      let all_diags = flat_map(variant_results, vr => vr.diagnostics)
-      NodeResolveResult {
-        resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: resolved_variants, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
-        diagnostics: all_diags
-      }
-    }
-  }
-}
-
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
   if depth > 100 {
     return NodeResolveResult {
@@ -714,20 +627,98 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       diagnostics: concat(param_diags, return_diags)
     }
   } else if has_structure {
-    // A DECLARATION'S FIELD TYPES ARE JUDGED UNDER THE DECLARATION'S OWN TYPE PARAMETERS, BUT STORED AS RESOLVED WITHOUT
-    // THEM. The env builder (resolve_type_bindings) resolves every type declaration through this arm with the MODULE env,
-    // and resolve_item_types binds the item's params only for its own later pass, so a kinded binder passed on in a field
-    // (`type Wrap<S: Scale> { m: Measure<Memory, S, Int> }`) reached type_param_kind_diagnostics unbound and was refused
-    // as a non-inhabitant. The binding mechanism is the one resolve_item_types uses (env_with_type_variable_bindings over
-    // generic_param_name_at), but its synthetic nameless TypeVariable nodes must not survive into the stored field nodes:
-    // the equality walk reads a nameless non-root member as StuckTypeHead and refuses (heal run 41320756650 refused the
-    // rebuilt seed at six `!= none` sites in 04_infer.dag). So the node is the unbound resolution and the diagnostics are
-    // the bound one's.
-    let stored = resolve_declaration_structure(n: n, env: env, module_name: module_name, depth: depth, masked: masked)
-    if n.transport == none && (n.params |> count) > 0 {
-      let bound = resolve_declaration_structure(n: n, env: env_with_type_variable_bindings(env: env, tp_names: n.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))), module_name: module_name, depth: depth, masked: masked)
-      NodeResolveResult { resolved: stored.resolved, diagnostics: bound.diagnostics }
-    } else { stored }
+    // A DECLARATION'S FIELD TYPES ARE RESOLVED UNDER THE DECLARATION'S OWN TYPE PARAMETERS. The env builder
+    // (resolve_type_bindings) resolves every type declaration through this arm with the MODULE env, and
+    // resolve_item_types binds the item's params only for its own later pass, so a kinded binder passed on in a
+    // field (`type Wrap<S: Scale> { m: Measure<Memory, S, Int> }`) reached type_param_kind_diagnostics unbound
+    // and was refused as a non-inhabitant. One binding mechanism, the one resolve_item_types uses for the same
+    // names: env_with_type_variable_bindings over generic_param_name_at.
+    let env = if n.transport == none {
+      env_with_type_variable_bindings(env: env, tp_names: n.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)))
+    } else { env }
+    let is_product = n.connective == Conj
+    if is_product {
+      if n.type_annotation != none {
+        match n.children |> first {
+          Present { value: base } =>
+            let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let base_resolved = base_result.resolved
+            let base_diags = base_result.diagnostics
+            NodeResolveResult {
+              resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: [base_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
+              diagnostics: base_diags
+            }
+          Absent => NodeResolveResult { resolved: n, diagnostics: [] }
+        }
+      } else {
+        let child_results = map(n.children, child =>
+          if child.inferred == none {
+            NodeResolveResult { resolved: child, diagnostics: [] }
+          } else {
+            let child_rt = resolved_type(n: child)
+            let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let rt_resolved = rt_result.resolved
+            let rt_diags = rt_result.diagnostics
+            NodeResolveResult {
+              resolved: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, rt_resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
+              diagnostics: rt_diags
+            }
+          }
+        )
+        let resolved_children = map(child_results, cr => cr.resolved)
+        let all_diags = flat_map(child_results, cr => cr.diagnostics)
+        NodeResolveResult {
+          resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: resolved_children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
+          diagnostics: all_diags
+        }
+      }
+    } else {
+      let is_optional = n.return_cardinality == CardOptional
+      if is_optional {
+        let inner = with_required_cardinality(n: n)
+        let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let inner_resolved = inner_result.resolved
+        let inner_diags = inner_result.diagnostics
+        NodeResolveResult {
+          resolved: with_optional_cardinality(n: inner_resolved),
+          diagnostics: inner_diags
+        }
+      } else {
+        let variant_results = map(n.children, variant_child =>
+          let field_results = map(variant_child.children, field_child =>
+            if field_child.inferred == none {
+              NodeResolveResult { resolved: field_child, diagnostics: [] }
+            } else {
+              let field_rt = resolved_type(n: field_child)
+              let is_self_ref = authored_name(env: env, node: field_rt) == authored_name(env: env, node: n) && field_rt.children |> count > 0
+              let rt_result = if is_self_ref {
+                NodeResolveResult { resolved: field_rt, diagnostics: [] }
+              } else {
+                resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+              }
+              let rt_resolved = rt_result.resolved
+              let rt_diags = rt_result.diagnostics
+              NodeResolveResult {
+                resolved: Node { occurrence_identity: field_child.occurrence_identity, name: field_child.name, span: field_child.span, ident_span: field_child.ident_span, children: field_child.children, connective: field_child.connective, params: field_child.params, inferred: Present { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: concat(field_child.properties, rt_resolved.properties), type_annotation: field_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field_child.module_item_kind, declaration_marker: field_child.declaration_marker, declaration: field_child.declaration, expr_data: NoExprData },
+                diagnostics: rt_diags
+              }
+            }
+          )
+          let resolved_fields = map(field_results, fr => fr.resolved)
+          let field_diags = flat_map(field_results, fr => fr.diagnostics)
+          NodeResolveResult {
+            resolved: Node { occurrence_identity: variant_child.occurrence_identity, name: variant_child.name, span: variant_child.span, ident_span: variant_child.ident_span, children: resolved_fields, connective: variant_child.connective, params: variant_child.params, inferred: variant_child.inferred, return_cardinality: variant_child.return_cardinality, uses: variant_child.uses, body: variant_child.body, transport: variant_child.transport, properties: variant_child.properties, type_annotation: variant_child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: variant_child.module_item_kind, declaration_marker: variant_child.declaration_marker, declaration: variant_child.declaration, expr_data: NoExprData },
+            diagnostics: field_diags
+          }
+        )
+        let resolved_variants = map(variant_results, vr => vr.resolved)
+        let all_diags = flat_map(variant_results, vr => vr.diagnostics)
+        NodeResolveResult {
+          resolved: Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: resolved_variants, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
+          diagnostics: all_diags
+        }
+      }
+    }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
