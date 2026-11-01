@@ -33,7 +33,6 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank, dimm_figure_banks, dimm_figure_connector_label_prefix }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
-import gunbc.fleet.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHost }
 import gunbc.host.bmc_control_binding {
   bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,

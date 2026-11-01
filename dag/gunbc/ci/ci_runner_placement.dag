@@ -38,7 +38,6 @@ import gunbc.fleet.fleet_host_budget {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
-  gunbc_compile_pool_placement,
   compile_pool_bytes_for,
   host_cpu_reserve_threads,
 }

@@ -1,6 +1,5 @@
 module gunbc.fleet.printer_federation
 
-import gunbc.fleet.fleet_intent_network {operator_host_srv1}
 import std.types { String, NonEmptyStr, List, Map }
 import std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }

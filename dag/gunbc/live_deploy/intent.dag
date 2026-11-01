@@ -13,7 +13,6 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisUnavailable,
 }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_health_path }
 
