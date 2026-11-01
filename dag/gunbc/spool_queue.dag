@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
-import std.algebra { unique, zip_map, skip, list_append, string_concat_join }
+import std.algebra { unique, zip_map, skip, list_append, string_concat_join, is_empty }
 import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -169,7 +169,7 @@ fn spool_needs_claim_stage(kind: SpoolKind, drainers: Int) -> Bool {
 
 // A claim exists for a spool only if its chain has a step beyond the first role (exactly-one-consumer by rename).
 fn spool_claim_realized(kind: SpoolKind) -> Bool {
-  spool_declaration(kind: kind).chain |> any(s => spool_role_rank(role: s.role) > 0)
+  !is_empty(xs: spool_declaration(kind: kind).chain |> skip(n: 1))
 }
 
 // THE WRITERS COLUMN, DERIVED (the single source). Who may create an entry INTO a role: the enqueuer and the claimant
@@ -281,23 +281,18 @@ fn spool_role_is_terminal(kind: SpoolKind, role: SpoolRole) -> Bool {
   spool_declaration(kind: kind).terminals |> any(s => s.role == role)
 }
 
-// THE ONLY FORWARD STEP. The successor of a role is the first chain role of strictly greater rank; the LAST chain role (the claim
+// THE ONLY FORWARD STEP. The successor of a role is the next element of its own chain, in declared order (the chain order is the only order); the LAST chain role (the claim
 // itself) and every terminal have none. THE ONLY CONSTRUCTOR THAT MOVES AN ENTRY TO AN EARLIER ROLE IS
 // spool_requeue_assess, gated on a typed claimant-dead observation (a boot id differing from the one the claim
 // recorded). No unevidenced requeue, no reap-and-reclaim, no age-based release exist; without evidence the line
 // stops through gunbc.roadmap.spool_stall.
-fn spool_role_rank(role: SpoolRole) -> Int {
-  match role {
-    RolePending => 0
-    RoleHandedOff => 1
-    RoleClaimed => 2
-    RoleDone => 3
-    RoleRefused => 3
-  }
-}
-
 fn spool_chain_successor(kind: SpoolKind, role: SpoolRole) -> SpoolRole? {
-  spool_declaration(kind: kind).chain |> filter(s => spool_role_rank(role: s.role) > spool_role_rank(role: role)) |> map(s => s.role) |> first()
+  let chain = spool_declaration(kind: kind).chain
+  let followers = zip_map(a: chain, b: chain |> skip(n: 1), f: fn(x, y) { if (x.role == role) { Present { value: y.role } } else { Absent } }) |> filter(o => !optional_is_absent(opt: o))
+  match followers |> first() {
+    Absent => Absent
+    Present { value: o } => o
+  }
 }
 
 type SpoolEnqueueAssessment
@@ -390,14 +385,12 @@ fn spool_role_is_last(kind: SpoolKind, role: SpoolRole) -> Bool {
 }
 
 // THE STAGE GRAPH'S INVARIANTS, DECIDED OVER A DECLARATION (rung 2, mitigation by validation: the lists can still be
-// written malformed; this is what refuses them). Chain ranks strictly increase (so spool_chain_successor is the next
-// step and no role repeats), roles are unique across chain and terminals (so spool_role_dir is single-valued), and
+// written malformed; this is what refuses them). Roles are unique across chain and terminals (so spool_role_dir is single-valued), and
 // the key has at least one part. NEXT-RUNG TRIGGER: an indexed/dependent list type (strictly-ordered, disjoint stage
-// lists) in the substrate; then the malformed declaration has no constructor and this decision dissolves.
+// lists) in the substrate; then the overlapping declaration has no constructor and this decision dissolves.
 fn spool_declaration_wellformed(declaration: SpoolDeclaration) -> Bool {
   let roles = list_append(left: declaration.chain |> map(s => s.role), right: declaration.terminals |> map(s => s.role))
-  let ascending_broken = zip_map(a: declaration.chain, b: declaration.chain |> skip(n: 1), f: fn(x, y) { spool_role_rank(role: x.role) < spool_role_rank(role: y.role) }) |> any(ok => !ok)
-  !ascending_broken && unique(xs: roles, eq: fn(a, b) { a == b }) && declaration.key_part_count > 0
+  unique(xs: roles, eq: fn(a, b) { a == b }) && declaration.key_part_count > 0
 }
 
 fn spool_complete_assess(kind: SpoolKind, observed: SpoolEntryState, outcome: SpoolOutcome) -> SpoolCompleteAssessment {

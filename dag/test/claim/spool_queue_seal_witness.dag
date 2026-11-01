@@ -402,14 +402,13 @@ test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
   }
 }
 
-// NEGATIVE CONTROL: a chain out of rank order, a role in both chain and terminals, and a non-positive key part count
+// NEGATIVE CONTROL: a role in both chain and terminals, and a non-positive key part count
 // are each refused by the same decision.
 test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
   let base = spool_declaration(kind: SpoolAttemptUnit)
-  let backwards = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: [SpoolStage { role: RoleClaimed, directory: "claimed" }, SpoolStage { role: RolePending, directory: "requests" }], terminals: [], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
   let overlapping = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [SpoolStage { role: RoleClaimed, directory: "claimed2" }], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 2 }
   let keyless = SpoolDeclaration { exclusion: base.exclusion, entry_kind: base.entry_kind, chain: base.chain, terminals: [], enqueuer: PrincipalRequester, claimant: PrincipalDrainer, key_separator: "-", key_part_count: 0 }
-  if spool_declaration_wellformed(declaration: backwards) || spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
+  if spool_declaration_wellformed(declaration: overlapping) || spool_declaration_wellformed(declaration: keyless) {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
     ExitSuccess
