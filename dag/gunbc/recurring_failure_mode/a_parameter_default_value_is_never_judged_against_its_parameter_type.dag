@@ -1,9 +1,8 @@
 module gunbc.recurring_failure_mode.a_parameter_default_value_is_never_judged_against_its_parameter_type
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_parameter_default_value_is_never_judged_against_its_parameter_type: RecurringFailureMode = RecurringFailureMode {
   identity: "a_parameter_default_value_is_never_judged_against_its_parameter_type" as NonEmptyStr,

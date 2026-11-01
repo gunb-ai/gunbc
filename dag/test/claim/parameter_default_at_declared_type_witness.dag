@@ -13,8 +13,10 @@ import gunbc.compile_diagnostic_census {
 // a_parameter_default_value_is_never_judged_against_its_parameter_type, executed by sunny-newt-661 on binary f6c9e59c3d84
 // (defaults `3`, `"x"`, `0 - 5`, `Wrap { n: 1 }` all gave blocking-rows zero, indistinguishable from the control).
 //
-// UNRUN: authored, not executed. The two REDs are expected to FAIL on a tree without the producer; the control is expected
-// to PASS before and after. An authoring defect shows as the control failing.
+// EXECUTED 2026-11-01 (sunny-newt-661), main plus this change at head 609a91e19beb, regenerated stage0 mirror, gunbc sha256
+// 0c8b0004e095b0559c1fb64ae3312e7d459622e8a72136fceaa6f8dc01e2dfbe: all five cells PASS (log sha256
+// 0643d7f737d4cc71779aff59ac600fa1baa60bb75364a5466f5185c14944f9e7). The three REDs (String at Nat, record at Nat, wrong
+// record field) refuse; the two controls (non-negative literal at Nat, well-formed record at a record parameter) are accepted.
 //
 // NOT ASSERTED: `0 - 5` at Nat. Whether it refuses depends on the arithmetic-over-grounded-carriers decision (Q1e), so no
 // cell here claims either answer.
