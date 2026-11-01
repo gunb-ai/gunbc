@@ -3960,7 +3960,7 @@ fn equality_resolved_declaration_walk(rt: Node, peeled: Node, name: String, scop
       if rt_identity != "::" && map_contains_key(visited, rt_identity) {
         EqualityWalk { refusal: none, step: EqualityThroughPlan { declaration: rt_identity }, plans: [] }
       } else {
-        equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, identity: rt_identity, scope: scope, visited: if rt_identity == "::" { visited } else { map_insert(visited, rt_identity, true) }, depth: depth, at_root: at_root)
+        equality_declaration_walk(rt: rt, peeled: peeled, name: name, identity: rt_identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
       }
   }
 }
@@ -3981,6 +3981,14 @@ fn equality_reference_applies_arguments(peeled: Node) -> Bool {
 // per instance, so it is never synthesized and any plan reaching it refuses.
 fn equality_declaration_is_generic(rt: Node, peeled: Node) -> Bool {
   (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled)
+}
+
+// THE ONE ENTRY FOR A DECLARATION'S EQUALITY PLAN. It seeds the visited set with the declaration's own identity, so the
+// call side (equality_resolved_declaration_walk) and the definition side (equality_synthesized_for) read the same plan
+// for one declaration and cannot disagree on whether it is synthesizable. at_root only selects the located refusal
+// text and never enters a plan row.
+fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
+  equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: if identity == "::" { visited } else { map_insert(visited, identity, true) }, depth: depth, at_root: at_root)
 }
 
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
@@ -19748,7 +19756,7 @@ fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
     let si = scope.type_env.source_indices
     let name = authored_name_at(source_indices: si, node: item)
     let identity = node_declaration_identity(n: item, source_indices: si)
-    let w = equality_resolved_declaration_structure(rt: item, peeled: item, name: name, identity: identity, scope: scope, visited: map_insert(empty_map(), identity, true), depth: 0, at_root: false)
+    let w = equality_declaration_walk(rt: item, peeled: item, name: name, identity: identity, scope: scope, visited: empty_map(), depth: 0, at_root: false)
     if w.refusal != none { [] } else {
       match equality_plan_of_walk(w: w) {
         Absent => []
