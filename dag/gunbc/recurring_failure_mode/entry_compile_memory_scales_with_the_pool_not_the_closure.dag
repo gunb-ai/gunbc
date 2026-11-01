@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.entry_compile_memory_scales_with_the_pool_not_the_closure
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data entry_compile_memory_scales_with_the_pool_not_the_closure: RecurringFailureMode = RecurringFailureMode {
+  identity: "entry_compile_memory_scales_with_the_pool_not_the_closure" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**an entry compile's memory scales with the source pool, not with the entry's import closure** (`gunbc compile --source-root dag --source-root src/v2 --entry <module>`, the v1 seed route).",
+
+    "INVALID STATE: sharding a whole-corpus check into batches by import closure is meant to bound peak memory by the closure. It does not: the work-bound is the pool, so no batch fits a slot that the whole corpus does not.",
+
+    "RECEIPT (gunbc#15247, 2026-11-01): the smallest of six batches, a synthetic entry importing 229 roots whose union import closure is at most 3000 of 9772 files, held 22,168,864 KB RSS at 20 min elapsed (compile.frontend about 2 min, normalize 5 s, still running) under a 24 GiB container cap, against a 16 GiB target. The whole-corpus compile was OOM-killed (exit 137) at the same cap. Observation by `ps` RSS on one batch; no per-stage memory split was taken, so WHICH stage dominates is unknown.",
+
+    "HARM: a population-wide check on this route cannot be sharded to a slot; the whole-corpus resolve census for a seed-side change stays unverified, which forces a declared rung drop instead of a measured zero.",
+
+    "RUNG FOUND AT: mitigatable (the OOM kill is loud; nothing is silently wrong, the check simply cannot run).",
+
+    "CEILING: structurally guaranteed -- peak memory bounded by the closure the entry demands, a property of the entry path's pool handling.",
+
+    "NEXT TRIGGER (can climb after one grounding): a per-stage memory split of one entry compile identifies which stage holds the whole pool; the entry path then loads only the demanded closure.",
+  ],
+
+  evidence: [],
+}
