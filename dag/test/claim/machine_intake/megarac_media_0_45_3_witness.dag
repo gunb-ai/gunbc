@@ -9,6 +9,8 @@ import extdeps.bmc.megarac {
   megarac_firmware_0_45_3,
   megarac_firmware_0_45_reported,
   megarac_redirection_status_of_wire,
+  megarac_redirection_status_of_row,
+  megarac_no_redirection_session_index,
   megarac_redirection_presentation_standing,
   RedirectionStatusKnown,
   RedirectionStatusFirmwareUncatalogued,
@@ -29,6 +31,12 @@ import extdeps.bmc.ipmitool_observed_output {
 }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+import gunbc.machine_intake.megarac_media_row_reading {
+  boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
+  boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
+  attestation_labels_a_stopped_and_ejected_row, attestation_and_read_name_the_same_row,
+  reads_agree_on_the_ejected_row,
+}
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_version_establishment,
@@ -242,29 +250,31 @@ test fn boot_six_refused_on_the_release_arm_at_the_identity_its_row_carried() ->
   )
 }
 
-// THE ANSWER TO THE BOOT-7 QUESTION, DURABLE UNDER EITHER IDENTITY THE ROUTE MIGHT READ. Whether the
-// route carries the probe's 0.32 or the build the committed hpm check derives ("0.45", semantic none),
-// the leftover row is NEVER stopped: it refuses with the unread row's condition, and the step is never
-// ConvergeStepDetachStale. Which condition fires differs -- under 0.32 it is an unread code on an
-// unevidenced release; at the derived build the whole table is missing, so the row is read as
-// RedirectionUnreadFirmware and the stop exception's arm for that is a flat false. Both are refusals, so
-// no boot is needed to learn that the leftover row cannot be stopped under the rule as it stands.
-test fn boot_six_s_leftover_row_is_never_stopped_under_the_rule_as_it_stands() -> Bool {
+// THE LEFTOVER EJECTED ROW NO LONGER STOPS ANYTHING AT THE BUILD THIS REPOSITORY READ -- AND THE REASON IS
+// A CODE THAT WAS READ, NOT A RULE THAT WAS LOOSENED. Boot run 40264233543 met a row naming this lane's
+// runner ISO at redirection_status 16 with session_index 255 and REFUSED on it: the machine-read
+// identity's table named only 1, so 16 was an unread CODE, and the arm that protects the wanted image
+// refused the step. Code 16 has since been READ -- twice, as a row, at this build, in
+// gunbc.machine_intake.megarac_media_row_reading -- so the row now reads as what the controller reports:
+// STOPPED, not presenting. Nothing was detached, and no stop rule was widened: the convergence simply has
+// a status to read, and it attaches the wanted image. Under the 2026-09-05 probe's 0.32 the same row is
+// STILL an unread code -- that release never returned 16 -- and the step still refuses, which is what
+// keeps this a fact about a release rather than a global loosening. The claim goes red if 16 is catalogued
+// where it was not read (as a default, or on the 0.32 arm), and if the session index stops mattering (the
+// RED beside it: w_code_16_beside_an_active_session_is_still_an_unread_code).
+test fn w_the_leftover_ejected_row_is_not_presenting_at_the_build_this_repository_read() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match step_for(configurations: boot6_leftover_rows(), firmware: mtcollins1_identity.firmware, stems: both_stems, image_name: boot6_leftover_iso) {
-        ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: r, configurations: _ } } =>
-          n == (boot6_leftover_iso as String)
-            && (u == RedirectionUnreadCode { firmware: mtcollins1_identity.firmware, wire: 16 } || u == RedirectionUnreadFirmware { firmware: mtcollins1_identity.firmware, wire: 16 })
-            && (r == UnreadStopReleaseNotEvidenced { unread: u } || r == UnreadStopRowIsTheWantedImage)
+      match step_for(configurations: boot6_leftover_rows(), firmware: read, stems: both_stems, image_name: boot6_leftover_iso) {
+        ConvergeStepAttachFromListing => true
         _ => false
       }
-      && match step_for(configurations: boot6_leftover_rows(), firmware: read, stems: both_stems, image_name: boot6_leftover_iso) {
+      && match step_for(configurations: boot6_leftover_rows(), firmware: mtcollins1_identity.firmware, stems: both_stems, image_name: boot6_leftover_iso) {
         ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: r, configurations: _ } } =>
           n == (boot6_leftover_iso as String)
-            && (u == RedirectionUnreadCode { firmware: read, wire: 16 } || u == RedirectionUnreadFirmware { firmware: read, wire: 16 })
-            && (r == UnreadStopReleaseNotEvidenced { unread: u } || r == UnreadStopRowIsTheWantedImage)
+            && u == RedirectionUnreadCode { firmware: mtcollins1_identity.firmware, wire: 16 }
+            && r == UnreadStopReleaseNotEvidenced { unread: u }
         _ => false
       }
   }
@@ -692,7 +702,7 @@ fn both_or_neither(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
 // release, so the row reads as an unread CODE on an evidenced release, the census image is this lane's
 // residue named by a seeded stem, and it is NOT the image the attempt wants -- so the step stops it. The
 // wanted image stays protected by a different arm, pinned by
-// boot_six_s_leftover_row_is_never_stopped_under_the_rule_as_it_stands and by the runner-stem claims
+// w_the_leftover_ejected_row_is_not_presenting_at_the_build_this_repository_read and by the runner-stem claims
 // above; which images may be stopped at all is unchanged (a foreign name still refuses,
 // UnreadStopImageForeign). The claim goes red, with every other claim that leans on the reading, if the
 // committed read ever stops establishing an identity to ask about.
@@ -704,5 +714,119 @@ test fn the_status_19_census_row_is_stopped_at_the_machine_read_identity_once_th
         ConvergeStepDetachStale { row: r } => r.image_name == (census_left as String) && r.redirection_wire == 19
         _ => false
       }
+  }
+}
+
+// A ROW, NOT A CODE: a fixture whose SESSION INDEX is under test, so the same status can be placed beside
+// the no-session marker and beside a live one.
+fn row_at_session(name: String, status: String, session: String) -> String {
+  concat("{\"id\":1,\"media_type\":1,\"media_index\":0,\"session_index\":", concat(session, concat(",\"image_name\":\"", concat(name, concat("\",\"redirection_status\":", concat(status, "}"))))))
+}
+
+// THE TRIPLE AS IT WAS READ, AND NOTHING BEYOND IT. Code 16 beside the no-session marker answers STOPPED
+// on the release the vendor module DECLARES and on the identity the committed hpm read DERIVES -- the same
+// answer either way, because the media table reaches this build by identity equality (see
+// the_redirection_table_reaches_the_build_the_machine_read_names). The marker is pinned to what the reads
+// carried, and separated from what a LIVE session carried on that same run, so the marker cannot quietly
+// become "any index". And the vendor's own words are consulted as an attestation that labels a stopped,
+// ejected row -- never as the source of the code.
+test fn w_the_ejected_row_triple_is_stopped_on_the_release_the_controller_reports() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_reported, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_reported)
+        _ => false
+      }
+      && megarac_no_redirection_session_index == boot_run_40258937016_end_media_row.session_index
+      && boot_run_40258937016_started_session_marker.session_index != megarac_no_redirection_session_index
+      && boot_run_40258937016_end_media_row.redirection_status == 16
+      && reads_agree_on_the_ejected_row(a: boot_run_40258937016_end_media_row, b: boot_run_40264233543_end_media_row)
+      && attestation_labels_a_stopped_and_ejected_row(attestation: mtcollins1_cd_row_ui_attestation)
+      && attestation_and_read_name_the_same_row(attestation: mtcollins1_cd_row_ui_attestation, read: boot_run_40264233543_end_media_row)
+  }
+}
+
+// RED: CODE 16 BESIDE AN ACTIVE SESSION WAS NEVER READ AND STAYS UNREAD. The only session this repository
+// read as live at this build carried index 0 (boot_run_40258937016_started_session_marker), so a row at 16
+// with a live index is a DIFFERENT observation and must not be folded into the stopped state: not as a bare
+// wire, not as a row whose index was never read, and not through the route. If the grounding were written
+// as "16 means stopped", all three arms below would pass by construction -- and the boot would attach over
+// a session that is live, which is exactly what the unread-code stop exists to prevent.
+test fn w_code_16_beside_an_active_session_is_still_an_unread_code() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: none) {
+        RedirectionStatusKnown { firmware: _, status: RedirectionWireUncatalogued { wire: w } } => w == 16
+        _ => false
+      }
+      && match step_for(configurations: rows1(row_at_session(name: boot6_leftover_iso as String, status: "16", session: "0")), firmware: read, stems: both_stems, image_name: boot6_leftover_iso) {
+        ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: r, configurations: _ } } =>
+          n == (boot6_leftover_iso as String)
+            && u == RedirectionUnreadCode { firmware: read, wire: 16 }
+            && r == UnreadStopRowIsTheWantedImage
+        _ => false
+      }
+  }
+}
+
+// 16 IS NOT CARRIED TO A RELEASE THAT NEVER REPORTED IT. The 2026-09-05 probe read 0, 1 and 100 on 0.32 and
+// never 16; the page label "0.45.3" is not a key of the table at all; and a release the corpus does not
+// know answers by release, not by code. Same triple, other releases, no knowledge -- so the grounding
+// cannot drift into a default.
+test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> Bool {
+  match megarac_redirection_status_of_row(firmware: megarac_firmware_0_32, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+    RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
+    _ => false
+  } && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_3, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+    RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+    _ => false
+  } && match megarac_redirection_status_of_row(firmware: firmware_0_99, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+    RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: firmware_0_99)
+    _ => false
+  }
+}
+
+// THE TWO RELEASES REPORT DIFFERENT WIRES FOR A ROW THAT IS NOT PRESENTING, AND NEITHER MEANING TRAVELS.
+// The reads are the source, not a typed status: at the release the committed hpm check names, 16 beside the
+// marker is Stopped; the same row shape at 0.32 -- which never reported 16 -- is an unread code; the wire the
+// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and an unread code at this build. So
+// no status here is a default, and a world that pairs one release's wire with a route asking at the other
+// gets a refusal rather than a silent substitution -- which is exactly how a fixture error shows up. The last
+// group ties the two row receipts to the same machine's boot lane as the committed hpm read that names the
+// release, so the pairing above cannot be an accident of two different machines.
+test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenting() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_redirection_status_of_row(firmware: read, wire: boot_run_40264233543_end_media_row.redirection_status, session_index: Present { value: boot_run_40264233543_end_media_row.session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(firmware: mtcollins1_identity.firmware, wire: boot_run_40264233543_end_media_row.redirection_status, session_index: Present { value: boot_run_40264233543_end_media_row.session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
+        _ => false
+      }
+      && match megarac_redirection_status_of_wire(firmware: mtcollins1_identity.firmware, wire: 0) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
+      && boot_run_40258937016_end_media_row.session_index == boot_run_40264233543_end_media_row.session_index
+      && string_contains(s: boot_run_40264233543_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
+      && string_contains(s: mtcollins1_boot_run_40082618814_hpm_check_artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
   }
 }
