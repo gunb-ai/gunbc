@@ -93,7 +93,23 @@ fn flex_bid_level_eq(left: FlexBidLevel, right: FlexBidLevel) -> Bool {
 }
 
 data flex_reconstruction: Second = second(count: 300)
-data flex_stale_loading: Second = second(count: 600)
+
+// A LOADING CARD IS DEAD once it has been loading past the first-boot envelope OBSERVED for the launch
+// shape, not past an arbitrary ten minutes. The envelope is set by the launch shape, and the only two shapes ever observed to
+// boot a rented card (live Vast tests, 2026-10-27/28) both take far longer than 600 s: an args-mode launch
+// (runtype args, onstart carried in the per-rent create args) served in about 25 minutes, and an ssh-mode
+// launch sat in a per-host image build for 56+ minutes TWICE, with a third card dead at 55 minutes. A 600 s
+// cut therefore destroyed cards that were booting normally, on a card whose rate we are already paying.
+// 120 minutes is the policy: it is the same number ctrl runs its live bidder with (its 120 min load
+// timeout), it clears both observed first boots with room, and it is a ceiling — a card still loading after
+// two hours is not booting, it is stuck, and it is being paid for while stuck.
+// A POLICY NUMBER, NOT A DERIVED ONE - and it would be false to write otherwise (DESIGN 4d: do not assert
+// as deduced what is only inferred). Nothing in this tree computes it from the launch shape; no launch
+// record carries a boot-time budget to read. It is CHOSEN from the two observed first boots above, and it
+// equals the number ctrl runs its live bidder with, so the cutover does not change behaviour. The
+// obligation is a manual one with a named trigger: whoever changes the launch shape re-derives this number
+// in the same change. It is a ceiling on how long a paid-for stuck card is tolerated, not a tuning knob.
+data flex_stale_loading: Second = second(count: 7200)
 data flex_level_min_samples: Nat = 3
 data flex_explore_every: Nat = 5
 data flex_switch_premium: NonzeroNatFraction = NonzeroNatFraction { num: 5, denom_predecessor: 3 }

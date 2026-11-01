@@ -9,7 +9,7 @@ import extdeps.systemd.service_exec {
 }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { cp_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_diff_tree_equal_command,
 }
@@ -100,7 +100,7 @@ data revision_job_snapshot_identity_email: String = "revision-job@gunbc.invalid"
 fn revision_job_tree_steps(tree_archive: String, work_dir: String, tree: String) -> List<ArgvCommand> {
   [
     mkdir_parents_command(path: work_dir),
-    tar_extract_command(archive: tree_archive, into_directory: work_dir, strip_components: 0),
+    tar_extract_command(archive: tree_archive, into_directory: work_dir, strip_components: 0, existing_directories: TarOverwriteDir),
     git_init_quiet_command(repository_dir: work_dir),
     git_add_all_force_command(repository_dir: work_dir),
     git_commit_snapshot_command(repository_dir: work_dir, identity_name: revision_job_snapshot_identity_name,
@@ -112,7 +112,7 @@ fn revision_job_tree_steps(tree_archive: String, work_dir: String, tree: String)
 fn revision_job_vendor_steps(vendor_archive: String, vendor_dir: String) -> List<ArgvCommand> {
   [
     mkdir_parents_command(path: vendor_dir),
-    tar_extract_command(archive: vendor_archive, into_directory: vendor_dir, strip_components: 0),
+    tar_extract_command(archive: vendor_archive, into_directory: vendor_dir, strip_components: 0, existing_directories: TarOverwriteDir),
   ]
 }
 

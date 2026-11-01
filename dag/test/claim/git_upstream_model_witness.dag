@@ -118,6 +118,7 @@ import extdeps.git.object_store {
   git_object_id_wire_hex,
   git_sha1_object_id,
   git_sha256_object_id,
+  git_null_sha1_object_id,
   GitSha1ObjectId,
   GitSha256ObjectId,
   git_r0_unsupported_boundary,
@@ -784,6 +785,19 @@ test fn witness_git_object_id_text_has_one_canonical_spelling() -> Bool {
         GitObjectIdTextRefused { cause: _ } => false
       }
     _ => false
+  }
+}
+
+// THE NULL ID AND THE PARSE NAME ONE OBJECT. The constant at the type's home is what four consumers now
+// carry in place of a String -> GitObjectId cast (no declared route; the native emitter refuses that
+// pair). This is what keeps the constant from drifting away from what the validating constructor would
+// admit: same id by equality, and the same canonical wire spelling a parse produces.
+test fn witness_git_null_object_id_agrees_with_the_validating_constructor() -> Bool {
+  match git_sha1_object_id(hex: "0000000000000000000000000000000000000000") {
+    Present { value: parsed } =>
+      git_null_sha1_object_id == parsed
+        && git_object_id_wire_hex(oid: git_null_sha1_object_id) == "0000000000000000000000000000000000000000"
+    Absent => false
   }
 }
 
