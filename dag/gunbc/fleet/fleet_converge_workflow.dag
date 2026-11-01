@@ -111,7 +111,8 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map }
+import std.algebra { list_map, empty_map, map_insert }
+import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -6912,6 +6913,49 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = filter(
   fleet_converge_dispatch_input_rows,
   i => i.name != "target" || count(fleet_converge_spark_target_options) > 0
 )
+
+// ONE DISPATCH OF THIS WORKFLOW, AS A TYPED SPEC: the mode it selects, the executor host its job is pinned to, and
+// every other input it supplies, each by its declared DispatchInput so a renamed input breaks the spec rather than the
+// dispatch. One builder renders every spec into the inputs map GitHub receives (the qualification floor's dispatch and
+// the qualification attempt's, gunbc.runner.runner_qualification_dispatch and
+// gunbc.runner.runner_qualification_attempt_dispatch), so no caller assembles that map by hand.
+type DispatchInputValue {
+  input: DispatchInput
+  value: String
+}
+
+type FleetConvergeDispatchSpec {
+  mode: FleetConvergeWorkflowMode
+  executor: HostIdentity
+  inputs: List<DispatchInputValue>
+}
+
+fn fleet_converge_dispatch_values(spec: FleetConvergeDispatchSpec) -> Map<String, String> {
+  fold(
+    spec.inputs,
+    init: map_insert(
+      m: map_insert(m: empty_map(), key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: spec.mode)),
+      key: fleet_converge_host_input.name,
+      value: spec.executor as String,
+    ),
+    f: (m, iv) => map_insert(m: m, key: iv.input.name, value: iv.value),
+  )
+}
+
+// THE NAMES A DISPATCH SUPPLIES, read from the inputs alone, so an admission can ask before any value exists.
+fn fleet_converge_dispatch_names_supplying(inputs: List<DispatchInput>) -> List<String> {
+  concat([fleet_converge_mode_input.name, fleet_converge_host_input.name], map(inputs, i => i.name))
+}
+
+fn fleet_converge_dispatch_value_names(spec: FleetConvergeDispatchSpec) -> List<String> {
+  fleet_converge_dispatch_names_supplying(inputs: map(spec.inputs, iv => iv.input))
+}
+
+// EVERY INPUT THE WORKFLOW REQUIRES, BY NAME, THAT THE SUPPLIED NAMES DO NOT CARRY. GitHub refuses such a dispatch
+// before any run exists; an admission reads this first.
+fn fleet_converge_required_inputs_unsupplied(declared: List<DispatchInput>, supplied: List<String>) -> List<String> {
+  declared |> filter(i => i.required && !(supplied |> any(n => n == i.name))) |> map(i => i.name)
+}
 
 fn fleet_converge_empty_choice_input_names() -> List<String> {
   map(
