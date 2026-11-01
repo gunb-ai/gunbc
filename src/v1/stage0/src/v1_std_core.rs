@@ -787,6 +787,7 @@ pub enum CompilerDiagnostic {
     },
     ArithmeticWithoutCarrier {
         operation: String,
+        operands: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     ArithmeticAmbiguousCarrier {
@@ -1170,7 +1171,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
-    CompilerDiagnostic::ArithmeticWithoutCarrier { operation: op, .. } => v1_rt::concat(v1_rt::concat("no arithmetic carrier: no declared carrier defines ".to_string(), op.clone()), " for these operands through the declared implicit injections".to_string()),
+    CompilerDiagnostic::ArithmeticWithoutCarrier { operation: op, operands: os, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no arithmetic carrier: no declared carrier defines ".to_string(), op.clone()), " for the operands (".to_string()), os.clone().join(&", ".to_string())), ") through the declared implicit injections".to_string()),
     CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation: op, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("arithmetic carrier is ambiguous for ".to_string(), op.clone()), ": ".to_string()), ((cs.clone().len() as i64)).to_string()), " incomparable carriers (".to_string()), cs.clone().join(&", ".to_string())), ") define it through the declared implicit injections; name the conversion".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position: pos, .. } => v1_rt::concat(v1_rt::concat("declared-type inhabitance is UNMODELED at the ".to_string(), pos.clone()), ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),

@@ -327,10 +327,11 @@ pub use crate::v1_compiler_infer_types::{
     kernel_profile_lookup, make_callable_type, make_container_type, method_receiver_element_node,
     node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
-    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
-    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
-    template_return_has_variables, template_return_is_receiver_self, ArithmeticRequirement,
-    KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    node_type_shape, nominal_type_ref, normalize_access_type_node, operand_carrier_ref,
+    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self, ArithmeticRequirement, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
@@ -1847,6 +1848,33 @@ pub fn relocated_algebra_evidence_diags(
         }
         __result
     })
+}
+
+pub fn arithmetic_operand_label(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let t = crate::v1_compiler_infer_types::resolved_type(n);
+        let shape = crate::v1_compiler_infer_types::node_type_shape(
+            t.clone(),
+            scope.type_env.source_indices.clone(),
+        );
+        match crate::v1_compiler_infer_types::operand_carrier_ref(
+            t.clone(),
+            scope.type_env.source_indices.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(d) => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(shape.clone(), " @ ".to_string()),
+                        d.module_path.clone(),
+                    ),
+                    ".".to_string(),
+                ),
+                d.decl_name.clone(),
+            ),
+            std::option::Option::None => v1_rt::concat(shape.clone(), " @ no carrier".to_string()),
+        }
+    }
 }
 
 pub fn inference_error(
@@ -17885,6 +17913,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 Rc::new(vec![crate::v1_std_core::make_error_node(
                                     Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
                                         operation: req.field.clone(),
+                                        operands: Rc::new(vec![
+                                            arithmetic_operand_label(
+                                                left_typed.clone(),
+                                                scope.clone(),
+                                            ),
+                                            arithmetic_operand_label(
+                                                right_typed.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ]),
                                         span: span.clone(),
                                     }),
                                     scope.module_name.clone(),
@@ -17957,6 +17995,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             Rc::new(vec![crate::v1_std_core::make_error_node(
                                 Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
                                     operation: "negate".to_string(),
+                                    operands: Rc::new(vec![arithmetic_operand_label(
+                                        operand_typed.clone(),
+                                        scope.clone(),
+                                    )]),
                                     span: span.clone(),
                                 }),
                                 scope.module_name.clone(),
