@@ -89,17 +89,7 @@ import std.integer_interval {
   UnboundedNaturals,
   BoundedIntegerInterval,
   NonZeroDoubleStays,
-  NonZeroDoubleOverflows,
-  Int128,
-  Int64,
-  Int32,
-  Int16,
-  Int8,
-  UInt128,
-  UInt64,
-  UInt32,
-  UInt16,
-  UInt8
+  NonZeroDoubleOverflows
 }
 
 import std.coercion { unicode_scalar_unfold }

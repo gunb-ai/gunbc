@@ -1,6 +1,6 @@
 module std.integer_width_construction
 
-import std.machine_constraints { Compose, MachineWidth, WidthResolution }
+import std.machine_constraints { Compose }
 import std.integer { Int, UInt }
 import std.types { String }
 
@@ -10,13 +10,18 @@ import std.types { String }
 // and target realization land. Absence means the mathematical input is outside
 // the destination interval; no cast may precede that check.
 //
-// N stays in the result type: a proof for one width cannot mint another width.
+// The whole constraint stays in the result type: an implementation for
+// MachineWidth<8> cannot return MachineWidth<16>. Parameterizing over the complete
+// constraint avoids forwarding a kind-index variable through MachineWidth: the
+// current seed rejects that forwarding (CI 41267424794). No kind check is relaxed.
+// Only MachineWidth constraints acquire implementations under the carrier ruling;
+// this signature does not add an inhabitance rule for other Compose applications.
 // Signedness changes are named through the destination operation, including the
 // mathematically total UInt8 -> Int16 crossing. Widening alone remains governed
 // by kernel_grounding_crossing, not by this interface.
-type IntegerWidthConstruction<N: WidthResolution> {
-  checked_int_width: fn(Int) -> Compose<Int, MachineWidth<N>>?
-  checked_uint_width: fn(Int) -> Compose<UInt, MachineWidth<N>>?
+type IntegerWidthConstruction<Constraint> {
+  checked_int_width: fn(Int) -> Compose<Int, Constraint>?
+  checked_uint_width: fn(Int) -> Compose<UInt, Constraint>?
 }
 
 fn integer_width_checked_conversion_remedy() -> String {
