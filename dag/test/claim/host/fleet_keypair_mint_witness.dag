@@ -561,10 +561,19 @@ fn header_occurrences(step_name: String) -> Int {
   count(filter(committed_workflow_lines(), l => l == header))
 }
 
+// A YAML block scalar keeps empty lines, and the emitted build bodies HAVE one: the seed preamble and the
+// command are separated by a blank line (site g of the fleet-converge regen specimen is exactly the text
+// after that blank). This reader used to stop at the first line that did not carry the body indent, which
+// for every build step meant it collected the preamble and stopped before the blank -- so the blank line
+// and everything after it (the build command, and any marker a regen might write there) was invisible to
+// every claim in this module that reads a body. An empty line is part of the block; the block ends at the
+// first NON-empty line that is not indented to the body.
 fn collect_body(lines: List<String>, from: Int, acc: List<String>) -> List<String> {
   match get(xs: lines, index: from) {
     Present { value: l } => if l.starts_with("          ") {
       collect_body(lines: lines, from: from + 1, acc: append(acc, items: [l.substring(start: 10, end: l.length())]))
+    } else if l == "" {
+      collect_body(lines: lines, from: from + 1, acc: append(acc, items: [""]))
     } else { acc }
     Absent => acc
   }
@@ -631,12 +640,56 @@ test fn the_committed_build_step_skeleton_is_the_builders_field_list() -> Bool {
 test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself() -> Bool {
   let model = model_build_run(purpose: "the fleet keypair mint")
   let committed = concat(join(committed_body(step_name: fleet_keypair_mint_build_step_name), "\n"), "\n")
-  if starts_with(s: model, prefix: shell_command_text_refused_poison) {
-    // This interpreter predates the seed-build fold, so the model side cannot be rendered HERE -- disclosed,
-    // not hidden: the marker itself must name the fold that refused, and legs 1 and 2 carry the equality.
-    model.contains(needle: "bash_command_fold_serialize")
-      && model.contains(needle: "bash_fold_serialize_stmt_list_shape_refused")
-  } else {
-    model == committed
+  // Plain equality, with no branch for a refused fold. The branch that used to sit here passed the
+  // claim whenever the model side came back as refusal poison, provided the poison text named the
+  // fold -- a grep over the marker's own wording instead of a check on what the route produced. It
+  // was disclosed as a crutch for an interpreter that predated the seed-build fold; that interpreter
+  // is not the one that evaluates claims any more, so the branch had exactly one remaining effect:
+  // turning a serialization refusal into a green. A refusal now reddens this claim, which is where it
+  // belongs -- the seam that mints the poison text is the next rung, named in
+  // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative and repaired as typed refusal in the
+  // lane's follow-up (the seam candidate set is listed there and in this PR's description).
+  model == committed
+}
+
+// One token, five mints, and NOT a sixth spelling. Every bash seam that refuses substitutes the same token
+// for a step body, each time inside its own constant: shell_command_text_refused_poison
+// (dag/gunbc/shell_command_text.dag:20), ci_floor_build_verify_refused_poison (dag/gunbc/ci/ci_spec.dag:682),
+// fleet_converge_locked_apply_emit_refused_poison (dag/gunbc/fleet/fleet_converge_plan.dag:2788),
+// bash_emit_program_sequence_refused_poison (src/v2/workflow/bash_emit.dag:237) and
+// ci_release_build_refused_poison (src/v2/workflow/ci_release_build_emit.dag:43);
+// shell_command_text_refused_with_cause appends the serializer's reasons after the same token. So a check
+// against any one constant's full wording tests one seam, not the family -- measured: with the needle set to
+// one constant's sentence, this claim returned TRUE against a committed body that carried a DIFFERENT seam's
+// marker. The token is taken from the authority constant this family already declares, as its first word; it
+// is not re-typed here. That the other four constants repeat the token in their own prose instead of
+// deriving it is a fork, and closing it (one declared token, the five constants spelled from it) is the
+// follow-up named in this module's PR description, with the trigger: the next claim that needs to read a
+// refusal marker from generated text.
+fn bash_refusal_marker_token() -> String {
+  match shell_command_text_refused_poison.split(delimiter: " ").first() {
+    // The Absent arm can only weaken the check (the unsplit sentence still begins with the token), so a
+    // refusal can never turn green because the token could not be derived.
+    Present { value: token } => token
+    Absent => shell_command_text_refused_poison
   }
+}
+
+// THE CONTROL THAT READS THE MARKER, NOT THE SOURCE. A refused bash fold mints that token in place of a step
+// body. A committed-workflow EQUALITY check cannot see a family-wide refusal: when a regen installs a refused
+// step, both sides of the comparison carry the token and equality still holds. So this claim reads the token
+// out of what the route PRODUCES and out of what the committed artifact CARRIES, and it fails if either side
+// ever does. The first two legs are the non-vacuity arm -- if a route rendered an empty body, every
+// contains-check below would pass by saying nothing -- so the preamble's own first line must be present on
+// both model sides.
+test fn refusal_poison_never_reaches_a_build_step_body() -> Bool {
+  let marker = bash_refusal_marker_token()
+  let mint_model = model_build_run(purpose: "the fleet keypair mint")
+  let wait_model = model_build_run(purpose: "the grant wait")
+  starts_with(s: mint_model, prefix: "GUNBC_SEED_CHECKOUT=")
+    && starts_with(s: wait_model, prefix: "GUNBC_SEED_CHECKOUT=")
+    && !mint_model.contains(needle: marker)
+    && !wait_model.contains(needle: marker)
+    && !any(xs: committed_body(step_name: fleet_keypair_mint_build_step_name), line => line.contains(needle: marker))
+    && !any(xs: committed_body(step_name: grant_wait_build_step_name), line => line.contains(needle: marker))
 }
