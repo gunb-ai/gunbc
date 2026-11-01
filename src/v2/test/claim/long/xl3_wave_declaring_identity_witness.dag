@@ -13,6 +13,7 @@ import v2.compiler.resolve { OccurrenceResolutionRecord, ResolvedToDeclaration, 
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol }
@@ -65,25 +66,27 @@ data provider_paths: List<String> = [
   "src/v2/std/qualified_name.dag"
 ]
 
-fn read_of(path: String, unit: Symbol) -> DagSourceReadWitness {
+fn read_of(path: String, unit: Symbol, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: unit, file_path: path }
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: root
   }
 }
 
 fn wave_ingest() -> SourceRootIngest {
   Cons {
-    head: read_of(path: module_path, unit: ^xl3w1_subject),
+    head: read_of(path: module_path, unit: ^xl3w1_subject, root: DagTree),
     tail: Cons {
-      head: read_of(path: "dag/std/types.dag", unit: ^xl3w1_types),
+      head: read_of(path: "dag/std/types.dag", unit: ^xl3w1_types, root: DagTree),
       tail: Cons {
-        head: read_of(path: "dag/std/decl_ref.dag", unit: ^xl3w1_decl_ref),
+        head: read_of(path: "dag/std/decl_ref.dag", unit: ^xl3w1_decl_ref, root: DagTree),
         tail: Cons {
-          head: read_of(path: "dag/std/dissolution.dag", unit: ^xl3w1_dissolution),
+          head: read_of(path: "dag/std/dissolution.dag", unit: ^xl3w1_dissolution, root: DagTree),
           tail: Cons {
-            head: read_of(path: "dag/std/algebra.dag", unit: ^xl3w1_algebra),
-            tail: Cons { head: read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w1_qualified_name), tail: Empty }
+            head: read_of(path: "dag/std/algebra.dag", unit: ^xl3w1_algebra, root: DagTree),
+            tail: Cons { head: read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w1_qualified_name, root: V2Tree), tail: Empty }
           }
         }
       }
@@ -110,7 +113,7 @@ fn declaring_paths(tree: ResolvedTree) -> List<String> {
         Present { value: r } =>
           match r.binding {
             BoundToDeclaration { identity: ResolvedToDeclaration { path: p } } =>
-              list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(name: p))
+              list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: p))
             _ => acc
           }
         Absent => acc
