@@ -54,7 +54,7 @@ import extdeps.systemd {
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
-  attempt_unit_manager_is_system,
+  attempt_unit_manager, attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
@@ -1007,7 +1007,10 @@ fn session_read_host_text(path: NonEmptyStr) -> FilesystemReadOutcome {
 // with a default, because a default here manufactures death evidence -- an InvocationID that failed to
 // read is not an absent one, and an acquisition instant that failed to read is not an old one.
 fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionHolderEvidenceReading {
-  if !attempt_unit_manager_is_system(unit: unit) {
+  match attempt_unit_manager(unit: unit) {
+    UnitManagerUnclaimed { unit: name } =>
+      SessionHolderEvidenceRefused { detail: join(["no launcher in the corpus claims a unit named ", name, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], "") }
+    _ => if !attempt_unit_manager_is_system(unit: unit) {
     SessionHolderEvidenceRefused { detail: join(["the unit ", unit as String, " is not read from the system manager, so which manager ran it is not established"], "") }
   } else {
     match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
@@ -1034,6 +1037,7 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) ->
             }
         }
     }
+  }
   }
 }
 

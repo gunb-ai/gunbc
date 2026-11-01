@@ -28,6 +28,7 @@ import gunbc.roadmap.roadmap_model {
   Dispatchable,
 }
 import gunbc.roadmap.roadmap_spawner { dispatch_brief_template }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitManagerStanding, UnitManagerUnclaimed, UnitRunOnSystemManager, UnitRunOnUserManager, occurrence_unit_manager_standing }
 import gunbc.roadmap.roadmap_status { node_title }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -3842,8 +3843,22 @@ type AttemptUnitObservation
 // This is the test attempt_unit_property routes its read with, and the same test the settlement reads
 // its holder standing with: which manager a not-found reading came from is part of the holder's
 // identity, so it may not be spelled twice.
+// THE MANAGER IS READ FROM THE DECLARED PREFIX ROW (roadmap_attempt_occurrence
+// occurrence_unit_manager_standing), not from a prefix spelled here. The row is the single owner of the
+// rule, and it is a typed answer: a name no launcher claims is UnitManagerUnclaimed, and a route that
+// must decide what a not-found reading proves takes that typed form (attempt_unit_manager below) rather
+// than this Bool, because guessing a manager is how a reading from the wrong manager would come to look
+// like evidence about the holder.
 fn attempt_unit_manager_is_system(unit: NonEmptyStr) -> Bool {
-  starts_with(s: unit as String, prefix: "gunbc-attempt-")
+  match attempt_unit_manager(unit: unit) {
+    UnitRunOnSystemManager => true
+    UnitRunOnUserManager => false
+    UnitManagerUnclaimed { unit: _ } => false
+  }
+}
+
+fn attempt_unit_manager(unit: NonEmptyStr) -> UnitManagerStanding {
+  occurrence_unit_manager_standing(unit: unit as String)
 }
 
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {

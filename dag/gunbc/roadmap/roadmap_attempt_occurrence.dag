@@ -84,6 +84,36 @@ data occurrence_attempt_unit_prefix: String = "gunbc-attempt-"
 
 data occurrence_supervisor_unit_prefix: String = "gunbc-supervisor-"
 
+// WHICH SYSTEMD MANAGER RUNS A GUNBC UNIT, declared once and read by every route that asks. Which manager
+// a not-found reading came from is part of the holder's identity, so the rule may not be spelled twice --
+// and it is read from the launchers rather than asserted: the attempt units are minted by
+// gunbc.roadmap.attempt_system_unit_launch, which goes through systemd-run on the SYSTEM manager (its own
+// refusal carrier spells it, "systemd-run system transient refused"), while every other gunbc work unit is
+// minted through the user-work builders of gunbc.compute.unit_bounds -- compute through
+// gunbc_user_work_wait_command, and reviewer, auditor, supervisor and obligation through
+// gunbc_user_work_transient_command -- which address the launching user's manager. The obligation prefix
+// covers both obligation name shapes (gunbc-obligation-attempt-<node>-<key> and
+// gunbc-obligation-<instance>-<kind>). A prefix in neither list is NOT a gunbc unit, and that is an answer
+// with a carrier, not a default to fall through to.
+data occurrence_system_manager_unit_prefixes: List<String> = ["gunbc-attempt-"]
+
+data occurrence_user_manager_unit_prefixes: List<String> = ["gunbc-compute-", "gunbc-review-", "gunbc-audit-", "gunbc-supervisor-", "gunbc-obligation-"]
+
+type UnitManagerStanding
+  = UnitRunOnSystemManager
+  | UnitRunOnUserManager
+  | UnitManagerUnclaimed { unit: String }
+
+fn occurrence_unit_manager_standing(unit: String) -> UnitManagerStanding {
+  if any(occurrence_system_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
+    UnitRunOnSystemManager
+  } else if any(occurrence_user_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
+    UnitRunOnUserManager
+  } else {
+    UnitManagerUnclaimed { unit: unit }
+  }
+}
+
 fn occurrence_hex16(s: String) -> Bool {
   string_length(s: s) == 16
     && all(chars(text: s), c => base16_is_lower_digit_code_point(cp: c))
