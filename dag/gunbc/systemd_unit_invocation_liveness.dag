@@ -319,5 +319,54 @@ fn unit_reboot_holder_liveness(
             }
         }
       }
+      else if (o.invocation_id as String) != (recorded.invocation_id as String) { HolderObservedDead { evidence: "the holder's unit is observed on the same boot with another InvocationID; the recorded start is gone" as NonEmptyStr } }
+      else { HolderObservedLive { evidence: "manager, boot and InvocationID of the holder's unit still match the recorded run" as NonEmptyStr } }
   }
+}
+
+// PERSISTED FORM of a run (the workspace actor record stores it in one field): manager|boot|btime|invocation.
+// A text that is not exactly that, including a pre-carrier bare InvocationID, decodes to Absent: a recorded run
+// that cannot be read back is never guessed at.
+fn unit_run_wire(run: UnitRunIdentity) -> String {
+  join([systemd_manager_wire(manager: run.manager), run.boot_id as String, concat("", run.boot_started_at), run.invocation_id as String], "|")
+}
+
+fn unit_run_of_wire(wire: String) -> UnitRunIdentity? {
+  let parts = split(s: wire, delimiter: "|")
+  if list_length(items: parts) != 4 { none }
+  else { match list_at_optional(xs: parts, index: 0) {
+    Absent => none
+    Present { value: m } => match unit_run_manager_of_wire(text: m) {
+      Absent => none
+      Present { value: mgr } => match list_at_optional(xs: parts, index: 1) {
+        Absent => none
+        Present { value: b } => match kernel_boot_id_of(text: b) {
+          Absent => none
+          Present { value: boot } => match list_at_optional(xs: parts, index: 2) {
+            Absent => none
+            Present { value: t } => match parse_int(s: t) {
+              Absent => none
+              Present { value: ts } => match list_at_optional(xs: parts, index: 3) {
+                Absent => none
+                Present { value: i } => match systemd_invocation_id_of(text: i) {
+                  Absent => none
+                  Present { value: inv } => Present { value: UnitRunIdentity { manager: mgr, boot_id: boot, boot_started_at: ts, invocation_id: inv } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } }
+}
+
+fn unit_run_manager_of_wire(text: String) -> SystemdManagerInstance? {
+  if text == "system" { Present { value: SystemManager } }
+  else if starts_with(s: text, prefix: "user") {
+    match parse_int(s: substring(s: text, start: 4, end: string_length(s: text))) {
+      Present { value: u } => Present { value: UserManager { uid: u } }
+      Absent => none
+    }
+  } else { none }
 }
