@@ -1,14 +1,15 @@
 module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
 
+import std.optional { Present, Absent }
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_stalled_dir, }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
-  attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
+  SpoolListed, SpoolListingUnreadable,
 }
 import gunbc.durable_handoff_host {
-  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
 }
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
 import gunbc.roadmap.spool_stall { SpoolStallStep, SpoolStallMove, SpoolStallClaim, SpoolStallListRequests, spool_stall_step_text, spool_stall_step_of_text, SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
@@ -31,15 +32,16 @@ import gunbc.worker_lifecycle { WorkerProcessExited }
 // decodes and every move are the real ones; only starting a unit in a user manager is supplied, by a
 // hand-off that answers Started and names the unit it would have started. Enrolled on the required
 // floor's local-repo wet lane with the temp-directory write named in gunbc.ci.ci_layer_roots.
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, spool_queue_list, SpoolKind }
 
 fn fresh_spool(tag: String) -> String {
   let root = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_exit_spool_", tag, ".XXXXXX"], "")).path
-  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", attempt_exit_inbox_dir(instance_root: root), attempt_exit_queued_dir(instance_root: root), attempt_exit_running_dir(instance_root: root), attempt_exit_done_dir(instance_root: root), attempt_exit_refused_dir(instance_root: root)]), workdir: "/")
+  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff), spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed), spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused)]), workdir: "/")
   root
 }
 
 fn record(root: String, name: String) -> Bool {
-  match belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", join([attempt_exit_inbox_dir(instance_root: root), "/", name], "")]), workdir: "/") {
+  match belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), "/", name], "")]), workdir: "/") {
     ExecOk { stdout: _ } => true
     ExecFailed { program: _, exit_code: _, stderr: _ } => false
     ExecRefused { program: _, reason: _ } => false
@@ -47,16 +49,16 @@ fn record(root: String, name: String) -> Bool {
 }
 
 fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
-  match attempt_exit_stage_list(instance_root: root, stage: if stage_is_queued { AttemptExitQueued } else { AttemptExitInbox }) {
-    AttemptExitStageNames { names } => names
-    AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]
+  match attempt_exit_stage_list(instance_root: root, stage: if stage_is_queued { RoleHandedOff } else { RolePending }) {
+    SpoolListed { names } => names
+    SpoolListingUnreadable { reason: _ } => ["<unreadable>"]
   }
 }
 
-fn names_at(root: String, stage: HostSpoolStage) -> List<String> {
-  match attempt_exit_stage_list(instance_root: root, stage: stage) {
-    AttemptExitStageNames { names } => names
-    AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]
+fn names_at(root: String, stage: SpoolRole) -> List<String> {
+  match spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: stage) {
+    SpoolListed { names } => names
+    SpoolListingUnreadable { reason: _ } => ["<unreadable>"]
   }
 }
 
@@ -174,13 +176,13 @@ test fn an_exit_after_the_final_observation_stays_queued_until_a_later_runs_clai
   let d2 = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
   let unsettled = belt_exit_entries_settle_at(root: root, claimed: claim)
   let after_first_run = claim == [worker_exit]
-    && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
-    && names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit]
-    && count(names_at(root: root, stage: AttemptExitRunning)) == 0
+    && names_at(root: root, stage: RoleDone) == [worker_exit]
+    && names_at(root: root, stage: RoleHandedOff) == [reviewer_exit]
+    && count(names_at(root: root, stage: RoleClaimed)) == 0
   let next_claim = claimed_of(root: root)
   let unsettled_next = belt_exit_entries_settle_at(root: root, claimed: next_claim)
   first && second && count(unsettled) == 0 && after_first_run && next_claim == [reviewer_exit] && count(unsettled_next) == 0
-    && count(names_at(root: root, stage: AttemptExitQueued)) == 0 && count(names_at(root: root, stage: AttemptExitDone)) == 2
+    && count(names_at(root: root, stage: RoleHandedOff)) == 0 && count(names_at(root: root, stage: RoleDone)) == 2
 }
 
 // CUT B -- an exit that arrives AFTER SETTLEMENT BUT BEFORE THE UNIT EXITS is handed to a unit that is
@@ -194,13 +196,13 @@ test fn an_exit_after_settlement_is_swept_to_a_new_run_once_the_unit_is_gone() -
   let unsettled = belt_exit_entries_settle_at(root: root, claimed: claimed_of(root: root))
   let late = record(root: root, name: reviewer_exit)
   let while_held = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
-  let still_queued = names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit] && !(names_at(root: root, stage: AttemptExitDone) == [worker_exit, reviewer_exit])
+  let still_queued = names_at(root: root, stage: RoleHandedOff) == [reviewer_exit] && !(names_at(root: root, stage: RoleDone) == [worker_exit, reviewer_exit])
   let unit_gone = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let new_run_claim = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: new_run_claim)
   first && late && count(unsettled) == 0 && still_queued && sweep_started_for_attempt(drained: unit_gone)
-    && new_run_claim == [reviewer_exit] && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
-    && count(names_at(root: root, stage: AttemptExitDone)) == 2
+    && new_run_claim == [reviewer_exit] && count(settled) == 0 && count(names_at(root: root, stage: RoleHandedOff)) == 0
+    && count(names_at(root: root, stage: RoleDone)) == 2
 }
 
 // CUT C -- THE UNIT OR THE HOST IS GONE WHILE AN ENTRY IS QUEUED. The drain runs with an EMPTY inbox, the
@@ -214,7 +216,7 @@ test fn a_queued_exit_needs_no_new_event_to_reach_done_under_a_runs_claim() -> B
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
   first && sweep_started_for_attempt(drained: sweep_only) && adopted == [worker_exit]
-    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0 && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
+    && count(settled) == 0 && count(names_at(root: root, stage: RoleHandedOff)) == 0 && names_at(root: root, stage: RoleDone) == [worker_exit]
 }
 
 // RED (a) -- A LONE ORPHANED CLAIM, NO OTHER EVENT (bold-bee-114, 2026-10-09). The entry was queued, a run
@@ -226,12 +228,12 @@ test fn a_lone_orphaned_claim_is_recovered_by_the_drain_alone() -> Bool {
   let first = record(root: root, name: worker_exit)
   let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let dead_run_claim = claimed_of(root: root)
-  let stranded = names_at(root: root, stage: AttemptExitRunning) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+  let stranded = names_at(root: root, stage: RoleClaimed) == [worker_exit] && count(names_at(root: root, stage: RolePending)) == 0 && count(names_at(root: root, stage: RoleHandedOff)) == 0
   let boot = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
   first && dead_run_claim == [worker_exit] && stranded && sweep_started_for_attempt(drained: boot) && adopted == [worker_exit]
-    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0 && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
+    && count(settled) == 0 && count(names_at(root: root, stage: RoleClaimed)) == 0 && names_at(root: root, stage: RoleDone) == [worker_exit]
 }
 
 // A claim whose unit is LIVE is not an orphan: the drain leaves it in running and starts nothing.
@@ -241,7 +243,7 @@ test fn a_claim_held_by_a_live_unit_is_not_reclaimed() -> Bool {
   let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let claimed = claimed_of(root: root)
   let again = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
-  first && claimed == [worker_exit] && names_at(root: root, stage: AttemptExitRunning) == [worker_exit] && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+  first && claimed == [worker_exit] && names_at(root: root, stage: RoleClaimed) == [worker_exit] && count(names_at(root: root, stage: RoleHandedOff)) == 0
 }
 
 data obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789abcdef0123456789abcdef+timeout+killed+TERM"
@@ -254,7 +256,7 @@ test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -
   let root = fresh_spool(tag: "orphan-b")
   let inst = srv1_lab_dashboard_instance()
   let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole, record_owner: inst.directory_owner) {
-    AttemptExitHookRendered { exec_line } => string_contains(s: exec_line as String, pattern: "+obligation+") && string_contains(s: exec_line as String, pattern: attempt_exit_inbox_dir(instance_root: root))
+    AttemptExitHookRendered { exec_line } => string_contains(s: exec_line as String, pattern: "+obligation+") && string_contains(s: exec_line as String, pattern: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending))
     AttemptExitHookRefused { reason: _ } => false
   }
   let first = record(root: root, name: worker_exit)
@@ -262,13 +264,13 @@ test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -
   let dead_run_claim = claimed_of(root: root)
   let hook = record(root: root, name: obligation_exit)
   let while_stopping = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
-  let kept = names_at(root: root, stage: AttemptExitInbox) == [obligation_exit] && names_at(root: root, stage: AttemptExitRunning) == [worker_exit]
+  let kept = names_at(root: root, stage: RolePending) == [obligation_exit] && names_at(root: root, stage: RoleClaimed) == [worker_exit]
   let after_exit = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
   hook_renders && first && hook && dead_run_claim == [worker_exit] && kept && sweep_started_for_attempt(drained: after_exit) && adopted == [worker_exit]
-    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0
-    && any(names_at(root: root, stage: AttemptExitDone), e => e == worker_exit) && any(names_at(root: root, stage: AttemptExitDone), e => e == obligation_exit)
+    && count(settled) == 0 && count(names_at(root: root, stage: RolePending)) == 0 && count(names_at(root: root, stage: RoleClaimed)) == 0
+    && any(names_at(root: root, stage: RoleDone), e => e == worker_exit) && any(names_at(root: root, stage: RoleDone), e => e == obligation_exit)
 }
 
 // A SETTLED RUN'S HOOK ENTRY STARTS NOTHING (the loop guard): running is empty, so consuming the entry
@@ -281,7 +283,7 @@ test fn a_settled_runs_hook_entry_is_consumed_and_starts_nothing() -> Bool {
     BeltExitDrained { entries, launch } => count(entries) == 0 && launch == none
     BeltExitDrainRefused { reason: _ } => false
   }
-  hook && quiet && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && names_at(root: root, stage: AttemptExitDone) == [obligation_exit]
+  hook && quiet && count(names_at(root: root, stage: RolePending)) == 0 && names_at(root: root, stage: RoleDone) == [obligation_exit]
 }
 
 // ── CLAIM FIRST (a move the drain's principal cannot make leaves no effect to repeat) ───────────────
@@ -292,16 +294,16 @@ test fn a_settled_runs_hook_entry_is_consumed_and_starts_nothing() -> Bool {
 // one: each call leaves one directory under `done`, so the count of calls is the count of directories.
 
 fn counting_enqueue(root: String, node_id: String, attempt_key: String) -> BeltObligationEnqueue {
-  let marked = shell.Mktemp.DirWithTemplate(template: join([attempt_exit_done_dir(instance_root: root), "/call.XXXXXX"], "")).path
+  let marked = shell.Mktemp.DirWithTemplate(template: join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), "/call.XXXXXX"], "")).path
   handed(node_id: node_id, attempt_key: attempt_key)
 }
 
-fn refusing_move_of(entry: String, root: String, name: String, from: HostSpoolStage, to: HostSpoolStage) -> String? {
+fn refusing_move_of(entry: String, root: String, name: String, from: SpoolRole, to: SpoolRole) -> String? {
   if name == entry { Present { value: "mv exited 1: mv: cannot move: Permission denied" } } else { belt_exit_entry_move_at(root: root, entry: name, from: from, to: to) }
 }
 
 fn calls_recorded(root: String) -> Int {
-  count(names_at(root: root, stage: AttemptExitDone))
+  count(names_at(root: root, stage: RoleDone))
 }
 
 fn unmovable_pass(root: String) -> BeltExitDrain {
@@ -315,7 +317,7 @@ fn unmovable_pass(root: String) -> BeltExitDrain {
 }
 
 fn counting_launch(root: String) -> BeltObligationEnqueue {
-  let marked = shell.Mktemp.DirWithTemplate(template: join([attempt_exit_done_dir(instance_root: root), "/call.XXXXXX"], "")).path
+  let marked = shell.Mktemp.DirWithTemplate(template: join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), "/call.XXXXXX"], "")).path
   launched()
 }
 
@@ -354,7 +356,7 @@ test fn an_unmovable_entry_does_not_hold_a_movable_sibling() -> Bool {
   let root = fresh_spool(tag: "sibling")
   let wrote = record(root: root, name: worker_exit) && record(root: root, name: reviewer_exit)
   let pass = unmovable_pass(root: root)
-  wrote && calls_recorded(root: root) == 1 && names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit] && names_in(root: root, stage_is_queued: false) == [worker_exit]
+  wrote && calls_recorded(root: root) == 1 && names_at(root: root, stage: RoleHandedOff) == [reviewer_exit] && names_in(root: root, stage_is_queued: false) == [worker_exit]
 }
 
 // THE LINE STOP. The verdict is the drain's own: this pass claimed nothing and at least one entry was
@@ -418,7 +420,7 @@ test fn release_refuses_while_an_entry_is_unmovable_then_clears_the_record_and_h
     && match still { BeltExitStallStillUnmovable { entries } => count(entries) == 1 _ => false }
     && match freed { BeltExitStallReleased { reclaimed: _ } => true _ => false }
     && spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) == SpoolStallNone
-    && names_at(root: root, stage: AttemptExitQueued) == [worker_exit]
+    && names_at(root: root, stage: RoleHandedOff) == [worker_exit]
     && count(names_in(root: root, stage_is_queued: false)) == 0
 }
 
@@ -457,7 +459,7 @@ test fn the_stall_record_round_trips_any_cause_and_a_corrupt_record_is_unreadabl
 data clear_entry: String = "n+a+worker+inv+exit-code+exited+200"
 
 fn held_inbox() -> SpoolStallRead {
-  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitQueued }, cause: "mv: Permission denied" }] }
+  SpoolStallHeld { entries: [SpoolStallEntry { entry: clear_entry, step: SpoolStallMove { from: RolePending, to: RoleHandedOff }, cause: "mv: Permission denied" }] }
 }
 
 fn target_refused(t: BeltExitClearTarget) -> Bool {
@@ -480,8 +482,8 @@ test fn the_clear_target_is_only_an_entry_named_in_the_current_stall_record_with
   let root = "/srv/inst"
   let located = match belt_exit_stall_clear_target(root: root, held: held_inbox(), entry: clear_entry) {
     BeltExitClearTargeted { from_path, to_path } =>
-      from_path == join([attempt_exit_inbox_dir(instance_root: root), "/", clear_entry], "")
-        && to_path == join([attempt_exit_queued_dir(instance_root: root), "/", clear_entry], "")
+      from_path == join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), "/", clear_entry], "")
+        && to_path == join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff), "/", clear_entry], "")
     BeltExitClearTargetRefused { reason: _ } => false
   }
   located
@@ -520,17 +522,17 @@ test fn the_real_clear_re_materializes_the_entry_in_queued_idempotently_and_refu
   let recorded = belt_exit_stall_failures(root: root, d: unmovable_pass(root: root))
   let other = BeltExitStallObserved { value: "nobody-else" }
   let report = belt_exit_stall_analyze_at(root: root, whoami: other)
-  let inbox_entry = join([attempt_exit_inbox_dir(instance_root: root), "/", worker_exit], "")
+  let inbox_entry = join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), "/", worker_exit], "")
   let filled = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", join([inbox_entry, "/child"], "")]), workdir: "/")
   let refused_full = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
-  let untouched = names_at(root: root, stage: AttemptExitInbox) == [worker_exit] && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+  let untouched = names_at(root: root, stage: RolePending) == [worker_exit] && count(names_at(root: root, stage: RoleHandedOff)) == 0
   let emptied = belt_exec(cmd: host_exec_argv(program: "rmdir", args: ["--", join([inbox_entry, "/child"], "")]), workdir: "/")
   let refused_absent = belt_exit_stall_clear_at(root: root, entry: "not-recorded", whoami: other)
   let first = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
-  let landed = names_at(root: root, stage: AttemptExitQueued) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0
+  let landed = names_at(root: root, stage: RoleHandedOff) == [worker_exit] && count(names_at(root: root, stage: RolePending)) == 0
   let reborn = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", inbox_entry]), workdir: "/")
   let rerun = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
-  let idempotent = names_at(root: root, stage: AttemptExitQueued) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0
+  let idempotent = names_at(root: root, stage: RoleHandedOff) == [worker_exit] && count(names_at(root: root, stage: RolePending)) == 0
   let swapped = belt_exec(cmd: host_exec_argv(program: "ln", args: ["-s", "/tmp", inbox_entry]), workdir: "/")
   let linked = belt_exit_stall_clear_at(root: root, entry: worker_exit, whoami: other)
   wrote && count(recorded) == 1
@@ -546,10 +548,17 @@ test fn the_real_clear_re_materializes_the_entry_in_queued_idempotently_and_refu
 // "inbox -> queued"), each decodes to the typed step that renders back to it, and an unknown spelling is refused
 // rather than guessed. -- quick-bee-65
 test fn a_recorded_step_decodes_once_to_a_typed_step_and_an_unknown_spelling_is_refused() -> Bool {
-  let moved = match spool_stall_step_of_text(text: "inbox -> queued") { Present { value: SpoolStallMove { from, to } } => from == AttemptExitInbox && to == AttemptExitQueued _ => false }
+  let moved = match spool_stall_step_of_text(text: "inbox -> queued") { Present { value: SpoolStallMove { from, to } } => from == RolePending && to == RoleHandedOff _ => false }
   let claim = match spool_stall_step_of_text(text: "claim") { Present { value: SpoolStallClaim } => true _ => false }
   let listed = match spool_stall_step_of_text(text: "list-requests") { Present { value: SpoolStallListRequests } => true _ => false }
-  let renders = spool_stall_step_text(step: SpoolStallMove { from: AttemptExitRunning, to: AttemptExitQueued }) == "running -> queued"
+  let renders = spool_stall_step_text(step: SpoolStallMove { from: RoleClaimed, to: RoleHandedOff }) == "running -> queued"
   let refused = match spool_stall_step_of_text(text: "inbox => queued") { Absent => true _ => false }
   moved && claim && listed && renders && refused && match spool_stall_step_of_text(text: "somewhere else") { Absent => true _ => false }
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
 }

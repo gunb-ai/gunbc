@@ -89,7 +89,6 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused, attempt_system_unit_launch_argv_refused_detail,
 }
 import extdeps.systemd.service_exec { exec_full_privileges_prefix }
-import gunbc.host.host_layout { attempt_unit_spool_request_dir }
 import gunbc.cli_invoke {
   NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
 }
@@ -102,6 +101,7 @@ import gunbc.auth.authorization_pattern_selection {
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
+import gunbc.spool_queue { SpoolAttemptUnit, SpoolRole, RolePending, spool_open, spool_role_path, SpoolKind }
 
 fn claim_start_facts(
   instance: HostDashboardInstance,
@@ -279,7 +279,7 @@ fn apply_installs_the_drain_units(spec: DeploymentSpec, own: HostDashboardInstan
   let text = full_install_apply_text(spec: spec)
   string_contains(s: text, pattern: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String)
     && string_contains(s: text, pattern: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String)
-    && string_contains(s: text, pattern: join(["DirectoryNotEmpty=", attempt_unit_spool_request_dir(instance_root: own.instance_root as String)], ""))
+    && string_contains(s: text, pattern: join(["DirectoryNotEmpty=", spool_witness_dir(kind: SpoolAttemptUnit, instance_root: own.instance_root as String, role: RolePending)], ""))
     && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
 }
 
@@ -1231,3 +1231,9 @@ test fn the_credstore_copy_stages_copies_as_the_user_installs_as_root_and_remove
     && rmf == ["rm", "-f", staged] && rmd == ["rmdir", stage as String]
 }
 
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
+}

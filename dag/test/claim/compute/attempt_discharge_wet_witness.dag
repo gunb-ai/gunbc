@@ -1,5 +1,6 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
+import std.optional { Present, Absent }
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
@@ -32,8 +33,8 @@ import gunbc.compute.work_provider_local {
   compute_open_attempt_minted, ComputeRecoverSeats, RecoverSeatsFound, RecoverSeatsUnreadable, compute_recover_seats, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
-  attempt_exit_spool_stage_dir,
+  RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
+  
 }
 import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing }
 import gunbc.compute.compute_seat_ensure {
@@ -58,6 +59,7 @@ import gunbc.compute.compute_seat_ensure {
 //
 // THIS FILE RUNS ON THE LOCAL-REPO WET LANE: rows in local_repo_wet_terminal, floor_route_gap (chunk
 // 21, the identities that reach fresh_root()) and ci_layer_roots witness_exclusion_frontier.
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, spool_open, spool_role_path, SpoolKind }
 
 data granted_kib: Int = 1048576
 data supplied_host: Kibibyte = kibibyte(count: 67108864)
@@ -128,19 +130,19 @@ fn made(path: String) -> Bool {
 // A REAL EXIT-SPOOL ENTRY, written the way the spool writes it: the entry's directory NAME is the record
 // (roadmap_attempt_exit_spool's own seven-part codec), placed in a stage directory.
 fn exit_recorded(root: String, key: String) -> Bool {
-  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
-    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
+  made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused))
+    && made(path: join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
 }
 
 fn spool_unrecorded(root: String) -> Bool {
-  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone))
-    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
+  made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleHandedOff))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone))
+    && made(path: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleRefused))
 }
 
 fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
@@ -1001,4 +1003,11 @@ fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_at
 
 fn absent_of(root: String) -> String {
   join([root, "/absent"], "")
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
 }

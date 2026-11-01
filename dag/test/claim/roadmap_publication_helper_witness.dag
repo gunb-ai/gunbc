@@ -1,5 +1,6 @@
 module test.claim.roadmap_publication_helper_witness
 
+import std.optional { Present, Absent }
 import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemOtherFailure,
@@ -38,9 +39,9 @@ import gunbc.roadmap.roadmap_publish_observe {
   PublicationCredentialSource, CredentialSourceAbsent,
 }
 import gunbc.host.host_layout {
-  publication_request_dir,
+  
   publication_answer_dir,
-  publication_refused_dir,
+  
   publication_bare_mirror_path,
 }
 import gunbc.live_deploy.emit {
@@ -78,6 +79,7 @@ import extdeps.systemd.unit_file { systemd_unit_file_lines }
 // its mode is. Those are the operator's half, declared in gunbc.live_deploy.spec
 // deployment_credential_env_path, and asserting them from a fixture would be the authored-versus-
 // executed collapse this repository keeps paying for.
+import gunbc.spool_queue { SpoolPublication, SpoolRole, RolePending, RoleRefused, spool_open, spool_role_path, SpoolKind }
 
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()
@@ -351,9 +353,9 @@ test fn a_quarantine_that_fails_is_its_own_outcome_and_stops_the_line() -> Bool 
 // publication principal holds. Asserting the three are pairwise distinct is what keeps a later
 // author from resolving the quarantine into the answer directory, where the belt would read it.
 test fn the_quarantine_is_a_third_directory_and_not_the_answer_directory() -> Bool {
-  let requests = publication_request_dir(instance_root: "/opt/gunbc")
+  let requests = spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc", role: RolePending)
   let answers = publication_answer_dir(instance_root: "/opt/gunbc")
-  let refused = publication_refused_dir(instance_root: "/opt/gunbc")
+  let refused = spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc", role: RoleRefused)
   refused != requests && refused != answers && requests != answers
 }
 
@@ -471,7 +473,7 @@ test fn the_publication_unit_carries_no_spawn_environment() -> Bool {
 // distinctness is a property the emitter and the reader must agree on rather than a detail.
 
 test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Bool {
-  publication_request_dir(instance_root: "/opt/gunbc")
+  spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc", role: RolePending)
     != publication_answer_dir(instance_root: "/opt/gunbc")
   && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
     != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
@@ -479,14 +481,14 @@ test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Boo
 }
 
 test fn two_instances_do_not_share_a_spool() -> Bool {
-  publication_request_dir(instance_root: "/opt/gunbc")
-    != publication_request_dir(instance_root: "/opt/gunbc-lab")
+  spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc", role: RolePending)
+    != spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc-lab", role: RolePending)
 }
 
 test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool {
   let spec = live_spec()
   let lines = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
-  let request_dir = publication_request_dir(instance_root: spec.service.instance_root as String)
+  let request_dir = spool_witness_dir(kind: SpoolPublication, instance_root: spec.service.instance_root as String, role: RolePending)
   any(lines, l => l == join(["DirectoryNotEmpty=", request_dir], ""))
     && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
     && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
@@ -519,4 +521,11 @@ test fn a_second_write_of_the_same_publication_request_key_is_refused_not_overwr
     RequestNotEnqueued { detail: d } => string_contains(s: d, pattern: "eacces")
     _ => false
   })
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
 }

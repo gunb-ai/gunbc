@@ -50,13 +50,13 @@ import gunbc.roadmap.attempt_system_unit_launch {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
-  attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_stage_listings, SpoolListed, SpoolListingUnreadable,
   attempt_exit_vendor_pane_entry_name, attempt_exit_spool_prepare,
 }
 import gunbc.host.host_layout {
-  attempt_exit_inbox_dir, attempt_exit_done_dir,
-  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
+  
+  attempt_unit_spool_staging_dir, 
+  attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallClaim, SpoolStallListRequests, spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
@@ -65,6 +65,7 @@ import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouchWroteReading, SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
 }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, SpoolKind }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -512,7 +513,7 @@ fn exit_success_cli() -> ProcessExit {
 }
 
 fn launcher_exit_record_names(instance: HostDashboardInstance) -> List<String> {
-  let inbox = attempt_exit_inbox_dir(instance_root: instance.instance_root as String)
+  let inbox = spool_witness_dir(kind: SpoolAttemptExit, instance_root: instance.instance_root as String, role: RolePending)
   let listing = Filesystem.List(path: inbox)
   let observed = filesystem_listing_observation(
     directory: inbox,
@@ -669,8 +670,8 @@ fn wet_record_names(instance_root: String, unit_key: String) -> WetRecordNames {
       WetRecordNamesUnreadable => WetRecordNamesUnreadable
       WetRecordNamesListed { names: so_far } =>
         match listing {
-          AttemptExitStageUnreadable { reason: _ } => WetRecordNamesUnreadable
-          AttemptExitStageNames { names: names } =>
+          SpoolListingUnreadable { reason: _ } => WetRecordNamesUnreadable
+          SpoolListed { names: names } =>
             WetRecordNamesListed { names: concat(so_far, filter(names, n => string_contains(s: n, pattern: prefix))) }
         }
     },
@@ -736,7 +737,7 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
   } else {
     let root = tmp.path as String
     attempt_exit_spool_prepare(instance_root: root)
-      && wet_plant_record(root: root, stage_dir: attempt_exit_done_dir(instance_root: root), status: 1)
+      && wet_plant_record(root: root, stage_dir: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), status: 1)
       && match wet_record_names(instance_root: root, unit_key: "bin") {
         WetRecordNamesUnreadable => false
         WetRecordNamesListed { names: seen } =>
@@ -744,7 +745,7 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
             SandboxTouchUnrunnable => true
             SandboxTouchRan { exit_code: _ } => false
           })
-            && wet_plant_record(root: root, stage_dir: attempt_exit_inbox_dir(instance_root: root), status: 0)
+            && wet_plant_record(root: root, stage_dir: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), status: 0)
             && (match wet_inner_exit_status_poll(instance_root: root, unit_key: "bin", seen: seen, remaining: 0) {
               SandboxTouchUnrunnable => false
               SandboxTouchRan { exit_code } => exit_code == 0
@@ -785,8 +786,8 @@ fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
   fold(
     [
       attempt_unit_spool_staging_dir(instance_root: instance_root),
-      attempt_unit_spool_request_dir(instance_root: instance_root),
-      attempt_unit_spool_claimed_dir(instance_root: instance_root),
+      spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RolePending),
+      spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RoleClaimed),
       attempt_unit_spool_answer_dir(instance_root: instance_root),
     ],
     init: true,
@@ -1205,5 +1206,12 @@ fn wet_run_nonce() -> String {
     ""
   } else {
     fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  }
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
   }
 }

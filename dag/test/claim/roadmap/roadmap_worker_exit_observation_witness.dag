@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
-  attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_record_from_listings, SpoolListed, SpoolListingUnreadable,
 }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown }
 import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle }
@@ -18,6 +18,7 @@ import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle }
 // 2026-09-05 RemainAfterExit is reversed). Each claim supplies the manager's answer and the spool's
 // listings and runs the production decision and the production WorkerProcessEvidence projection; the
 // wet witness beside this file runs the real spool read.
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable }
 
 data unit: NonEmptyStr = "gunbc-attempt-n-1-k1.service" as NonEmptyStr
 
@@ -26,7 +27,7 @@ fn evidence(loaded: AttemptUnitObservation, names: List<String>, start_recorded:
     observation: attempt_worker_unit_observation_of(
       unit: unit,
       loaded: loaded,
-      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: names }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]),
+      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: names }, SpoolListed { names: [] }, SpoolListed { names: [] }]),
       start: if start_recorded { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted },
     ),
     unit: unit,
@@ -71,15 +72,15 @@ test fn a_loaded_unit_is_read_from_the_manager() -> Bool {
 // before the record existed); a gone unit with no record keeps cause-unknown, the arm that still frees
 // only after the launch deadline; an unreadable spool frees nothing.
 test fn settlement_reads_the_record_and_keeps_cause_unknown_without_one() -> Bool {
-  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0"] }])) {
+  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: ["n-1+k1+worker+inv+success+exited+0"] }])) {
     UnitTerminatedSuccess { detail: _ } => true
     _ => false
   }
-  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }])) {
+  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }])) {
     UnitTerminatedCauseUnknown { detail: _ } => true
     _ => false
   }
-  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageUnreadable { reason: "EACCES" }])) {
+  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListingUnreadable { reason: "EACCES" }])) {
     UnitLifecycleUnknown { detail: _ } => true
     _ => false
   }
