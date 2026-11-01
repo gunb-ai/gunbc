@@ -903,6 +903,20 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// A record field the checker declares `T?` (CardOptional) holds the declared Optional<T>:
+/// Null (the host's "no value") becomes Absent and a bare value Present, through the one
+/// constructors. An already-built Optional variant is kept. A non-optional field is untouched.
+fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) -> Value {
+    if child.return_cardinality != Cardinality::CardOptional {
+        return value;
+    }
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
@@ -15312,8 +15326,8 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => str_value(s),
-        None => Value::Null,
+        Some(s) => optional_present(str_value(s), ctx),
+        None => optional_absent(ctx),
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -18520,7 +18534,10 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
         if short == "spawn" {
             continue;
         }
-        fields.push((ctx.sym(&field_name), Value::Null));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, Value::Null, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -18900,7 +18917,10 @@ fn map_shell_outputs(
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
         {
-            fields.push((ctx.sym(&field_name), Value::Null));
+            fields.push((
+                ctx.sym(&field_name),
+                declared_optional_field(child, Value::Null, ctx),
+            ));
             continue;
         }
         let value = match from_key.as_deref() {
@@ -18929,11 +18949,14 @@ fn map_shell_outputs(
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
-                fields.push((ctx.sym(&field_name), v));
+                fields.push((ctx.sym(&field_name), declared_optional_field(child, v, ctx)));
                 continue;
             }
         }
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20181,7 +20204,10 @@ fn map_file_outputs(
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20803,7 +20829,7 @@ fn attach_transport_outcome(
                     .map(|field| {
                         (
                             ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
+                            declared_optional_field(field, Value::Null, ctx),
                         )
                     })
                     .collect()
@@ -21418,7 +21444,10 @@ fn map_response_to_value_json(
                 None => Value::Null,
             },
         };
-        fields.push((ctx.sym(&field_name), val));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, val, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -23849,8 +23878,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
-                    Ok(n) => Ok(Some(Value::Int(n))),
-                    Err(_) => Ok(Some(Value::Null)),
+                    Ok(n) => Ok(Some(optional_present(Value::Int(n), $ctx))),
+                    Err(_) => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -24004,8 +24033,8 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
                 ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
+                    Some(tag) => optional_present(str_value(tag), $ctx),
+                    None => optional_absent($ctx),
                 }))
             },
 
@@ -24030,8 +24059,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
                 let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
                 match v1_rt::json_unescape_checked(&s) {
-                    Some(out) => Ok(Some(str_value(out))),
-                    None => Ok(Some(Value::Null)),
+                    Some(out) => Ok(Some(optional_present(str_value(out), $ctx))),
+                    None => Ok(Some(optional_absent($ctx))),
                 }
             },
 

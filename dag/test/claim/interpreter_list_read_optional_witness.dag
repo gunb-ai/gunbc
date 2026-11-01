@@ -85,3 +85,19 @@ test fn a_none_field_is_absent_and_matches() -> Bool {
 test fn a_present_field_matches_present() -> Bool {
   match ilro_acc_some.bad { Present { value: v } => v == "x"  Absent => false }
 }
+
+// FREE BUILTINS that answer an Optional: Present on success, Absent on failure, never a bare
+// value or host null (the same one constructor as the list reads).
+test fn parse_int_of_digits_is_present() -> Bool {
+  match parse_int(s: "42") { Present { value: n } => n == 42  Absent => false }
+}
+
+test fn parse_int_of_text_is_absent() -> Bool {
+  match parse_int(s: "x") { Present { value: n } => false  Absent => true }
+    && parse_int(s: "x") == Absent
+}
+
+test fn json_unescape_checked_of_plain_text_is_present_and_of_a_bad_escape_absent() -> Bool {
+  (match json_unescape_checked(s: "ab") { Present { value: t } => t == "ab"  Absent => false })
+    && json_unescape_checked(s: "\\q") == Absent
+}
