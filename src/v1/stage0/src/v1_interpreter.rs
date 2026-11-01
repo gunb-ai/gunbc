@@ -4447,6 +4447,51 @@ mod cross_claim_memo_tests {
         assert_eq!(eval("left_none"), eval("right_none"));
     }
 
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (DESIGN §5). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
+    // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
+    // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
+    // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry
+    // in WET mode and dispatched the real effect (the mocked journalctl ran live against srv1's
+    // journal). Host-free by construction: the refusal short-circuits before any transport.
+    #[test]
+    fn hermetic_claim_route_refuses_an_unbound_mocked_effect_without_dispatching() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/claim_run_route.dag".to_string(),
+                content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e) => {
+                let msg = format!("{e}");
+                assert!(
+                    msg.contains("no mock_response"),
+                    "claim route must refuse the unbound mocked effect with the typed NoMockResponse \
+                     refusal; got instead: {msg}"
+                );
+            }
+            Ok(v) => panic!(
+                "the hermetic claim route must REFUSE an unbound mocked effect, never dispatch it; \
+                 it returned: {v:?}"
+            ),
+        }
+    }
+
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
     // were process-canonical, two different first-seen spellings occupied the same ordinal in
     // two frames and compared equal. Keep this direction separate so an always-equal repair
