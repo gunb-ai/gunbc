@@ -76,13 +76,14 @@ import gunbc.generated_artifact {
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
-import gunbc.heal_workflow { heal_workflow }
-import gunbc.heal_publisher_workflow { heal_publisher_workflow }
-import gunbc.drift_watch_workflow { drift_watch_workflow }
+import gunbc.heal_workflow { heal_workflow_of }
+import gunbc.heal_publisher_workflow { heal_publisher_workflow_of }
+import gunbc.drift_watch_workflow { drift_watch_workflow_of }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
 import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
+import gunbc.ci.repository_ci_profile { gunbc_heal_job, gunbc_heal_publisher_job, gunbc_drift_watch_job }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 
 // THE FLEET POOL IDENTITY, PROJECTED FROM THE OFFER, NOT RE-SPELLED. The spec the CI target seam
@@ -145,14 +146,42 @@ type FleetWorkflowCensusOmission {
 // (gunbc.tier_o_artifact_emit tier_o_unadorned_body) — the v2-bootstrap required job, 90 minutes.
 // gunbc.witness.witness_floor_workflow's lanes are the withdrawn v1 floor (gunbc.rung_drop) and emit
 // no committed workflow, so it is not in the emitted population.
+// THE EMITTED POPULATION, READ FROM THE PROFILE. The heal, publisher and drift workflows are obtained by
+// matching this repository's declared rows -- the same match each emitter makes -- rather than from a value
+// that exists whether or not the repository declared the job. A repository with no heal job therefore has
+// no heal row in this census, which is the truth about its committed YAML, rather than a census row about a
+// job whose id, runner and ceiling were invented because nothing declared them.
 fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
-  [
-    FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow },
-    FleetWorkflowCensusRow { artifact: HealWorkflowYamlArtifact, workflow: heal_workflow },
-    FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: heal_publisher_workflow },
-    FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: drift_watch_workflow },
-    FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow },
-  ]
+  concat(
+    concat(
+      [FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow }],
+      concat(
+        match gunbc_heal_job() {
+          Present { value: job } => [FleetWorkflowCensusRow { artifact: HealWorkflowYamlArtifact, workflow: heal_workflow_of(job: job) }]
+          Absent => []
+        },
+        concat(
+          match gunbc_heal_publisher_job() {
+            Present { value: job } => [
+              FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: heal_publisher_workflow_of(job: job) }
+            ]
+            Absent => []
+          },
+          match gunbc_drift_watch_job() {
+            Present { value: row } =>
+              match row.cron {
+                Present { value: cron } => [
+                  FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: drift_watch_workflow_of(row: row, cron: cron) }
+                ]
+                Absent => []
+              }
+            Absent => []
+          }
+        )
+      )
+    ),
+    [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow }]
+  )
 }
 
 fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {

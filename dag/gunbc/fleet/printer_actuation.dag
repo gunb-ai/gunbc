@@ -6,7 +6,8 @@ import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,Json
 
 import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
 import extdeps.tools.hostname
-import std.algebra {trim}
+import std.algebra {trim,string_contains}
+import gunbc.fleet.print_record_stores {print_completion_legacy_entry}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import std.types { String, NonEmptyStr, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -24,7 +25,13 @@ import extdeps.shell.exec { ProcessOutputPresent }
 import gunbc.fleet.printer_report { report_using_session }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_start_reconciliation {reconcile_start}
-import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_legacy_entry}
+import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer_state_directory,printer_starts_legacy_scan,PrinterStartsClean,PrinterStartsLegacyEntries,PrinterStartsUnreadable}
+import gunbc.host_state_root {HostStateTree}
+import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
+import gunbc.owned_directory {OwnedDirectoryTarget}
+import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent}
+import gunbc.fleet.print_request {field}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
 import gunbc.fleet.printer_project_delivery {
@@ -136,11 +143,93 @@ fn report_allows_start(text: String) -> Bool {
 // ONE START PER ATTEMPT: the claim is keyed by the attempt, so no second approval of the same attempt
 // (another printer state, another window) can admit another start.
 fn attempt_claim_key(attempt:String) -> NonEmptyStr { concat("printer-attempt-",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:attempt)))) as NonEmptyStr }
-fn start_claim_name(key:NonEmptyStr) -> String { concat(key as String,".claimed") }
-fn start_claim_path(key:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",start_claim_name(key:key)],"") }
+
+// THE START CLAIM STORE, SEALED. One member of the printer-starts parent (gunbc.fleet.printer_workflow_artifact
+// printer_starts), declared once here; the mint, the provisioning row and every path derive from it. A claim is a
+// CAS slot keyed by the attempt claim key, committed create-once (ExpectSlotAbsent), so a second start of the same
+// attempt cannot be admitted by any pass. It is a CAS slot rather than a hold because the claim carries the signed
+// subject the attempt was approved for (printer_start_claim_version reads the credential version back from it); a
+// hold slot holds only an owner. Evidence for the attempt (before-start, after-start, receipt) is written beside the
+// slot under start_claim_evidence_prefix and is never read as a claim.
+type PrinterStartClaimDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data printer_start_claim_slots: PrinterStartClaimDeclaration = PrinterStartClaimDeclaration {
+  member: "claims" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+fn printer_start_claim_path(tree:HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree:tree,member:printer_start_claim_slots.member) }
+
+fn printer_start_claim_directory_target(tree:HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member:printer_start_claim_slots.member as String,path:printer_start_claim_path(tree:tree),mode:printer_start_claim_slots.mode)
+}
+
+type PrinterStartClaims sole_constructor { slots:SlotStore }
+
+type PrinterStartClaimsReading = PrinterStartClaimsReady {store:PrinterStartClaims} | PrinterStartClaimsUnready {detail:String}
+
+// The flat-layout entries that belong to the claim store: a claim (<key>.claimed), the evidence beside it
+// (<key>.claimed.<kind>.json) and batch-state.json, an observation file of a start path deleted in #14945 that
+// nothing reads and is retained here as evidence. A completion record (<key>.claimed.completed.json) is the
+// completion store's.
+fn printer_start_claim_legacy_entry(name:String) -> Bool { (string_contains(s:name,pattern:".claimed") && !print_completion_legacy_entry(name:name) && !start_evidence_legacy_entry(name:name)) || name=="batch-state.json" }
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds a claim-store entry of the flat
+// layout (a claim left there would read as absent here and admit a second start of that attempt).
+fn printer_start_claims(tree:HostStateTree) -> PrinterStartClaimsReading {
+  match printer_starts_legacy_scan(tree:tree,owns:n=>printer_start_claim_legacy_entry(name:n)) {
+    PrinterStartsUnreadable {detail:d}=>PrinterStartClaimsUnready {detail:d}
+    PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+    PrinterStartsClean=>match listed_slot_store(member:printer_start_claim_slots.member as String,root:printer_start_claim_path(tree:tree)) {
+      SlotStoreRefused {detail:d}=>PrinterStartClaimsUnready {detail:d}
+      SlotStoreListed {root:r}=>PrinterStartClaimsReady {store:PrinterStartClaims {slots:file_slot_store(root:r)}}
+    }
+  }
+}
+
+// The evidence files an attempt leaves, named <prefix>.<kind>.json beside its claim slot. The prefix is derived from
+// the sealed store; it names where retained evidence goes, never where a claim is read.
+fn start_claim_evidence_prefix(claims:PrinterStartClaims,key:NonEmptyStr) -> String { join([claims.slots.root as String,"/",key as String,".claimed"],"") }
+
+type PrinterStartClaimWrite = PrinterStartClaimed | PrinterStartClaimRefused {cause:String}
+
+// THE ONE CLAIM, create-once, then read back through the store's own observation: claimed only when the slot reads
+// back carrying exactly the subject that was committed.
+fn printer_start_claim_commit(claims:PrinterStartClaims,key:NonEmptyStr,subject:String) -> PrinterStartClaimWrite {
+  match admit_cas_attempt_for_derived_payload(key:key,expected:ExpectSlotAbsent,proposed:subject as NonEmptyStr) {
+    DerivedPayloadKeyNotSlotAddressable {key:_}=>PrinterStartClaimRefused {cause:"The attempt claim key is not slot addressable"}
+    DerivedPayloadAdmitted {verified:v}=>match slot_commit(store:claims.slots,publication:DefaultAccessCreateOnly,verified:v) {
+      CasCommitted {committed:_}=>match slot_observe(store:claims.slots,key:key) {
+        CasObservedReadable {readable:CasReadablePresent {version:read}}=>if (read.value as String)==subject {PrinterStartClaimed} else {PrinterStartClaimRefused {cause:"The claim read back differently from what was committed"}}
+        CasObservedReadable {readable:CasReadableAbsent}=>PrinterStartClaimRefused {cause:"The claim is absent after its commit"}
+        CasObservedUnreadable {cause:_}=>PrinterStartClaimRefused {cause:"The claim is unreadable after its commit"}
+      }
+      CasPreconditionFailed {expected:_,observed:_}=>PrinterStartClaimRefused {cause:"This attempt's start is already claimed"}
+      CasStoreRefused {cause:_}=>PrinterStartClaimRefused {cause:"The durable claim marker cannot be written"}
+    }
+  }
+}
+
+// Whether the attempt is claimed: unreadable stays none, never absent.
+fn printer_start_claim_listed(claims:PrinterStartClaims,key:NonEmptyStr) -> Bool? {
+  match slot_observe(store:claims.slots,key:key) {
+    CasObservedReadable {readable:CasReadablePresent {version:_}}=>Present {value:true}
+    CasObservedReadable {readable:CasReadableAbsent}=>Present {value:false}
+    CasObservedUnreadable {cause:_}=>none
+  }
+}
+
+// A claimed attempt's credential version is the one its signed subject sealed, read back from the claim.
+fn printer_start_claim_version(claims:PrinterStartClaims,key:NonEmptyStr) -> NonEmptyStr? {
+  match slot_observe(store:claims.slots,key:key) {
+    CasObservedReadable {readable:CasReadablePresent {version:read}}=>match parse_json_document(s:read.value as String) {JsonDocumentParsed {value:v}=>field(v:v,key:"credential_version") JsonDocumentUnreadable {gap:_}=>none}
+    CasObservedReadable {readable:CasReadableAbsent}=>none
+    CasObservedUnreadable {cause:_}=>none
+  }
+}
 
 type ClaimedPrinterStart sole_constructor {
- printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,
 }
 // Only the gate/claim arm above can mint this input. Authentication is not start authority.
 fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
@@ -168,12 +257,12 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
             }
             if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
             match start_print_with_session(session:claim.session, remote_name:remote) {
-              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:"")
+              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:"")
               PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
               PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
-              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:c as String,cleanup_issue:"")
-              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-uncertain",cleanup_issue:c as String)
-              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
+              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
             }
           }
           ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
@@ -190,20 +279,21 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(hold:PrinterExecutionHold,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
+fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
  if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
- let claim_path=start_claim_path(key:attempt_claim_key(attempt:request.attempt as String))
+ let claim_key=attempt_claim_key(attempt:request.attempt as String)
  let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
- if !Filesystem.Write(path:concat(claim_path,".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
+ if !Filesystem.Write(path:concat(start_claim_evidence_prefix(claims:claims,key:claim_key),".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
  let state=match printer_state_generation(text:live_text) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified from the report; nothing uploaded or started")}
  let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String,printer_state:state) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
  if request.subject!=expected.subject || request.escalation_id!=expected.escalation_id {return exit_failure(reason:"The approval was given for other bytes or another printer state; nothing uploaded or started")}
  let now=match approval_instant_now() {Present {value:t}=>t Absent=>return exit_failure(reason:"Approval clock unavailable")}
  let permitted=match authorize(authorization:authorization,request:expected,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
  if !permitted {return exit_failure(reason:"No current approval for this printer start")}
-                    let claim = Filesystem.WriteCreateNew(path: claim_path, content: request.subject)
-                    if !claim.success { exit_failure(reason: "This attempt's start is already claimed or its durable marker cannot be written; do not replay") }
-                    else { print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request}) }
+                    match printer_start_claim_commit(claims:claims,key:claim_key,subject:request.subject) {
+                      PrinterStartClaimRefused {cause:c}=>exit_failure(reason:join([c,"; do not replay"],""))
+                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence})
+                    }
 }
