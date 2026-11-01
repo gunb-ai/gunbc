@@ -1200,9 +1200,18 @@ fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<
 // derive a file for refuses the whole acquisition before any read, and so does an entry whose namespace
 // has no row in the declared layout (gunbc.source_layout_namespaces): the acquirer route used to ask
 // derivability alone, which let a compile ENTER a namespace the storage policy does not declare - the
-// finding named beside ruling gunbc.design_ruling cross_tree_admission_is_namespace_membership. The entry
-// is where an acquisition is charged for its namespace, which is what lets an import edge charge only its
-// target (v2.std.cross_tree.import_model cross_tree_import_admitted).
+// finding named beside ruling gunbc.design_ruling cross_tree_admission_is_namespace_membership.
+//
+// WHY THE MEMBERSHIP ASK SITS HERE AND NOT IN THE IMPORT MODEL. An entry spelling names a module, so its
+// namespace is a namespace and the ask is decidable before any read. The import edge is charged inside
+// v2.std.cross_tree.import_model cross_tree_import_admitted, which this route reaches per PROBE: longest
+// first over the dotted prefixes of a reference (v2.compiler.source_authority reference_next_read_derived),
+// so the first probe of `product.y.projection_same_named_value` has namespace `product.y`, which is a
+// module, not a row. That path therefore SKIPS a rowless candidate rather than refusing it (stated at
+// v2.compiler.source_authority above storage_candidate_unstorable); charging a same-tree DENIAL there would
+// refuse ordinary qualified references, which is what a first attempt at this finding did and what the
+// v2-native-cli leg caught. The module-level fact for a same-tree import is enforced where the module is
+// known: bound_modules_admitted below refuses a module whose namespace has no row, naming the namespace.
 type AcquisitionEntries
   = AcquisitionEntriesDerived { requests: List<AcquisitionRequest> }
   | AcquisitionEntriesRefused { refusal: AcquisitionRefusal }
@@ -1856,15 +1865,12 @@ fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
   }
 }
 
-// The reason an import edge was refused, said as what it is: there is no tree direction, so a refusal is
-// either an inactive root or a namespace with no row (v2.std.cross_tree.import_model
-// cross_tree_import_admitted). A rowless TARGET namespace refuses on any edge, same-tree included; a
-// rowless IMPORTER namespace refuses only across a crossing, because within one tree the importer was
-// already admitted on the edge that reached it.
+// The reason a crossing was refused, said as what it is: there is no tree direction, so a refusal is either
+// an inactive root or a namespace with no row (v2.std.cross_tree.import_model cross_tree_import_admitted).
 fn cross_tree_denial_text(reason: CrossTreeDenialReason) -> String {
   match reason {
     CrossTreeNamespaceUndeclared =>
-      "is reached through an edge naming a namespace with no row in the declared layout: the target namespace on this edge, or the importer across a tree crossing"
+      "is across a tree crossing from or to a namespace with no row in the declared layout"
     CrossTreeToTreeNotInRootSet => "lies in a tree that is not an active source root"
     CrossTreeFromTreeNotInRootSet => "is requested from a tree that is not an active source root"
   }
@@ -1889,8 +1895,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
       concat("module ", name, " at ", module_file_key(file: file), " lowered but its reference sites are not all readable")
     AcquisitionMemberIdentityDisagrees { module: name, file: file, declared: declared } =>
       concat("module ", name, " at ", module_file_key(file: file), " parses as module ", declared)
-    AcquisitionDerivedRosterRefused { module: name, refusal: refusal } =>
-      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: refusal))
+    AcquisitionDerivedRosterRefused { module: name, refusal: carried_refusal } =>
+      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: carried_refusal))
   }
 }
 

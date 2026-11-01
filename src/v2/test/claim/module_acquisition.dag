@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
 import std.algebra { string_contains, length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
-import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree, source_root_ref_eq }
+import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1094,7 +1094,7 @@ test fn acquisition_lookup_refusal_text_formats_an_undeclared_namespace_crossing
         reason: CrossTreeNamespaceUndeclared
       }
     }
-  ) == "v2.std.cardinality (requested by undeclared_namespace_probe.importer): module v2.std.cardinality at v2:std/cardinality.dag is reached through an edge naming a namespace with no row in the declared layout: the target namespace on this edge, or the importer across a tree crossing"
+  ) == "v2.std.cardinality (requested by undeclared_namespace_probe.importer): module v2.std.cardinality at v2:std/cardinality.dag is across a tree crossing from or to a namespace with no row in the declared layout"
 }
 
 // Discriminator recorded 2026-10-13: rewriting acquisition_verdict_step's CandidateRefusedBy arm
@@ -1236,78 +1236,6 @@ test fn the_import_depth_read_refuses_a_member_that_declares_another_module_exac
     && !starts_with(s: depth_text_at(content: other, import_depth: true), prefix: "read|")
 }
 
-// A same-tree edge whose TARGET namespace has no row. Closing the acquirer route means an edge asks
-// membership of what it names even when it never leaves its own tree
-// (v2.std.cross_tree.import_model cross_tree_import_admitted).
-fn undeclared_same_tree_import_of_probe() -> AcquisitionRequest {
-  AcquisitionRequest {
-    from_module: "v2.compiler.compile",
-    from_tree: V2Tree {},
-    spelling: "v2.native_lane_undeclared.probe",
-    kind: AcquireImportedModule
-  }
-}
-
-// THE RED OF SAME-TREE MEMBERSHIP. The edge stays inside the v2 tree, so before this rule the request was
-// admitted by never being examined for membership and the lookup went on to look for a file (which is what
-// made a same-tree import into an undeclared namespace indistinguishable from a typo). It now refuses, with
-// the reason pinned to the namespace and no read taken. THE CONTROL IS `a_permitted_v2_to_v2_acquisition_advances`
-// above, differing in the target namespace alone: `v2.std` has a row, `v2.native_lane_undeclared` does not.
-test fn a_same_tree_import_into_an_undeclared_namespace_refuses_without_reading() -> Bool {
-  match prepare_grammar(grammar: dag_language_model().grammar) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: _ } =>
-      match acquisition_step(
-        env: env_for(prepared: prepared, bound: true),
-        state: idle_acquisition_state(known: empty_map()),
-        request: undeclared_same_tree_import_of_probe(),
-      ) {
-        AcquisitionStepRefused { refusal: refusal, state: stopped } =>
-          match refusal {
-            AcquisitionLookupRefused { request: request, lookup: lookup } =>
-              request.spelling == "v2.native_lane_undeclared.probe"
-                && source_root_ref_eq(a: request.from_tree, b: V2Tree {})
-                && length(xs: stopped.reads) == 0
-                && match lookup {
-                  ReferenceCrossTreeDenied { module: named, file: file, reason: reason } =>
-                    named == "v2.native_lane_undeclared.probe"
-                      && match reason {
-                        CrossTreeNamespaceUndeclared => true
-                        CrossTreeToTreeNotInRootSet => false
-                        CrossTreeFromTreeNotInRootSet => false
-                      }
-                  ReferenceResolved { module: _, member: _, file: _, content: _ } => false
-                  ReferenceUnknownModule { reference: _ } => false
-                  ReferenceRefused { module: _, file: _, cause: _ } => false
-                  ReferenceModuleLineMissing { module: _, file: _ } => false
-                  ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
-                  ReferenceModuleHeaderRefused { module: _, file: _, cause: _ } => false
-                }
-            AcquisitionEntryNamespaceUndeclared { entry: _, namespace: _ } => false
-            AcquisitionEntryUnderivable { entry: _, cause: _ } => false
-            AcquisitionGrammarUnprepared { diagnostics: _ } => false
-            AcquisitionTreeUnbound { tree: _, request: _ } => false
-            AcquisitionUnknownModule { request: _ } => false
-            AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
-            AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
-            AcquisitionMemberIdentityDisagrees { module: _, file: _, declared: _ } => false
-            AcquisitionDerivedRosterRefused { module: _, refusal: _ } => false
-          }
-        AcquisitionAdvanced { state: _ } => false
-      }
-  }
-}
-
-// THE RED OF ENTRY-SIDE MEMBERSHIP. `fixture.native_ingest.copied_dag` is the entry the native-lane
-// copied-root control names, and it is a real module stored in a fixture tree
-// (fixtures/native_ingest_copied_single_root/dag/fixture/native_ingest/copied_dag.dag) whose namespace
-// `fixture.native_ingest` has NO row: rows are emitted from the governed trees, so no layout declares a
-// fixture namespace. Before this rule the acquirer asked only whether the layout can DERIVE a file for an
-// entry name, so such an entry entered the acquisition and the compile read modules the storage policy does
-// not declare. It refuses now, before any request is issued, naming the namespace. The copied-root control
-// never reaches the entry rule - the CLI door refuses its root first - so that module stays where it is,
-// undeclared on purpose, and this arm is what refuses it. Before the rule this arm returns false through the
-// Derived branch.
 test fn an_entry_in_an_undeclared_namespace_refuses_before_any_request() -> Bool {
   match acquisition_entry_requests(
     layout: repository_storage_layout(),
