@@ -88,8 +88,8 @@ fn fei_scan(t: InferredTree) -> FeiScan {
 // True only when the source infers, carries at least `want` empty-literal nodes, and no empty literal is
 // left open without its closed record: infer records each `[]` open first, and a declared position adds
 // the closed record (the control shape is one open and one closed node), so open > closed means a
-// literal whose variable nothing closed. (`open_want` is kept for call-site readability.)
-fn fei_empties(src: String, want: Int, open_want: Int) -> Bool {
+// literal whose variable nothing closed.
+fn fei_empties(src: String, want: Int) -> Bool {
   match fei_infer(src: src) {
     Absent => false
     Present { value: t } => {
@@ -107,8 +107,7 @@ fn fei_prelude() -> String {
 test fn an_untyped_fold_init_empty_list_is_closed_by_the_fold() -> Bool {
   fei_empties(
     src: concat(fei_prelude(), "fn f(values: FreeMonoid<Int>) -> Int {\n  let ids = fold(values, init: [], f: fn(acc, v) { push(xs: acc, x: v) })\n  0\n}\n"),
-    want: 1,
-    open_want: 0
+    want: 1
   )
 }
 
@@ -116,8 +115,7 @@ test fn an_untyped_fold_init_empty_list_is_closed_by_the_fold() -> Bool {
 test fn a_typed_fold_init_empty_list_stays_closed() -> Bool {
   fei_empties(
     src: concat(fei_prelude(), "fn f(values: FreeMonoid<Int>) -> Int {\n  let seed: FreeMonoid<Int> = []\n  let ids = fold(values, init: seed, f: fn(acc, v) { push(xs: acc, x: v) })\n  0\n}\n"),
-    want: 1,
-    open_want: 0
+    want: 1
   )
 }
 
@@ -125,7 +123,6 @@ test fn a_typed_fold_init_empty_list_stays_closed() -> Bool {
 test fn a_non_fold_empty_list_at_a_declared_type_stays_closed() -> Bool {
   fei_empties(
     src: "module p\n\nimport std.algebra { FreeMonoid }\n\nfn f() -> Int {\n  let xs: FreeMonoid<Int> = []\n  0\n}\n",
-    want: 1,
-    open_want: 0
+    want: 1
   )
 }

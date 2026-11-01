@@ -1,9 +1,0 @@
-module test.fixture.fold_empty_init.red_untyped_init
-
-import std.types { Int, List, NonEmptyStr, String }
-import std.algebra { concat, filter, fold, length }
-
-fn unique_value(values: List<String>) -> NonEmptyStr? {
-  let ids = fold(values, init: [], f: (acc, value) => if length(filter(acc, item => item == value)) > 0 { acc } else { concat(acc, [value]) })
-  if length(ids) != 1 { none } else { match ids.first() { Present { value: item } => Present { value: item as NonEmptyStr } Absent => none } }
-}

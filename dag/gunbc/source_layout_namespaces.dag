@@ -385,7 +385,6 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.floor_discovery_walk",
     "test.fixture.floor_expected_red_coherence",
     "test.fixture.fn_index_subject",
-    "test.fixture.fold_empty_init",
     "test.fixture.forked_spelling",
     "test.fixture.import_binding_probe",
     "test.fixture.imported_arms",
