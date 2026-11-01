@@ -1,6 +1,8 @@
 module gunbc.runner.runner_host_medium
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String, CommitSha }
+import extdeps.crypto.hash { Digest }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
@@ -26,7 +28,7 @@ import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
-  NoCloudSeedArtifact,
+  NoCloudSeedArtifact, SeedArtifactFetchedFrom, SeedArtifactCopiedFrom,
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
   ubuntu_seeded_install_media_image_name,
@@ -43,6 +45,7 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_program, host_capture_bind, host_capture_section_reading,
 }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import extdeps.tools.shadow_utils { useradd_system_nologin_command }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -89,7 +92,7 @@ fn runner_host_medium_tarball_on_medium(artifact: ActionsRunnerBinaryArtifact) -
 fn runner_host_medium_seed_artifact(artifact: ActionsRunnerBinaryArtifact) -> NoCloudSeedArtifact {
   NoCloudSeedArtifact {
     name: actions_runner_tarball_filename(artifact: artifact) as NonEmptyStr,
-    source_url: actions_runner_download_url(artifact: artifact) as NonEmptyStr,
+    source: SeedArtifactFetchedFrom { url: actions_runner_download_url(artifact: artifact) as NonEmptyStr },
     digest: actions_runner_release_digest(artifact: artifact),
   }
 }
@@ -97,6 +100,53 @@ fn runner_host_medium_seed_artifact(artifact: ActionsRunnerBinaryArtifact) -> No
 
 fn runner_host_listener_path() -> String {
   concat(actions_runner_base_dir, actions_runner_listener_relative_path)
+}
+
+// THE ACCOUNT THE IMAGE'S LISTENERS RUN AS (operator decision, merry-fox-82, 2026-10-27: option B). The image is
+// stateless and image-baked, so no SSH converge enrols it and no runner_host_spec row describes it; the image itself
+// declares the account and creates it at every boot as a captured, gated section (runner-account), so a boot that did
+// not create it is refused by runner_host_up_readback rather than reported up. Slots on an image-baked host read
+// their runner user from here through gunbc.runner.runner_host_listener_account host_unit_slot_runner_user. A system
+// account with no home and no login shell: the listener needs an identity the App key's custody row does not admit,
+// nothing more. CHANGING THIS CHANGES THE BOOT IMAGE (the medium's user-data, so its output digest).
+data runner_host_medium_runner_account: NonEmptyStr = "gunbc-runner"
+
+// THE BAKED RELEASE (gunbc.plans.mtcollins1_ci_service_legs F1; merry-fox-82, 2026-10-27: bake the release into the
+// image, decision A; build it in the publish run as a local-source artifact, decision A). A gunbc release-locus tree --
+// the aarch64 binary, the corpus and its tree receipt -- packed as one tarball by the publish run at one pinned
+// revision, measured there, and staged on the host that builds the image. It rides in the seed as a COPIED artifact:
+// the corpus is never published to an origin. Its name is derived from its revision and the digest is the measured
+// one, and both are in the image's build key (the name and the digest are each a component of the seed artifact's
+// key), so a different revision or a different digest is a different image, never a silent replace.
+type RunnerHostBakedRelease {
+  revision: CommitSha
+  digest: Digest
+  staged_path: NonEmptyStr
+}
+
+// WHERE THE BAKED RELEASE IS EXTRACTED AT BOOT: a release locus (gunbc.live_deploy.release_locus) under this root, so
+// the service-slot units run from releases/<revision>/ and read its tree receipt, as every other locus tenant does.
+// The host is diskless, so the root is in RAM and nothing outlives the boot.
+data runner_host_release_root: String = "/opt/gunbc-service"
+
+fn runner_host_baked_release_name(revision: CommitSha) -> NonEmptyStr {
+  join(["gunbc-release-", revision as String, ".tar"], "") as NonEmptyStr
+}
+
+fn runner_host_baked_release_locus(baked: RunnerHostBakedRelease) -> String {
+  release_locus_dir(root: runner_host_release_root, revision: RevisionBoundAtEmission { revision: baked.revision })
+}
+
+fn runner_host_baked_release_on_medium(baked: RunnerHostBakedRelease) -> String {
+  join(["/cdrom/", runner_host_medium_nocloud_dir as String, "/", runner_host_baked_release_name(revision: baked.revision) as String], "")
+}
+
+fn runner_host_baked_release_seed_artifact(baked: RunnerHostBakedRelease) -> NoCloudSeedArtifact {
+  NoCloudSeedArtifact {
+    name: runner_host_baked_release_name(revision: baked.revision),
+    source: SeedArtifactCopiedFrom { path: baked.staged_path },
+    digest: baked.digest,
+  }
 }
 
 // THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
@@ -107,6 +157,9 @@ data runner_host_section_runner_clear: NonEmptyStr = "runner-clear"
 data runner_host_section_runner_dir: NonEmptyStr = "runner-dir"
 data runner_host_section_runner_extract: NonEmptyStr = "runner-extract"
 data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
+data runner_host_section_runner_account: NonEmptyStr = "runner-account"
+data runner_host_section_release_dir: NonEmptyStr = "release-dir"
+data runner_host_section_release_extract: NonEmptyStr = "release-extract"
 data runner_host_section_systemd: NonEmptyStr = "systemd-manager"
 data runner_host_section_meminfo: NonEmptyStr = "meminfo"
 data runner_host_section_nproc: NonEmptyStr = "nproc"
@@ -119,6 +172,9 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_runner_dir,
   runner_host_section_runner_extract,
   runner_host_section_runner_listener,
+  runner_host_section_runner_account,
+  runner_host_section_release_dir,
+  runner_host_section_release_extract,
   runner_host_section_systemd,
   runner_host_section_meminfo,
   runner_host_section_nproc,
@@ -130,7 +186,7 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 // boot; what boot can establish about a slot is that systemd is the running manager systemd-run
 // talks to (/run/systemd/system, sd_booted(3)) and that the listener the slot's argv names is
 // installed and executable. The slot unit's own activity is the launch leg's readback.
-fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
+fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHostBakedRelease) -> List<HostCaptureStage> {
   [
     HostCaptureStage { name: runner_host_section_boot_media, command: shell_command_render(command: ls_one_per_line_command(path: udev_disk_by_label_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
@@ -138,6 +194,9 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_account, command: shell_command_render(command: useradd_system_nologin_command(name: runner_host_medium_runner_account)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_release_dir, command: shell_command_render(command: mkdir_parents_command(path: runner_host_baked_release_locus(baked: baked))) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_release_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_baked_release_on_medium(baked: baked), into_directory: runner_host_baked_release_locus(baked: baked), strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
@@ -161,7 +220,7 @@ type RunnerHostMediumImage
   | RunnerHostMediumRunnerUnpublished { binary_release: ActionsRunnerRelease }
   | RunnerHostMediumUserDataRefused { reason: String }
 
-fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage {
+fn runner_host_medium_image(host: RunnerHostMediumHost, baked: RunnerHostBakedRelease) -> RunnerHostMediumImage {
   match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
     Absent => RunnerHostMediumRunnerUnpublished { binary_release: host_unit_slot_runner_release }
     Present { value: artifact } =>
@@ -180,12 +239,12 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
                   content: host_capture_program(
                     machine: host.machine,
                     console_device: host.console_device,
-                    stages: runner_host_up_stages(artifact: artifact),
+                    stages: runner_host_up_stages(artifact: artifact, baked: baked),
                     halt_command: runner_host_medium_halt_command,
                   ),
                 },
               ],
-              seed_artifacts: [runner_host_medium_seed_artifact(artifact: artifact)],
+              seed_artifacts: [runner_host_medium_seed_artifact(artifact: artifact), runner_host_baked_release_seed_artifact(baked: baked)],
               grub_kernel_cmdline: concat(
                 ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: runner_host_medium_nocloud_dir) as String,
                 " ",
@@ -333,7 +392,7 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
   }
   let digest_refusals = runner_host_tarball_digest_refusals(read: runner_host_section_read(envelope: envelope, name: runner_host_section_tarball_digest))
   let gates = append(append(media_refusals, items: digest_refusals), items: flat_map(
-    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_systemd],
+    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_runner_account, runner_host_section_release_dir, runner_host_section_release_extract, runner_host_section_systemd],
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
   ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)

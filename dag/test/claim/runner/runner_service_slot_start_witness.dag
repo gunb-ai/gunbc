@@ -1,0 +1,84 @@
+module test.claim.runner.runner_service_slot_start_witness
+
+// THE SERVICE-SLOT START, AT ITS PURE BOUNDARIES (gunbc.plans.mtcollins1_ci_service_legs F1). The unit each start makes is
+// read off the one command builder; the readback and the run's verdict are folds over supplied answers. Pairing
+// frontier: the start against a live host (the anchored transport and the population of a real boot) runs only on the
+// operator's go, as F5's first live service pass.
+
+import std.types { Bool, List, NonEmptyStr, String, CommitSha }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.uuid { uuid_of }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import gunbc.runner.runner_host_unit_slot { service_boot_id_of }
+import gunbc.runner.runner_service_slot_start {
+  service_slot_unit_start_command, service_slot_release_locus, service_slot_unit_start_of,
+  ServiceSlotUnitStart, ServiceSlotUnitActive, ServiceSlotUnitNotStarted, ServiceSlotUnitNotActive,
+  ServiceSlotStartRun, ServiceSlotStartRefused, ServiceSlotStartRan, service_slot_start_held,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision: CommitSha = "1111111111111111111111111111111111111111"
+data unit: NonEmptyStr = "gunbc-service-mtcollins1-00000000-0000-4000-8000-0000000000a1-0.service"
+
+fn words() -> List<String> {
+  match service_slot_unit_start_command(unit: unit, revision: revision) {
+    SystemdRunCommandReady { command: c } => argv_words(command: c)
+    SystemdRunCommandRefused { cause: _ } => []
+  }
+}
+
+fn has_word_containing(ws: List<String>, pattern: String) -> Bool {
+  ws |> any(w => string_contains(s: w, pattern: pattern))
+}
+
+// EACH UNIT RUNS THE CONTROLLER FROM THE BAKED RELEASE LOCUS: its working directory is releases/<revision>/ under the
+// image's release root, its ExecStop is the stop entry, it restarts after every pass, its stop is bounded, and its
+// environment names the unit and the accepted revision. The command tail is the controller's own ExecStart line.
+test fn each_unit_runs_the_controller_from_the_baked_release_locus() -> Bool {
+  let ws = words()
+  let locus = service_slot_release_locus(revision: revision)
+  count(ws) > 0
+    && string_contains(s: locus, pattern: "/releases/1111111111111111111111111111111111111111")
+    && (ws |> any(w => w == concat("--property=WorkingDirectory=", locus)))
+    && has_word_containing(ws: ws, pattern: "--property=ExecStop=")
+    && has_word_containing(ws: ws, pattern: "service_slot_stop_main")
+    && (ws |> any(w => w == "--property=Restart=always"))
+    && has_word_containing(ws: ws, pattern: "--property=TimeoutStopSec=")
+    && has_word_containing(ws: ws, pattern: concat("GUNBC_SERVICE_SLOT_UNIT=", unit as String))
+    && has_word_containing(ws: ws, pattern: concat("GUNBC_SERVICE_SLOT_ACCEPTED_REVISION=", revision as String))
+    && (ws |> any(w => w == "service_slot_controller_main"))
+}
+
+// THE READBACK IS THE MANAGER'S ActiveState: only `active` is a started slot; another state, an unread state, or a start
+// that did not run is named and never counted as started.
+test fn only_an_active_unit_is_a_started_slot() -> Bool {
+  (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=active\n" }) { ServiceSlotUnitActive { unit: _ } => true _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=failed\n" }) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "failed" _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "unread" _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: false, start_detail: "systemd-run exited 1: x", show_stdout: none) { ServiceSlotUnitNotStarted { unit: _, cause: c } => string_contains(s: c, pattern: "exited 1") _ => false })
+}
+
+// THE RUN HOLDS ONLY WHEN EVERY MEMBER IS ACTIVE: a refusal before the population, an empty population, or any member not
+// active fails the run.
+test fn the_run_holds_only_when_every_member_is_active() -> Bool {
+  match uuid_of(text: "00000000-0000-4000-8000-0000000000a1") {
+    Absent => false
+    Present { value: u } =>
+      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+        Absent => false
+        Present { value: b } => {
+          let active = ServiceSlotUnitActive { unit: unit }
+          let failed = ServiceSlotUnitNotActive { unit: unit, state: "failed" }
+          service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [active, active] })
+            && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [active, failed] })
+            && !service_slot_start_held(run: ServiceSlotStartRan { host: "mtcollins1", boot: b, revision: revision, units: [] })
+            && !service_slot_start_held(run: ServiceSlotStartRefused { cause: "no host-authenticated transport" })
+        }
+      }
+  }
+}

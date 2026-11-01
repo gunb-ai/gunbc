@@ -400,10 +400,9 @@ fn service_slot_selected_workflow() -> NonEmptyStr {
 // from the host's fleet compute offer (gunbc.runner.runner_slot_allocation gunbc_runner_committed_width);
 // an unresolved width is a refusal, never read as zero. No host is named: a host's population differs
 // from another's only by its offer.
-// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
-// Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
-// on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
-// is the same mode's other half.
+// CONSUMERS (DESIGN section 3c): the service-slot start (gunbc.runner.runner_service_slot_start service_slot_start_over),
+// which starts one controller unit per member, and the lost-boot sweep (gunbc.runner.runner_lost_boot_sweep_run), which
+// leaves every member untouched; both take the boot the host's own route minted.
 fn current_service_population(host: HostControlStanding, boot: ServiceBootId, receipt: RunnerUserSessionReceiptInput) -> CurrentServicePopulationStanding {
   match host {
     HostControlRefused { refusal: r } => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: r } }

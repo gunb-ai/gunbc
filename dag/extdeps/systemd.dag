@@ -125,6 +125,13 @@ type SystemdUnitProperty
   // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
   // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
   | DelegateProperty
+  // systemd.service(5) Restart=: when the manager restarts the service's main process after it exits (no, always,
+  // on-failure, ...), set as the directive's own word.
+  | RestartProperty
+  // systemd.service(5) TimeoutStopSec=: how long the manager waits for ExecStop= and then the main process to stop
+  // before it sends the final SIGKILL. The directive is settable under this name; the manager shows the value as
+  // TimeoutStopUSec, which this vocabulary does not read.
+  | TimeoutStopSecProperty
   // systemd.unit(5) SuccessAction=/FailureAction=: what the MANAGER does when the unit stops cleanly or
   // fails (extdeps.systemd.unit_file SystemdUnitStateAction is the value set). Both are [Unit] settings a
   // transient unit accepts (systemd-run(1) --property), so the action belongs to the manager, not to a command.
@@ -221,6 +228,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
     UMaskProperty => "UMask" as NonEmptyStr
     DelegateProperty => "Delegate" as NonEmptyStr
+    RestartProperty => "Restart" as NonEmptyStr
+    TimeoutStopSecProperty => "TimeoutStopSec" as NonEmptyStr
     SuccessActionProperty => "SuccessAction" as NonEmptyStr
     FailureActionProperty => "FailureAction" as NonEmptyStr
   }
@@ -300,6 +309,8 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     RestrictSUIDSGIDProperty => false
     UMaskProperty => false
     DelegateProperty => false
+    RestartProperty => false
+    TimeoutStopSecProperty => false
     SuccessActionProperty => false
     FailureActionProperty => false
   }
