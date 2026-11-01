@@ -168,12 +168,11 @@ import std.interface_summary {
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
-  sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
+  sub_value_to_evidence, call_descent_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
 import std.computation {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
-import v1.compiler.complexity { derive_edge_evidence }
 import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   positive_descent_amount_from_positive_int,
@@ -15296,7 +15295,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
 
 // SelfCallWithoutDescent (DESIGN section 3c: annotate_descent_evidence's output had no acceptance-path
 // reader, so a non-Strict self-call was computed and discarded). The evidence is the SAME authority the
-// complexity census folds, `derive_edge_evidence` over the one call's relations (a Strict dimension anywhere
+// complexity census folds, `call_descent_evidence` over the one call's relations (std.induction, shared with the census's derive_edge_evidence) (a Strict dimension anywhere
 // in the argument list is enough, the lexicographic reading), so a second descent rule is not coined here.
 // ADVISORY first: a counted, typed, located diagnostic of its own class; refusal by class is the later step.
 // Scope: module-level items; a mutual-recursion cycle is the named residual of
@@ -15315,7 +15314,7 @@ fn self_call_without_descent_diags_in(body: Node, fn_name: String, module_name: 
       match de {
         Present { value: evidence } =>
           if expr_call_func_at(texpr: body, source_indices: si) == fn_name {
-            let call_evidence = derive_edge_evidence(all_calls: [evidence])
+            let call_evidence = call_descent_evidence(relations: evidence)
             match call_evidence {
               Strict => []
               _ => [make_error_node(

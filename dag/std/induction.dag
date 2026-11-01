@@ -39,6 +39,24 @@ type SubValueRelation
   | MixedTop
   | SubValueUnknown
 
+// The one call's descent evidence: ANY Strict relation among its arguments is enough (the lexicographic
+// reading), else NonIncreasing if some argument is, else DescentUnknown. The census fold
+// (v1.compiler.complexity derive_edge_evidence) and the acceptance advisory (v1.compiler.infer
+// self_call_without_descent_diags) both read this, so the rule has one home beneath both crates.
+fn call_descent_evidence(relations: List<SubValueRelation>) -> DescentEvidence {
+  relations |> fold(init: DescentUnknown, f: (best, rel) =>
+    let ev = sub_value_to_evidence(relation: rel)
+    match ev {
+      Strict => Strict
+      _ => match best {
+        Strict => Strict
+        NonIncreasing => NonIncreasing
+        _ => ev
+      }
+    }
+  )
+}
+
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
     StrictSubValue { field: _, factor: f } =>
