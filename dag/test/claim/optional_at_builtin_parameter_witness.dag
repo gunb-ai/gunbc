@@ -1,0 +1,55 @@
+module test.claim.optional_at_builtin_parameter_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// AN OPTIONAL-PRODUCING .first() DOES NOT INHABIT A REQUIRED String BUILTIN PARAMETER. Specimen: dag/extdeps/tools/wc.dag
+// file_byte_count_via_wc, `parse_int(s: split(s: trim(read.stdout), delimiter: " ").first())`, no diagnostic at all
+// (clever-crane-830, srv1 ~/t9b/compile.log, #15501 @ edff5593; the checker is main's). EXECUTED on srv1: before (seed 646d4747, pre-change) the RED was ACCEPTED, controls A/B as expected;
+// after (Q1d binary f6c9e59c, and the full stack f46dc37c) 3/3 PASS: the RED refuses, A refuses, B is accepted.
+//
+// ROUTE, by reading, and the two roots the cells below separate:
+//   TYPING: dag/std/algebra.dag declares `first` as return_type OptionalOf { inner: ReceiverElement }, so the method
+//   result is declared optional. If the method node did not carry CardOptional, the user-fn control below would be
+//   accepted as well.
+//   OBLIGATION: v1.compiler.infer builtin_text_argument_crossing_diags documents that 'the builtin registry types a
+//   call by its return alone, so its arguments were never judged'; builtin calls are not resolved through
+//   build_call_application_plan, so direct_call_argument_inhabitance_diags (PositionDirectCallArgument) never builds a
+//   DeclaredTypeObligation for them and optional_produced_at_required_declared never runs. The registry does hold the
+//   declared parameter (v1.compiler.method BuiltinSignature params, e.g. parse_int: BuiltinParam s : String).
+// Predicted: ROOT = missing obligation at builtin parameters; typing is sound. The user-fn control separates them.
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn oab_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn oab_source(body: String) -> String {
+  "module oab.probe\n\nimport std.types { Int, String }\n\nfn take_string(s: String) -> Int {\n  0\n}\n\nfn probe(text: String) -> Int {\n  " + body + "\n}\n"
+}
+
+// RED: the specimen shape. The Optional .first() at the builtin parse_int's String parameter must refuse.
+test fn an_optional_first_at_a_builtin_string_parameter_must_refuse() -> Bool {
+  oab_refusal_count(source: oab_source(body: "match parse_int(s: split(s: text, delimiter: \" \").first()) {\n    Present { value: n } => n\n    Absent => 0\n  }")) >= 1
+}
+
+// CONTROL (typing): the same Optional at a USER fn String parameter refuses today
+// (optional_field_read_admission_gap_witness); if this FAILS the root is the typing of .first(), not the obligation.
+test fn an_optional_first_at_a_user_string_parameter_refuses() -> Bool {
+  oab_refusal_count(source: oab_source(body: "take_string(s: split(s: text, delimiter: \" \").first())")) >= 1
+}
+
+// CONTROL (positive): a required String at the builtin parameter is accepted, so the RED is not a blanket refusal.
+test fn a_required_string_at_a_builtin_string_parameter_is_accepted() -> Bool {
+  oab_refusal_count(source: oab_source(body: "match parse_int(s: text) {\n    Present { value: n } => n\n    Absent => 0\n  }")) == 0
+}

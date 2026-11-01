@@ -25,7 +25,7 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string, json_arr
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id, git_object_id_wire_hex }
 import extdeps.systemd { ExecStopProperty, BindPathsProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
@@ -2878,10 +2878,7 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
 // git's null object id: the subject of a refusal that happened before any subject could be read, so
 // the document still has the field and a reader cannot mistake it for a real tree.
 fn compute_null_tree() -> GitObjectId {
-  match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") {
-    Present { value: oid } => oid
-    Absent => "0000000000000000000000000000000000000000" as GitObjectId
-  }
+  git_null_sha1_object_id
 }
 
 // THE CLI A WORKER RUNS. Arguments are strings because that is what `gunbc run --arg` carries; the
