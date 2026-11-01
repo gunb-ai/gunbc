@@ -5,6 +5,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_blocking_rows_of_class,
   census_total_count
 }
 import std.types { String, Bool, Int }
@@ -26,6 +27,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // PATH SCOPE (DESIGN section 4b): this measures compile acceptance only. The interpreter arm that
 // refuses the same rows is unreachable from an Accepted program; it is not a second measurement.
+
+fn blocking_class_count(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
 
 fn blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -88,10 +96,18 @@ data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport s
 // cast. Keyed on the last name segment it would be typed Int, and `Int as Nat` is a refinement cast
 // that refuses. Observed through the cast, not a return position: a return would still admit the
 // wrong Int through the implicit grounded Int -> Nat identity, which matches by spelling.
+// Since Q1e the Peano subtraction itself refuses: the probe's coproduct inhabits no algebra row, so
+// select_arithmetic_carrier finds no carrier and the checker refuses ArithmeticWithoutCarrier instead of
+// typing the difference at its left operand (that silent typing was the old "keeps its own typing").
+// The homonym claim therefore reads the CLASS: exactly one blocking diagnostic, and it is the no-carrier
+// refusal. Keyed on the leaf name, the Peano Nat would select std.nat's carrier, the difference would be
+// an Int, and `Int as Nat` would refuse as a refinement cast (an InternalError row), never as
+// ArithmeticWithoutCarrier, so the claim goes red.
 data peano_nat_difference_source: String = "module probe_refinement_peano_difference\ntype Nat = ProbeZero | ProbeSucc { prev: Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
 
 test fn w_peano_nat_difference_is_not_the_refinement() -> Bool {
-  blocking_count(source: peano_nat_difference_source) == 0
+  blocking_count(source: peano_nat_difference_source) == 1
+    && blocking_class_count(source: peano_nat_difference_source, class: "ArithmeticWithoutCarrier") == 1
 }
 
 test fn w_nat_difference_leaves_the_refinement() -> Bool {

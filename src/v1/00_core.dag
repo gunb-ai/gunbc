@@ -422,6 +422,8 @@ type CompilerDiagnostic
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUnmodeled { position: String, span: SourceSpan }
+  | ArithmeticWithoutCarrier { operation: String, span: SourceSpan }
+  | ArithmeticAmbiguousCarrier { operation: String, candidates: List<String>, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
@@ -680,6 +682,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     DeclaredTypeInhabitanceUnmodeled { position: _, span: s } => s
+    ArithmeticWithoutCarrier { operation: _, span: s } => s
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
@@ -790,6 +794,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
+    ArithmeticWithoutCarrier { operation: op, span: _ } =>
+      concat("no arithmetic carrier: no declared carrier defines ", op, " for these operands through the declared implicit injections")
+    ArithmeticAmbiguousCarrier { operation: op, candidates: cs, span: _ } =>
+      concat("arithmetic carrier is ambiguous for ", op, ": ", to_string(cs |> count), " incomparable carriers (", join(cs, separator: ", "), ") define it through the declared implicit injections; name the conversion")
     DeclaredTypeInhabitanceUnmodeled { position: pos, span: _ } =>
       concat("declared-type inhabitance is UNMODELED at the ", pos, ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
@@ -944,6 +952,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticWithoutCarrier { operation: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     DeclaredTypeInhabitanceUnmodeled { position: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

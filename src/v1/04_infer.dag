@@ -66,6 +66,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
   TypeArgumentArityMismatch,
+  ArithmeticWithoutCarrier, ArithmeticAmbiguousCarrier,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -11156,13 +11157,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: req } =>
           match arithmetic_carrier_selection(requirement: req, left_type: resolved_type(n: left_typed), right_type: Present { value: resolved_type(n: right_typed) }, source_indices: scope.type_env.source_indices, env: scope.type_env) {
             Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } =>
-              [inference_error(
-                message: concat("arithmetic carrier is ambiguous: ", to_string(cs |> count), " incomparable carriers (", join(cs |> map(c => c.decl_name), ", "), ") define this operation for these operands through the declared implicit injections; name the conversion"),
-                span: span, module_name: scope.module_name)]
+              [make_error_node(
+                diagnostic: ArithmeticAmbiguousCarrier { operation: req.field, candidates: cs |> map(c => c.decl_name), span: span },
+                module_name: scope.module_name)]
             Present { value: ArithmeticNoCarrier } =>
-              [inference_error(
-                message: "no arithmetic carrier: no declared carrier defines this operation for these operands through the declared implicit injections",
-                span: span, module_name: scope.module_name)]
+              [make_error_node(
+                diagnostic: ArithmeticWithoutCarrier { operation: req.field, span: span },
+                module_name: scope.module_name)]
             _ => []
           }
       }
@@ -11186,8 +11187,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Not => []
         Neg =>
           match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-            Present { value: ArithmeticNoCarrier } => [inference_error(message: "no arithmetic carrier: no declared carrier defines negation for this operand through the declared implicit injections", span: span, module_name: scope.module_name)]
-            Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => [inference_error(message: "arithmetic carrier is ambiguous for negation of this operand; name the conversion", span: span, module_name: scope.module_name)]
+            Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: "negate", span: span }, module_name: scope.module_name)]
+            Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } => [make_error_node(diagnostic: ArithmeticAmbiguousCarrier { operation: "negate", candidates: cs |> map(c => c.decl_name), span: span }, module_name: scope.module_name)]
             _ => []
           }
       }
