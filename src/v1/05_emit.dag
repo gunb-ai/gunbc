@@ -810,6 +810,15 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
   let base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
   let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
   let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n, source_indices: source_indices) } else { [] }
+  // LOCATING ONLY (gunbc#15612, revert with the fix): when type args are inferred, carry the collected variable
+  // ids and the resolved declaration's raw generic parameter names in a block comment, so the E0107 line rustc
+  // prints decides between "names read back empty" and "T arrives by another path".
+  let locating = match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      concat("/*vars=[", inferred_params |> join(separator: "|"), "] rt_params=[", rt.params |> map(p => concat("'", generic_param_name_at(n: p, source_indices: source_indices), "'")) |> join(separator: "|"), "] rt=", rt.name, "*/")
+    _ => concat("/*vars=[", inferred_params |> join(separator: "|"), "] no_resolved*/")
+  }
+  let inferred_params = if inferred_params |> count == 0 { [] } else { inferred_params |> map(v => concat(v, locating)) }
   let param_names = concat(explicit_params, inferred_params)
   if param_names |> count == 0 {
     base
