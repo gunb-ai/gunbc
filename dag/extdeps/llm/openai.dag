@@ -798,13 +798,13 @@ data openai_text_completion_wire_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "feature:s3-completions-answer-read - the serving path's read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions closes a usage record from one body of this shape. It dissolves when that reader lands WITH a witness that decodes a recorded completions 200 body into this record and asserts its choices and usage, so a shape nobody has fed real bytes through is not carried as truth"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionChunkBody"),  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "structural_coverage_gap_openai_text_completion_members"),
-    reason: "no module reads this coverage list; it is written by this module's own convention and read by nothing, as are its predecessors structural_coverage_gap_openai_chat_completion_200_residual and structural_coverage_gap_openai_chat_completion_request_members",
-    dissolution: unbound_dissolution(description: "feature:coverage-closure-rollup - a roll-up that reads each extdeps module's structural_coverage_gap_* lists into one census view retires this row together with the unread siblings it names, in this module and in the other extdeps modules written the same way. Checked rather than assumed: no consumer of extdeps.coverage's CoverageClosureEntry type exists in `dag` outside the declaring modules, and the seed's declaration_index roster names such a list only where its entries are cited-field debt"),
-  ),
-
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionChunkBody"),
     reason: "no module reads one streamed text-completion event yet, and none refuses a payload whose `object` member is not the documented constant; openai_compat_sse frames such events but does not interpret their content",
     dissolution: unbound_dissolution(description: "feature:s3-completions-chunk-read - the serving path's streamed read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and finishes the answer at the sentinel. It dissolves when that reader lands WITH a witness that decodes a recorded completions chunk into this record -- including the final event, which carries a finish_reason and no text"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "structural_coverage_gap_openai_text_completion_members"),
+    reason: "no module reads this coverage list; it is written by this module's own convention and read by nothing, as are its predecessors structural_coverage_gap_openai_chat_completion_200_residual and structural_coverage_gap_openai_chat_completion_request_members",
+    dissolution: unbound_dissolution(description: "feature:coverage-closure-rollup - a roll-up that reads each extdeps module's structural_coverage_gap_* lists into one census view retires this row together with the unread siblings it names, in this module and in the other extdeps modules written the same way. Checked rather than assumed: no consumer of extdeps.coverage's CoverageClosureEntry type exists in `dag` outside the declaring modules, and the seed's declaration_index roster names such a list only where its entries are cited-field debt"),
+  )
 ]
