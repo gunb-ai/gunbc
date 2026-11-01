@@ -1,0 +1,50 @@
+module test.claim.extdeps.openai_chat_completion_wire_witness
+
+import std.types { Bool, String }
+import extdeps.llm.openai {
+  OpenAiReasoningEffort, EffortMinimal, EffortLow, EffortMedium, EffortHigh,
+  OpenAiReasoningEffortOther, parse_openai_reasoning_effort, openai_reasoning_effort_wire,
+  openai_reasoning_effort_minimal_wire, openai_reasoning_effort_low_wire,
+  openai_reasoning_effort_medium_wire, openai_reasoning_effort_high_wire,
+  openai_chat_completion_chunk_object_wire,
+}
+
+// THE DOCUMENTED EFFORTS LAND IN THEIR OWN ARMS. The check is the arm the name lands in, not the
+// name that comes back out: the undocumented arm of the pair re-emits whatever name it was given,
+// so a round-trip on the STRING would stay green with four fewer arms in the parse. Asking which
+// variant arrived is what fails when a documented name is dropped from the parse.
+fn r_effort_arm(name: String) -> Int {
+  match parse_openai_reasoning_effort(raw: name) {
+    EffortMinimal => 0
+    EffortLow => 1
+    EffortMedium => 2
+    EffortHigh => 3
+    OpenAiReasoningEffortOther { raw: _ } => 4
+  }
+}
+
+@test
+fn a_documented_effort_parses_to_its_own_arm() -> Bool {
+  let a = r_effort_arm(name: openai_reasoning_effort_minimal_wire) == 0
+  let b = r_effort_arm(name: openai_reasoning_effort_low_wire) == 1
+  let c = r_effort_arm(name: openai_reasoning_effort_medium_wire) == 2
+  let d = r_effort_arm(name: openai_reasoning_effort_high_wire) == 3
+  if a && b && c && d { true } else { false }
+}
+
+// AN UNDOCUMENTED EFFORT IS KEPT WHOLE IN BOTH DIRECTIONS, not read as one of the four and not
+// refused: this model reports the endpoint's shape, and the endpoint decides what to do with a
+// name it does not know.
+@test
+fn an_undocumented_effort_stays_whole_and_unnamed() -> Bool {
+  let e = r_effort_arm(name: "xhigh") == 4
+  let f = openai_reasoning_effort_wire(effort: parse_openai_reasoning_effort(raw: "xhigh")) == "xhigh"
+  if e && f { true } else { false }
+}
+
+// THE CHUNK'S OBJECT LITERAL IS THE STREAMED SHAPE, not the non-streaming one, so a reader that
+// branches on `object` can tell a chunk from a 200 body without guessing.
+@test
+fn the_chunk_object_literal_is_the_streamed_shape() -> Bool {
+  if openai_chat_completion_chunk_object_wire == "chat.completion.chunk" { true } else { false }
+}
