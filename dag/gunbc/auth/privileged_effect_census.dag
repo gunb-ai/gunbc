@@ -1057,7 +1057,7 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
   site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
   effect: PrivilegedEffect {
-    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install, ntfy retirement), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
     frequency: EveryOperatorRequest,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
@@ -1548,21 +1548,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential_selected"),
-    effect: PrivilegedEffect {
-      subject: "converge a BMC credential: add a version, read it back, apply it to the BMC" as NonEmptyStr,
-      frequency: DeviceOnce,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: convergence_principal(),
-      minted_reach: MintsResourceScopedCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedRunSelected,
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "admit_password_route_qualification"),
     effect: route_qualification_effect(),
     realized: RealizedApprovalCapability,
@@ -1781,21 +1766,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.instruments.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
     effect: recurring_credential_read(subject: "read the R2 origin credential for the M0 origin-object probe" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
-    effect: PrivilegedEffect {
-      subject: "srv3/srv4 onboarding credential converge on the interactive entries" as NonEmptyStr,
-      frequency: DeviceOnce,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: convergence_principal(),
-      minted_reach: MintsResourceScopedCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
   PrivilegedEffectSite {
@@ -2142,7 +2112,6 @@ data follow_up_sites: List<DeclarationRef> = [
   site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
   site(module_path: "gunbc.bmc.bmc_fan_converge", decl_name: "bmc_fan_run"),
   site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
-  site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
   site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
   site(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
   site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),

@@ -378,7 +378,7 @@ data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
 // gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
 // (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
 // the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
-// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// compiler_gate_emit_build_timeout = minute(90), and a v2-bootstrap job runs ~55 minutes), and the
 // literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
 // was exceeded' while honest work ran.
 data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {

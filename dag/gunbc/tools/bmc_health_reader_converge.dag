@@ -37,7 +37,6 @@ import gunbc.tools.bmc_onboard {
   BmcCallRefused,
   BmcCustodyEstablished,
   BmcCustodyRefused,
-  BmcGetSystem,
   bmc_authenticated_call,
   bmc_store_credential_verified,
   mint_bmc_credential,
@@ -97,7 +96,7 @@ type BmcLoginAttempt
 
 fn bmc_login_attempt(host: NonEmptyStr, account: NonEmptyStr, password: Secret) -> BmcLoginAttempt
 {
-  match bmc_authenticated_call(stage: "reader login", host: host, account: account, password: password, call: BmcGetSystem) {
+  match bmc_authenticated_call(stage: "reader login", host: host, account: account, password: password) {
     BmcCallRefused { reason: r } => BmcLoginNotAttempted { reason: r }
     BmcCallAnswered { reply: probe } =>
       if probe.success { BmcLoginAccepted } else { BmcLoginRejected { body: probe.body } }

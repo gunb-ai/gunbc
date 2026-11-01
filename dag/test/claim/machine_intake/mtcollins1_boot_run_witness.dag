@@ -5,7 +5,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { fan_gate_continuation, FanGate
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.chassis_fan_establishment { PostPowerChassisUnreadable }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
 import extdeps.bmc.ipmi_chassis_control { ChassisUnreadable }
 import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.host.managed_host_boot_phase_timing { PhaseStepSkipped }
@@ -1090,7 +1090,7 @@ test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool 
 // (test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness). The effectful gate (settle, read, PowerDown) is exercised
 // only by a real boot; no control here claims it.
 fn gc_round() -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
+  FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable, verbose: SdrVerboseNotRequired }
 }
 
 fn gc_refused_reading() -> PoweredFanGate {

@@ -59,7 +59,7 @@ import gunbc.harness.harness_hosted_route {
   HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
   harness_hosted_release,
 }
-import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef }
 import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey, EqualCostOfferTieBreak }
 import product.fabric.selection {
   CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
@@ -110,7 +110,7 @@ import gunbc.serving.rented_offer_admission {
   RentedAdmissionSources, rented_production_sources, admit_rented_offer, RentedCandidateAdmitted, RentedAdmissionRefused,
 }
 import gunbc.serving.turn_demand { serving_token_capability, serving_replica_trust_domain, serving_unstated_shape, ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { content_hash_of_value, serialize_content_hash, identity_frame }
 import product.fabric.identity { FabricIdentity, DemandKey }
 import product.fabric.provider_admission { refusal_reason }
 import gunbc.serving.engine_progress {
@@ -578,7 +578,7 @@ fn harness_select_supply<P>(
 // separation harness_turn_subject exists to keep would be gone.
 //
 // THE IDENTITY IS INJECTIVE IN THE LIST, NOT IN A DELIMITED JOIN. Each input is length-framed by
-// product.fabric.work identity_frame -- the one framing authority the Work key itself uses -- and
+// std.content_hash identity_frame -- the one framing authority the Work key itself uses -- and
 // the frames are concatenated in order under the element count; a join with a separator byte would
 // let ["a<sep>b"] and ["a", "b"] name one turn.
 fn harness_turn_request(shape: HarnessWireShape, requirement: ServingModelRequirement, inputs: List<String>) -> ServingTurnRequest {
