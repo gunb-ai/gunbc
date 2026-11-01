@@ -139,10 +139,15 @@ fn slot_store_at(dir: String) -> SlotStore? {
 // which is exactly the difference between "no exit record for this attempt" and "I could not look". The
 // fixture prepares the spool through the production route, so a witness never settles a seat on the
 // strength of a directory it forgot to create.
+// THE LEDGER'S AREAS ARE PROVISIONED THROUGH THE PRODUCTION ROWS (compute_capacity_directories); the mint only observes them.
+fn capacity_provisioned(dir: String) -> Bool {
+  all(compute_capacity_directories(instance: instance_at(dir: dir)), d => shell.Mkdir.Parents(path: owned_directory_path(t: d)).success)
+}
+
 fn stores_at(dir: String) -> SessionPlacementStores? {
   let _made = shell.Mkdir.Parents(path: slots_dir(dir: dir) as FilePath)
   let spool_ready = attempt_exit_spool_prepare(instance_root: dir)
-  let capacity_ready = all(compute_capacity_directories(instance: instance_at(dir: dir)), d => shell.Mkdir.Parents(path: owned_directory_path(t: d)).success)
+  let capacity_ready = capacity_provisioned(dir: dir)
   if !spool_ready || !capacity_ready {
     none
   } else {
@@ -162,11 +167,13 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
 }
 
 fn reserve_real(dir: String) -> LeaseGrant? {
+  if !capacity_provisioned(dir: dir) { none } else {
   match compute_reserve_against(subject: subject_at(dir: dir), appropriation: kibibyte(count: 1048576), request: kibibyte(count: 1024), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
     ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none
     ComputeReservationRefused { detail: _ } => none
+  }
   }
 }
 

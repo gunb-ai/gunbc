@@ -10,7 +10,7 @@ import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_
 import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric.fabric_writer_identity_observe { FabricWriterIdentityReceipt }
 import gunbc.fabric.fabric_writer_roster {
-  FabricWriterIdentityObservation, fabric_served_writer_roster_of, fabric_served_writer_roster,
+  FabricWriterIdentityObservation, fabric_served_writer_roster_of, fabric_served_writer_roster, ServedWriterRosterListed, ServedWriterRosterUnread,
   fabric_door_writer_admission_over, fabric_door_principal_of, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused,
 }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory, fabric_storage_store_root, fabric_storage_door_directory }
@@ -84,7 +84,10 @@ test fn the_door_reads_the_login_header_only_from_the_proxy_peer() -> Bool {
 // served door refuses every login -- including one that looks like an operator's -- rather than
 // guessing which hosts are user-owned.
 test fn the_production_served_door_refuses_a_login_no_reading_observed() -> Bool {
-  admitted(a: fabric_door_writer_admission_over(logins: fabric_served_writer_roster(), locals: fabric_door_local_roster(), principal: DoorProxied { identity: TailnetUser { login: "unobserved@example.ts.net" as NonEmptyStr } })) == false
+  match fabric_served_writer_roster() {
+    ServedWriterRosterUnread { detail: _ } => true
+    ServedWriterRosterListed { logins: l } => admitted(a: fabric_door_writer_admission_over(logins: l, locals: fabric_door_local_roster(), principal: DoorProxied { identity: TailnetUser { login: "unobserved@example.ts.net" as NonEmptyStr } })) == false
+  }
 }
 
 // ── THE LOCAL ROSTER IS THE DOOR DIRECTORY'S DEPENDENTS ───────────────────────────────────
