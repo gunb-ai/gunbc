@@ -14,8 +14,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
   DashboardActuating, DashboardLocalProvision,
 }
+import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_store_root }
 import gunbc.roadmap.roadmap_dogfood_route {
-  dogfood_start_record_for_instance, dogfood_start_store_root, dogfood_start_receipt_key,
+  dogfood_start_record_for_instance, dogfood_start_receipt_key,
   dogfood_route_acceptance_holds_on,
   DogfoodStartRecord, DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
@@ -80,7 +81,7 @@ fn plant_launch(instance: HostDashboardInstance) -> Bool {
 }
 
 fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
-  let _made = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let _made = shell.Mkdir.Parents(path: dogfood_start_store_root(instance: instance) as String as FilePath)
   instance
 }
 
@@ -245,3 +246,15 @@ test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bo
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }
 
+
+// THE STORE STAYS UNREADY WHILE A LEGACY FLAT RECEIPT REMAINS: a flat dogfood-start-receipt.<gen> in the shared
+// parent root (the layout move has not run) refuses the recorder and the acceptance read, though the member
+// exists and is empty -- never a dual read of both layouts.
+test fn a_legacy_flat_receipt_keeps_the_store_unready_and_acceptance_false() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "legacy"))
+  let flat = Filesystem.Write(path: join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/dogfood-start-receipt.1"], ""), content: wire(pr: "4242")).success
+  let r = dogfood_start_record_for_instance(instance: instance)
+  flat && is_refused(r: r)
+    && (match r { DogfoodStartRefused { reason } => string_contains(s: reason, pattern: "legacy flat dogfood start receipt")  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartNoCompleteAttempt => false })
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}
