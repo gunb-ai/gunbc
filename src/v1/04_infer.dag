@@ -17065,6 +17065,19 @@ fn type_head_preserving_property(p: Node) -> Bool {
 fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   let identity = node_declaration_identity(n: n, source_indices: source_indices)
   let head_erasing_properties = n.properties |> filter(p => !type_head_preserving_property(p: p))
+  // A GENERIC TYPE PARAMETER IS CLASSIFIED BY WHAT IT IS, NOT BY HAVING NO NAME. env_with_type_variable_bindings stamps its
+  // synthetic binder inferred=TypeVariable and gives it a kernel span no source index reads, so its identity is "::". That
+  // read as StuckTypeHead, which equality_exposure_refusal admits only at the operand root and refuses as a non-root
+  // member -- so a kinded binder stored in a declaration's field refused the six `!= none` sites of 04_infer (heal run
+  // 41320756650). equality_admission_wall_note already rules a generic type parameter Opaque at every authority. The arm is
+  // keyed on the TypeVariable stamp, never on absence of a name: a nameless member that is NOT a TypeVariable still reads Stuck.
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => OpaqueTypeHead { type_identity: concat("<type-parameter:", tv, ">") }
+    _ => exposure_view_for_declared_node(n: n, identity: identity, head_erasing_properties: head_erasing_properties, source_indices: source_indices)
+  }
+}
+
+fn exposure_view_for_declared_node(n: Node, identity: String, head_erasing_properties: List<Node>, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   match identity == "::" {
     true => StuckTypeHead { cause: "declaration identity unavailable" }
     false => match n.type_annotation != none || (head_erasing_properties |> count) > 0 {

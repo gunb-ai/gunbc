@@ -272,3 +272,15 @@ test fn bare_data_initializer_at_optional_row_refuses_blocking() -> Bool {
 test fn present_spelled_data_initializer_stays_admitted() -> Bool {
   eq_admitted(source: data_row_present_spelled_green_source)
 }
+
+// A GENERIC TYPE PARAMETER STORED AS A NON-ROOT MEMBER IS OPAQUE, NOT STUCK. The env builder now binds a declaration's own
+// type parameters when it resolves the declaration's fields, so `v: T` below stores the synthetic TypeVariable binder; the
+// equality walk reaches it as a member of Box (depth > 0). exposure_view_for_node classifies it by its TypeVariable stamp, so
+// it admits; read by its nameless identity it would be StuckTypeHead and refuse (heal run 41320756650). No authored source
+// can write the NEGATIVE half (a nameless member that is not a TypeVariable): that state has no source spelling, so its
+// guarantee is the arm's key (the stamp, never an absent name), stated in exposure_view_for_node.
+data generic_member_eq_green_source: String = "module eq_probe_generic_member\ntype Box<T> {\n  v: T\n}\nfn same<T>(a: Box<T>, b: Box<T>) -> Bool { a == b }\n"
+
+test fn generic_parameter_member_equality_stays_admitted() -> Bool {
+  eq_admitted(source: generic_member_eq_green_source)
+}
