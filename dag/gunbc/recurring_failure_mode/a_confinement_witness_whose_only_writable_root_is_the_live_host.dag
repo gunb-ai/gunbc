@@ -70,6 +70,25 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // witness's declared install target from OUTSIDE it and asks two questions no participant in the witness
 // answers: is the target host-supplied, and is it a path the production layout hands to a privileged writer.
 //
+// DISTINGUISHED FROM ITS THREE NEAREST NEIGHBOURS, because merging any of them loses a half of this one.
+// `gunbc.recurring_failure_mode.a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize` is a
+// PRODUCTION plan emitting an argv its hosts' grants do not authorize: there the emitter is production, the
+// harm is a privileged action attempted, and the repair changes the plan. Here the emitter is a TEST, the harm
+// runs the other way — the action is never attempted, or it is attempted against state that is serving traffic
+// — and nothing in any production plan changes; the repair is where the witness gets its root. Merging them
+// would let a test-only target walk out of the plan check and let a production privileged argv be dispositioned
+// as a fixture problem. `gunbc.recurring_failure_mode.a_green_case_set_that_counts_row_identities_and_never_the
+// _branches_those_rows_take` is a green verdict that is true about the WRONG OBJECT; its repair is to count the
+// right thing. Here the verdict is about the right object and the host is what makes it uninformative — the
+// same PASS comes out of a runner that could not reach the target and a host that just wrote into it. Merging
+// them loses the mutation half, which is the half that makes this an emergency rather than a coverage gap.
+// `gunbc.recurring_failure_mode.a_host_property_refusal_missing_from_the_infra_allowlist` is an observed,
+// correctly-typed host refusal that was misfiled; its repair is the allowlist. THE ALLOWLIST IS THE TRAP HERE.
+// Adding these nine `Permission denied` failures to an infra allowlist would close nine reds and leave the class
+// exactly where it is, because that refusal is not about the infrastructure's own contract — it is production
+// state saying it is not yours. A refusal is allowlistable when it is about the runner, and never when it is
+// about the target.
+//
 // THE PAIRING OBLIGATION, WHICH IS WHY THIS ROW IS NOT "DELETE THE PRODUCTION DERIVATION". Dropping
 // `srv1_lab_dashboard_instance()` from these witnesses would remove the last execution of the real path, so
 // the repair keeps exactly one claim over it —
@@ -109,13 +128,21 @@ data a_confinement_witness_whose_only_writable_root_is_the_live_host: RecurringF
     // overriding only `repo_root`. srv2 has user `briansrls`, no group `node`, no `gunbc-worker`, no
     // `gunbc-attempt`. Reported by jolly-hawk-60; operator relay stern-ram-763 approved the repair.
     "OBSERVED srv2 2026-11-01: 9 install claims of test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness fail `install: cannot create directory /opt/gunbc-lab: Permission denied`; srv2 carries no group `node` and neither gunbc-worker nor gunbc-attempt, and srv1 — the only host where those claims could write — is live.",
-    // THE REPAIR, AND ITS RECEIPT: the witnesses now SUPPLY their root and principal, and the live derivation
-    // keeps exactly one execution, as a pure derivation.
-    "REPAIRED BY PR #15627 (session zesty-stag-715): test.claim.roadmap.witness_supplied_instance supplies the instance root from an mktemp leaf under a declared scratch prefix and the principal from what the host SAYS, and builds the instance through the same production derivation the lab uses (isolated_dashboard_instance_admitting) so only the ROOTS and the PRINCIPAL come from the witness; test.claim.roadmap.dashboard_lab_instance_inhabitance_witness keeps the one pure-derivation claim over srv1_lab_dashboard_instance, writing nothing; test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness now takes both from the fixture.",
+    // THE REPAIR, AND ITS RECEIPT — AND ITS SCOPE, WHICH IS PART OF THE RECEIPT. One of the two witnesses
+    // named above has moved onto a supplied root and principal; the other has NOT, and is recorded as an open
+    // case in the next receipt rather than folded into this one. A row that read as repaired while the nine
+    // reds were still standing would be the same defect one level up.
+    "REPAIRED BY PR #15627 (session zesty-stag-715) FOR ONE OF THE TWO WITNESSES: test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness now takes both its instance root and its principal from test.claim.roadmap.witness_supplied_instance — the root from an mktemp leaf under a declared scratch prefix, the principal from what the host SAYS via id/whoami — while the instance is still built through the production derivation (dashboard_instance_child over the supplied root) so only the ROOTS and the PRINCIPAL come from the witness; the live derivation keeps exactly one execution, as the pure-derivation claim test.claim.roadmap.dashboard_lab_instance_inhabitance_witness, which writes nothing.",
+    // THE OPEN CASE, RECORDED RATHER THAN CLAIMED AWAY. This row was filed on nine reds in the SANDBOX witness;
+    // PR #15627 moves the SPAWN witness, and the sandbox witness is held by another open PR, so the nine reds
+    // are still standing at the time of this writing. Naming them keeps the row's rung honest (DESIGN section
+    // 4b: the reported rung equals the rung established by executed evidence) and keeps the next session from
+    // reading a closed row and walking past nine unexecuted confinement claims.
+    "STILL OPEN AFTER PR #15627: test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness is NOT repaired by that PR. Ten of its claims still bind srv1_lab_dashboard_instance() — file lines 258, 290, 379, 481, 490, 500, 553, 580, 999, 1032, in writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox, the_worker_worktree_is_writable_inside_the_same_sandbox, writes_through_the_launcher_to_bin_and_source_hooks_are_refused, sudo_n_true_fails_inside_the_launched_unit, sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit, writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed, a_launched_unit_exit_record_names_the_expanded_invocation_and_result, a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher, a_symlinked_request_body_is_refused_without_following, writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds — so on srv2 its install claims still fail `install: cannot create directory /opt/gunbc-lab: Permission denied` and on srv1 they would still write into the live lab root. The file is held by PR #15576 (session jolly-swift-832), so the repair is a follow-up that adopts test.claim.roadmap.witness_supplied_instance there once #15576 lands. Until it does, this row is BELOW its ceiling with an open instance, not mitigated.",
     // THE CONTROL, WHICH IS THE HALF OF THE REPAIR THAT MAKES IT A REPAIR. Pointing the supplied root back at
     // the live derivation, or dropping the supplied principal, makes the claims REFUSE — they do not fall back
     // to the production value.
-    "CONTROL PR #15627: with the supplied root reverted to srv1_lab_dashboard_instance's own provision_parent_root/instance_root, and separately with the supplied principal dropped, the supplied-root witness refuses rather than running the claim at the production target; restoring the fixture returns the batch to green.",
+    "CONTROL PR #15627: with the supplied root reverted to srv1_lab_dashboard_instance's own provision_parent_root/instance_root, and separately with the supplied principal dropped, the supplied-root witness refuses rather than running the claim at the production target; restoring the fixture returns the batch to green. Measured, not asserted: the revert turned the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it and the_worktree_grant_makes_the_checkout_editable_and_its_proof_refuses_without_it RED, and dropping the principal requirement turned witness_supplied_principal_refuses_when_the_host_cannot_say and the_supplied_principal_is_the_hosts_own RED.",
   ],
 
   evidence: [

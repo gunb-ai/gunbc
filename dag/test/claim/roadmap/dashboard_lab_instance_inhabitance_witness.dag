@@ -29,8 +29,10 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_scratch_prefix,
   witness_supplied_instance,
   witness_supplied_writable_roots,
+  witness_production_writable_roots,
   witness_supplied_roots_are_off_the_live_host,
   witness_supplied_root_is_refused,
+  is_under,
   witness_principal_from_texts,
 }
 
@@ -192,18 +194,46 @@ test fn witness_supplied_row_is_the_lab_row_at_a_supplied_root() -> Bool {
 // NO ROOT A CLAIM USING THE SUPPLIED ROW MAY WRITE UNDER IS ON THE LIVE HOST, and every one of them is under
 // the scratch parent the witness created. This is the claim that fails if the fixture is pointed back at the
 // live derivation — the BROKEN run the PR body names.
+//
+// THE TWO ARMS ARE THE SAME ACCESSOR LIST AT THE TWO ROWS, which is what makes this a discrimination and not a
+// tautology: the PRODUCTION row's writable roots are named by `witness_production_writable_roots` and every one
+// of them must be refused by the guard and sit under the live provision parent; the SUPPLIED row's are named by
+// `witness_supplied_writable_roots` and none of them may be. A fixture that quietly inherited the live roots
+// would satisfy the second arm and fail the first only if the first were absent — so both are here, over one
+// accessor each, and neither list is restated as a literal in this file.
 test fn witness_supplied_writes_never_reach_the_live_host() -> Bool {
   let supplied = witness_supplied_instance(
     scratch_parent: witness_test_scratch_parent,
     repo: witness_test_repo,
     principal: witness_test_principal,
   )
-  all(
+  let production = srv1_lab_dashboard_instance()
+  let production_roots_are_the_live_host = all(
+    xs: witness_production_writable_roots(instance: production),
+    predicate: root =>
+      witness_supplied_root_is_refused(root as String)
+        && is_under(text: root as String, root: srv1_dashboard_lab_provision_parent as String),
+  )
+    && any(
+      xs: witness_production_writable_roots(instance: production),
+      predicate: root => root == srv1_dashboard_lab_provision_parent,
+    )
+    && any(
+      xs: witness_production_writable_roots(instance: production),
+      predicate: root => root == srv1_dashboard_lab_root,
+    )
+  let supplied_roots_are_the_scratch_tree = all(
     xs: witness_supplied_writable_roots(instance: supplied),
     predicate: root =>
       string_contains(s: root as String, pattern: witness_scratch_prefix as String)
         && !witness_supplied_root_is_refused(root as String),
   )
+    && !any(
+      xs: witness_supplied_writable_roots(instance: supplied),
+      predicate: root => is_under(text: root as String, root: srv1_dashboard_lab_provision_parent as String),
+    )
+  production_roots_are_the_live_host
+    && supplied_roots_are_the_scratch_tree
     && witness_supplied_roots_are_off_the_live_host(instance: supplied)
 }
 
