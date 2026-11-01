@@ -1,0 +1,44 @@
+module test.claim.integer_width_carrier_model_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.languages.rust.primitives { IntegerPrimitive, NonIntegerPrimitive }
+import v2.std.integer { Int8, Int16, Int128, UInt8, UInt16, UInt128, StandardIntegerType, Trapping }
+import gunbc.integer_width_carrier { integer_width_implicit_conversion, integer_width_default_overflow }
+import gunbc.rust_integer_width_bindings { rust_integer_width_primitive, rust_integer_width_source_bindings }
+
+fn primitive_named(width: StandardIntegerType, expected: String) -> Bool {
+  match rust_integer_width_primitive(width: width) {
+    Absent => false
+    Present { value: p } => match p {
+      IntegerPrimitive { target_name: name, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } => name == expected
+      NonIntegerPrimitive { target_name: _, algebra: _, carrier: _, is_copy: _ } => false
+    }
+  }
+}
+
+test fn signed_and_unsigned_widths_select_existing_target_rows() -> Bool {
+  primitive_named(width: Int8, expected: "i8")
+    && primitive_named(width: UInt8, expected: "u8")
+    && primitive_named(width: Int128, expected: "i128")
+    && primitive_named(width: UInt128, expected: "u128")
+}
+
+test fn only_same_signedness_widening_is_implicit() -> Bool {
+  integer_width_implicit_conversion(source: UInt8, destination: UInt16)
+    && integer_width_implicit_conversion(source: Int8, destination: Int16)
+    && !integer_width_implicit_conversion(source: UInt16, destination: UInt8)
+    && !integer_width_implicit_conversion(source: UInt8, destination: Int16)
+    && !integer_width_implicit_conversion(source: Int8, destination: UInt16)
+}
+
+test fn both_source_declaration_homes_share_the_target_fact() -> Bool {
+  match rust_integer_width_source_bindings(width: UInt8) {
+    Absent => false
+    Present { value: rows } => count(rows) == 2
+  }
+}
+
+test fn width_arithmetic_does_not_inherit_target_wrapping() -> Bool {
+  match integer_width_default_overflow() { Trapping => true _ => false }
+}

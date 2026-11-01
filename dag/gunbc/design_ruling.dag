@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data machine_width_composition_has_an_intersection_carrier: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier"),
+  decided: "2026-11-01",
+  section: "4",
+  provenance: "Operator CARRIER ruling relayed by quick-newt-573 to bold-dove-340, message msg_0cf79c9c-cc1f-4002-a6ed-79dae1ec7547; operator intersection intent relayed in msg_dcf2da48-1255-435d-b210-690732972a9f. Compose<A,C> denotes intersection: for Int/UInt and MachineWidth<N>, the carrier is the algebra value restricted to the machine interval, with the width retained in its type. This is NOT Compose<A,C> = A, the transparent alias rejected by the arithmetic ledger. Real crossings motivating the ruling are git.object_store, MAC qualified_octet_members, openssl, OIDC DER and roadmap auth hex. CORRECTION to the escalation: v2.std.node_minimal SpanRef.file_id was cited as a core-node example but is a declared scaffold outside the self-host and v2-native-cli import closures; it is not executed evidence. The ruling supersedes std.integer's no-inhabitant prescription for this integer-width intersection only, not arbitrary Compose applications. Model first; emitter changes follow only after model review. No current runtime or emitted-width guarantee is claimed by recording this ruling.",
+}
+
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
@@ -588,6 +595,7 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    machine_width_composition_has_an_intersection_carrier,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,

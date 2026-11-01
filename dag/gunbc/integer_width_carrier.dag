@@ -1,0 +1,73 @@
+module gunbc.integer_width_carrier
+
+import std.types { List, String, Bool }
+import std.integer { Signedness, Signed, Unsigned }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.integer {
+  StandardIntegerType, Int8, Int16, Int32, Int64, Int128,
+  UInt8, UInt16, UInt32, UInt64, UInt128,
+  IntegerIntervalSpec, OverflowDisposition, Trapping,
+  integer_standard_integer_type_roster,
+  integer_standard_integer_type_signedness,
+  integer_standard_integer_type_width_bits,
+  integer_standard_integer_type_interval_spec, integer_interval_spec_contains
+}
+
+// MODEL CONTRACT, not a new value wrapper. The source remains Compose<A,MachineWidth<N>>:
+// its inhabitants are A intersected with the existing interval. Keeping Compose folded preserves
+// infer_int_literal_value_at's existing width observation. No other Compose gets a value carrier.
+// The ten std.integer aliases and ten v2.std.integer aliases express the same width axis. Their
+// Int declarations have different current realizations; a width binding must not silently change
+// either unbounded Int. No bounds are copied here: v2.std.integer owns the symbolic intervals.
+fn integer_width_domain(width: StandardIntegerType) -> IntegerIntervalSpec {
+  integer_standard_integer_type_interval_spec(standard_integer_type: width)
+}
+
+// Same signedness AND interval inclusion: no implicit narrowing, signedness change, saturation,
+// truncation or wrapping. This also makes all implicit widening chains denote the same value.
+fn integer_width_implicit_conversion(source: StandardIntegerType, destination: StandardIntegerType) -> Bool {
+  integer_standard_integer_type_signedness(standard_integer_type: source)
+    == integer_standard_integer_type_signedness(standard_integer_type: destination)
+    && integer_interval_spec_contains(container: integer_width_domain(width: destination), contained: integer_width_domain(width: source))
+}
+
+// The source policy is checked/trapping, independent of Rust debug/release overflow settings.
+// A named checked arithmetic operation returns absence/refusal on a result outside the interval;
+// ordinary width arithmetic must propagate a located refusal, never select target wrapping.
+// Existing named wrapping operations remain explicit alternatives. This legacy disposition is
+// the projection of std.integer IntegerOverflowSemantics' raise arm; it does not claim that a
+// hardware trap, panic and typed refusal are one effect. The effectful consumer must retain its
+// particular failure carrier. Saturating and wrapping are never implicit defaults.
+fn integer_width_default_overflow() -> OverflowDisposition { Trapping }
+
+fn integer_width_alias_name(width: StandardIntegerType) -> String {
+  match width {
+    Int8 => "Int8"
+    Int16 => "Int16"
+    Int32 => "Int32"
+    Int64 => "Int64"
+    Int128 => "Int128"
+    UInt8 => "UInt8"
+    UInt16 => "UInt16"
+    UInt32 => "UInt32"
+    UInt64 => "UInt64"
+    UInt128 => "UInt128"
+  }
+}
+
+fn integer_width_source_declarations(width: StandardIntegerType) -> List<DeclarationRef> {
+  let name = integer_width_alias_name(width: width)
+  [decl_ref(module_path: "std.integer", decl_name: name), decl_ref(module_path: "v2.std.integer", decl_name: name)]
+}
+
+// Construction is a compiler-enforced checked conversion, not a record whose callers may forge
+// its value. A literal is checked by the existing located literal wall; a nonliteral narrowing or
+// signedness crossing needs a named Optional-returning conversion. The conversion checks the
+// mathematical value BEFORE the target cast. No unsafe `as` is a constructor. Wider-than-host
+// values require the existing exact decimal interval representation, not an i64 approximation.
+// UInt8Ready remains Int until this route is enforced. PointerWidth needs a resolved target width;
+// it does not inherit a host width by default and is outside the ten fixed-width bindings below.
+data integer_width_carrier_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Consumer: the seed Rust type realization and source conversion/arithmetic admission, after the 2026-11-01 CARRIER model lands. Trigger: integer-width Compose remains folded and has a checked construction route enforcing integer_width_domain for literals AND nonliteral values; only integer_width_implicit_conversion is implicit; named checked arithmetic and the source trapping/refusal disposition govern overflow. Rust emission consumes gunbc.rust_integer_width_bindings, never a UInt8 branch or provenance_host_numeric_alias. Controls: UInt8 255 admits/300 refuses at the existing located literal wall; runtime 300 refuses the named mint; signedness change is named; same-sign widening is exact; 255+1 refuses while explicitly named wrapping yields zero; Int and unrelated Compose unchanged. Preserve current literal walls throughout. Model rows alone discharge none of these execution obligations."
+)

@@ -1,0 +1,54 @@
+module gunbc.rust_integer_width_bindings
+
+import std.types { List, Bool }
+import std.optional { Present, Absent }
+import std.integer { Signed, Unsigned }
+import std.target_representation { SourceTypeTargetBinding }
+import extdeps.languages.rust.primitives {
+  RustPrimitive, IntegerPrimitive, NonIntegerPrimitive,
+  TargetCarrier, BitCarrier, ByteCarrier, Word16Carrier, Word32Carrier,
+  Word64Carrier, Word128Carrier, TerminalCarrier,
+  OrderedRingAlgebra, SemiringAlgebra, rust_grounding_primitives, rust_integer_carrier_width
+}
+import v2.std.integer {
+  StandardIntegerType, integer_standard_integer_type_roster,
+  integer_standard_integer_type_signedness, integer_standard_integer_type_width_bits
+}
+import gunbc.integer_width_carrier { integer_width_source_declarations }
+
+// Parametric-width companion to gunbc.rust_source_type_bindings. Reuses its generic binding
+// carrier, but the target representation IS the existing primitive row, not a second integer
+// catalog or an extension of the spelling-only checkpoint table. Bounds/overflow spellings are
+// never recopied. Source arithmetic policy remains gunbc.integer_width_carrier's contract;
+// a primitive's machine wrap fact does not authorize implicit source wrapping.
+fn rust_integer_primitive_matches_width(primitive: RustPrimitive, width: StandardIntegerType) -> Bool {
+  match primitive {
+    NonIntegerPrimitive { target_name: _, algebra: _, carrier: _, is_copy: _ } => false
+    IntegerPrimitive { target_name: _, algebra: a, carrier: c, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } =>
+      match rust_integer_carrier_width(carrier: c) {
+        Absent => false
+        Present { value: bits } =>
+          bits == integer_standard_integer_type_width_bits(standard_integer_type: width)
+          && match (integer_standard_integer_type_signedness(standard_integer_type: width), a) {
+            (Signed, OrderedRingAlgebra) => true
+            (Unsigned, SemiringAlgebra) => true
+            _ => false
+          }
+      }
+  }
+}
+
+// Missing or competing target facts refuse; `first` alone would silently choose a realization.
+fn rust_integer_width_primitive(width: StandardIntegerType) -> RustPrimitive? {
+  let matches = filter(rust_grounding_primitives, p => rust_integer_primitive_matches_width(primitive: p, width: width))
+  if count(matches) == 1 { first(matches) } else { Absent }
+}
+
+fn rust_integer_width_source_bindings(width: StandardIntegerType) -> List<SourceTypeTargetBinding<RustPrimitive>>? {
+  match rust_integer_width_primitive(width: width) {
+    Absent => Absent
+    Present { value: primitive } => Present {
+      value: map(integer_width_source_declarations(width: width), source => SourceTypeTargetBinding { source: source, representation: primitive })
+    }
+  }
+}
