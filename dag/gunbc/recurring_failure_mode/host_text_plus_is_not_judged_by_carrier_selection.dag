@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.host_text_plus_is_not_judged_by_carrier_selection
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data host_text_plus_is_not_judged_by_carrier_selection: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_text_plus_is_not_judged_by_carrier_selection" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_kernel_value_type_roster", field: WholeDeclaration } } },
+      trigger_capability: "the seed can consume one kernel-spelling authority (dag_kernel_value_type_roster), either relocated under the name-to-path rule or reachable as a seed import -- sufficient for v1.compiler.infer_types operand_carrier_ref to ground every kernel spelling of one kernel value type (the bare String, v2.std.node String, std.host_text HostText) to one carrier, so a text operand pair is judged by v1.compiler.infer_types arithmetic_carrier_selection instead of being declined by operand_is_text."
+    },
+  },
+
+  receipts: [
+    "**host text + is not judged by carrier selection** (an arithmetic operator whose operand v1.compiler.infer_env text_representation_by_identity reads as text keeps the left-operand typing it had before carrier selection existed: v1.compiler.infer_types arithmetic_carrier_selection declines it through operand_is_text, and nothing judges the pair).",
+
+    "INVALID STATE: an Accepted program in which `+` has a text operand and an operand of a different kernel value type or text representation -- host text beside a structural FreeMonoid<Char> String, or text beside an Int -- and is typed from its left operand with no carrier judgment.",
+
+    "HARM: a mismatched operand pair reaches emission typed as the left operand; the wrong type surfaces at the first consumer that reads the result as its declared type, or not at all where both realize as one host string.",
+
+    "WHY DECLINED, NOT JUDGED (gunbc#15610, 2026-11-01): the six '+' sites the v2 self-host emit refused (srv2 kh-q1e-diag2 at 35856d3e4346, gunbc 52191dc7…) were five host-text concatenations whose operands read 'Primitive(String) @ no carrier' against 'Primitive(String) @ v2.std.node.String' -- one kernel value type spelled two ways -- and one identity-erased operand. The authority that names both spellings as ONE kernel value type is v2.extdeps.languages.dag dag_kernel_value_type_roster, which lives in src/v2; seed imports resolve under dag/, so operand_carrier_ref cannot consult it and grounds only the spelling 'Int'. A dag/ copy of the roster would fork that authority (DESIGN section 3); comparing carriers by leaf name would admit a HostText-plus-FreeMonoid crossing silently (section 4); restoring left-operand fallback for carrier-less operands was ruled out. Declining text keeps those sites' typing exactly as on main and judges nothing new.",
+
+    "SCOPE: numeric operands are unaffected. A carrier-less numeric pair still refuses ArithmeticWithoutCarrier (test.claim.arithmetic_carrier_witness w_nat_plus_unmodeled_carrier_refuses; test.claim.refinement_cast_wall_witness w_peano_nat_difference_is_not_the_refinement). The identity-erased operand (`state.count + 1`, typed 'Primitive()') is a separate reading, not this row: v1.compiler.infer_types operand_identity_unknown abstains on it as it does on a type variable, which is blind, not a judgment.",
+
+    "RUNG: found BELOW the ladder -- the pair is accepted with no judgment, as it was before carrier selection.",
+
+    "CEILING 3, structurally guaranteed: once every kernel spelling grounds through one authority, a text pair is judged like any other (same carrier: the operation's own; different representations: the declared text crossing or a refusal).",
+
+    "REVIEW TELL: a carrier comparison by leaf name, a dag/ restatement of the kernel value type roster, or a text-specific typing branch beside the carrier selection.",
+  ],
+
+  evidence: [],
+}
