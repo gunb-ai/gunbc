@@ -60,7 +60,7 @@ fn fresh_root() -> String {
   let instance = instance_at(root: made)
   let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
   let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
-  if root_ok && cap_ok { made } else { "" }
+  if root_ok && cap_ok { made as String } else { "" }
 }
 
 // THE HOST'S MEMORY READING IS SUPPLIED TO EVERY LEDGER CELL (DESIGN 3, a witness discriminates at
