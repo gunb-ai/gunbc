@@ -8811,12 +8811,13 @@ fn eval_var(
         });
     }
 
-    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
-    // coproduct arm named `None` was handled above and retains its declaration identity
-    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
-    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    // The untyped `none` shorthand denotes the optional's Absent, built by the one constructor
+    // (`optional_absent`), not a host Null second representation. A resolved coproduct arm named
+    // `None` was handled above and retains its declaration identity (`parent_enum`, terminal
+    // arm), so `Diagnostics.None`, an imported `None`, and a re-export construct the same value
+    // while an unrelated coproduct's `None` remains distinct.
     if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
+        return Ok(optional_absent(ctx));
     }
 
     if let Some(val) = env.lookup(sym) {

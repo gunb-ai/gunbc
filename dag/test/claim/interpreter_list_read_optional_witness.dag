@@ -67,3 +67,21 @@ test fn a_match_on_map_get_answers_by_value() -> Bool {
   (match ilro_map.get("k") { Present { value: v } => v == "v"  Absent => false })
     && (match ilro_map.get("z") { Present { value: v } => false  Absent => true })
 }
+
+type IlroAcc { bad: Optional<String> }
+
+data ilro_acc_none: IlroAcc = IlroAcc { bad: none }
+
+data ilro_acc_some: IlroAcc = IlroAcc { bad: Present { value: "x" } }
+
+// The `none` shorthand is the optional's Absent: a record field initialized with it eliminates
+// by match (the shape `ipmitool_hpm_check` folds), and equals the Absent literal.
+test fn a_none_field_is_absent_and_matches() -> Bool {
+  (match ilro_acc_none.bad { Present { value: v } => false  Absent => true })
+    && ilro_acc_none.bad == Absent
+}
+
+// POSITIVE CONTROL: a Present field of the same record type matches the other arm.
+test fn a_present_field_matches_present() -> Bool {
+  match ilro_acc_some.bad { Present { value: v } => v == "x"  Absent => false }
+}
