@@ -323,6 +323,13 @@ fn gunbc_roster_gate() -> RosterGate {
   gunbc_repository_ci_profile().roster
 }
 
+// GUNBC'S REQUIRED CONTEXT NAME, for the claims that assert which check must be green to merge and for
+// the merge-path list. It is ONE read of the row's field - the emitter module keeps no copy of it, so the
+// required job's identity has exactly one spelling: profile.roster.required_context.
+fn gunbc_required_context_name() -> String {
+  gunbc_roster_gate().required_context as String
+}
+
 
 
 
@@ -538,6 +545,34 @@ fn profile_with_roster_runner(profile: RepositoryCiProfile, runner: CiRunnerTarg
       job_display_name: profile.roster.job_display_name,
       required_context: profile.roster.required_context,
       runner: runner,
+      timeout: profile.roster.timeout,
+      source_roots: profile.roster.source_roots,
+      schedule: profile.roster.schedule,
+      memory_budget: profile.roster.memory_budget,
+      route: profile.roster.route,
+      annotation: profile.roster.annotation
+    },
+    public_seed: profile.public_seed,
+    heal: profile.heal,
+    drift: profile.drift,
+    publisher: profile.publisher
+  }
+}
+
+// THE ONE UPDATE THAT IS NOT A RUNNER: the required gate's identity. A control that renames the required
+// context and moves the job to a hosted runner asks whether the fleet-only conjunct of the capability gate
+// sees the JOB THE ROW DECLARES or some other repository's job id.
+fn profile_with_required_context(profile: RepositoryCiProfile, name: NonEmptyStr) -> RepositoryCiProfile {
+  RepositoryCiProfile {
+    repository: profile.repository,
+    default_branch: profile.default_branch,
+    roster: RosterGate {
+      workflow_file: profile.roster.workflow_file,
+      workflow_name: profile.roster.workflow_name,
+      job_id: profile.roster.job_id,
+      job_display_name: profile.roster.job_display_name,
+      required_context: name,
+      runner: profile.roster.runner,
       timeout: profile.roster.timeout,
       source_roots: profile.roster.source_roots,
       schedule: profile.roster.schedule,

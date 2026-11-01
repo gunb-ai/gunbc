@@ -355,21 +355,6 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
 // instrument, never transcribe its output) -- the producer is the required job of any run of this
 // workflow, and the two instrument steps carry one label each so the split between the two
 // compilations is readable from the step timings rather than inferred.
-// GUNBC'S OWN REQUIRED-CONTEXT PROJECTION, read by the merge-path list below and by the claims that ask
-// which check must be green to merge. THE RENDER PATH DOES NOT READ THIS: the required job's id comes from
-// the profile the emitter admitted (compiler_gate_required_job_of), so an emitter can no longer admit one
-// repository and name another repository's check. What remains allowed here is a projection OF the row -
-// gunbc.ci.required_ci_contract_epoch names the obligation, gunbc.ci.repository_ci_profile carries it, and
-// this is one read of it. What is not allowed is this module holding a copy of the name.
-data compiler_gate_required_job_id: String = gunbc_roster_gate().required_context as String
-
-// THE TIMEOUT IS A BOUND, NOT A BUDGET, and it is deliberately well above the measured wall: a
-// timeout that trims a slow-but-honest run converts a subject verdict into silence on the required
-// context, which is the failure `required_lanes_aggregate_job_condition` spends its whole comment
-// on one module over.
-// THE BOUND IS ON THE PROFILE ROW, and THIS is gunbc's own projection of it, kept for the claims that
-// assert the bound is not a budget. The render path reads the admitted row's timeout, not this projection.
-data compiler_gate_emit_build_timeout: Minute = gunbc_roster_gate().timeout
 
 // ONE STEP PER SUBJECT, EACH WITH ITS OWN ID. `witness_floor_build_step` cannot be reused: it binds
 // the fixed step id `build_witness_fold`, and two steps in one job may not share an id. The
@@ -709,13 +694,19 @@ fn compiler_gate_hosted_job_ids_in(workflow: Workflow) -> List<String> {
   )
 }
 
-fn compiler_gate_merge_path_job_ids() -> List<String> {
-  [compiler_gate_required_job_id]
+// WHICH JOBS ARE ON THE MERGE PATH is decided by THE ADMITTED ROW: the required gate is the job the row
+// names as its required context, and the hosted list is read from the workflow built from that same row.
+// Both sides of the comparison therefore name job ids that exist in the same workflow. Reading the merge
+// path from a global row instead made the two lists comparable only by accident: rename the required
+// context and put the job on a hosted runner, and the merge-path list holds a name no job in the workflow
+// has, the lists are disjoint, and the conjunct passes a hosted merge-path job.
+fn compiler_gate_merge_path_job_ids_in(profile: RepositoryCiProfile) -> List<String> {
+  [profile.roster.required_context as String]
 }
 
-fn compiler_gate_merge_path_runs_on_the_fleet_in(workflow: Workflow) -> Bool {
+fn compiler_gate_merge_path_runs_on_the_fleet_in(profile: RepositoryCiProfile, workflow: Workflow) -> Bool {
   compiler_gate_no_merge_path_job_is_hosted(
-    merge_path: compiler_gate_merge_path_job_ids(),
+    merge_path: compiler_gate_merge_path_job_ids_in(profile: profile),
     hosted: compiler_gate_hosted_job_ids_in(workflow: workflow)
   )
 }
@@ -727,8 +718,15 @@ fn compiler_gate_hosted_job_ids() -> List<String> {
   compiler_gate_hosted_job_ids_in(workflow: compiler_gate_workflow)
 }
 
+fn compiler_gate_merge_path_job_ids() -> List<String> {
+  compiler_gate_merge_path_job_ids_in(profile: gunbc_repository_ci_profile())
+}
+
 fn compiler_gate_merge_path_runs_on_the_fleet() -> Bool {
-  compiler_gate_merge_path_runs_on_the_fleet_in(workflow: compiler_gate_workflow)
+  compiler_gate_merge_path_runs_on_the_fleet_in(
+    profile: gunbc_repository_ci_profile(),
+    workflow: compiler_gate_workflow
+  )
 }
 
 // Pending runs are replaced as before; a running PR build is cancelled by the next push. The
@@ -778,7 +776,7 @@ data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.witness.co
 // so nothing that used to pass now runs later or vice versa.
 //
 // Returns Absent when the gate holds, meaning the artifact may be emitted.
-fn compiler_gate_generation_gate_first_failure(workflow: Workflow) -> Optional<String> {
+fn compiler_gate_generation_gate_first_failure(profile: RepositoryCiProfile, workflow: Workflow) -> Optional<String> {
   let gates: List<CompilerGateGenerationGate> = [
     CompilerGateGenerationGate {
       name: "compiler_gate_emit_build_capability_closure_holds (a step lacks a capability its role requires)",
@@ -790,7 +788,7 @@ fn compiler_gate_generation_gate_first_failure(workflow: Workflow) -> Optional<S
     },
     CompilerGateGenerationGate {
       name: "compiler_gate_merge_path_runs_on_the_fleet (the required job is on a hosted runner)",
-      holds: compiler_gate_merge_path_runs_on_the_fleet_in(workflow: workflow)
+      holds: compiler_gate_merge_path_runs_on_the_fleet_in(profile: profile, workflow: workflow)
     },
     CompilerGateGenerationGate {
       name: "required_ci_contract_epoch_is_derived (the epoch is authored, not derived)",
@@ -876,11 +874,11 @@ fn compiler_gate_yml_for(profile: RepositoryCiProfile) -> WitnessFloorGeneration
 fn compiler_gate_yml_after_profile_admission(profile: RepositoryCiProfile) -> WitnessFloorGenerationOutcome {
   match compiler_gate_row_refusal(profile: profile) {
     Present { value: reason } => WitnessFloorGenerationRefused { reason: reason as String }
-    Absent => compiler_gate_render(workflow: compiler_gate_workflow_of(profile: profile))
+    Absent => compiler_gate_render(profile: profile, workflow: compiler_gate_workflow_of(profile: profile))
   }
 }
 
-fn compiler_gate_render(workflow: Workflow) -> WitnessFloorGenerationOutcome {
+fn compiler_gate_render(profile: RepositoryCiProfile, workflow: Workflow) -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
       WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness.compiler_gate_workflow", refusals: rs) }
@@ -893,7 +891,7 @@ fn compiler_gate_render(workflow: Workflow) -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          match compiler_gate_generation_gate_first_failure(workflow: workflow) {
+          match compiler_gate_generation_gate_first_failure(profile: profile, workflow: workflow) {
             Absent =>
               match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
                 EmittedYaml { text: t } => WitnessFloorGenerated { content: t }

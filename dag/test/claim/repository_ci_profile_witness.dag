@@ -19,7 +19,7 @@ import gunbc.ci.repository_ci_profile {
   fleet_runner_group_target,
   github_hosted_publisher_runner_target,
   profile_with_roster_runner, profile_with_heal_runner, profile_with_drift_runner,
-  profile_with_publisher_runner,
+  profile_with_publisher_runner, profile_with_required_context,
 }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
@@ -942,6 +942,40 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
 // declared, declaring a heal with no publisher, or carrying a duration that is not positive still produced
 // committed YAML. Each emitter now admits first, and each pair below is a discriminator: the same emitter
 // function refuses the row it does not admit and composes for gunbc's own.
+// THE REQUIRED JOB'S IDENTITY IS THE ADMITTED ROW'S, NOT A GLOBAL ROW'S.
+// The fleet-only conjunct of the capability gate compares two lists: the jobs on the merge path and the
+// jobs the emitted workflow puts on a hosted runner. If the merge-path list is read from some global row
+// while the workflow is built from the profile, the two lists name different repositories and are
+// comparable only by accident: rename the required context and move the job to a hosted runner, and the
+// merge-path list holds a name no job in the workflow has - disjoint lists, conjunct satisfied, and a
+// merge-gating job on a hosted runner lands in a committed workflow, which is what the 2026-09-28 operator
+// ruling exists to prevent. So the renamed-and-hosted row must be refused BY THAT CONJUNCT - the refusal
+// has to name it, so the control cannot be satisfied by some earlier refusal - and the renamed-but-fleet
+// row, the same rename with only the machine changed, must still compose.
+test fn renamed_required_job_on_a_hosted_runner_is_refused_by_the_fleet_conjunct() -> Bool {
+  let hosted_row = profile_with_required_context(
+    profile: profile_with_roster_runner(
+      profile: gunbc_repository_ci_profile(),
+      runner: github_hosted_publisher_runner_target()
+    ),
+    name: "renamed-required-context-under-test"
+  )
+  let fleet_row = profile_with_required_context(
+    profile: gunbc_repository_ci_profile(),
+    name: "renamed-required-context-under-test"
+  )
+
+  match compiler_gate_yml_for(profile: hosted_row) {
+    WitnessFloorGenerationRefused { reason: r } =>
+      string_contains(s: r, pattern: "FIRST FAILING CONJUNCT: compiler_gate_merge_path_runs_on_the_fleet") &&
+      match compiler_gate_yml_for(profile: fleet_row) {
+        WitnessFloorGenerated { content: _ } => true
+        WitnessFloorGenerationRefused { reason: _ } => false
+      }
+    WitnessFloorGenerated { content: _ } => false
+  }
+}
+
 test fn the_four_gunbc_emitters_admit_the_row_before_rendering() -> Bool {
   heal_emitter_admits() &&
     publisher_emitter_admits() &&
