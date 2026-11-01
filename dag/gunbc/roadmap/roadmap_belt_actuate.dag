@@ -15191,13 +15191,6 @@ fn belt_exit_complete_step(store: SpoolStore, key: SpoolEntryKey) -> String? {
   }
 }
 
-fn belt_exit_then(first: String?, next: fn() -> String?) -> String? {
-  match first {
-    Absent => next()
-    Present { value: why } => Present { value: why }
-  }
-}
-
 // EVERY MOVE IS A DECLARED OPERATION OF gunbc.spool_queue: a handoff or claim step, a completion, the evidence-gated
 // requeue, or the refusal of a name that is not an entry. A (from, to) pair the declaration has no operation for is a
 // typed refusal, never a rename.
@@ -15227,7 +15220,14 @@ fn belt_exit_keyed_move(store: SpoolStore, entry: String, from: SpoolRole, to: S
       } else if (from == RoleHandedOff && to == RoleClaimed) {
         belt_exit_claim_step(store: store, key: key)
       } else if (from == RolePending && to == RoleDone) {
-        belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_complete_step(store: store, key: key)))
+        match belt_exit_claim_step(store: store, key: key) {
+          Present { value: why } => Present { value: why }
+          Absent =>
+            match belt_exit_claim_step(store: store, key: key) {
+              Present { value: why } => Present { value: why }
+              Absent => belt_exit_complete_step(store: store, key: key)
+            }
+        }
       } else if (from == RoleClaimed && to == RoleDone) {
         belt_exit_complete_step(store: store, key: key)
       } else if (from == RoleClaimed && to == RolePending) {
