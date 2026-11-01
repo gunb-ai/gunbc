@@ -10,8 +10,10 @@ module test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness
 // rotation is ONE write, its inferred build must be answered by the post-write read, and a second run is a Noop.
 // NO live effect: the whole file is the dry model plus witnesses.
 
-import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret, String }
 import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.decl_ref { decl_field_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.endpoint { OpenBmc, BmcControllerEndpoint }
@@ -23,6 +25,9 @@ import extdeps.bmc.ipmi_channel {
 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady }
+import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
 import gunbc.machine_intake.subject {
   AssemblyManifest, ComponentIdentity, DimmComponent, FirmwareEntry, FirmwareManifest, IntakeAttemptId,
   MachineIntakeSubject, UnitKey, qualification_subject_of,
@@ -33,6 +38,7 @@ import gunbc.bmc_model {
   BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access,
   bmc_with_redfish_accounts, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, bmc_redfish_account,
   BmcRedfishLockoutThreshold, BmcRedfishLockoutAfter, bmc_redfish_change_step_world,
+  bmc_redfish_account_odata_id, bmc_ipmi_user_accepts,
 }
 import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
@@ -43,6 +49,7 @@ import gunbc.machine_intake.bmc_credential_policy {
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWritePurpose, ObservedSurfaceRead, QualifyByRotation,
   rotation_route_candidate, redfish_account_password_write, admit_forced_first_rotation,
+  RedfishAccountPasswordWrite, rotation_route_ungrounded,
   ForcedFirstRotationAdmitted, ForcedFirstRotationRefused, AdmittedForcedFirstRotation,
 }
 import gunbc.machine_intake.bmc_secure {
@@ -56,6 +63,9 @@ import gunbc.machine_intake.bmc_secure {
   confirm_forced_first_rotation_build, ForcedFirstRotationBuildConfirmed, ForcedFirstRotationBuildRefused,
   ForcedRotationBuildDiffers, ForcedRotationControllerDiffers,
   BmcSecureGoal, ManagedCredentialReference, PublishedAccountRetired, DryPublishedReading, DryDerivePublishedRetirement,
+  apply_planned_account_write, PlannedAccountWrite, ManagedAccountTarget,
+  ManagedCredentialGenerationFetched, admit_stored_generation, admit_fetched_generation,
+  GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import gunbc.machine_intake.receipt { EvidenceRef }
@@ -165,6 +175,30 @@ fn census() -> IpmiControllerChannelCensus {
     members: [ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 60))],
     user_access: [ipmi_user_channel_access(channel: 1, user: root_user, privilege: IpmiPrivilegeAdministrator)],
   )
+}
+
+// The generation admissions a supplied PlannedAccountWrite needs: a stored generation (root's secret, version 2)
+// fetched through a ready fetch that resolves to the managed credential. Mirrors the shared-store witness so the
+// supplied-boundary claim builds its generation the same way a real plan would, not by hand.
+data redfish_schedule: NonEmptyStr = "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness schedule" as NonEmptyStr
+
+fn version_identity(version: String) -> SmResolvedVersionIdentity {
+  join(["projects/gunbai-secrets/secrets/bmc-lab-root-admin/versions/", version], "") as SmResolvedVersionIdentity
+}
+
+fn ready_fetch(version: String, bytes: String) -> SecretCredentialFetch {
+  SecretCredentialReady { credential: bytes as Secret, resolved_version: version_identity(version: version) }
+}
+
+fn fetched_generation_v2(store_at: ObserverClockInstant, fetch_at: ObserverClockInstant) -> ManagedCredentialGenerationFetched? {
+  match admit_stored_generation(current: root_ref(version: "1", epoch: 1), added: version_identity(version: "2"), stored_at: store_at) {
+    GenerationStoreRefused { cause: _ } => none
+    GenerationStored { stored: st } =>
+      match admit_fetched_generation(stored: st, fetch: ready_fetch(version: "2", bytes: managed_generation), fetched_at: fetch_at) {
+        GenerationFetchRefused { cause: _ } => none
+        GenerationFetched { fetched: f } => Present { value: f }
+      }
+  }
 }
 
 fn lockout_threshold() -> BmcRedfishLockoutThreshold {
@@ -447,20 +481,70 @@ test fn a_completed_patch_writes_the_credential_and_clears_the_forced_flag() -> 
        }
 }
 
+// SUPPLIED-BOUNDARY (side-chat P1): the Redfish arm of the DISPATCHER `apply_planned_account_write`, tested
+// directly. A valid Redfish `PlannedAccountWrite` (an ordinary record; its generation comes through the stored/
+// fetched admissions, not a sealed plan) is handed to the dispatcher, which must dispatch on `write.request` to
+// the Redfish PATCH: the shared credential moves to the fetched generation, the forced flag clears, the returned
+// request identity NAMES the PATCH (the verb, the account `@odata.id`, and the password body carrying the
+// generation REFERENCE), and NO credential bytes appear in it. The dispatcher dispatches on request+generation,
+// not route (route gating is the plan's, witnessed in the rotation_route witness), so the route here is ungrounded.
+// Discriminator M3: change ONLY this arm to the IPMI operation, helper intact, and the claim goes RED -- the
+// forced flag stays set and the receipt names IPMI, not the PATCH.
+test fn the_dispatcher_routes_a_redfish_write_to_the_patch_and_redacts_the_secret() -> Bool {
+  let w = served_world(password: published_password, forced: true, extra: [])
+  let store_at = observer_clock_modeled(millis: 1793145610000, realization: redfish_schedule)
+  let fetch_at = observer_clock_modeled(millis: 1793145620000, realization: redfish_schedule)
+  match fetched_generation_v2(store_at: store_at, fetch_at: fetch_at) {
+    Absent => false
+    Present { value: g } => {
+      let fetch = ready_fetch(version: "2", bytes: managed_generation)
+      let write = PlannedAccountWrite {
+        target: ManagedAccountTarget,
+        user: root_user,
+        route: rotation_route_ungrounded(endpoint: lab_endpoint, firmware: build_3_22()),
+        request: RedfishAccountPasswordWrite {
+          account: "root" as NonEmptyStr,
+          transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: "SetAccountPassword" as NonEmptyStr),
+          action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: "SetAccountPassword" as NonEmptyStr),
+        },
+        decided_by: "side-chat supplied-boundary" as NonEmptyStr,
+        generation: g,
+      }
+      let out = apply_planned_account_write(world: w, fetch: fetch, write: write)
+      let after = bmc_redfish_account(world: out.world, name: "root")
+      // transition: completed, the shared credential moved to the fetched generation, the forced flag cleared.
+      let moved = out.completed
+        && bmc_ipmi_user_accepts(world: out.world, user: root_user, password: managed_generation)
+        && match after { Present { value: a } => a.forced_password_change == false  Absent => false }
+      // the request identity names the Redfish PATCH for root: the verb, the @odata.id, and the generation reference.
+      let names_patch = string_contains(s: out.issued_request, pattern: "Redfish PATCH")
+        && string_contains(s: out.issued_request, pattern: bmc_redfish_account_odata_id(name: "root"))
+        && string_contains(s: out.issued_request, pattern: g.stored.stored_version as String)
+      // no credential bytes in the receipt: the secret is named only by its generation reference.
+      let no_secret = !string_contains(s: out.issued_request, pattern: managed_generation)
+      moved && names_patch && no_secret
+    }
+  }
+}
+
 // A PATCH THE WORLD REFUSES changes NOTHING and mints no receipt. RED rung: PATCHing an account the census does
-// not hold cannot fully apply -- the step is refused AND the world it returns is byte-for-byte the one it started
-// from. Positive control: PATCHing the account the census DOES hold completes. And an application that reports
-// failure is kept DISTINCT from a secured phase receipt: on this already-secured controller the phase still reads
-// Secured on its own merits, independent of the failed write -- so "completed:false" is an application outcome,
-// never the BmcSecured receipt.
+// not hold cannot fully apply -- the step is refused AND the world it returns is the one it started from, asserted
+// by FULL-WORLD EQUALITY (`bad_world == w`), not merely the same census. Positive control: PATCHing the account
+// the census DOES hold completes. And an application that reports failure is kept DISTINCT from a secured phase
+// receipt: on this already-secured controller the phase still reads Secured on its own merits, independent of the
+// failed write -- so "completed:false" is an application outcome, never the BmcSecured receipt.
 test fn a_failed_patch_changes_nothing_and_mints_no_receipt() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [])
   let bad = dry_apply_bmc_redfish_password_write(world: w, account: "ghost", new_password: managed_generation)
   let good = dry_apply_bmc_redfish_password_write(world: w, account: "root", new_password: managed_generation)
   let bad_world = bmc_redfish_change_step_world(step: bad.step)
-  // The failed PATCH left the controller exactly as it was: the same census, the same root under the same password.
+  // The failed PATCH left the controller exactly as it was: the same census, the same root under the same password,
+  // and the WHOLE world equal to the input (password, forced flag, failed logins, lock, IPMI users, power) -- not
+  // just the census projection. Discriminator M4: mutate the returned world on the refusal path (e.g. root's
+  // failed_logins +1 with password/enabled/lock unchanged) and `bad_world == w` goes RED.
   let world_unchanged = bmc_redfish_password_write_completed(step: bad) == false
     && census_same(a: w, b: bad_world)
+    && bad_world == w
   // The application reports failure; the positive control (differing only in the account) completes.
   let application_failed = bmc_redfish_password_write_completed(step: bad) == false
     && bmc_redfish_password_write_completed(step: good)
