@@ -369,13 +369,17 @@ pub fn render_rust_type_without_applied_binding(
                 emit_info.clone(),
             )
         } else {
-            if ((((n.connective.clone() == Connective::NoConnective)
+            if (((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
                 && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     n.clone(),
                 )))
                 && !crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
+                && !crate::v1_compiler_infer_types::node_is_element_collection(
                     n.clone(),
                     source_indices.clone(),
                 ))
@@ -2919,10 +2923,14 @@ pub fn render_rust_fn_sig_type(
                             shared_types.clone(),
                         )
                     } else {
-                        if ((((n.connective.clone() == Connective::NoConnective)
+                        if (((((n.connective.clone() == Connective::NoConnective)
                             && ((n.children.clone().len() as i64) > 0))
                             && !crate::std_types::is_container_type(name.clone()))
                             && closed_alias_peels_zero_param(env.clone(), n.clone()))
+                            && !crate::v1_compiler_infer_types::node_is_element_collection(
+                                n.clone(),
+                                source_indices.clone(),
+                            ))
                         {
                             render_rust_shared_type_with_optional(
                                 n.clone(),
@@ -34223,13 +34231,23 @@ pub fn rust_receiver_has_callable_method_field(
         )) {
             false
         } else {
-            match rust_struct_field_type_node(
-                scope.clone(),
-                receiver_type_name.clone(),
-                method_name,
-            ) {
-                Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
-                std::option::Option::None => false,
+            if (crate::v1_compiler_infer_types::node_is_element_collection(
+                receiver_type.clone(),
+                scope.type_env.source_indices.clone(),
+            ) && crate::v1_compiler_emit::keyed_container_has_target_inhabitant(
+                crate::v1_std_core::qualified_last_segment(receiver_type_name.clone()),
+                RenderTarget::Rust,
+            )) {
+                false
+            } else {
+                match rust_struct_field_type_node(
+                    scope.clone(),
+                    receiver_type_name.clone(),
+                    method_name,
+                ) {
+                    Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
+                    std::option::Option::None => false,
+                }
             }
         }
     }

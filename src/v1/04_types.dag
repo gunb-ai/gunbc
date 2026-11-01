@@ -101,8 +101,35 @@ fn is_type_expr_annotation(n: Node) -> Bool {
   }
 }
 
+// THE CANONICAL SPELLING OF THE FINITE CARRIER IS THE SAME CARRIER AS ITS ALIAS. std.types declares
+// `type Set<element> = FinitePowerSet<element>`, and DESIGN section 3 makes an alias and the carrier it
+// names ONE thing with ONE Rust type -- the declared shape and the realized shape are the same carrier
+// "not two, and the emitter never asks which to use". The host container used to be read off the ALIAS
+// roster alone, which answers for `Set` and misses the canonical name (the roster registers it with
+// canonical_spelling_sorts_ahead_of_alias_reason, std.algebra), so one carrier was emitted twice: the
+// OrdSet/BTreeSet realization wherever a position was spelled `Set`, and the std.algebra profile RECORD
+// wherever the same position was spelled `FinitePowerSet` -- including the alias's own right-hand side,
+// which is why std_types.rs carried `pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>`
+// while every `Set` position lowered to `Rc<BTreeSet<Element>>`. A value built at one position could not
+// flow into the other (E0308), which is the element half of the keyed fork #14880 closed for
+// `Map`/`FinitelySupportedFunction` (32 E0308 in the regenerated std_algebra.rs). The algebra row
+// decides which spelling, never a literal here.
+// Only THIS algebra joins the roster read: the free-monoid spelling is a v2 inductive with constructors
+// of its own, and PointwisePower has no host inhabitant to lower to -- the retirement of its byte-identical
+// fossil row (extdeps.languages.rust types.dag) is what makes `coerce_container_template` a safe fact.
+// RESIDUE: keyed on the leaf spelling, not on the declaration identity std.algebra.FinitePowerSet; the
+// emitter reaches only the authored spelling here. gunbc.recurring_failure_mode
+// emitter_element_container_lowering_is_keyed_by_leaf_spelling (same class as
+// emitter_keyed_container_lowering_is_keyed_by_leaf_spelling).
+fn node_is_finite_power_set_algebra_spelling(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.connective == NoConnective && match container_template_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))) {
+    Present { value: algebra } => algebra == "FinitePowerSet"
+    Absent => false
+  }
+}
+
 fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective && is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n))
+  (n.children |> count) > 0 && n.connective == NoConnective && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n)) || node_is_finite_power_set_algebra_spelling(n: n, source_indices: source_indices))
 }
 
 // The arity conjunct is tested FIRST because it is free and the collection

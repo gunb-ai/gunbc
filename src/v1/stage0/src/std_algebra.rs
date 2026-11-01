@@ -235,9 +235,9 @@ pub struct PointwisePower<T> {
 #[derive(Clone)]
 pub struct FinitePowerSet<T> {
     pub member: Rc<dyn Fn(T) -> bool>,
-    pub union: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub intersect: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub diff: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
+    pub union: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
+    pub intersect: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
+    pub diff: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
     pub contains: Rc<dyn Fn(T) -> bool>,
     pub count: Rc<dyn Fn() -> i64>,
     pub length: Rc<dyn Fn() -> i64>,
