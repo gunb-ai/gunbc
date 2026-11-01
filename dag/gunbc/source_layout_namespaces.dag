@@ -306,6 +306,7 @@ fn layout_namespaces() -> List<String> {
     "product.compute_board",
     "product.electrical",
     "product.fabric",
+    "product.p4261",
     "product.pcb",
     "product.printed_chassis",
     "product.printing",
