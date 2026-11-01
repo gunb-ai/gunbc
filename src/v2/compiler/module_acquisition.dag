@@ -21,6 +21,7 @@ import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTree
 import v2.std.diagnostic { Accepted, ByteRange, NonEmptyDiagnostics, Outcome, Rejected, SourcePortLocus, Textual, bind_outcome, diagnostics_fatal, diagnostics_fatal_reason, outcome_accepted }
 import v2.workflow.source_locus { line_starts, locus_at }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.generated_head_demand { generated_head_demand }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -845,12 +846,20 @@ fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
   }
 }
 
+// A list literal, a string-keyed map literal and a string template each lower to a reference to a declaration
+// the source never spells, so they OWE it the way `T?` does: every path the tree's generated heads name is an
+// imported member, whose unknown module refuses, and not a reference site, which requests nothing
+// (v2.compiler.generated_head_demand). Never an authored import and never an ambient built-in.
+fn acquisition_generated_head_member_texts(root: Node) -> List<String> {
+  list_map(xs: generated_head_demand(root: root), f: fn(path) { qualified_name_to_dotted_string(qn: path) })
+}
+
 fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSiteCollection, imported: List<String>) -> AcquisitionMemberRead {
   let references = acquisition_reference_texts(collection: sites)
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
-      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references)),
+      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references), acquisition_generated_head_member_texts(root: front.parse_root)),
       references: references
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })

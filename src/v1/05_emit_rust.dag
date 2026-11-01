@@ -446,7 +446,21 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   // keyed arm below could lower it (Rc<FinitelySupportedFunction<String, AlgebraProfile>> beside the
   // HashMap its callers read; E0308 at std.computation type_iteration_dimension). Ask the one
   // predicate the keyed arm asks.
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) {
+  //
+  // THE SAME ASK ON THE OTHER SIDE OF THE LADDER. The element arm below owns any application whose
+  // carrier spelling names a container algebra the target realizes (`coerce_container_template`), and
+  // `is_container_type` is NOT that question: its arity roster holds the ALIAS spellings only
+  // (algebra.dag `arity_row_is_alias_spellings_only_reason`), so the canonical spelling of a carrier --
+  // `FinitePowerSet<Int>`, written by std.algebra itself and deliberately given no alias row
+  // (`canonical_spelling_sorts_ahead_of_alias_reason`) -- answered false here and was rendered as the
+  // std.algebra RECORD at fn parameter, return, and nested-argument position while the field renderer
+  // one arm away lowered the same carrier to the target's `Rc<BTreeSet<i64>>`. One carrier, two Rust
+  // types (DESIGN section 3/6b; gunbc.recurring_failure_mode
+  // emitter_element_container_lowering_is_keyed_by_leaf_spelling). Asking the arm below's own predicate
+  // -- `node_is_element_collection`, which is the alias roster PLUS the carrier's algebra row -- makes
+  // the two renderers answer one question and leaves a declared carrier with no target inhabitant
+  // (`PartialFunction`, `PointwisePower`) exactly where it is today: still structural.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -1906,7 +1920,14 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
+  // THE SAME ASK, FN-SIGNATURE SIDE. This arm renders the AUTHORED base name with its arguments, which
+  // is what a canonical-spelled carrier application at a parameter or return position got: the field
+  // renderer lowered `FinitePowerSet<Int>` to the target's `Rc<BTreeSet<i64>>` while this one emitted the
+  // std.algebra record beside it (one carrier, two Rust types -- see the long note on the declared-record
+  // arm of `render_rust_type_without_applied_binding`). The alias spellings are already out of this arm
+  // through `is_container_type`; the carrier's own spelling is out only once the arm below's predicate is
+  // asked here too.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -7768,7 +7789,7 @@ fn emit_non_empty_wrappers() -> String {
     "    }\n",
     "}\n\n",
     "impl<T: Clone> NonEmptyVec<T> {\n",
-    "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: Vec<T>) -> std::result::Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyVec requires at least one element\")\n",
     "        } else {\n",
@@ -7784,7 +7805,7 @@ fn emit_non_empty_wrappers() -> String {
     "#[derive(Debug, Clone, PartialEq)]\n",
     "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
     "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
-    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: std::collections::BTreeSet<T>) -> std::result::Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
     "        } else {\n",
@@ -8416,6 +8437,21 @@ fn type_has_fn_fields(name: String, emit_info: EmitGraphInfo) -> Bool {
     Present { value: ts } => ts.has_fn_fields
     Absent => false
   }
+}
+
+// ONE QUESTION, ASKED OF THE REALIZATION: does this type, as a USE in a signature, realize as a
+// record of `dyn Fn` fields. `type_has_fn_fields` answers about the DECLARATION, and a declaration
+// is not what a use renders as: `FinitelySupportedFunction<K, V>` is declared with arrow fields and
+// realized as `Rc<HashMap<K, V>>` by the keyed arm (emit_keyed_container_type), so no `dyn Fn`
+// exists at any use of it and the `'static` obligation a `dyn Fn` default creates does not either.
+// The keyed arm is asked through node_is_keyed_collection, the same check render_rust_decl_type
+// asks, so the two cannot disagree about what a use renders as. The uses that read this are the
+// signature derivations in emit_fn_def and callee_own_static. The declaration-emission sites
+// (struct derives, serde policy, enum derives) keep type_has_fn_fields on purpose: they decide
+// what the emitted DECLARATION derives, and a declaration with arrow fields is a record of
+// `Rc<dyn Fn>` whatever its uses lower to.
+fn type_node_realizes_fn_field_record(n: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  !node_is_keyed_collection(n: n, source_indices: source_indices) && type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), emit_info: emit_info)
 }
 
 fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
@@ -9740,9 +9776,10 @@ fn v1_call_site_static_forwarded_param_names(
             []
           } else {
             let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-            let callee_own_static = if type_has_fn_fields(
-              name: rust_fn_sig_leaf_name(source_indices: si, n: resolved_type(n: callee_item)),
-              emit_info: emit_info
+            let callee_own_static = if type_node_realizes_fn_field_record(
+              n: resolved_type(n: callee_item),
+              emit_info: emit_info,
+              source_indices: si
             ) { callee_generic_param_names } else { [] }
             let callee_static = v1_union_bound_param_names(
               base: callee_own_static,
@@ -10132,7 +10169,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
-  let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
+  let returns_fn_field_record = type_node_realizes_fn_field_record(n: inferred, emit_info: emit_info, source_indices: si)
   let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
   let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
     generic_param_names: generic_param_names,
@@ -10142,6 +10179,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     source_indices: si,
     visited: []
   )
+  let arrow_value_param_names = value_params |> filter(p => rust_type_node_is_arrow(n: param_node_type_expr(n: p))) |> map(p => param_node_name_at(n: p, source_indices: si))
+  let static_fn_param_names = if returns_arrow_or_fn_field_record {
+    arrow_value_param_names
+  } else {
+    v1_body_forwarded_static_fn_param_names(candidates: arrow_value_param_names, body: body, fn_decl_items: emit_info.fn_decl_items, emit_info: emit_info, source_indices: si, visited: [])
+  }
   let static_param_names = if returns_fn_field_record {
     generic_param_names
   } else {
@@ -10160,7 +10203,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, fn_param_needs_static: returns_arrow_or_fn_field_record || (call_forwarded_static_param_names |> count) > 0)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, static_fn_param_names: static_fn_param_names)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -10479,11 +10522,105 @@ fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<St
 // `CasOutcome<String>`). Generic parameters are not threaded here, exactly as emit_func_def's own
 // parameter rendering does not thread them.
 fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  concat(" -> Result<", render_rust_fn_sig_type(n: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ", Box<dyn std::error::Error>>")
+  concat(" -> std::result::Result<", render_rust_fn_sig_type(n: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ", std::boxed::Box<dyn std::error::Error>>")
 }
 
-fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
-  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static))
+// WHICH `impl Fn` PARAMETERS CARRY `+ 'static` WHEN THE FUNCTION DOES NOT RETURN AN ARROW OR A RECORD OF
+// `dyn Fn`: exactly the ones the body FORWARDS, as a bare argument, into a callee parameter that is
+// itself `'static` (the callee returns an arrow or such a record, or forwards that parameter again).
+// The bound used to be one function-wide Bool that a forwarded TYPE parameter also set, so a fn whose
+// K, V reached a 'static-bounded callee put `+ 'static` on an Fn parameter it never forwarded, and a
+// caller's non-move closure borrowing a local then failed E0373. The fact is per parameter, so it is
+// derived per parameter. Same walk coverage as v1_call_forwarding_static_bound_param_names: direct
+// ExprCall sites, cycle-guarded by `visited`.
+fn v1_body_forwarded_static_fn_param_names(
+  candidates: List<String>,
+  body: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  if (candidates |> count) == 0 {
+    return []
+  }
+  let here = match body.expr_data {
+    ExprCall => v1_call_site_forwarded_static_fn_param_names(call: body, candidates: candidates, fn_decl_items: fn_decl_items, emit_info: emit_info, source_indices: source_indices, visited: visited)
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(
+      base: acc,
+      extra: v1_body_forwarded_static_fn_param_names(candidates: candidates, body: child, fn_decl_items: fn_decl_items, emit_info: emit_info, source_indices: source_indices, visited: visited)
+    )
+  )
+}
+
+fn v1_call_site_forwarded_static_fn_param_names(
+  call: Node,
+  candidates: List<String>,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let si = source_indices
+  let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  if visited |> any(v => v == callee_name) {
+    return []
+  }
+  match map_get(fn_decl_items, callee_name) {
+    Absent => []
+    Present { value: callee_item } =>
+      let callee_static = v1_item_static_fn_param_names(item: callee_item, fn_decl_items: fn_decl_items, emit_info: emit_info, source_indices: si, visited: concat(visited, [callee_name]))
+      let arg_by_name = call_args_by_name(call: call, source_indices: si)
+      function_value_params(params: callee_item.params) |> flat_map(cp =>
+        let cp_name = param_node_name_at(n: cp, source_indices: si)
+        if callee_static |> any(n => n == cp_name) {
+          match map_get(arg_by_name, cp_name) {
+            Present { value: arg } =>
+              match arg.expr_data {
+                ExprVar { binding_kind: _ } =>
+                  let arg_name = expr_var_name_at(texpr: arg, source_indices: si)
+                  if candidates |> any(c => c == arg_name) { [arg_name] } else { [] }
+                _ => []
+              }
+            Absent => []
+          }
+        } else {
+          []
+        }
+      )
+  }
+}
+
+// The `impl Fn` parameters of a declared fn that carry `+ 'static`: all of them when it returns an
+// arrow or a record of `dyn Fn` (the Rc<dyn Fn> they move into defaults to 'static), otherwise the
+// ones its body forwards into such a position.
+fn v1_item_static_fn_param_names(
+  item: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let si = source_indices
+  let arrow_names = function_value_params(params: item.params) |> filter(p => rust_type_node_is_arrow(n: param_node_type_expr(n: p))) |> map(p => param_node_name_at(n: p, source_indices: si))
+  let rt = resolved_type(n: item)
+  if (arrow_names |> count) == 0 {
+    []
+  } else if (rt.params |> count) > 0 || type_node_realizes_fn_field_record(n: rt, emit_info: emit_info, source_indices: si) {
+    arrow_names
+  } else {
+    match item.body {
+      Absent => []
+      Present { value: b } => v1_body_forwarded_static_fn_param_names(candidates: arrow_names, body: b, fn_decl_items: fn_decl_items, emit_info: emit_info, source_indices: si, visited: visited)
+    }
+  }
+}
+
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, static_fn_param_names: List<String>) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: static_fn_param_names |> any(n => n == param_node_name_at(n: p, source_indices: source_indices))))
   strs |> join(separator: ", ")
 }
 
@@ -11720,20 +11857,37 @@ fn effective_variant_parent_from_resolved(leaf_name: String, rt: Node, binding_k
   }
 }
 
+// A LOCAL OR MATCH-BOUND VALUE REFERENCE NAMES ITS OWN BINDING, NEVER A VARIANT (DESIGN section 6b,
+// the second link of the #15565 class -- same authority, same shape as lookup_item_for_value_ref).
+// `emit_info.variant_to_enum` and the resolved-type membership test below are flat bare-leaf reads over
+// the whole emission closure: a local parameter, `let`, lambda parameter or match-arm binder whose
+// spelling happens to equal a coproduct ARM in the closure (module-level, or merged whole-closure by
+// merge_global_bare_variant_locals) previously read `red` as `Color::red` and emitted the qualified
+// variant construction in place of the variable -- even though infer_var_binding_kind had correctly
+// decided LocalValueBinding, so typecheck passed on the local's own type and only emission diverged.
+// The lexical scope's answer is consumed here, once, for both value-reference emitters (emit_var_ref and
+// emit_typed_expr_base both reach a variant parent only through this fn): LocalValueBinding and
+// MatchBoundBinding are lexical, so no variant parent; every other kind keeps the existing resolution.
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  let leaf_name = value_ref_qualified_leaf(name: name)
-  let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
-    Present { value: p } => if p != "" { Present { value: qualified_last_segment(name: p) } } else { none }
-    Absent => none
-  }
-  match cached {
-    Present { value: parent } => Present { value: parent }
-    Absent =>
-      match resolved_type {
-        Present { value: Resolved { node: rt } } =>
-          effective_variant_parent_from_resolved(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
-        _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
+  match binding_kind {
+    Present { value: LocalValueBinding } => none
+    Present { value: MatchBoundBinding } => none
+    _ => {
+      let leaf_name = value_ref_qualified_leaf(name: name)
+      let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
+        Present { value: p } => if p != "" { Present { value: qualified_last_segment(name: p) } } else { none }
+        Absent => none
       }
+      match cached {
+        Present { value: parent } => Present { value: parent }
+        Absent =>
+          match resolved_type {
+            Present { value: Resolved { node: rt } } =>
+              effective_variant_parent_from_resolved(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
+            _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
+          }
+      }
+    }
   }
 }
 
@@ -15754,7 +15908,14 @@ fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, 
   // Keyed is not lowered: `PartialFunction<K, V>` is keyed by spelling but has no Rust inhabitant,
   // so it renders as its record and keeps `(p.lookup)(k)`. The exemption asks the same target fact
   // emit_keyed_container_type branches on, so this tier and the type renderer cannot disagree.
+  // The element carrier needs the SAME exemption: `FinitePowerSet` is the canonical spelling of the
+  // `Set` alias and lowers to the target OrdSet/BTreeSet, while its profile record declares
+  // member/union/intersect/diff/contains/count/length as arrow members -- taking the field tier for a
+  // canonical-spelled receiver emitted `(members.count)()` against a BTreeSet (E0609 no field `count`),
+  // exactly the keyed tier's failure one algebra over. Asking the target fact rather than a spelling is
+  // what keeps `PointwisePower` on the field tier: it has no inhabitant, so it keeps its record.
   if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
+  else if node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
   else {
     match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
       Present { value: field_type } => field_type.connective == Arrow
@@ -18014,7 +18175,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties, source_indices: env.source_indices)
   let items = rust_items()
   concat(modifier_doc, rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Rust),
-    "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
+    "(", all_params, ") -> std::result::Result<", ret_type, ", std::boxed::Box<dyn std::error::Error>> {\n",
     make_indent(level: depth + 1),body, "\n}")
 }
 
@@ -18537,7 +18698,7 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
 }
 
 // Every emitted service operation method declares
-// `-> Result<T, Box<dyn std::error::Error>>`, so every error arm owes that Box and
+// `-> Result<T, std::boxed::Box<dyn std::error::Error>>`, so every error arm owes that Box and
 // reaches it through `Into`. This is the ONE place the conversion is spelled.
 //
 // It was two: the REST arms wrote `.into()` at their own call sites, and the shell
@@ -18582,7 +18743,7 @@ fn rust_rest_answered(answer_expr: String) -> String {
 // type so a mock that does not decode stays a host error and never reads as a remote refusal.
 fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
   concat(
-    "let __rest_answer = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    "let __rest_answer = (|| -> std::result::Result<", output_type, ", std::boxed::Box<dyn std::error::Error>> {\n",
     mock_body, "\n",
     "})();\n",
     "Ok(", rust_rest_answered(answer_expr: "__rest_answer?"), ")")
@@ -18615,7 +18776,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     "if !(200..300).contains(&status) {\n",
     "    return Ok(", rust_rest_refused(refusal_arm: "RestStatusRefused { status: status as i64, body: __rest_text }"), ");\n",
     "}\n",
-    "let __rest_decoded = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
+    "let __rest_decoded = (|| -> std::result::Result<", output_type, ", std::boxed::Box<dyn std::error::Error>> {\n",
     decode, "\n",
     "})();\n",
     "match __rest_decoded {\n",
@@ -19276,7 +19437,7 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
     render_rust_fn_sig_type(n: out, generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env)
   }
   let items = rust_items()
-  concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> std::result::Result<", ret, ", std::boxed::Box<dyn std::error::Error>>;")
 }
 
 // THE JSON PATH IS ADMITTED BY ITS DOMAIN, NOT BY THE ABSENCE OF A DISQUALIFIER.
