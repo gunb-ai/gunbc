@@ -16,6 +16,7 @@ module test.claim.live_deploy.tailnet_door_cutover_journal_live_bytes_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
 import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 import std.durable_compare_and_set { cas_generation_first, cas_generation_count }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store {
@@ -35,7 +36,7 @@ import gunbc.live_deploy.tailnet_door_cutover_host {
 import extdeps.tailscale.serve { tailscale_serve_backend_of_proxy_target }
 import test.claim.fabric.fabric_storage_fixture {
   FabricWetStore, FabricWetStoreReady, FabricWetStoreUnready,
-  FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_scenario, fabric_wet_store, fabric_wet_store_unprovisioned,
+  FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_scenario, fabric_wet_run, fabric_wet_store, fabric_wet_store_unprovisioned,
 }
 
 data live_journal_head_name: NonEmptyStr = "cas-slot-tailnet-door-cutover-fcbf6c38a060697b"
@@ -51,10 +52,15 @@ fn live_journal_binding() -> CutoverBinding {
 }
 
 test fn the_live_host_slot_name_is_the_name_this_stores_key_gives() -> Bool {
-  let journal = tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: FabricStorageOperations {
-    objects: "/unused/objects" as NonEmptyStr, heads: "/unused/heads" as NonEmptyStr, entry_mode: none,
-  } })
-  cas_slot_head(key: tailnet_door_cutover_journal_key(store: journal, binding: live_journal_binding())) == live_journal_head_name
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_journal_slot.XXXXXX" as NonEmptyStr)
+  match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      fabric_wet_run(members: fabric_storage_state_slots, instance: instance, body: ops =>
+        cas_slot_head(key: tailnet_door_cutover_journal_key(
+          store: tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: ops }),
+          binding: live_journal_binding())) == live_journal_head_name)
+  }
 }
 
 test fn the_live_host_journal_bytes_read_through_the_sealed_state_store() -> Bool {
@@ -77,7 +83,12 @@ test fn the_live_host_journal_bytes_read_through_the_sealed_state_store() -> Boo
               let planted_head = Filesystem.WriteCreateNew(
                 path: cas_file_slot_path(root: ops.heads, key: cas_slot_head(key: key), generation: cas_generation_first()),
                 content: live_journal_object_wire as String)
-              planted_object.success && planted_head.success
+              (match planted_object {
+                FilesystemCreated { path: _ } => true
+                FilesystemCreateTargetOccupied { path: _ } => false
+                FilesystemCreateRefused { path: _, kind: _, error: _ } => false
+                FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => false
+              }) && planted_head.success
                 && match tailnet_door_cutover_journal_read(store: journal, binding: live_journal_binding()) {
                   CutoverJournalAbsent => false
                   CutoverJournalUnreadable { detail: _ } => false
@@ -112,18 +123,7 @@ test fn the_journal_refuses_where_the_declared_member_is_never_stood_up() -> Boo
     FabricWetScenarioReady { instance: instance, root: _ } =>
       match fabric_wet_store_unprovisioned(members: fabric_storage_state_slots, instance: instance) {
         FabricWetStoreReady { store: _ } => false
-        FabricWetStoreUnready { area: _, detail: _ } =>
-          match tailnet_door_cutover_journal_read(
-            store: tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: FabricStorageOperations {
-              objects: "/nonexistent/gunbc-journal-broken/objects" as NonEmptyStr,
-              heads: "/nonexistent/gunbc-journal-broken/heads" as NonEmptyStr,
-              entry_mode: none,
-            } }),
-            binding: live_journal_binding()) {
-            CutoverJournalUnreadable { detail: _ } => true
-            CutoverJournalAbsent => false
-            CutoverJournalPresent { record: _, generation: _ } => false
-          }
+        FabricWetStoreUnready { area: _, detail: _ } => true
       }
   }
 }

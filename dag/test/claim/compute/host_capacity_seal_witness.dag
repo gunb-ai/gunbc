@@ -4,6 +4,8 @@ import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
+import gunbc.compute.host_capacity { compute_root, compute_capacity_root }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
 // THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
 // gunbc.compute.host_capacity ComputeCapacitySubject is sole_constructor, built in one place
@@ -60,4 +62,13 @@ test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {
     blocking_delta(hostile: capacity_lawful_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }),
     census_verdict(census: seal_violations(source: capacity_lawful_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 0 }),
   ])
+}
+
+// THE DECLARATION CONTROL: the provisioned compute directory (compute_root_directory, which the census and
+// deployment rows ask for) and the ledger's store chain read ONE member row, compute_root_member. The
+// ledger root is exactly the provisioned directory plus this module's own member, so renaming that one row
+// moves the mint and the provisioning together; either one spelling its own "compute" would make this false.
+test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member() -> Bool {
+  let instance = fabric_fixture_instance(root: "/tmp/gunbc_capacity_decl")
+  (compute_capacity_root(host_instance: instance) as String) == join([compute_root(instance: instance) as String, "/capacity"], "")
 }

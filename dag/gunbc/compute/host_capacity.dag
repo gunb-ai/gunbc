@@ -125,8 +125,13 @@ type ComputeSubjectResolution
 // (gunbc.roadmap.dashboard_instance_directories); under a root-owned /opt/gunbc a worker's first
 // request would otherwise refuse StoreUnavailable at `install -d`. The subdirectories are the
 // provider's own and it creates them under this root.
+// THE ONE ROW THAT SPELLS COMPUTE'S OWN MEMBER: the provisioned directory (compute_root_directory) and the
+// ledger's store chain (compute_capacity_slots) both read it, so renaming it moves the provisioning row and
+// the mint together and they cannot drift.
+data compute_root_member: NonEmptyStr = "compute"
+
 fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_shared_directory(instance: instance, member: "compute-root" as NonEmptyStr, child: "compute")
+  dashboard_instance_shared_directory(instance: instance, member: "compute-root" as NonEmptyStr, child: compute_root_member as String)
 }
 
 fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
@@ -138,9 +143,9 @@ fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // the ONE generic store mint reads (List<NonEmptyStr>), so the capacity ledger is not a special case of
 // the fabric family: it is an instance of the same rule, obtained from the same mint, with no mint copy
 // and no second record. The provisioning row for the compute directory (compute_root_directory, and the
-// census rows that ask for it) still derives from compute_root, which spells compute's own member; the
+// census rows that ask for it) reads the same compute_root_member row the chain's head is; the
 // ledger's chain adds this module's member and nothing else.
-data compute_capacity_slots: List<NonEmptyStr> = ["compute", "capacity"] as List<NonEmptyStr>
+data compute_capacity_slots: List<NonEmptyStr> = [compute_root_member, "capacity" as NonEmptyStr]
 
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
   fabric_store_declared_root(members: compute_capacity_slots, root: host_instance.instance_root) as String as NonEmptyStr
