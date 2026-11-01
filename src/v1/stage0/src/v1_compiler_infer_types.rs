@@ -24,8 +24,11 @@ pub use crate::std_algebra::{
 use crate::std_coercion::ArithmeticCarrierSelection::{
     ArithmeticCarrierAmbiguous, ArithmeticCarrierSelected, ArithmeticNoCarrier,
 };
+use crate::std_coercion::TextRepresentation::{
+    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
+};
 pub use crate::std_coercion::{
-    injection_targets, select_arithmetic_carrier, ArithmeticCarrierSelection,
+    injection_targets, select_arithmetic_carrier, ArithmeticCarrierSelection, TextRepresentation,
 };
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
@@ -50,8 +53,9 @@ pub use crate::std_types::{
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable;
 pub use crate::v1_compiler_infer_env::{
     alias_names_settled_agree, alias_settled_agree, is_where_refinement_node, kernel_settled_name,
-    settled_type, text_crossing_by_identity, type_reference_declaration_reading,
-    type_reference_declaration_ref, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    settled_type, text_crossing_by_identity, text_representation_by_identity,
+    type_reference_declaration_reading, type_reference_declaration_ref, TypeBinding, TypeEnv,
+    TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -4061,6 +4065,25 @@ pub fn operand_is_type_variable(
     }
 }
 
+pub fn operand_identity_unknown(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    (operand_is_type_variable(n.clone(), source_indices.clone(), env)
+        || (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+            == "".to_string()))
+}
+
+pub fn operand_is_text(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match crate::v1_compiler_infer_env::text_representation_by_identity(n, env) {
+        TextRepresentation::HostText => true,
+        TextRepresentation::CodePointSequence => true,
+        TextRepresentation::NotText => false,
+        TextRepresentation::TextRepresentationUnidentified => false,
+    }
+}
+
 pub fn arithmetic_carrier_selection(
     requirement: Rc<ArithmeticRequirement>,
     left_type: Rc<Node>,
@@ -4068,109 +4091,120 @@ pub fn arithmetic_carrier_selection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<ArithmeticCarrierSelection>> {
-    match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
-        std::option::Option::None => match right_type.clone() {
-            std::option::Option::None => std::option::Option::None,
-            Some(rt) => {
-                match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(r) => {
-                        if (carrier_in_algebra_table(r.clone())
-                            && !operand_is_type_variable(
-                                left_type.clone(),
-                                source_indices.clone(),
-                                env.clone(),
-                            ))
-                        {
-                            Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-                        } else {
-                            std::option::Option::None
+    {
+        let right_is_text = match right_type.clone() {
+            std::option::Option::None => false,
+            Some(rt) => operand_is_text(rt.clone(), env.clone()),
+        };
+        if (operand_is_text(left_type.clone(), env.clone()) || right_is_text.clone()) {
+            return std::option::Option::None;
+        }
+        match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
+            std::option::Option::None => match right_type.clone() {
+                std::option::Option::None => std::option::Option::None,
+                Some(rt) => {
+                    match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(r) => {
+                            if (carrier_in_algebra_table(r.clone())
+                                && !operand_identity_unknown(
+                                    left_type.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                ))
+                            {
+                                Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
+                            } else {
+                                std::option::Option::None
+                            }
                         }
                     }
                 }
-            }
-        },
-        Some(left) => {
-            let rows = conversion_plan_rows();
-            let right = match right_type.clone() {
-                std::option::Option::None => std::option::Option::None,
-                Some(rt) => operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()),
-            };
-            let right_missing = match right_type.clone() {
-                std::option::Option::None => false,
-                Some(_) => match right.clone() {
-                    std::option::Option::None => true,
-                    Some(_) => false,
-                },
-            };
-            let right_outside = match right.clone() {
-                std::option::Option::None => false,
-                Some(r) => !carrier_in_algebra_table(r.clone()),
-            };
-            let pair_differs = match right.clone() {
-                std::option::Option::None => false,
-                Some(r) => !crate::std_decl_ref::declaration_ref_eq(left.clone(), r.clone()),
-            };
-            let one_outside = match right.clone() {
-                std::option::Option::None => false,
-                Some(r) => (right_outside.clone() || !carrier_in_algebra_table(left.clone())),
-            };
-            let right_blind = match right_type.clone() {
-                std::option::Option::None => false,
-                Some(rt) => {
-                    operand_is_type_variable(rt.clone(), source_indices.clone(), env.clone())
-                }
-            };
-            if (((right_missing.clone() && carrier_in_algebra_table(left.clone()))
-                && !right_blind.clone())
-                || (pair_differs.clone() && one_outside.clone()))
-            {
-                Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-            } else {
-                if ((right_missing.clone() || right_outside.clone())
-                    || !carrier_in_algebra_table(left.clone()))
+            },
+            Some(left) => {
+                let rows = conversion_plan_rows();
+                let right = match right_type.clone() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(rt) => {
+                        operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone())
+                    }
+                };
+                let right_missing = match right_type.clone() {
+                    std::option::Option::None => false,
+                    Some(_) => match right.clone() {
+                        std::option::Option::None => true,
+                        Some(_) => false,
+                    },
+                };
+                let right_outside = match right.clone() {
+                    std::option::Option::None => false,
+                    Some(r) => !carrier_in_algebra_table(r.clone()),
+                };
+                let pair_differs = match right.clone() {
+                    std::option::Option::None => false,
+                    Some(r) => !crate::std_decl_ref::declaration_ref_eq(left.clone(), r.clone()),
+                };
+                let one_outside = match right.clone() {
+                    std::option::Option::None => false,
+                    Some(r) => (right_outside.clone() || !carrier_in_algebra_table(left.clone())),
+                };
+                let right_blind = match right_type.clone() {
+                    std::option::Option::None => false,
+                    Some(rt) => {
+                        operand_identity_unknown(rt.clone(), source_indices.clone(), env.clone())
+                    }
+                };
+                if (((right_missing.clone() && carrier_in_algebra_table(left.clone()))
+                    && !right_blind.clone())
+                    || (pair_differs.clone() && one_outside.clone()))
                 {
-                    std::option::Option::None
+                    Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
                 } else {
+                    if ((right_missing.clone() || right_outside.clone())
+                        || !carrier_in_algebra_table(left.clone()))
                     {
-                        let named = match right.clone() {
-                            std::option::Option::None => Rc::new(vec![left.clone()]),
-                            Some(r) => Rc::new(vec![left.clone(), r.clone()]),
-                        };
-                        let candidates = v1_rt::concat(
-                            named.clone(),
-                            Rc::new({
+                        std::option::Option::None
+                    } else {
+                        {
+                            let named = match right.clone() {
+                                std::option::Option::None => Rc::new(vec![left.clone()]),
+                                Some(r) => Rc::new(vec![left.clone(), r.clone()]),
+                            };
+                            let candidates = v1_rt::concat(
+                                named.clone(),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for d in named.iter().cloned() {
+                                        __result.extend(
+                                            (*crate::std_coercion::injection_targets(
+                                                rows.clone(),
+                                                d.clone(),
+                                                requirement.preserved.clone(),
+                                            ))
+                                            .iter()
+                                            .cloned(),
+                                        );
+                                    }
+                                    __result
+                                }),
+                            );
+                            let definers = Rc::new({
                                 let mut __result = Vec::new();
-                                for d in named.iter().cloned() {
-                                    __result.extend(
-                                        (*crate::std_coercion::injection_targets(
-                                            rows.clone(),
-                                            d.clone(),
-                                            requirement.preserved.clone(),
-                                        ))
-                                        .iter()
-                                        .cloned(),
-                                    );
+                                for d in candidates.iter().cloned() {
+                                    if carrier_defines_field(d.clone(), requirement.field.clone()) {
+                                        __result.push(d);
+                                    }
                                 }
                                 __result
-                            }),
-                        );
-                        let definers = Rc::new({
-                            let mut __result = Vec::new();
-                            for d in candidates.iter().cloned() {
-                                if carrier_defines_field(d.clone(), requirement.field.clone()) {
-                                    __result.push(d);
-                                }
-                            }
-                            __result
-                        });
-                        Some(crate::std_coercion::select_arithmetic_carrier(
-                            rows.clone(),
-                            left.clone(),
-                            right.clone(),
-                            definers,
-                            requirement.preserved.clone(),
-                        ))
+                            });
+                            Some(crate::std_coercion::select_arithmetic_carrier(
+                                rows.clone(),
+                                left.clone(),
+                                right.clone(),
+                                definers,
+                                requirement.preserved.clone(),
+                            ))
+                        }
                     }
                 }
             }
