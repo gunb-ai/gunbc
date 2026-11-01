@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.an_identity_erased_operand_is_not_judged_by_carrier_selection
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_identity_erased_operand_is_not_judged_by_carrier_selection: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_identity_erased_operand_is_not_judged_by_carrier_selection" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "inference preserving an operand's type identity through the route that erased it (the v2 self-host emit's `state.count + 1`, whose left operand reached v1.compiler.infer_types arithmetic_carrier_selection as 'Primitive()') -- sufficient for that operand to name a declaration, so operand_identity_unknown no longer abstains on it and the pair is judged like any other."
+    },
+  },
+
+  receipts: [
+    "**an identity-erased operand is not judged by carrier selection** (an arithmetic operand whose authored type name reads empty -- its identity erased by inference -- makes v1.compiler.infer_types operand_identity_unknown abstain, so arithmetic_carrier_selection returns Absent and the operator keeps the left-operand typing it had before carrier selection existed: accepted, unjudged).",
+
+    "INVALID STATE: an Accepted program in which an arithmetic operator has an identity-erased operand beside an operand of a different carrier, typed from its left operand with no carrier judgment.",
+
+    "HARM: a mismatched pair reaches emission typed as the left operand; the wrong type surfaces at the first consumer that reads the result as its declared type.",
+
+    "SPECIMEN (gunbc#15610, 2026-11-01, srv2 kh-q1e-diag2 at 35856d3e4346, gunbc 52191dc7…): src/v2/std/compilers/target_model.dag 9063 `count: state.count + 1` refused 'no arithmetic carrier: … the operands (Primitive() @ no carrier, Primitive(Int) @ std.integer.Int)'. The field is declared `count: Int`; the operand arrives through bind_outcome over a generic Outcome, and its identity is erased on that route. Refusing it as ArithmeticWithoutCarrier would report 'we did not look' as 'it has no carrier'; abstaining is the blind reading declared_type_inhabitance gives an empty produced name (UndecidableProducedIdentityErased), and this row is what keeps the abstention from being silent.",
+
+    "SIBLING, not the same class: gunbc.recurring_failure_mode host_text_plus_is_not_judged_by_carrier_selection declines TEXT operands for a different cause (an unreachable kernel-spelling authority) with a different trigger.",
+
+    "RUNG: found BELOW the ladder -- accepted with no judgment.",
+
+    "CEILING 3, structurally guaranteed: with the operand's identity preserved, the pair is judged by the carrier selection.",
+
+    "REVIEW TELL: an abstention on an operand's unknown identity with no row naming the inference route that erased it.",
+  ],
+
+  evidence: [],
+}
