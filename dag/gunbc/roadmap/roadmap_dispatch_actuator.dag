@@ -277,8 +277,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotTombstoned,
   CredentialSnapshotTombstoneFailed,
   credential_snapshot_tombstone_body,
-  credential_snapshot_after_read_disposition,
-  credential_snapshot_path_for_attempt
+  credential_snapshot_after_read_disposition
 }
 import gunbc.dispatch_credential_acquisition { credential_register_then_take, credential_discard_taken_attempt }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
@@ -629,18 +628,22 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
 // attempt the belt requested, the sealed value carries it (gunbc.dispatch_credential_snapshot
 // TakenCredentialSnapshot), the prepared launch is minted only when that attempt is the requested one
 // (gunbc.dispatch_attempt_launch prepare_attempt_launch), and the launch reads its attempt from it.
-// The path here is where the production take writes, derived from that same attempt.
-// THE ONE DERIVATION OF A TAKEN SNAPSHOT'S PATH NOW LIVES IN THE STORE THAT WRITES IT:
-// gunbc.dispatch_credential_snapshot credential_snapshot_path_for_attempt, over that module's own
-// declaration row (taken_credential_snapshot_slots) and the attempt-state declaration's entry name
+// The path every leg uses is the one that sealed value carries; nothing here computes one.
+// THE ONE DERIVATION OF A TAKEN SNAPSHOT'S PATH LIVES IN THE STORE THAT WRITES IT, AND NOTHING ELSE ASKS
+// FOR ONE: gunbc.dispatch_credential_snapshot derives the path INSIDE dispatch_credential_snapshot_take,
+// through credential_snapshot_path_for_attempt, over that module's own declaration row
+// (taken_credential_snapshot_slots) and the attempt-state declaration's entry name
 // (gunbc.roadmap.roadmap_attempt_state_store attempt_state_entry_name) -- the attempt identity in, the path
-// out. The pre-seal spelling lived HERE, in the dispatch launch module, out of its own literals (the node,
-// "-a", the separator, the provider label, "-credential") beside the take that wrote the file and the
-// standing trip and Cursor child that read it, so the launch leg could be pointed at a snapshot of an
-// attempt other than the one being taken. The route is deleted, not deprecated (DESIGN section 3:
-// a replacement migration cuts over at the root); the two draws below call the store's function, and the
-// witnesses that pinned the old spelling now pin the declaration
-// (test.claim.dispatch_credential_snapshot_wet_witness).
+// out, and no parameter through which a caller could name a file. Every reader downstream, the two draws
+// below included, reads the path OFF the sealed TakenCredentialSnapshot the take returned
+// (taken_credential_snapshot_path) rather than deriving one: a path re-derived at a reader is exactly the
+// shape that could name a file no take wrote. The pre-seal spelling lived HERE, in the dispatch launch
+// module, out of its own literals (the node, "-a", the separator, the provider label, "-credential")
+// beside the take that wrote the file and the standing trip and Cursor child that read it, so the launch leg
+// could be pointed at a snapshot of an attempt other than the one being taken. That route is deleted, not
+// deprecated (DESIGN section 3: a replacement migration cuts over at the root), and the witnesses that
+// pinned the old spelling now pin the declaration
+// (test.claim.dispatch_credential_snapshot_wet_witness, test.claim.c_roadmap2_credential_name_witness).
 
 // A selection that refuses after its take discards the snapshot it took; a discard that does not
 // occupy it with a tombstone is appended to the refusal, never dropped.
@@ -804,12 +807,12 @@ fn codex_offer_provider_instance(inventory: ProviderInventory) -> ProviderInstan
 }
 
 // THE CODEX DRAW binds the custody CODEX_HOME directory itself, not a copy: a copied auth.json would
-// fork the refresh token, and the issuer refuses a reused one. So the shared one-snapshot rule
-// (dispatch_credential_snapshot_path_for_attempt) is met by the directory and its flock instead --
-// admission observes it under the lock, the turn runs in it under the lock, and nothing else ever
-// writes it but codex under that lock. A turn that runs between admission and this attempt's spawn
-// may move the bucket the admission read; the spawn still binds the same credential, and a bucket
-// exhausted in that window fails the turn as the CLI reports it.
+// fork the refresh token, and the issuer refuses a reused one. So the shared one-snapshot rule -- one
+// snapshot per attempt, at the path the take derives and nobody else spells -- is met here by the directory
+// and its flock instead -- admission observes it under the lock, the turn runs in it under the lock, and
+// nothing else ever writes it but codex under that lock. A turn that runs between admission and this
+// attempt's spawn may move the bucket the admission read; the spawn still binds the same credential, and a
+// bucket exhausted in that window fails the turn as the CLI reports it.
 fn codex_observed_inventory(instance: HostDashboardInstance) -> ProviderInventory {
   let inventory = provider_inventory_for_instance(instance: instance)
   inventory_with_codex_state_root(
