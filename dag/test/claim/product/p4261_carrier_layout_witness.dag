@@ -1650,8 +1650,9 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // at a converter lead whose node a zero joins to the return: SW to the return at 20 ohm and VIN to the
 // return at 10 and about 15 ohm, where SW to its pad, VIN to SW, VIN to the pad and the pad to the
 // return all read 0; and BST to SW open plus BST to the return over range and 8.4 Mohm, where the first
-// sweep's BST read 0 to the return. The record keeps them as contradictions
-// (product.electrical.measured_netlist); the converter hypothesis reads the BST group as one first-sweep
+// sweep's BST read 0 to the return. That reading is the baselined copy's, not the live netlist's: the
+// live record has no baseline, so product.electrical.measured_netlist joins none of these zeros and holds
+// no contradiction among them; the converter hypothesis reads the BST group as one first-sweep
 // reading every later one disagrees with and the other as near-zero figures beside true zeros, assigning
 // no cause; nothing here reconciles them.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
