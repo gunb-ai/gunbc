@@ -401,12 +401,13 @@ fn router_dev_access_lines() -> List<String> {
     "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
-    // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
-    // loop. Falling through would migrate the very session this rule exists to keep in place, and would do
-    // it at the worst moment -- capacity just taken by another turn. When begin_turn refuses, the answer is
-    // 429 + Retry-After so the client retries the SAME engine rather than paying a 50-115k context re-read
-    // on another one. A soft (shared-cache) bound session falls through to the pick below when its engine
-    // is full, because its prefix cache is the engine's own to dedupe.
+    // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
+    // path from here reaches the pick loop while the engine is available. Falling through would migrate the
+    // very session this rule exists to keep in place (operator 2026-10-28: deliberate moves come only through
+    // the relocation operation), and would do it at the worst moment -- capacity just taken by another turn.
+    // The former shared-cache fall-through is dropped on purpose, as the live router drops it. When begin_turn
+    // refuses, the answer is 429 + Retry-After so the client retries the SAME engine rather than paying a
+    // 50-115k context re-read on another one.
     "  local out, effort = forwarded(bound)",
     "  if not out then return unspliceable() end",
     "  if begin_turn(bound) then return serve(bound, session, out, effort) end",
