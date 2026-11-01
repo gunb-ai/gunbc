@@ -3022,7 +3022,7 @@ fn roster_rename_control_count_check(verdicts: List<RosterControlVerdict>) -> St
   missing + undeclared + count
 }
 
-// The collection-head controls alone, for a bounded run of the head rows own verdicts.
+// The collection-head controls, consumed by roster_rename_controls_verdicts_all.
 fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
   [
     roster_control_verdict(name: "collection-head-first", fail: roster_head_expect(name: "collection-head-first", call: "first", sig: "xs: List<Int>", arg: "xs", to: "list_head", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
@@ -3030,15 +3030,6 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-take", fail: roster_head_expect(name: "collection-head-take", call: "take", sig: "xs: List<Int>, n: Int", arg: "xs, n", to: "take_prefix", out: "List<Int>", labeled: "xs: xs, n: n", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex))
   ]
-}
-
-fn roster_import_sweep_head_controls_exit() -> ProcessExit {
-  let report = match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
-    Accepted { value: prepared, diagnostics: _ } =>
-      fold_list(xs: roster_head_controls(prepared: prepared, lex: dag_prepared_lex()), empty: "", cons: fn(acc, v) { acc + v.fail })
-  }
-  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
 fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
