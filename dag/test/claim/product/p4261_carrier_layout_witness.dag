@@ -143,7 +143,7 @@ import product.p4261_carrier_layout {
   e1_converter_near, k1_converter_near, k1_converter_far, k1_u100, e1_converter_lead_resistances, k1_converter_lead_resistances, k1_near_converter_lead_resistances, e1_u100_lead_resistances, k1_u100_lead_resistances,
   k1_l_4r7_near_pad_resistances, p4261_near_4r7_converter_hypothesis, regulator_pins, pin_terminal_name, u100_lead_terminals,
   e1_converter_pair_resistances, k1_converter_pair_resistances, k1_footprint_resistances, e1_footprint_resistances,
-  k1_converter_near_footprint, e1_converter_near_footprint, k1_u10p2_lift, e1_u10p2_lift, e1_after_lift_rail_resistances,
+  k1_converter_near_footprint, e1_converter_near_footprint, k1_u10p2_lift, e1_u10p2_lift, e1_after_lift_rail_resistances, e1_footprint_before_cleaning_resistances,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -2653,8 +2653,9 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && count(u100_lead_terminals) == 8
     && all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: e1_u100, t: t, ret: e1_ground_ref) && lead_read_once_to(rs: k1_u100_lead_resistances, c: k1_u100, t: t, ret: k1_return))
     && !all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: k1_u100, t: t, ret: e1_ground_ref))
-  let reported = carrier_input_reading(layout: p4261_e1_layout).contains("MP2333CGTL (marked BDFP 528), was one casualty of the 2026-10-21 incident, its VIN short gone with it")
-    && p4261_near_4r7_converter_hypothesis.claim.contains("the rail has a second, its own")
+  let reported = carrier_input_reading(layout: p4261_e1_layout).contains("MP2333CGTL (marked BDFP 528), and cleaning its footprint cleared the VIN-SW short")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("which of the two is not distinguished, the lifted part being unread")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("replacing the converter alone has not been shown sufficient")
     && p4261_near_4r7_converter_hypothesis.claim.contains("U100 is not on the switch node")
     && any(p4261_near_4r7_converter_hypothesis.sources, x => (x as String).contains("BST 0 / over range"))
   identified && complete && sw_e1 && sw_k1 && bst && in_records && u100 && reported
@@ -2677,12 +2678,13 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
   let e1_at_footprint = filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near_footprint))
   let rows = footprint_row(layout: p4261_k1_layout, c: k1_converter_near_footprint) && footprint_row(layout: p4261_e1_layout, c: e1_converter_near_footprint)
   let ordered = count(k1_at_footprint) == count(k1_footprint_resistances) && all(k1_at_footprint, o => after_key(o: o, key: k1_u10p2_lift.key))
-    && count(e1_at_footprint) == count(e1_footprint_resistances) && all(e1_at_footprint, o => after_key(o: o, key: e1_u10p2_lift.key) && after_both_incidents(o: o))
+    && count(e1_at_footprint) == count(e1_footprint_resistances) + count(e1_footprint_before_cleaning_resistances) && all(e1_at_footprint, o => after_key(o: o, key: e1_u10p2_lift.key) && after_both_incidents(o: o))
     && !any(k1_measured.bench.resistances, o => after_key(o: o, key: k1_u10p2_lift.key) && component_identity_eq(a: o.first.component, b: k1_converter_near))
   let vin_sw = filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)"))
   let figures = count(vin_sw) == 2 && all(vin_sw, o => match valued_ohms(o: o) { Present { value: v } => v == 13300, Absent => false })
     && count(filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(EN)") && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 2
-    && count(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
+    && count(e1_footprint_before_cleaning_resistances) == 1 && all(e1_footprint_before_cleaning_resistances, o => is_reported_zero(o: o) && after_key(o: o, key: e1_u10p2_lift.key) && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
+    && count(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 0
   let e1_vin_lead = filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
   let e1_vin_pad = filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
   let k1_vin_pad = filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: k1_return))
@@ -2690,6 +2692,6 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
     && all(e1_vin_pad, o => match valued_ohms(o: o) { Present { value: v } => v >= 1000, Absent => false })
     && all(e1_vin_lead, o => match valued_ohms(o: o) { Present { value: v } => v <= 30, Absent => false })
     && count(e1_after_lift_rail_resistances) == 1 && all(e1_after_lift_rail_resistances, o => after_key(o: o, key: e1_u10p2_lift.key) && match valued_ohms(o: o) { Present { value: v } => v <= 10, Absent => false })
-    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 3
+    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 2
   rows && ordered && figures && separation
 }
