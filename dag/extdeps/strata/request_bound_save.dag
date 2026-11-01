@@ -30,6 +30,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // in the pull request, not claimed by this row.
 data request_bound_save_patch_build_route: DissolutionCondition = unbound_dissolution(description: "Dissolves when the request-bound save patch is merged upstream in Strata, or when the engine build carrying it is produced by a modeled build route, so that no hand-applied vendored patch remains.")
 
+// bound_save_reply has no caller beyond its witness. The curl exchange layer that wraps it, the way
+// gunbc.serving.strata_checkpoint_transfer wraps slot_reply, was deleted rather than kept unconsumed.
+data request_bound_save_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when the serving router S3 conditional-save path (gunbc.plans.fabric_serving_router) calls bound_save_reply through a transport exchange in gunbc.serving.strata_checkpoint_transfer and a witness executes that exchange through a supplied transport.")
+
+// Operator admission of the hand-applied vendored patch is owed and NOT claimed by this module.
+
 // expected_request_id names one completed response in one engine process, never a logical turn or retry.
 type BoundSaveRequest {
   request_id: NonEmptyStr
