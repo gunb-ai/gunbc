@@ -3,18 +3,14 @@ module gunbc.serving.serving_layout
 import std.types { String, NonEmptyStr, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import product.fabric.work { identity_frame }
-import gunbc.repository_census_observation { census_declaration_ref_identity }
+import std.content_hash { identity_frame }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
-import gunbc.host.host_memory_observation {
-  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
-}
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
   ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
@@ -399,7 +395,7 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
 // ---- LIVE QUALIFICATION AND REDERIVATION
 
 // The configuration's identity as a receipt can bind it. Every component is length-framed through the
-// repository's one identity framing (product.fabric.work identity_frame, as rented_replica_wire uses), so no
+// repository's one identity framing (std.content_hash identity_frame, as rented_replica_wire uses), so no
 // free-string name can impersonate a delimiter: ["a+b"] and ["a", "b"] are different identities. A replica's
 // identity is its group, each device, cap, swap, retention budget, admitted count, active slots and ceiling.
 fn serving_replica_identity(c: ServingReplicaConfig) -> String {
@@ -433,7 +429,7 @@ fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplica
     concat(identity_frame(label: "charging", value: to_string(g.charging.length())),
     concat(fold(g.charging, init: "", f: (acc, c) => concat(acc, identity_frame(label: "assumption", value: c as String))),
       fold(replicas, init: "", f: (acc, c) => concat(acc, fold(c.devices, init: "", f: (inner, d) => concat(inner, match serving_device_named(g: g, name: d) {
-        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: census_declaration_ref_identity(reference: dv.board).digest), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
+        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: declaration_ref_identity(reference: dv.board).digest), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
         Absent => identity_frame(label: "selected-device-ungranted", value: d as String)
       }))))))))))
 }
