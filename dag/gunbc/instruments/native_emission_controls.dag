@@ -943,6 +943,82 @@ fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a heap reference carries its OWN Clone, so it bounds nothing behind it. Rc<T> and Arc<T>
+// implement Clone for every T (impl<T: ?Sized> Clone for Rc<T>, cited at
+// extdeps.languages.rust.derive_contracts std_rc_clone_impl_authority), so a field written
+// `routes: List<Route<H>>` -- which this emitter lowers to Rc<Vec<Rc<Route<H>>>>, the handle at both
+// levels -- asks NOTHING of H, and the item naming it must be declared bare.
+// v1.compiler.trait_derive_emit v1_type_expr_clone_impl_needs_param used to descend through the handle
+// as if it bounded its argument, so the row was emitted with `H: Clone` in its serde bound clause and
+// in its hand-written Debug and PartialEq impl headers. The shape is the one that reached main and
+// reddened the fleet lane: a generic enum carrying a generic struct whose field is a List of a generic
+// enum (extdeps.http.server ServedRouteTable over ServedRoute), where the emitted approval crate
+// refused with five E0277 and one E0369. The spelling side of that red is pinned in
+// dag/test/claim/generic_item_clone_bound_witness.dag; what these cases hold is the BEHAVIOR through
+// the handle -- the carrier is compared, counted and cloned with the parameter carrying a payload --
+// and the owed side below, whose compile is the guard against relaxing too far: if the repair dropped
+// a demand that is owed, the emitted field `Rc<Vec<Rc<ControlOwedLeaf<H>>>>` is ill-formed at rustc
+// (ControlOwedLeaf's own declaration carries P: Clone) and this instrument stops building.
+type ControlHeapRoute<H>
+  = ControlHeapStatic { path_label: String }
+  | ControlHeapDynamic { handler: H }
+
+type ControlHeapRow<H> { routes: List<ControlHeapRoute<H>> }
+
+type ControlHeapCarrier<H>
+  = ControlHeapFilled { table: ControlHeapRow<H> }
+  | ControlHeapEmpty
+
+// The carrier is instantiated at Int. The control fns take it at a CONCRETE element on purpose: an enum
+// arm or an empty list that carries no payload leaves a free type variable at the call site (rustc
+// E0283), and this corpus will not unify a generic enum's payload variable with a declared product type
+// inside a list literal. The point of these cases is the emitted generic type -- the carrier, the row and
+// the route are generic declarations, so their bounds are emitted and compiled exactly as in the product
+// -- and the owed side below, whose field is ill-formed if the repair over-relaxes.
+fn control_heap_rows_equal(row_a: ControlHeapRow<Int>, row_b: ControlHeapRow<Int>) -> Bool {
+  row_a == row_b
+}
+
+fn control_heap_carrier_is_filled(carrier: ControlHeapCarrier<Int>) -> Bool {
+  match carrier {
+    ControlHeapFilled { table: _ } => true
+    ControlHeapEmpty => false
+  }
+}
+
+fn control_heap_carrier_route_count(carrier: ControlHeapCarrier<Int>) -> Int {
+  match carrier {
+    ControlHeapFilled { table: t } => t.routes |> count
+    ControlHeapEmpty => 0
+  }
+}
+
+// THE OWED SIDE OF THE SAME RULE, which the repair must NOT relax. List requires Clone of its element
+// when the element itself needs it: ControlOwedLeaf<P> has a bare P field, so its own declaration
+// carries P: Clone, and naming ControlOwedLeaf<H> anywhere -- inside a List or not -- requires H: Clone
+// for the field to be well-formed at all. This is the Vec<DeclaredType<H>> case with a real demand: the
+// demand comes from the element type's own requirement, not from naming the parameter.
+type ControlOwedLeaf<P> { value: P }
+
+type ControlOwedRow<H> { leaves: List<ControlOwedLeaf<H>> }
+
+fn control_owed_row_leaf_count(row: ControlOwedRow<Int>) -> Int {
+  row.leaves |> count
+}
+
+fn heap_reference_carrier_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "heap_carrier_filled_is_filled", held: control_heap_carrier_is_filled(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapDynamic { handler: 7 }, ControlHeapStatic { path_label: "a" }] } }) },
+    NativeEmissionCase { identity: "heap_carrier_red_empty_is_not_filled", held: !control_heap_carrier_is_filled(carrier: ControlHeapEmpty) },
+    NativeEmissionCase { identity: "heap_carrier_routes_count_through_the_handle", held: control_heap_carrier_route_count(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapDynamic { handler: 7 }, ControlHeapStatic { path_label: "a" }] } }) == 2 },
+    NativeEmissionCase { identity: "heap_carrier_red_empty_row_counts_zero", held: control_heap_carrier_route_count(carrier: ControlHeapEmpty) == 0 },
+    NativeEmissionCase { identity: "heap_row_compares_equal_through_the_handle", held: control_heap_rows_equal(row_a: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }, row_b: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }) },
+    NativeEmissionCase { identity: "heap_row_red_labels_differ", held: !control_heap_rows_equal(row_a: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }, row_b: ControlHeapRow { routes: [ControlHeapDynamic { handler: 2 }, ControlHeapStatic { path_label: "a" }] }) },
+    NativeEmissionCase { identity: "owed_leaf_element_still_owes_the_parameter", held: control_owed_row_leaf_count(row: ControlOwedRow { leaves: [ControlOwedLeaf { value: 1 }, ControlOwedLeaf { value: 2 }] }) == 2 },
+    NativeEmissionCase { identity: "owed_leaf_red_empty_list_counts_zero", held: control_owed_row_leaf_count(row: ControlOwedRow { leaves: [] }) == 0 }
+  ]
+}
+
 fn bare_variant_fold_init_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "bare_init_fold_keeps_the_first_match", held: control_first_over_or(xs: [1, 5, 9], floor: 2) == 5 },
@@ -1161,6 +1237,14 @@ data native_emission_expected_identities: List<String> = [
   "alias_set_appended_as_one_element_of_a_list_of_sets",
   "canonical_and_alias_set_append_keep_the_same_shape",
   "canonical_set_append_red_is_not_a_concatenation",
+  "heap_carrier_filled_is_filled",
+  "heap_carrier_red_empty_is_not_filled",
+  "heap_carrier_routes_count_through_the_handle",
+  "heap_carrier_red_empty_row_counts_zero",
+  "heap_row_compares_equal_through_the_handle",
+  "heap_row_red_labels_differ",
+  "owed_leaf_element_still_owes_the_parameter",
+  "owed_leaf_red_empty_list_counts_zero",
 ]
 
 // RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
@@ -1379,7 +1463,7 @@ fn nested_payload_catchall_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(enum_member_identity_cases(), concat(catchall_tco_body_cases(), concat(nested_payload_catchall_cases(), concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(mixed_set_carrier_cases(), canonical_set_carrier_cases())))))))))))))
+  concat(enum_member_identity_cases(), concat(catchall_tco_body_cases(), concat(nested_payload_catchall_cases(), concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(concat(mixed_set_carrier_cases(), canonical_set_carrier_cases()), heap_reference_carrier_cases())))))))))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

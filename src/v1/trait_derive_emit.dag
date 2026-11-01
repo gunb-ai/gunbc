@@ -18,6 +18,7 @@ import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
   rust_vec_freemonoid_supplemental_generic_bound_rows,
   rust_btree_set_supplemental_generic_bound_rows,
+  rust_heap_reference_unconditional_bound_rows,
 }
 import v1.std.core {
   Node,
@@ -47,6 +48,7 @@ import std.trait_derive_shape {
 }
 import extdeps.languages.rust.capabilities {
   RustCapability,
+  RustClone,
   RustDebug,
   RustPartialEq,
   RustSerialize,
@@ -81,10 +83,48 @@ import std.types {
 
 data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Under THIS trigger enum items keep bare item params — derive emits per-impl bounds, so variant-payload mention does not add declaration bounds. That is a statement about the derive trigger only, and it is not the whole rule for enums: the well-formedness trigger below DOES bound enum params, because naming a Clone-bounded declared type in a variant payload is ill-formed without the bound whatever the derive does. Read the two notes together before concluding an enum keeps bare params. Phantom-only params receive no bound. Callable-field structs keep bare item params under this trigger. ARITHMETIC CARRIERS NO LONGER DO, and this sentence is corrected in place rather than left standing: supplemental impl blocks were gated on impl_bodies being nonempty, which was ONE FLAG ENCODING TWO FACTS -- it stood in for the field-bound question AND kept the item header in agreement with its supplemental impl headers. Header bareness now derives from the well-formedness record, so GroupCompletion emits a BOUNDED header (pub struct GroupCompletion<M: Clone>) and its supplemental impls read the same record through one Bool, because Rust requires an impl's generics to satisfy the type's own bounds. Note the bound renders in the impl GENERIC LIST only and must be absent from the type reference -- one fact, two renderings. Not wired from target_derive_supplemental_generic_bound_contract."
 
-data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm."
+// QUARANTINED COMMENTARY, not data. This used to be
+// data trait_derive_emit_item_clone_bound_wf_propagation_note: String. Nothing reads
+// that row -- the only references to it were other comments and one refusal message --
+// so it was commentary carried as data, which DESIGN §4c puts in // instead. The text is
+// kept verbatim below, including the correction this branch made to the sentence about
+// what a container or a derive(Clone) type owes its parameters.
+
+// SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above
+// and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires
+// satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th
+// argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone
+// -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike,
+// because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly
+// scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The
+// two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked
+// against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone>
+// is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike.
+// The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a
+// one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the
+// current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates
+// all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The
+// derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing
+// v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because
+// Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from
+// well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the
+// same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone -- and
+// the answer is each head's OWN Clone impl, not the head's arity: containers bound their element and declared
+// generic items bound per their declared bounds, so the walk descends through those, while Rc and Arc bound
+// NOTHING of the pointee (extdeps.languages.rust.derive_contracts
+// rust_heap_reference_unconditional_bound_rows), so the walk stops at a heap reference rather than reducing
+// the question to `P occurs in tau` -- while v1_type_expr_wf_needs_clone_param asks whether NAMING tau
+// requires it (only the argument positions the fixpoint has already bounded count), and there descending
+// through Rc is correct, because naming `Rc<ServedRoute<H>>` is ill-formed unless ServedRoute's own bound on H
+// is satisfied. The undecidable residue is answered by its own total function rather than fused into either
+// Bool: a type application whose head is neither a container nor a declared type in the closure has no
+// readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with
+// compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` --
+// widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in
+// corpus as of this landing; kept as the fail-closed arm.
 
 // THIRD site for the SAME well-formedness trigger
-// (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather
+// (the well-formedness-propagation note quoted as comments above), applied to FN declarations rather
 // than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's
 // value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic
 // parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded
@@ -505,12 +545,31 @@ fn v1_freemonoid_filter_hand_written(traits: List<RustCapability>) -> List<RustC
 fn v1_freemonoid_element_params(
   generic_param_names: List<String>,
   field_type_exprs: List<Node>,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
+  // The ELEMENT test is the carrier's REQUIREMENT, not an appearance walk. Every row in
+  // rust_vec_freemonoid_supplemental_generic_bound_rows requires Clone OF THE ELEMENT TYPE, so the
+  // question is whether the element type's own Clone impl asks that of the parameter -- which is
+  // exactly what v1_type_expr_clone_impl_needs_param answers, over the same rows the v2 target-model
+  // contract map reads. The test here used to ask whether the parameter merely OCCURRED inside the
+  // element type, a different question with a wider answer: for `Rc<Vec<Rc<ServedRoute<H>>>>` the
+  // element is `Rc<ServedRoute<H>>`, whose Clone is unconditional, so H owes nothing -- while the
+  // appearance walk said it did, `H: Clone` landed in the serde bound and in the hand-written Debug
+  // and PartialEq impl headers, and the generic enum carrying that struct in a variant payload
+  // derives with serde's DEFAULT bound, so the emitted crate refused: 5x E0277 plus 1x E0369 in
+  // v2-emitted-policy-unit-4 of gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8.
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
       v1_type_expr_is_free_monoid_carrier(type_expr: te, source_indices: source_indices)
-        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
+        && te.children |> any(c => v1_type_expr_clone_impl_needs_param(
+          param_name: p,
+          type_expr: child_type_node(ch: c),
+          bounds: bounds,
+          type_decl_items: type_decl_items,
+          source_indices: source_indices
+        ))
     )
   )
 }
@@ -1226,6 +1285,8 @@ fn v1_emit_enum_derives(
   map_key_required: Bool,
   deserialize_forbidden: Bool,
   generic_param_names: List<String>,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
@@ -1238,6 +1299,8 @@ fn v1_emit_enum_derives(
     v1_freemonoid_element_params(
       generic_param_names: generic_param_names,
       field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
+      bounds: bounds,
+      type_decl_items: type_decl_items,
       source_indices: source_indices
     )
   }
@@ -1886,6 +1949,19 @@ fn v1_type_expr_clone_undecided_head(
   }
 }
 
+// WHICH HEADS' OWN Clone impl asks NOTHING of its argument is the extdeps row list, not a
+// spelling test here: rust_heap_reference_unconditional_bound_rows cites `impl<T: ?Sized> Clone
+// for Rc<T>` and the Arc twin. The walk ASKS the rows, so the fact lives in one place and the
+// v2 target-model contract map can read the same rows.
+fn v1_type_expr_clone_unconditional_heap_reference(
+  type_expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+  rust_heap_reference_unconditional_bound_rows
+    |> any(row => row.carrier_leaf == leaf && row.capability == RustClone)
+}
+
 fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
   type_expr: Node,
@@ -1896,6 +1972,12 @@ fn v1_type_expr_clone_impl_needs_param(
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
     true
   } else if (type_expr.children |> count) == 0 {
+    false
+  } else if v1_type_expr_clone_unconditional_heap_reference(type_expr: type_expr, source_indices: source_indices) {
+    // `Rc<X>: Clone` and `Arc<X>: Clone` hold for EVERY X, so the requirement stops at the
+    // reference: it reaches no parameter through the pointee. Naming the type is a different
+    // question and v1_type_expr_wf_needs_clone_param keeps descending there, because writing
+    // `Rc<ServedRoute<H>>` really does require whatever ServedRoute declares of H.
     false
   } else {
     match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
@@ -2061,7 +2143,7 @@ fn v1_declared_arg_positions_need_clone_param(
 // `Rc<dyn Fn(A) -> R>` (render_rust_type / callable_type_template), and naming a Clone-bounded
 // declared type at A or R is exactly as ill-formed as naming it at a bare field -- rustc E0277 at
 // the field, before any derive is considered, which is the same trigger
-// trait_derive_emit_item_clone_bound_wf_propagation_note already states for the children path.
+// well-formedness-propagation note (the // block above v1_type_expr_wf_needs_clone_param) already states
 //
 // This yields the components for the WELL-FORMEDNESS walk only, deliberately not for the
 // clone-IMPL walk (v1_type_expr_clone_impl_needs_param): `Rc<dyn Fn(A) -> R>: Clone` is satisfied
@@ -2761,6 +2843,7 @@ fn v1_emit_struct_from_capability_table(
   has_fn_fields: Bool,
   map_key_required: Bool,
   generic_param_names: List<String>,
+  bounds: Map<String, Set<String>>,
   source_indices: Map<String, NewlineIndex>,
   header_clone_param_names: List<String>,
   deserialize_forbidden: Bool,
@@ -2772,7 +2855,7 @@ fn v1_emit_struct_from_capability_table(
     || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
     []
   } else {
-    v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
+    v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
   }
   let ord_params = if has_fn_fields || map_key_required
     || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
@@ -2851,10 +2934,12 @@ fn v1_emit_enum_supplemental_impls(
   children: List<Node>,
   generic_param_names: List<String>,
   header_clone_param_names: List<String>,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   let field_type_exprs = v1_enum_variant_field_type_exprs(children: children)
-  let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
+  let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
   let set_params = v1_set_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
   let ord_params = set_params
   if (fm_params |> count) > 0 {

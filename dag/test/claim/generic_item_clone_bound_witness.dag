@@ -521,3 +521,68 @@ test fn fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
 test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
   w_fn_value_forwarding_bounds_only_the_instantiated_generic()
 }
+
+// HEAP REFERENCE: a heap handle carries its OWN Clone -- impl<T: ?Sized> Clone for Rc<T>, and the Arc
+// twin -- so a field written List<Route<H>>, which this emitter lowers to Rc<Vec<Rc<Route<H>>>> with a
+// handle at both levels, asks NOTHING of H. v1.compiler.trait_derive_emit
+// v1_type_expr_clone_impl_needs_param used to descend through the handle as if it bounded its argument,
+// and the row came out with H: Clone in its serde bound clause and in its hand-written Debug and
+// PartialEq impl headers. That is the shape that reddened the fleet lane: extdeps.http.server
+// ServedRouteTable over ServedRoute, six rustc diagnostics in the emitted crate for
+// gunbc.auth.approval_device_crypto_serve. Red at the defective emission, green after the repair.
+fn w_heap_reference_carrier_owes_no_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.heap_carrier\n\ntype HeapRoute<H>\n  = StaticRoute { path_label: String }\n  | DynamicRoute { handler: H }\n\ntype HeapRow<H> {\n  routes: List<HeapRoute<H>>\n}\n",
+    "src/generic_item_witness_heap_carrier.rs",
+    ["struct HeapRow<H> {", "Rc<Vec<Rc<HeapRoute<H>>>>"],
+    [
+      "H: Clone + serde::Serialize",
+      "H: Clone + serde::Deserialize",
+      "impl<H: Clone + std::fmt::Debug> std::fmt::Debug for HeapRow<H>",
+      "impl<H: Clone + PartialEq> PartialEq for HeapRow<H>"
+    ]
+  )
+}
+
+test fn heap_reference_carrier_owes_no_clone_bound() -> Bool {
+  w_heap_reference_carrier_owes_no_clone_bound()
+}
+
+// THE OWED SIDE, which the repair must NOT relax. OwedLeaf<P> has a bare P field, so its own declaration
+// carries P: Clone, and naming OwedLeaf<H> -- inside a List or anywhere else -- requires H: Clone for
+// the field to be well-formed at all. The demand comes from the element type's own requirement, not from
+// naming the parameter. Green on both sides of the repair; it goes red if the repair relaxes too far,
+// because the emitted field Rc<Vec<Rc<OwedLeaf<H>>>> is then ill-formed.
+fn w_owed_element_bound_survives_the_repair() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.owed_element\n\ntype OwedLeaf<P> {\n  value: P\n}\n\ntype OwedRow<H> {\n  leaves: List<OwedLeaf<H>>\n}\n",
+    "src/generic_item_witness_owed_element.rs",
+    ["struct OwedLeaf<P: Clone>", "struct OwedRow<H: Clone>"],
+    ["struct OwedRow<H> {"]
+  )
+}
+
+test fn owed_element_bound_survives_the_repair() -> Bool {
+  w_owed_element_bound_survives_the_repair()
+}
+
+// THE FN-LEVEL BOUND IS A DIFFERENT CLAIM, and this row pins it AS IT IS rather than asserting it is
+// right. The emitted lowering of a match on a value is `match (*c.clone()).clone() { .. }`: it clones the
+// coproduct itself, and the derive supplies impl<H: Clone> Clone for the coproduct, so the fn needs
+// H: Clone even though the type-level records do not bound it (an enum's declaration prints bare, derive
+// carries the bound per impl). That bound comes from the fn-level arms, not from the clone-requirement
+// walk, and relaxing those arms to the requirement rule moves the refusal into the body -- it needs a
+// body-aware analysis, not this predicate. Pinning the current spelling here makes changing it a
+// deliberate act with a red to hit. Green on both sides of the repair.
+fn w_fn_level_value_clone_bound_still_renders() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_witness.fn_level\n\ntype FnCarrier<H>\n  = Filled { tag: Int }\n  | Empty\n\nfn carrier_is_filled<H>(c: FnCarrier<H>) -> Bool {\n  match c {\n    Filled { tag: _ } => true\n    Empty => false\n  }\n}\n",
+    "src/generic_item_witness_fn_level.rs",
+    ["fn carrier_is_filled<H: Clone>"],
+    []
+  )
+}
+
+test fn fn_level_value_clone_bound_still_renders() -> Bool {
+  w_fn_level_value_clone_bound_still_renders()
+}

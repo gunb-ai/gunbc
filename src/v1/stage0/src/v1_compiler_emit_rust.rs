@@ -16828,7 +16828,7 @@ pub fn emit_item_clone_bound_refusal(
                     if (head.clone() == "".to_string()) {
                         "".to_string()
                     } else {
-                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)".to_string()))
                     }
                 }
             }
@@ -17524,6 +17524,7 @@ pub fn emit_struct_from_children(
                 ),
             ),
             generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
             env.source_indices.clone(),
             header_clone_param_names,
             deserialize_forbidden,
@@ -17971,6 +17972,8 @@ pub fn enum_derives(
         ),
         deserialize_forbidden,
         generic_param_names,
+        emit_info.clone_bounded_type_params.clone(),
+        emit_info.type_decl_items.clone(),
         source_indices,
     )
 }
@@ -18084,6 +18087,8 @@ pub fn emit_enum_from_children(
             children.clone(),
             generic_param_names.clone(),
             header_clone_param_names,
+            emit_info.clone_bounded_type_params.clone(),
+            emit_info.type_decl_items.clone(),
             env.source_indices.clone(),
         );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
