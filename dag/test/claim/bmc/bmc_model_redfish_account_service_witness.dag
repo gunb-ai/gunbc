@@ -36,12 +36,6 @@ import extdeps.bmc.redfish {
   redfish_password_change_verdict, RedfishPasswordChangeRequired,
   redfish_manager_account_collection_from_json, RedfishAccountCollection, RedfishAccountCollectionUnreadable,
 }
-<<<<<<< HEAD
-import std.roster_frontier { FrontierRow, DeclSubject, PathSubject }
-import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
-import v2.std.decl_index { decl_facts }
-=======
->>>>>>> 043de7d33afaa7eef28bd86df6d322cea4ee23b7
 
 data factory_password: String = "openbmc"
 data managed_password: String = "correct-horse-battery-staple"
@@ -298,70 +292,6 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
   unmodeled && serves_none && the_two_are_distinguishable && census_cannot_distinguish
 }
 
-<<<<<<< HEAD
-// THE §3c CONSUMER FRONTIERS (review 87749 + parent directive). The Redfish world surface's production
-// consumer is item 3's dry Redfish read/apply in gunbc.machine_intake.bmc_secure, which does not exist until
-// PR 1b-i lands. The rows are the contract; these tests read their subject and trigger against the live declaration facts.
-fn redfish_frontier_trigger_module(row: FrontierRow) -> String {
-  match row.dissolution {
-    BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
-    UnboundDissolution { description: _ } => ""
-  }
-}
-
-fn redfish_frontier_trigger_qualified_name(row: FrontierRow) -> String {
-  match row.dissolution {
-    BoundDissolution { trigger: t } => {
-      let r = dissolution_trigger_ref(trigger: t)
-      concat(r.module_path as String, concat(".", r.decl_name as String))
-    }
-    UnboundDissolution { description: _ } => ""
-  }
-}
-
-fn redfish_frontier_subject_qualified_name(row: FrontierRow) -> String {
-  match row.subject {
-    DeclSubject { ref: r } => concat(r.module_path as String, concat(".", r.decl_name as String))
-    PathSubject { path: _ } => ""
-  }
-}
-
-// Subject exists where it is declared -- the gunbc.bmc_model world surface or the extdeps.bmc.redfish wire
-// readers -- (an obligation written against a function nobody wrote is the same absence wearing a carrier); the
-// trigger's declaration is ABSENT from the machine_intake census (pending, not fired).
-fn redfish_frontier_subject_declared(row: FrontierRow) -> Bool {
-  let wanted = redfish_frontier_subject_qualified_name(row: row)
-  any(xs: decl_facts(pool_roots: ["dag/gunbc", "dag/extdeps"]), predicate: fn(d) { d.qualified_name == wanted })
-}
-
-fn redfish_frontier_trigger_pending(row: FrontierRow) -> Bool {
-  let wanted = redfish_frontier_trigger_qualified_name(row: row)
-  !any(xs: decl_facts(pool_roots: ["dag/gunbc/machine_intake"]), predicate: fn(d) { d.qualified_name == wanted })
-}
-
-test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> Bool {
-  let read_rows = bmc_secure_redfish_read_consumer_frontier_rows()
-  let write_rows = bmc_secure_redfish_write_consumer_frontier_rows()
-  let extdeps_rows = bmc_secure_redfish_extdeps_consumer_frontier_rows()
-  let everything = bmc_secure_redfish_consumer_frontier_rows()
-  let counts = list_length(items: read_rows) == 3 && list_length(items: write_rows) == 1 && list_length(items: extdeps_rows) == 6 && list_length(items: everything) == 10
-  let every_row_disciplined = !any(xs: everything, predicate: fn(row) {
-    !(redfish_frontier_trigger_module(row: row) == bmc_secure_redfish_trigger_module
-      && redfish_frontier_subject_declared(row: row)
-      && redfish_frontier_trigger_pending(row: row))
-  })
-  // the two distinct future realizations item 3 must mint are the triggers (not one catch-all name); the extdeps
-  // census readers bind the READ realization and the PATCH-body builder binds the WRITE realization.
-  let read_trigger = concat(bmc_secure_redfish_trigger_module, concat(".", bmc_secure_redfish_read_realization))
-  let write_trigger = concat(bmc_secure_redfish_trigger_module, concat(".", bmc_secure_redfish_write_realization))
-  let read_bound = any(xs: read_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == read_trigger })
-  let write_bound = any(xs: write_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == write_trigger })
-  let extdeps_bound = any(xs: extdeps_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == read_trigger }) && any(xs: extdeps_rows, predicate: fn(row) { redfish_frontier_trigger_qualified_name(row: row) == write_trigger })
-  counts && every_row_disciplined && read_bound && write_bound && extdeps_bound
-}
-
-=======
->>>>>>> 043de7d33afaa7eef28bd86df6d322cea4ee23b7
 // RED (review 87824): a SHARED account whose IPMI user is not in the table has nowhere to write. Applying the
 // Password PATCH there must NOT clear the forced flag or reset the counter -- the change is not completed and the
 // world is returned UNCHANGED. This is the fabricated-partial-state the pre-fix code built (it cleared the record
