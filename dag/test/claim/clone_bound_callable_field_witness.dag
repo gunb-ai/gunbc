@@ -7,8 +7,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A CALLABLE FIELD HID ITS DECLARED TYPE FROM THE WELL-FORMEDNESS FIXPOINT.
 //
-// The item-level Clone bound has two triggers (trait_derive_emit_item_clone_bound_rule_note and
-// trait_derive_emit_item_clone_bound_wf_propagation_note). The second one -- naming a Clone-bounded
+// The item-level Clone bound has two triggers (the rule-note row
+// trait_derive_emit_item_clone_bound_rule_note, and the well-formedness note, which this
+// branch moved from a String row into // comments in gunbc.v1.trait_derive_emit). The second one --
+// naming a Clone-bounded
 // declared type G<A..> anywhere in a field makes the declaring item ill-formed without the bound --
 // walked type expressions through `.children` alone. A callable type expression has NO children:
 // parse builds it as Node { name: "Callable", children: [], connective: Arrow, params: <arguments>,
