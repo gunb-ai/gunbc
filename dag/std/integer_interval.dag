@@ -3,11 +3,10 @@ module std.integer_interval
 // The integer interval authority shared by literal admission, crossings and width domains.
 // Exact decimal bounds moved from v2.std.integer; node codecs remain in v2.
 import std.types { Int, Bool, List, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.algebra { Cons, Empty, FreeMonoid, Ordering, Less, Equal, Greater, list_snoc_item, fold_list, length, list_map, list_at_optional }
 import std.optional { Absent, Present }
 import std.integer { Signedness, Signed, Unsigned, decimal_digit_of_units, int_compare }
-import std.nat { DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value }
+import std.nat { DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value, decimal_digit_glyph }
 
 type IntegerBoundSign
   = IntegerBoundNegative
@@ -707,57 +706,49 @@ fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> DecimalDig
 }
 
 
-fn integer_width_alias_name(width: StandardIntegerType) -> String {
-  match width {
-    Int8 => "Int8"
-    Int16 => "Int16"
-    Int32 => "Int32"
-    Int64 => "Int64"
-    Int128 => "Int128"
-    UInt8 => "UInt8"
-    UInt16 => "UInt16"
-    UInt32 => "UInt32"
-    UInt64 => "UInt64"
-    UInt128 => "UInt128"
-  }
-}
-
-fn integer_width_source_declarations(width: StandardIntegerType) -> List<DeclarationRef> {
-  let name = integer_width_alias_name(width: width)
-  [decl_ref(module_path: "std.integer", decl_name: name), decl_ref(module_path: "v2.std.integer", decl_name: name)]
-}
-
-// Reverse the same declaration roster used by target bindings. A local alias with the
-// same spelling has no row; zero or ambiguous identities refuse rather than guessing.
-fn integer_width_from_declaration(source: DeclarationRef) -> StandardIntegerType? {
+// Consume the signedness and static width read by v2.compiler.infer.infer_machine_width_of.
+// There is no source alias roster here: the resolver has already read the declaration.
+fn integer_standard_type_from_width(signedness: Signedness, bits: Int) -> StandardIntegerType? {
   let matches = filter(integer_standard_integer_type_roster, width =>
-    any(integer_width_source_declarations(width: width), candidate => declaration_ref_eq(a: candidate, b: source)))
+    integer_standard_integer_type_signedness(standard_integer_type: width) == signedness
+      && integer_standard_integer_type_width_bits(standard_integer_type: width) == bits)
   if count(matches) == 1 { first(matches) } else { Absent }
 }
 
-// Resolver-side reading of the same width when aliases have already unfolded.
-// The caller supplies resolved declaration identities, not source spellings.
-fn integer_width_from_composition(head: DeclarationRef, algebra: DeclarationRef, algebra_argument: DeclarationRef?, constraint: DeclarationRef, bits: Int) -> StandardIntegerType? {
-  if !declaration_ref_eq(a: head, b: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"))
-    || !declaration_ref_eq(a: constraint, b: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")) {
-    Absent
-  } else {
-    let signed = match algebra_argument {
-      Absent => any([decl_ref(module_path: "std.integer", decl_name: "Int"), decl_ref(module_path: "v2.std.integer", decl_name: "Int")], candidate => declaration_ref_eq(a: candidate, b: algebra))
-      Present { value: element } =>
-        declaration_ref_eq(a: algebra, b: decl_ref(module_path: "std.algebra", decl_name: "GroupCompletion"))
-        && declaration_ref_eq(a: element, b: decl_ref(module_path: "std.nat", decl_name: "Nat"))
+// Canonical decimal spelling of an exact concrete bound. This does not pass through
+// a host Int, including for the full u64/i128/u128 endpoints. Pointer-relative
+// bounds have no exact spelling before target-width resolution and refuse.
+fn integer_bound_decimal_spelling(bound: IntegerIntervalBound) -> String? {
+  match bound {
+    IntegerConcreteZero => Present { value: "0" }
+    IntegerPointerWidthBound { signedness: _, endpoint: _ } => Absent
+    IntegerConcreteBound { sign: sign, magnitude: m } => {
+      let digits = Cons { head: integer_nonzero_decimal_digit_widen(digit: m.lead), tail: m.tail }
+      let magnitude = join(map(digits, digit => decimal_digit_glyph(d: digit)), "")
+      Present { value: match sign {
+        IntegerBoundNegative => concat("-", magnitude)
+        IntegerBoundNonNegative => magnitude
+      } }
     }
-    let unsigned = match algebra_argument {
-      Absent => any([decl_ref(module_path: "std.integer", decl_name: "UInt"), decl_ref(module_path: "v2.std.integer", decl_name: "UInt"), decl_ref(module_path: "std.nat", decl_name: "Nat")], candidate => declaration_ref_eq(a: candidate, b: algebra))
-      Present { value: _ } => false
-    }
-    let matches = filter(integer_standard_integer_type_roster, width =>
-      integer_standard_integer_type_width_bits(standard_integer_type: width) == bits
-      && (match integer_standard_integer_type_signedness(standard_integer_type: width) {
-        Signed => signed
-        Unsigned => unsigned
-      }))
-    if count(matches) == 1 { first(matches) } else { Absent }
+  }
+}
+
+// Explicit model refusal until a wider exact runtime carrier is realized. Bounds
+// retain their sign and decimal magnitude, but must never be truncated to Int.
+type IntegerWidthHostRealization
+  = WidthValueFitsHostInt
+  | WidthValueNeedsExactRealization
+
+fn integer_width_host_realization(value: IntegerIntervalBound) -> IntegerWidthHostRealization {
+  match int64_interval_spec {
+    BoundedIntegerInterval { inclusive_min: lo, inclusive_max: hi } =>
+      if !integer_interval_bound_is_pointer_width(bound: value)
+        && integer_interval_bound_less_or_equal(left: lo, right: value)
+        && integer_interval_bound_less_or_equal(left: value, right: hi) {
+        WidthValueFitsHostInt
+      } else {
+        WidthValueNeedsExactRealization
+      }
+    _ => WidthValueNeedsExactRealization
   }
 }

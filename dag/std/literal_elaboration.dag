@@ -1,6 +1,6 @@
 module std.literal_elaboration
 
-import std.integer_interval { StandardIntegerType, integer_width_from_declaration, integer_standard_integer_type_signedness, integer_standard_integer_type_interval_spec, integer_standard_integer_type_roster, integer_width_source_declarations, IntegerExtent, UnboundedIntegers, UnboundedNaturals, integer_extent_admits, integer_extent_within }
+import std.integer_interval { integer_machine_interval_spec, IntegerExtent, UnboundedIntegers, UnboundedNaturals, integer_extent_admits, integer_extent_within }
 import std.integer_width_construction { integer_width_checked_conversion_remedy }
 import std.integer { Signedness, Signed, Unsigned }
 import std.optional { Present, Absent }
@@ -402,6 +402,7 @@ type KernelCrossingRefusal
   = CarrierNotGrounded { carrier: DeclarationRef }
   | CarrierGroundedTwice { carrier: DeclarationRef }
   | ExtentNotIncluded { from: DeclarationRef, to: DeclarationRef }
+  | WidthExtentNotIncluded { from: DeclarationRef, to: DeclarationRef }
   | WidthSignednessChange { from: DeclarationRef, to: DeclarationRef }
 
 type CarrierGroundingLookup
@@ -427,13 +428,7 @@ fn kernel_grounding_crossing(rows: List<KernelGrounding>, from: DeclarationRef, 
       match carrier_grounding(rows: rows, carrier: to) {
         CarrierGroundingRefused { cause: c } => CrossingRefused { cause: c }
         CarrierGroundingFound { row: target } =>
-          if !kernel_grounding_sign_change_allowed(source: source, target: target) {
-            CrossingRefused { cause: WidthSignednessChange { from: from, to: to } }
-          } else if integer_extent_within(inner: source.extent, outer: target.extent) {
-            CrossingTotalWidening
-          } else {
-            CrossingRefused { cause: ExtentNotIncluded { from: from, to: to } }
-          }
+          kernel_grounding_pair_crossing(source: source, target: target)
       }
   }
 }
@@ -443,13 +438,8 @@ fn kernel_crossing_refusal_message(cause: KernelCrossingRefusal) -> String {
     WidthSignednessChange { from: f, to: t } => concat("Signedness change from ", f.decl_name, " to ", t.decl_name, ". ", integer_width_checked_conversion_remedy())
     CarrierNotGrounded { carrier: c } => concat(concat(c.module_path as String, "."), c.decl_name as String)
     CarrierGroundedTwice { carrier: c } => concat(concat(c.module_path as String, "."), concat(c.decl_name as String, " is grounded by more than one row, so the route is not unique"))
-    ExtentNotIncluded { from: f, to: t } => {
-      let detail = concat(concat(concat(f.module_path as String, "."), f.decl_name as String), concat(" is not inside ", concat(concat(t.module_path as String, "."), t.decl_name as String)))
-      match integer_width_from_declaration(source: t) {
-        Present { value: _ } => concat(detail, ". ", integer_width_checked_conversion_remedy())
-        Absent => detail
-      }
-    }
+    WidthExtentNotIncluded { from: f, to: t } => concat(f.decl_name, " is not inside ", t.decl_name, ". ", integer_width_checked_conversion_remedy())
+    ExtentNotIncluded { from: f, to: t } => concat(concat(concat(f.module_path as String, "."), f.decl_name as String), concat(" is not inside ", concat(concat(t.module_path as String, "."), t.decl_name as String)))
   }
 }
 
@@ -587,26 +577,28 @@ fn kernel_grounding_sign_change_allowed(source: KernelGrounding, target: KernelG
   !width_participates || kernel_grounding_signedness(view: source.view) == kernel_grounding_signedness(view: target.view)
 }
 
-fn integer_width_groundings(width: StandardIntegerType) -> List<KernelGrounding> {
-  map(integer_width_source_declarations(width: width), source => KernelGrounding {
-    source_kind: KernelIntLiteral,
-    carrier: source,
-    extent: integer_standard_integer_type_interval_spec(standard_integer_type: width),
-    view: WidthGroundingView { signedness: integer_standard_integer_type_signedness(standard_integer_type: width) }
-  })
+// The source identity is supplied by the resolved declaration reading. It is never
+// synthesized from a width name; raw Compose instances use the pair decision below.
+fn integer_width_grounding(source: DeclarationRef, signedness: Signedness, bits: Int) -> KernelGrounding {
+  KernelGrounding {
+    source_kind: KernelIntLiteral, carrier: source,
+    extent: integer_machine_interval_spec(signedness: signedness, width_bits: bits),
+    view: WidthGroundingView { signedness: signedness }
+  }
 }
 
-data integer_width_grounding_rows: List<KernelGrounding> = flat_map(integer_standard_integer_type_roster, width => integer_width_groundings(width: width))
-
-fn integer_width_implicit_conversion(source: StandardIntegerType, destination: StandardIntegerType) -> Bool {
-  match first(integer_width_source_declarations(width: source)) {
-    Absent => false
-    Present { value: from } => match first(integer_width_source_declarations(width: destination)) {
-      Absent => false
-      Present { value: to } => match kernel_grounding_crossing(rows: integer_width_grounding_rows, from: from, to: to) {
-        CrossingTotalWidening => true
-        CrossingRefused { cause: _ } => false
-      }
+// The ONE policy decision, also used when resolved generic instances share the
+// Compose head but have different arguments. Their readings must not be indexed
+// by that shared head in a declaration-only map.
+fn kernel_grounding_pair_crossing(source: KernelGrounding, target: KernelGrounding) -> KernelGroundingCrossing {
+  if !kernel_grounding_sign_change_allowed(source: source, target: target) {
+    CrossingRefused { cause: WidthSignednessChange { from: source.carrier, to: target.carrier } }
+  } else if integer_extent_within(inner: source.extent, outer: target.extent) {
+    CrossingTotalWidening
+  } else {
+    match target.view {
+      WidthGroundingView { signedness: _ } => CrossingRefused { cause: WidthExtentNotIncluded { from: source.carrier, to: target.carrier } }
+      _ => CrossingRefused { cause: ExtentNotIncluded { from: source.carrier, to: target.carrier } }
     }
   }
 }

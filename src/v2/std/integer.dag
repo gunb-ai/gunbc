@@ -1,6 +1,5 @@
 module v2.std.integer
 
-import std.literal_elaboration { integer_width_implicit_conversion }
 import std.integer_interval {
   IntegerBoundSign,
   IntegerRangeEndpoint,
