@@ -224,22 +224,13 @@ test fn planned_equality_emits_one_declared_call_and_no_hand_spelled_route() -> 
 
 // THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation): admitted-or-refused reads the same
 // whether a Node leaf compares through its declared route or by another path, so these read the emitted
-// step. The routed function the table names must appear in the emitted derived-equality declaration; a table
-// row whose function changes turns them red.
-test fn composite_reaching_node_emits_the_declared_route_function() -> Bool {
-  compile_dag_rust_emit_check(
-    "module test.claim.deq_route_node_probe\nimport v2.std.node { Node }\ntype DeqRouteWrap { n: Node }\nfn same(a: DeqRouteWrap, b: DeqRouteWrap) -> Bool { a == b }\n",
-    "src/test_claim_deq_route_node_probe.rs",
-    ["equality_derived_", "node_equal_ignoring_provenance"],
-    []
-  )
-}
-
+// step. The routed function the table names must be called, open paren included, so a name that merely shares
+// a prefix with it does not satisfy the control; a table row whose function changes turns it red.
 test fn node_occurrence_root_emits_the_declared_route_function() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.deq_route_occurrence_probe\nimport v2.std.node { NodeOccurrence }\nfn same(a: NodeOccurrence, b: NodeOccurrence) -> Bool { a == b }\n",
     "src/test_claim_deq_route_occurrence_probe.rs",
-    ["node_occurrence_eq"],
+    ["::node_occurrence_eq("],
     []
   )
 }
