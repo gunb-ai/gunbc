@@ -185,13 +185,19 @@ fn spool_pending_writers(kind: SpoolKind) -> List<SpoolPrincipal> {
   }
 }
 
+// A role the spool does not declare has no directory and therefore no writers: empty, the same refusal spool_role_dir
+// (Absent) and the claim/complete assessments (RoleUndeclared) already give, never a default principal.
 fn spool_role_writers(kind: SpoolKind, role: SpoolRole) -> List<SpoolPrincipal> {
-  match role {
-    RolePending => spool_pending_writers(kind: kind)
-    RoleHandedOff => [spool_declaration(kind: kind).claimant]
-    RoleClaimed => [spool_declaration(kind: kind).claimant]
-    RoleDone => [spool_declaration(kind: kind).claimant]
-    RoleRefused => [spool_declaration(kind: kind).claimant]
+  if optional_is_absent(opt: spool_role_dir(kind: kind, role: role)) {
+    []
+  } else {
+    match role {
+      RolePending => spool_pending_writers(kind: kind)
+      RoleHandedOff => [spool_declaration(kind: kind).claimant]
+      RoleClaimed => [spool_declaration(kind: kind).claimant]
+      RoleDone => [spool_declaration(kind: kind).claimant]
+      RoleRefused => [spool_declaration(kind: kind).claimant]
+    }
   }
 }
 

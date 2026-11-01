@@ -4,6 +4,7 @@ import std.types { Bool, Int, String, List, NonEmptyStr }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.optional { Present, Absent }
+import std.algebra { is_empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.roster_frontier { frontier_subject_key }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
@@ -412,5 +413,15 @@ test fn a_malformed_stage_graph_is_refused() -> ProcessExit {
     exit_failure(reason: "a malformed stage graph was admitted")
   } else {
     ExitSuccess
+  }
+}
+
+// DISCRIMINATING: a role the spool does not declare has no writers (the unit spool declares no done role, the
+// publication spool no claimed role), while a declared role still has them.
+test fn the_writers_column_names_no_writer_for_an_undeclared_role() -> ProcessExit {
+  if is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleDone)) && is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleClaimed)) && (!is_empty(xs: spool_role_writers(kind: SpoolAttemptUnit, role: RoleClaimed))) && (!is_empty(xs: spool_role_writers(kind: SpoolPublication, role: RoleRefused))) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the writers column answers for an undeclared role, or omits a declared one")
   }
 }
