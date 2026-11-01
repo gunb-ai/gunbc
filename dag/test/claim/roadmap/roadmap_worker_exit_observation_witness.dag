@@ -25,6 +25,52 @@ import gunbc.systemd_unit_invocation_liveness {
 
 data unit: NonEmptyStr = "gunbc-attempt-n-1-k1.service" as NonEmptyStr
 
+fn evidence(loaded: AttemptUnitObservation, names: List<String>, start_recorded: Bool) -> WorkerProcessEvidence {
+  worker_process_from_attempt_unit(
+    observation: attempt_worker_unit_observation_of(
+      unit: unit,
+      loaded: loaded,
+      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: names }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]),
+      start: if start_recorded { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted },
+    ),
+    unit: unit,
+  )
+}
+
+fn exited_with(e: WorkerProcessEvidence, code: Int) -> Bool {
+  match e { WorkerProcessExited { exit_code, last_command: _ } => exit_code == code _ => false }
+}
+
+fn unobserved(e: WorkerProcessEvidence) -> Bool {
+  match e { WorkerProcessUnobserved { reason: _ } => true _ => false }
+}
+
+fn absent(e: WorkerProcessEvidence) -> Bool {
+  match e { WorkerProcessAbsent => true _ => false }
+}
+
+// The collected worker is read from its record: a success exits 0, a failure carries its status, and
+// a SIGTERM reads 15 -- the number ExecMainStatus reported before, so no consumer's decision moves.
+test fn a_collected_worker_is_read_from_its_exit_record() -> Bool {
+  exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true), code: 0)
+    && exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+exit-code+exited+3"], start_recorded: true), code: 3)
+    && exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+signal+killed+TERM"], start_recorded: true), code: 15)
+}
+
+// Condition 1: a started worker whose unit is gone with NO record is indeterminate, never "never ran";
+// only an attempt with no start receipt (no placement record) answers absent.
+test fn a_gone_unit_without_a_record_is_unobserved_unless_it_never_started() -> Bool {
+  unobserved(e: evidence(loaded: AttemptUnitAbsent, names: ["other+k9+worker+inv+success+exited+0"], start_recorded: true))
+    && absent(e: evidence(loaded: AttemptUnitAbsent, names: [], start_recorded: false))
+}
+
+// A loaded unit is the manager's answer and the record is not consulted: a retained failed unit reads
+// its own ExecMainStatus, and a running one is running even if a stale record names it.
+test fn a_loaded_unit_is_read_from_the_manager() -> Bool {
+  exited_with(e: evidence(loaded: AttemptUnitFinished { exit_status: "1" }, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true), code: 1)
+    && (match evidence(loaded: AttemptUnitActive, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true) { WorkerProcessRunning { command: _ } => true _ => false })
+}
+
 // THE HOLDER'S IDENTITY, SEEDED. The two facts a not-found reading must be bound to are the host's boot
 // and the instant the ledger acquired the hold. A hermetic witness supplies the same TEXTS the
 // production reader feeds the authority -- the boot id, the /proc/stat line, the InvocationID the

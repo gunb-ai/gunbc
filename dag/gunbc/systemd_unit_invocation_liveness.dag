@@ -273,6 +273,12 @@ fn unit_reboot_holder_liveness(
     UnitInvocationPresent { unit: u, run: r } =>
       if (u as String) != (holder_unit as String) {
         HolderLivenessUnobservable { cause: "the standing concerns another unit than the recorded holder's" as NonEmptyStr }
+      } else if systemd_manager_wire(manager: r.manager) != systemd_manager_wire(manager: holder_manager) {
+        // A unit name is not a holder. The same name under a DIFFERENT manager is a different subject: a
+        // user manager can run a unit whose name the system manager also uses, and neither run's life or
+        // death says anything about the other. Live is as much a verdict about the holder as Dead is, so the
+        // subject binding is required before either.
+        HolderLivenessUnobservable { cause: join(["the standing was read from ", systemd_manager_wire(manager: r.manager), ", not from ", systemd_manager_wire(manager: holder_manager), ", the manager named for this holder; a run of that unit name under another manager is a different subject"], "") }
       } else {
         HolderObservedLive {
           evidence: join([systemd_manager_wire(manager: r.manager), " still reports an InvocationID (", (r.invocation_id as String), ") for ", (u as String), " on boot ", (r.boot_id as String), "; that run has not been observed to end"], ""),

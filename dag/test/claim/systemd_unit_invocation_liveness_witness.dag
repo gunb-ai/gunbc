@@ -211,6 +211,19 @@ test fn a_unit_that_still_reports_an_invocation_is_alive_to_the_boot_arm() -> Bo
   }
 }
 
+// A PRESENT reading is a verdict about the holder too, so it needs the same subject binding the absent arm
+// needs. The same unit name under a DIFFERENT manager is a different subject: a user manager can run a unit
+// whose name the system manager also uses. That neither frees the hold nor proves THIS holder alive, so it
+// reads Unobservable rather than Live.
+test fn a_present_reading_from_another_manager_is_not_this_holder_alive() -> Bool {
+  let standing = unit_invocation_observation(manager: UserManager { uid: 1000 }, unit: unit_a, boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, invocation_text: inv_a)
+  let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  match unit_reboot_holder_liveness(standing: standing, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause } => string_contains(s: cause, pattern: "not from system, the manager named for this holder")
+    _ => false
+  }
+}
+
 // RED: AN OVERLAP WITHIN THE SKEW BOUND REFUSES TO DECIDE, and an unreadable boot or an unreadable unit
 // standing refuses too. "No reading" and "no order" are kept apart in the cause text, and neither one is
 // ever death.
