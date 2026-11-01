@@ -1,7 +1,7 @@
 module v2.test.claim.char_at_unicode_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { collection_concat_shape, length }
+import std.algebra { length }
 import std.host_text { char_at, chars }
 import std.optional { Absent, Present }
 
