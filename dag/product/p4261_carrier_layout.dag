@@ -2,12 +2,13 @@ module product.p4261_carrier_layout
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min }
-import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_count, micrometer_count, milliampere, millivolt, millivolt_count }
+import std.measure { Volt, Ampere, Micrometer, volt, ampere, ampere_count, micrometer, volt_count, micrometer_count, milliampere, millivolt, millivolt_count }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b, gh200_dv5_b }
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
 import extdeps.electronic_component.microchip_cec1736 { cec1736 }
 import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
+import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.micron_mt25qu02g { mt25qu02gcbb8e12 }
 import extdeps.electronic_component.types {
@@ -17,6 +18,8 @@ import extdeps.electronic_component.types {
   ConfigurationScheme, ActiveSerial, AvalonStreaming, JtagDownload, WeakPullUp, HighImpedance, configuration_done_signal,
   HotSwapControllerSpec,
   HotSwapControllerSpecification,
+  SwitchingRegulatorSpec,
+  RegulatorPin,
   ThresholdWindow,
   ControllerPin,
   UndervoltageEnable,
@@ -120,7 +123,7 @@ import product.electrical.source_draw {
   is_draw_contradicted,
 }
 import product.electrical.bench_session {
-  AssetAlteration, ThermalPad, InterfaceUnstated, thermal_interface_text,
+  AssetAlteration, AlterationChange, ThermalInterfaceChanged, PartRemoved, ThermalPad, InterfaceUnstated, thermal_interface_text,
   BenchRecord,
   ProbeAttachment,
   BenchIncident,
@@ -128,6 +131,7 @@ import product.electrical.bench_session {
   NodeVoltageObservation,
   ResistanceObservation,
   StatementCertainty,
+  ReadingStability,
   MeterRange,
   ProbePolarity,
   RedOnFirst,
@@ -135,12 +139,14 @@ import product.electrical.bench_session {
   PolarityUnrecorded,
   ResistanceDisplay,
   RangeFullScale,
+  AutoRanging,
   RangeUnrecorded,
   DisplayValue,
   DisplayZeroWithoutBaseline,
   DisplayAboveBaseline,
   DisplayOverRange,
   HeldSteady,
+  KeptMoving,
   is_at_baseline,
   is_reported_zero,
   observation_reads_pair,
@@ -214,6 +220,8 @@ import product.electrical.continuity {
   terminal_text,
   continuity_text,
   evidence_ref_text,
+  PointRecorded,
+  PointInferred,
 }
 import product.electrical.measured_netlist {
   MeasuredNetlist,
@@ -980,6 +988,7 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       ProgrammableLogicSpec { logic: _ } => Absent
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
+      SwitchingRegulatorSpec { regulator: _ } => Absent
     }
   }
 }
@@ -1000,6 +1009,7 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       ProgrammableLogicSpec { logic: _ } => Absent
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
+      SwitchingRegulatorSpec { regulator: _ } => Absent
     }
   }
 }
@@ -1221,11 +1231,18 @@ fn nat_min_of(vs: List<Nat>) -> Nat {
 }
 
 fn alteration_text(a: AssetAlteration) -> String {
-  join([
-    a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: a.removed), " removed",
-    match a.applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
-    " (", evidence_ref_text(e: a.evidence), ")",
-  ], "")
+  match a.change {
+    ThermalInterfaceChanged { removed, applied } => join([
+      a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: removed), " removed",
+      match applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+    PartRemoved { refitted } => join([
+      a.key as String, ": ", component_text(c: a.part), " was lifted off the board",
+      if refitted { " and refitted" } else { " and not refitted, so its footprint is bare and readings there are of the board without it" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+  }
 }
 
 fn alterations_text(layout: CarrierLayoutObservation) -> String {
@@ -2017,9 +2034,9 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
     "U4, the heatsinked device below J4, read 2026-10-21 with its heatsink lifted: Intel's Cyclone 10 GX 10CX085YF672E6G (extdeps.electronic_component.intel_10cx085), an SRAM-based FPGA that loads its configuration at every power-up from a serial flash it masters, a host, or JTAG, and whose user pins, before configuration, pull up or float as its nIO_PULLUP strap selects (the row names the strap rather than the pull-up). The device that would drive Q300's gate is therefore programmable logic whose configuration source and state are unread: the three Micron-format BGAs beside it (K1 listing) are the configuration-flash candidates and the 2 x 5 header below it the JTAG candidate. A gate node at 0 V with 800 ohm to the return is what an unconfigured FPGA's pin, or a configured one holding it low, both look like from outside, so the gate's level does not by itself identify the FPGA's state",
     "U5_2, below U4, read 2026-10-21 with the Microchip logo as CEC1736 (extdeps.electronic_component.microchip_cec1736): a platform root of trust with secure boot, the part NVDebug's debug dumps name beside the FPGA as the ERoT. Three Micron-format BGAs sit beside it (U2_2 and U3_2 'RW188', a third 'RW251'). If U4's configuration flash is one of them and U5_2 guards it, a relation the part's capabilities admit but no reading on this board yet establishes, U4 configures only once U5_2 releases it, and a flash image the root of trust declines, or a root of trust not provisioned on an engineering unit, leaves U4 unconfigured with no switch able to change it. The three flashes decode (Micron's FBGA decoder, 2026-10-21) to two MT25QU01G (U3_2 and U2_2, 1 Gbit each, two die) and one MT25QU02G (2 Gbit, four die), all 1.8 V quad-SPI: a pair of 1 Gbit parts fits a primary and a recovery FPGA image (about 92 Mbit each for this device) and a single 2 Gbit part fits a firmware store, but which image each holds is unread. Energized and settled, DS1_2 beside U5_2 blinks on 1.0 s, off 1.5 s and DS6 beside J68 on 1.36 s, off 1.32 s (two videos, measured frame by frame); two different periods are two different sources, and which part drives each is unread",
-    "energized (2026-10-21), at the pads of the three inductors beside U4 against J20's black lead: on the K1 at 40 mA the 2R2 0 V, the 4R7 nearest U4 0 V, the farther 4R7 3.2 V at its pad closer to U4 and 3.0 V at the other; on the E1 settled the nearest 4R7 about 3.2 V and the 2R2 0.94 V (k1_inductor_volts_at_40ma, e1_inductor_volts; the farther 4R7 unread on the E1). Later that day the probe joined the E1's nearest 4R7 to the ground pads under it while energized (e1_inductor_short_incident): the source then cycled CC, 13 mA, 97 mA, CC, and unpowered both of that 4R7's pads read 0 on the 2k range to J20's black lead where the K1's reads about 4 kohm, so that rail is shorted to the return since the incident, a fault on a rail downstream of the enable network, and the E1 is unpowered until it is split at the inductor. Photographed afterward (e1_near_4r7_area_photo), U21 sits directly above the inductor and the silkscreen 'U1_2' at the frame's edge; U21 reads 'P617A / 01 14 / 226' (e1_u21_marking_photo), NXP's PCA9617ADP I2C-bus repeater, as does U53 below it, so U21 is not the inductor's converter and J24 beside them is an I2C / SMBus header candidate; the converter candidate is U100, a 6-lead SOT-23 marked 'C3U / S22 / 25' beside the inductor (e1_u100_photo), its code undecoded. Which loads the rail supplies, the island included, is unread. Read as converter outputs, one of the three inductor outputs recorded is present on the K1 and two are absent where the E1 had all three; whether an absent output is a missing input, an inactive enable, a converter fault or an overloaded load is unread, and the missing 1.8 V at J68 R2 is a fourth absent output of the same standing. On the K1 a momentary bridge across J30's A and B at 40 mA changed neither the current nor the lamps, and S1's pole 2 cycled alone with S2 set as on the E1's P1 left the current where it was (k1_transitions): the logic that answers both on the E1 is in the domain the K1 has not powered",
+    "energized (2026-10-21), at the pads of the three inductors beside U4 against J20's black lead: on the K1 at 40 mA the 2R2 0 V, the 4R7 nearest U4 0 V, the farther 4R7 3.2 V at its pad closer to U4 and 3.0 V at the other; on the E1 settled the nearest 4R7 about 3.2 V and the 2R2 0.94 V (k1_inductor_volts_at_40ma, e1_inductor_volts; the farther 4R7 unread on the E1). Later that day the probe joined the E1's nearest 4R7 to the ground pads under it while energized (e1_inductor_short_incident): the source then cycled CC, 13 mA, 97 mA, CC, and unpowered both of that 4R7's pads read 0 on the 2k range to J20's black lead where the K1's reads about 4 kohm, so that rail is shorted to the return since the incident, a fault on a rail downstream of the enable network, and the E1 is unpowered until it is split at the inductor. Photographed afterward (e1_near_4r7_area_photo), U21 sits directly above the inductor and the silkscreen 'U1_2' at the frame's edge; U21 reads 'P617A / 01 14 / 226' (e1_u21_marking_photo), NXP's PCA9617ADP I2C-bus repeater, as does U53 below it, so U21 is not the inductor's converter and J24 beside them is an I2C / SMBus header candidate; the converter is the 8-lead part beside the inductor marked 'BDFP / 528' (the U10_P2 silkscreen beside it on the E1), MPS's MP2333CGTL by its documented top marking (extdeps.electronic_component.mps_mp2333c), with its SW lead on the inductor's pad; U100 ('C3U / S22 / 25'), first taken for the converter, has no lead on the switch node (e1_u100_lead_resistances, k1_u100_lead_resistances, read 2026-10-23). Which loads the rail supplies, the island included, is unread. Read as converter outputs, one of the three inductor outputs recorded is present on the K1 and two are absent where the E1 had all three; whether an absent output is a missing input, an inactive enable, a converter fault or an overloaded load is unread, and the missing 1.8 V at J68 R2 is a fourth absent output of the same standing. On the K1 a momentary bridge across J30's A and B at 40 mA changed neither the current nor the lamps, and S1's pole 2 cycled alone with S2 set as on the E1's P1 left the current where it was (k1_transitions): the logic that answers both on the E1 is in the domain the K1 has not powered",
   ],
-  decided_by: "On the K1, unpowered, U100's six pins each to J20's black lead on 2k and to the nearest 4R7's upper pad on the 200 range (the pin at the baseline to each is ground and the switch node), which names the converter's pins without a datasheet; U100's top line re-read under magnification. On the E1, unpowered, J20 disconnected: the affected pad to J20's black lead in diode mode both ways as displayed volts and on the 200 range with the probes reversed, and the K1's same point on the 20k range; the area cleaned and inspected under magnification, underside included. Then, with the converter identified and its switch node, input, enable and power-good named from its datasheet, one of two localizations chosen, not both: the inductor electrically isolated with its solder fully released (no hinged lift) and each side read to J20's black lead, or a controlled low-voltage injection decided only after the rail's backfeed paths and the supply's low-voltage behaviour are known. A component is removed only when a reading names it, and the E1 is not energized until no unexplained low-resistance path remains; the post-repair start is a new phase, never a rewrite of the pre-incident ones. Then the farther 4R7's two pads, and on the K1 the identified converters' input, enable and output at their pins, which separates a missing input from an inactive enable. The E1 is not energized again until the short is located. Then, once repaired and settled, the farther 4R7's two pads against J20's black lead (3.2 and 3.0 V on the K1), and what enables the two converters the K1 holds at 0 V: U9_P2's and U10_P2's enable pins, traced unpowered to the part that drives them, then read energized on both carriers, which names the step the K1 does not take. With the USB Blaster's I/O referenced to R2, a read-only chain scan: the IDCODE, CONF_DONE and nSTATUS, never a configuration, erase or nCONFIG pulse. J24's positions energized in P0, P1 and the settled state against J20's black lead (a position at a steady logic voltage is a supply reference, three that idle high and one that idles low or toggles are the JTAG shape), and unpowered against a baseline to U53, U69 and U21; U4's VCCBAT, read energized at a pad against J20's black lead (its power-on reset holds until it is present). Which part drives DS1_2 and DS6 (U5_2's or U4's pin, traced unpowered), so that each blink names its source; U5_2's release of U4 (its reset or release output to U4's nCONFIG, traced unpowered, then read energized); and the three BGAs' part numbers from Micron's decoder. Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Gated on the E1's rail repair: the converter beside the 4R7 nearest U4 is identified and its readings and the separation that decides the casualty are p4261_near_4r7_converter_hypothesis's; the E1 is not energized until that rail reads no unexplained low-resistance path to J20's black lead, and the post-repair start is a new phase, never a rewrite of the pre-incident ones. Then, once repaired and settled, the farther 4R7's two pads against J20's black lead (3.2 and 3.0 V on the K1), and what enables the two converters the K1 holds at 0 V: U9_P2's and U10_P2's enable pins, traced unpowered to the part that drives them, then read energized on both carriers, which names the step the K1 does not take. With the USB Blaster's I/O referenced to R2, a read-only chain scan: the IDCODE, CONF_DONE and nSTATUS, never a configuration, erase or nCONFIG pulse. J24's positions energized in P0, P1 and the settled state against J20's black lead (a position at a steady logic voltage is a supply reference, three that idle high and one that idles low or toggles are the JTAG shape), and unpowered against a baseline to U53, U69 and U21; U4's VCCBAT, read energized at a pad against J20's black lead (its power-on reset holds until it is present). Which part drives DS1_2 and DS6 (U5_2's or U4's pin, traced unpowered), so that each blink names its source; U5_2's release of U4 (its reset or release output to U4's nCONFIG, traced unpowered, then read energized); and the three BGAs' part numbers from Micron's decoder. Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 // THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
@@ -2262,7 +2279,7 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
   continuity: [],
   diode_readings: [],
   source_draws: [],
-  bench: BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: concat(k1_resistances, [k1_l_4r7_near_resistance]) },
+  bench: BenchRecord { incidents: [], attachments: [], alterations: [k1_u10p2_lift], voltages: [], resistances: concat(concat(concat(concat(concat(concat(concat(k1_resistances, [k1_l_4r7_near_resistance]), k1_l_4r7_near_pad_resistances), k1_u100_lead_resistances), k1_converter_lead_resistances), k1_near_converter_lead_resistances), k1_converter_pair_resistances), k1_footprint_resistances) },
   phases: k1_phases,
   transitions: k1_transitions, pole_closures: [],
 }
@@ -2298,6 +2315,10 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     FlatCableConnectors { count: 2, evidence: k1_listing },
   ],
   components: [
+    InstalledComponent { component: k1_converter_near, terminals: names(ns: converter_pin_terminals), identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "BDFP 528", evidence: k1_converter_lead_row_photo_1031 } } },
+    InstalledComponent { component: k1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: k1_u10p2_lift_said } },
+    InstalledComponent { component: k1_converter_far, terminals: names(ns: converter_pin_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the same 8-lead package as U10_P2's by eye, below the farther 4R7 with two large ceramics at its right (k1_two_4r7_photo_1031), its top unread: whether it is a second MP2333CGTL is read from its own marking, and its pins are named by that row only on the strength of the match; its eight leads were read to the return 2026-10-31 (k1_converter_lead_resistances)" } },
+    InstalledComponent { component: k1_u100, terminals: names(ns: u100_lead_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the K1's U100, found by its silkscreen; its top was reported to the plan as 'C3U / S62 / 1D' (2026-10-23) with no statement or photograph transcribed here, so the marking is carried unread until one is: the same code as the E1's 'C3U / S22 / 25' with another lot. Its eight leads were read 2026-10-23 (k1_u100_lead_resistances)" } },
     InstalledComponent { component: k1_component(local: "input-stage MOSFET, first of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF, lot line HAL225") } },
     InstalledComponent { component: k1_component(local: "input-stage MOSFET, second of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF") } },
     InstalledComponent { component: k1_component(local: "F300"), terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: k1_marking(text: "75V 100A (leading maker glyph not legible), the body spanning the F300/F302 pads") } },
@@ -3228,8 +3249,7 @@ data e1_u4_heatsink_alteration: AssetAlteration = AssetAlteration {
   asset: p4261_e1_b,
   part: e1_u4,
   performed_on: "2026-10-21",
-  removed: ThermalPad,
-  applied: Present { value: InterfaceUnstated },
+  change: ThermalInterfaceChanged { removed: ThermalPad, applied: Present { value: InterfaceUnstated } },
   evidence: e1_u4_heatsink_said,
 }
 // THE TRUSTED-BOOT ISLAND BELOW U4 (2026-10-21). U5_2 carries the Microchip logo over 'CEC1736 /
@@ -3580,7 +3600,7 @@ data e1_inductor_short_incident: BenchIncident = BenchIncident {
   record: both_points_inferred(first_basis: "'the closer 4R7, i was probing it to ground': which of its two pads the probe sat on is unrecorded", second_basis: "'the pads under it': a ground pad under the part, which one unrecorded"),
   conditions: e1_module_unrecorded_bench,
   observed: "the source cycling with no new sight on the board: CC lit, then 13 mA, then 97 mA, then CC again",
-  inspection: NoDamageSeen { looked_at: "by touch only, the parts around U4 after power-off ('idk nothing is hot'); not yet by eye" },
+  inspection: DamageSeen { description: "by touch after power-off (2026-10-21, 'idk nothing is hot') and by eye under the Andonstar on 2026-10-31 after both carriers' sites were cleaned with isopropyl, nothing broken, cracked or singed ('nothing is obviously broken/singed'); then, at higher magnification the same evening, a line along the row of the converter's inductor-side leads, running from the via at its right under the four leads, which the operator can feel in places ('I do kind of see/feel a fissure running along that side, from the empty pad to the right, under the four top pins- not sure if it's real, but I can feel it in certain areas', e1_converter_lead_row_photos_1031): a scratch from the probe slip is the candidate, and solder dragged between the adjacent VIN and SW leads by it is not excluded; the white ring and line beside the chip are silkscreen, identical on the K1 (k1_converter_lead_row_photo_1031)" },
   evidence: e1_short_said,
 }
 fn e1_after_short_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, ohms_full_scale: Nat, display: ResistanceDisplay) -> ResistanceObservation {
@@ -3598,12 +3618,463 @@ data e1_after_short_resistances: List<ResistanceObservation> = [
   e1_after_short_read(first: e1_terminal(c: e1_l_4r7_far, name: inductor_pad_near_u4), second: e1_terminal(c: e1_l_4r7_far, name: inductor_pad_far_u4), ohms_full_scale: 200, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }),
   e1_after_short_read(first: e1_terminal(c: e1_l_2r2, name: inductor_pad_near_u4), second: e1_terminal(c: e1_l_2r2, name: inductor_pad_far_u4), ohms_full_scale: 200, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }),
 ]
-// The K1's same pad, read unpowered the same evening as the healthy reference: about 4 kohm on the 2k
+// The K1's same pad, read unpowered the same evening as the comparison: about 4 kohm on the 2k
 // range (a 2k range reading 4 kohm is over range or a misreported range; the figure is kept as said).
 data k1_l_4r7_near_resistance: ResistanceObservation = ResistanceObservation {
   asset: p4261_k1_a, first: terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_unrecorded as TerminalIdentity), second: k1_return, record: both_points_recorded,
   conditions: k1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 4000, approximate: true }, stability: StabilityUnrecorded,
   certainty: StatedHedged { verbatim: "~4k ohms" }, order: BeforeIncidents { keys: [] }, evidence: [e1_short_after_said],
+}
+
+// ── THE NEAR-4R7 CONVERTER AND U100, READ LEAD BY LEAD (2026-10-23 to 2026-10-31) ─────────────
+//
+// Unpowered, J20 disconnected, the Fluke auto-ranging, black probe on the return or on an inductor pad,
+// red on the lead. U100's eight leads were read first (2026-10-23): the dot side at the return on both
+// carriers, the far side kilohms, and on the K1 no lead at the baseline to either pad of the inductor
+// beside it, which took U100 out of the running as that inductor's converter. The 8-lead part beside
+// the inductor, marked 'BDFP 528' on the K1 (2026-10-24; the E1's reads 'DFP 528' in e1_u100_photo, its
+// first glyph unread), is the converter, MPS's MP2333CGTL by its documented top marking, with one lead
+// wired straight to the inductor's pad. Its leads were read 2026-10-31 under the operator's own labels,
+// T1-T4 along the row at the inductor's side and B1-B4 along the other, each from the inductor end. The
+// datasheet runs pins 1-4 (PG, VIN, SW, GND) down one side and 8-5 (FB, SS, EN, BST) down the other,
+// pin 4 across from pin 5; T1 at the return on both carriers (GND) and T2 on the inductor's pad (SW)
+// put GND and SW at the inductor end, so T1-T4 are pins 4, 3, 2, 1 and B1-B4 pins 5, 6, 7, 8. That
+// attribution is an inference from the operator's labels and the row's pin order, so each lead reading
+// carries its first point as inferred with the label it rests on, and a derivation resting on one says
+// so. The K1's photograph of its read shows the U2_P2 silkscreen, and two wide photographs taken later
+// that evening (k1_u4_area_photo_1031, k1_two_4r7_photo_1031) place the designators: on the K1, as on
+// the E1, the 4R7 nearest U4 has U100 above it and its converter, U10_P2, below it, and the farther 4R7
+// has its own converter, U2_P2, with Q6_P2, Q5_P2, D6_P2, U50 and U550 around it. So the K1's eight
+// leads of 2026-10-31 are taken as the farther 4R7's converter's, a sibling of the same package and
+// circuit whose marking is unread, and the near-U4 converter on the K1 (U10_P2, the part marked 'BDFP
+// 528' on 2026-10-24) was read later that evening from a labelled copy of the operator's close-up
+// (k1_near_converter_lead_resistances): the same figures as U2_P2's, but BST over range where U2_P2
+// read 134 kohm and the E1 reads 0, and SS 19 Mohm. The operator confirmed the far site from the
+// photograph, so what each K1 reading carries as inferred is the pin, not the chip. Two readings of the
+// first evening exceed any handheld
+// Fluke's resistance range (SS at 130 Mohm on the E1, 50 Mohm on the K1): kept as said; the display most
+// likely read over range, and the meter's model is unrecorded.
+data converter_said_1023_e1: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "Ok all the pins on the dot side are 1 ohm, the bottom two on the left are 900 ohms, the top two on the left are 5.5k ohms - all done with the fluke auto mode" }
+data converter_said_1023_k1: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "The right side is still ground, but the left side is 6k, 6k, 10k 10k from the bottom up - the baseline is 0" }
+data converter_said_1023_pads: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "K1: red u100 left pins, black on the left pad- 4k, 4k, 12k, 12k / Right pins, right pad: 8k for all / E1 left pins left pad- 1k, 3k, 8k, 4k - right side, all baseline" }
+data converter_said_1024: EvidenceRef = OperatorStatement { stated_on: "2026-10-24", verbatim: "1. 8.3k on both 2. 4k, 12k, 12k, 12k 3. I see BDFP 528 - the top two left pins In this picture are connected to 4r7 directly" }
+data converter_photo_1024: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-24", locator: "bench-session photograph on the K1: the 8-lead package beside the 4R7 by U100, marked 'BDFP / 528', two of its leads at the inductor end running toward the inductor's pad (converter_said_1024, item 3)" }
+data e1_converter_area_photo_1031: EvidenceRef = e1_photo(taken_on: "2026-10-31", locator: "Andonstar frame, upload ca51a451: the 4R7 nearest U4 with the 8-lead converter to its right, leads in a top and a bottom row, two large ceramics at the top right, two 0603 parts fitted under the inductor, the U10_P2 silkscreen at the bottom right; cleaned, nothing broken or singed")
+data k1_converter_area_photo_1031: EvidenceRef = k1_photo(locator: "Andonstar frame, upload a84251b4 (taken 2026-10-31): a 4R7 with the 8-lead converter to its right, one large ceramic and a via at the top right, four empty pads under the inductor, the U2_P2, D6_P2, Q5_P2, U50 and U550 silkscreens around it; cleaned, nothing broken or singed")
+data k1_u4_area_photo_1031: EvidenceRef = k1_photo(locator: "upload 55f5fd51 (taken 2026-10-31): U4's heatsink with the board right of and below it: U21, U69 and U53 beside the heatsink, J24 and the J68 header to the right, V1_TFP, U1_2, U104, U105 and U5_2 above; below the heatsink the three inductors beside U4: 2R2 at the left with U9_P2 and V9_P2 beside it, the 4R7 nearest U4 with U100 above-left of it and the U10_P2 silkscreen below-left, the farther 4R7 with Q6_P2 at its left and Q5_P2, U2_P2, D6_P2, U50 and U550 below it, U1_TNE and U95 to its right, and 1R0 with U1_P2 at the bottom left")
+data k1_two_4r7_photo_1031: EvidenceRef = k1_photo(locator: "upload 16b4e93a (taken 2026-10-31): the two 4R7s one above the other with three '330' polymers at the left; each 4R7 has an 8-lead package just below it with two large ceramics to that package's right; the upper 4R7 (nearest U4) has U100 above-left of it and the U10_P2 silkscreen beside the package below it, the lower 4R7 has Q6_P2 at its left and Q5_P2, U2_P2, D6_P2 and U50 below; J68 and U1_TNE to the right")
+data converter_said_1031: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "E1: T1: 0 ohm T2: 10-30 ohm (will not settle, jumps a lot) T3: 10ohm: T4: 9kohm / B1: 0 B2: 130k B3: 130Mohm B4: 50k ohm // K1: T1: 0, T2: 8k, T3: 5k, T4: 16k / B1: 134k, B2:134k B3: 50m B4: 50k" }
+
+data e1_converter_near: ComponentInstanceIdentity = e1_component(local: "8-lead converter beside the 4R7 nearest U4 (the U10_P2 silkscreen beside it)")
+data k1_converter_near: ComponentInstanceIdentity = k1_component(local: "8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528")
+data k1_converter_far: ComponentInstanceIdentity = k1_component(local: "8-lead converter below the 4R7 farther from U4 (the U2_P2 silkscreen beside it)")
+data k1_u100: ComponentInstanceIdentity = k1_component(local: "U100")
+
+// A converter pin's terminal is named from its row, so a reading and the row join on one spelling.
+fn pin_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
+  join(["pin ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
+}
+fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
+  match row.specification {
+    SwitchingRegulatorSpec { regulator } => regulator.pins
+    _ => []
+  }
+}
+data converter_pin_terminals: List<NonEmptyStr> = map(regulator_pins(row: mp2333cgtl), p => pin_terminal_name(number: p.number, name: p.name))
+
+// U100's leads as the operator counted them on 2026-10-23, the pin-1 dot's side to the right, each row
+// from the bottom up; the inductor's pads as they lay that day, left and right, which of the two is
+// nearer U4 unrecorded.
+data u100_lead_terminals: List<NonEmptyStr> = ["dot-side lead, bottom", "dot-side lead, second from bottom", "dot-side lead, third from bottom", "dot-side lead, top", "far-side lead, bottom", "far-side lead, second from bottom", "far-side lead, third from bottom", "far-side lead, top"]
+data pad_on_the_left_1023: NonEmptyStr = "pad on the operator's left with U100's dot side to the right (2026-10-23; which of the two pads by U4 unrecorded)"
+data pad_on_the_right_1023: NonEmptyStr = "pad on the operator's right with U100's dot side to the right (2026-10-23; which of the two pads by U4 unrecorded)"
+
+data t1_basis: NonEmptyStr = "the operator's T1, first along the inductor-side row from the inductor end: pin 4 (GND) by the row's pin order, the lead at the return on both carriers"
+data t2_basis: NonEmptyStr = "the operator's T2, second along the inductor-side row from the inductor end: pin 3 (SW), the lead wired to the inductor's pad (converter_photo_1024)"
+data t3_basis: NonEmptyStr = "the operator's T3, third along the inductor-side row from the inductor end: pin 2 (VIN) by the row's pin order once T1 is GND and T2 SW"
+data t4_basis: NonEmptyStr = "the operator's T4, fourth along the inductor-side row from the inductor end: pin 1 (PG) by the same order"
+data b1_basis: NonEmptyStr = "the operator's B1, first along the far row from the inductor end, across from T1: pin 5 (BST), across from pin 4 in the package drawing"
+data b2_basis: NonEmptyStr = "the operator's B2, second along the far row from the inductor end: pin 6 (EN) by the same order"
+data b3_basis: NonEmptyStr = "the operator's B3, third along the far row from the inductor end: pin 7 (SS) by the same order"
+data b4_basis: NonEmptyStr = "the operator's B4, fourth along the far row from the inductor end: pin 8 (FB) by the same order"
+data converter_said_1031_near: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "In K1: GND: 0 SW: 8k VIN: 5k PG: 16k / BST:high?infinite?  EN: 130kSS:19M FB:50k" }
+data k1_near_site_basis: NonEmptyStr = "read at the near-U4 converter (U10_P2) the operator was asked to read from a labelled copy of the K1 close-up (the red-boxed site of k1_two_4r7_photo_1031), the site taken from the order of the exchange rather than named by the operator; the pin is named by the label, drawn from the MP2333CGTL row's pin order, the same inference as the T/B readings'"
+data k1_far_site_basis: NonEmptyStr = "the K1's photograph of this read (k1_converter_area_photo_1031) shows the U2_P2 silkscreen, which the wide photographs of the same evening (k1_u4_area_photo_1031, k1_two_4r7_photo_1031) place at the 4R7 farther from U4, and the operator, shown that photograph, confirmed it as the chip probed ('its this one - from my earlier picture', 2026-10-31); what stays inferred is the pin: named by the MP2333CGTL row on the strength of the package and circuit matching U10_P2's, this part's own marking unread"
+data k1_u100_inductor_basis: NonEmptyStr = "the inductor beside the K1's U100, taken as the 4R7 nearest U4 as on the E1 (e1_u100_photo); the K1's site was not photographed that day"
+
+fn converter_lead_read_e1(number: Nat, name: NonEmptyStr, basis: NonEmptyStr, display: ResistanceDisplay, stability: ReadingStability, certainty: StatementCertainty) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_converter_near, name: pin_terminal_name(number: number, name: name)), second: e1_ground_ref,
+    record: ProbeRecord { first: PointInferred { basis: basis }, second: PointRecorded },
+    conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: stability, certainty: certainty,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    evidence: [converter_said_1031, e1_converter_area_photo_1031],
+  }
+}
+fn converter_lead_read_k1(number: Nat, name: NonEmptyStr, basis: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: terminal_ref(component: k1_converter_far, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
+    record: ProbeRecord { first: PointInferred { basis: join([basis as String, "; ", k1_far_site_basis as String], "") as NonEmptyStr }, second: PointRecorded },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] },
+    evidence: [converter_said_1031, k1_converter_area_photo_1031, k1_two_4r7_photo_1031],
+  }
+}
+fn near_converter_lead_read_k1(number: Nat, name: NonEmptyStr, display: ResistanceDisplay, certainty: StatementCertainty) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
+    record: ProbeRecord { first: PointInferred { basis: k1_near_site_basis }, second: PointRecorded },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: certainty,
+    order: BeforeIncidents { keys: [] },
+    evidence: [converter_said_1031_near, k1_two_4r7_photo_1031],
+  }
+}
+fn u100_lead_read_e1(lead: NonEmptyStr, second: ElectricalTerminalRef, display: ResistanceDisplay, evidence: List<EvidenceRef>) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_terminal(c: e1_u100, name: lead), second: second, record: both_points_recorded,
+    conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    evidence: evidence,
+  }
+}
+fn u100_lead_read_k1(lead: NonEmptyStr, second: ElectricalTerminalRef, record: ProbeRecord, display: ResistanceDisplay, evidence: List<EvidenceRef>) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: terminal_ref(component: k1_u100, terminal: lead as TerminalIdentity), second: second, record: record,
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] },
+    evidence: evidence,
+  }
+}
+fn k1_pad_1023(name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: k1_l_4r7_near, terminal: name as TerminalIdentity)
+}
+
+data e1_converter_lead_resistances: List<ResistanceObservation> = [
+  converter_lead_read_e1(number: 4, name: "GND", basis: t1_basis, display: DisplayZeroWithoutBaseline { reported: "0 ohm" }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 3, name: "SW", basis: t2_basis, display: DisplayValue { ohms: 20, approximate: true }, stability: KeptMoving, certainty: StatedHedged { verbatim: "T2: 10-30 ohm (will not settle, jumps a lot)" }),
+  converter_lead_read_e1(number: 2, name: "VIN", basis: t3_basis, display: DisplayValue { ohms: 10, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 1, name: "PG", basis: t4_basis, display: DisplayValue { ohms: 9000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 5, name: "BST", basis: b1_basis, display: DisplayZeroWithoutBaseline { reported: "0" }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 6, name: "EN", basis: b2_basis, display: DisplayValue { ohms: 130000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 7, name: "SS", basis: b3_basis, display: DisplayValue { ohms: 130000000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  converter_lead_read_e1(number: 8, name: "FB", basis: b4_basis, display: DisplayValue { ohms: 50000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+]
+data k1_converter_lead_resistances: List<ResistanceObservation> = [
+  converter_lead_read_k1(number: 4, name: "GND", basis: t1_basis, display: DisplayZeroWithoutBaseline { reported: "0" }),
+  converter_lead_read_k1(number: 3, name: "SW", basis: t2_basis, display: DisplayValue { ohms: 8000, approximate: false }),
+  converter_lead_read_k1(number: 2, name: "VIN", basis: t3_basis, display: DisplayValue { ohms: 5000, approximate: false }),
+  converter_lead_read_k1(number: 1, name: "PG", basis: t4_basis, display: DisplayValue { ohms: 16000, approximate: false }),
+  converter_lead_read_k1(number: 5, name: "BST", basis: b1_basis, display: DisplayValue { ohms: 134000, approximate: false }),
+  converter_lead_read_k1(number: 6, name: "EN", basis: b2_basis, display: DisplayValue { ohms: 134000, approximate: false }),
+  converter_lead_read_k1(number: 7, name: "SS", basis: b3_basis, display: DisplayValue { ohms: 50000000, approximate: false }),
+  converter_lead_read_k1(number: 8, name: "FB", basis: b4_basis, display: DisplayValue { ohms: 50000, approximate: false }),
+]
+// The near-U4 converter on the K1 (U10_P2), eight leads to the return, later on 2026-10-31.
+data k1_near_converter_lead_resistances: List<ResistanceObservation> = [
+  near_converter_lead_read_k1(number: 4, name: "GND", display: DisplayZeroWithoutBaseline { reported: "0" }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 3, name: "SW", display: DisplayValue { ohms: 8000, approximate: false }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 2, name: "VIN", display: DisplayValue { ohms: 5000, approximate: false }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 1, name: "PG", display: DisplayValue { ohms: 16000, approximate: false }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 5, name: "BST", display: DisplayOverRange, certainty: StatedHedged { verbatim: "BST:high?infinite?" }),
+  near_converter_lead_read_k1(number: 6, name: "EN", display: DisplayValue { ohms: 130000, approximate: false }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 7, name: "SS", display: DisplayValue { ohms: 19000000, approximate: false }, certainty: StatedPlainly),
+  near_converter_lead_read_k1(number: 8, name: "FB", display: DisplayValue { ohms: 50000, approximate: false }, certainty: StatedPlainly),
+]
+// THE FIVE PAIR READINGS OF THE SAME EVENING, from a numbered list the operator was given with the
+// labelled photographs: (1) K1 U10_P2 SW to the 4R7 terminal next to the chip, (2) E1 SW to the same
+// terminal, (3) E1 the 4R7's far terminal to the return, (4) E1 BST to SW, (5) E1 VIN to SW. The
+// terminal next to the chip is the 4R7's pad farther from U4: in the wide photograph the converter sits
+// on the side of the 4R7 away from U4's heatsink (k1_two_4r7_photo_1031), and the close-ups are that
+// view turned a quarter. (1) and (2) at 0 fix the pin map on the K1 and put the E1's SW lead
+// on its pad, so the 10-30 ohm read at that lead earlier was contact or settling, not the node. (3) at
+// 0 keeps the rail short after the cleaning. (4) open says the bootstrap capacitor is not shorted, and
+// an open to a node at the return cannot stand beside BST's earlier 0 to the return, so that earlier
+// reading is doubted and is to be re-read. (5) at 0 is the one no external part explains: the
+// datasheet's circuit has nothing from VIN to SW but the device's high-side switch, so the short is
+// that switch or a bridge between those two adjacent 0.5 mm leads.
+data converter_said_1031_pairs: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "1. 0ohm 2. 0ohm 3. 0ohm 4. open 5. 0ohm" }
+data e1_converter_lead_row_photos_1031: EvidenceRef = e1_photo(taken_on: "2026-10-31", locator: "two Andonstar frames at higher magnification, uploads 0b80e48e and 77dc6ca0 (the second with the operator's red line drawn along the row of inductor-side leads to the via at its right): the converter's body with its marking unreadable at this light, the four inductor-side leads with a small yellow ceramic above them and a large brown one above that, a round via with a white ring to the right of the leads and a white line down the chip's right side, both silkscreen print (the K1's chip shows them identically, k1_converter_lead_row_photo_1031); the line under the leads is what the operator feels")
+data k1_converter_lead_row_photo_1031: EvidenceRef = k1_photo(locator: "Andonstar frame at the same magnification, upload e59be0a7 (taken 2026-10-31, 'the k1, a bit cleaner'): the near-U4 converter's body with its marking legible, 'BDFP' over '528', the four inductor-side leads clean with distinct gaps between them, a small yellow ceramic above them, and the same white ring around the via and white line beside the chip as on the E1, so those are silkscreen")
+// THE K1'S NEAR-U4 CONVERTER WAS LIFTED (2026-11-01), by a slip of the plan rather than of the probe:
+// the operator, practising the lift with the iron, took U10_P2 off the K1 instead of the E1. The part is
+// kept and not refitted; the operator reports the site clean. The K1 is a comparison specimen whose
+// health is not established: 13 kohm VIN to SW read in circuit before the lift is a reading, not a
+// qualification of the part, and the rail reading 0 V at the K1's 40 mA state does not show the
+// converter unneeded. What the lift gives the E1's separation is a comparison: the K1's bare footprint
+// and the lifted part, each read on its own.
+data k1_u10p2_lift_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "i actually took that U100 piece off of the K1 board, not the E1 board - though, i think it would be pretty easy to put it back / its the BFD **** part (whatever it is - i didn't refit it but the site is fine/clean, i think thats the same part i have 5 of coming anyway, but i can replace this part if i need to / I tried to do it with a soldering iron" }
+data k1_u10p2_lift: AssetAlteration = AssetAlteration {
+  key: "2026-11-01 K1 U10_P2 converter lifted",
+  asset: p4261_k1_a,
+  part: k1_converter_near,
+  performed_on: "2026-11-01",
+  change: PartRemoved { refitted: false },
+  evidence: k1_u10p2_lift_said,
+}
+// THE BARE FOOTPRINTS ARE THEIR OWN POINTS. A pad read with its part lifted is a different physical
+// state from the lead read with the part fitted, so each lifted converter's footprint is a component of
+// its own (FootprintUnpopulated), its pads named from the row's pin order like the leads were, and every
+// reading at it is ordered after the lift. Nothing in the record joins a pad to the lead that sat on it,
+// so no netlist combines the intact board's readings with the bare footprint's by terminal identity;
+// selecting readings by physical state is the follow-up change the split lane owns.
+fn pad_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
+  join(["pad ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
+}
+data footprint_pad_terminals: List<NonEmptyStr> = map(regulator_pins(row: mp2333cgtl), p => pad_terminal_name(number: p.number, name: p.name))
+data footprint_pad_basis: NonEmptyStr = "the pad is named by its position in the labelled close-up of the converter (the lead that sat on it, named from the MP2333CGTL row's pin order), the same inference as the lead readings'"
+data k1_converter_near_footprint: ComponentInstanceIdentity = k1_component(local: "U10_P2 footprint below the 4R7 nearest U4, part lifted 2026-11-01")
+data e1_converter_near_footprint: ComponentInstanceIdentity = e1_component(local: "U10_P2 footprint below the 4R7 nearest U4, part lifted 2026-11-01")
+
+// THE K1'S BARE FOOTPRINT (2026-11-01, unpowered, J20 disconnected, the Fluke auto-ranging). VIN 5.5 kohm
+// and SW 8.4 kohm to the return, the same figures as at the leads with the part fitted (5 and 8 kohm),
+// so those paths are the board's; VIN to SW 13.3 kohm both ways, about the two paths to the return in
+// series, consistent with the 13 kohm read with the part fitted being the board's path through the
+// return, though in-circuit figures include every parallel path and do not reconstruct a schematic. EN
+// 136 kohm to the return and 140 kohm to VIN, about EN's path to the return plus VIN's in series: if those
+// paths are resistive, the datasheet's 604 kohm auto-start resistor from EN to VIN would bring EN to VIN
+// near 115 kohm, which these figures do not show, but a higher-value pull-up, or an EN driven by another
+// part, is not distinguished by resistance, so why the K1 stops is not established by them. The EN
+// figures came without a unit and are taken as kohm from the readings around them.
+data k1_footprint_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "K1: VIN pad to J20 black - 5.5kohms / SW pad: 8.4kohm / VIN pad to SW pad: 13.3kohm (both ways) / EN PAD to VIN: 140 EN PAD to Ground: 136" }
+fn k1_pad(number: Nat, name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: k1_converter_near_footprint, terminal: pad_terminal_name(number: number, name: name) as TerminalIdentity)
+}
+fn k1_footprint_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, display: ResistanceDisplay, certainty: StatementCertainty) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_k1_a, first: first, second: second, record: record,
+    conditions: k1_bench, polarity: polarity, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: certainty,
+    order: AfterIncidents { keys: [k1_u10p2_lift.key] },
+    evidence: [k1_footprint_said],
+  }
+}
+data k1_footprint_resistances: List<ResistanceObservation> = [
+  k1_footprint_read(first: k1_pad(number: 2, name: "VIN"), second: k1_return, record: second_point_inferred_first(basis: footprint_pad_basis), polarity: RedOnFirst, display: DisplayValue { ohms: 5500, approximate: false }, certainty: StatedPlainly),
+  k1_footprint_read(first: k1_pad(number: 3, name: "SW"), second: k1_return, record: second_point_inferred_first(basis: footprint_pad_basis), polarity: RedOnFirst, display: DisplayValue { ohms: 8400, approximate: false }, certainty: StatedPlainly),
+  k1_footprint_read(first: k1_pad(number: 2, name: "VIN"), second: k1_pad(number: 3, name: "SW"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: RedOnFirst, display: DisplayValue { ohms: 13300, approximate: false }, certainty: StatedPlainly),
+  k1_footprint_read(first: k1_pad(number: 2, name: "VIN"), second: k1_pad(number: 3, name: "SW"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: RedOnSecond, display: DisplayValue { ohms: 13300, approximate: false }, certainty: StatedPlainly),
+  k1_footprint_read(first: k1_pad(number: 6, name: "EN"), second: k1_pad(number: 2, name: "VIN"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: RedOnFirst, display: DisplayValue { ohms: 140000, approximate: false }, certainty: StatedHedged { verbatim: "EN PAD to VIN: 140 (no unit stated; kohm taken from the readings around it)" }),
+  k1_footprint_read(first: k1_pad(number: 6, name: "EN"), second: k1_return, record: second_point_inferred_first(basis: footprint_pad_basis), polarity: RedOnFirst, display: DisplayValue { ohms: 136000, approximate: false }, certainty: StatedHedged { verbatim: "EN PAD to Ground: 136 (no unit stated; kohm taken from the readings around it)" }),
+]
+fn second_point_inferred_first(basis: NonEmptyStr) -> ProbeRecord {
+  ProbeRecord { first: PointInferred { basis: basis }, second: PointRecorded }
+}
+
+// THE E1'S CONVERTER WAS LIFTED (2026-11-01), the agreed separation, by the iron and the SMD1 alloy as on
+// the K1, the inductor left in place. The first reading after it: SW 'shorted' to GND, read before the
+// footprint was reported cleaned, so a residue bridge between the adjacent SW and GND pads is not
+// excluded; which GND (the footprint's pad or J20's return) is inferred. The cleaned footprint's readings
+// decide it.
+data e1_u10p2_lift_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "OK so, i lifted off of E1, but, i still see GND is shorted to SW - is that intended?" }
+data e1_u10p2_lift: AssetAlteration = AssetAlteration {
+  key: "2026-11-01 E1 U10_P2 converter lifted",
+  asset: p4261_e1_b,
+  part: e1_converter_near,
+  performed_on: "2026-11-01",
+  change: PartRemoved { refitted: false },
+  evidence: e1_u10p2_lift_said,
+}
+// THE E1'S CLEANED FOOTPRINT (2026-11-01, unpowered, J20 disconnected, the Fluke auto-ranging), the agreed
+// separation's readings. The operator's photographs of the cleaned footprint show eight separate pads and
+// no visible solder in any gap, with pale strands whose material is unknown; a photograph does not
+// exclude a conductive path electrically. SW reads about 0 to the GND pad and to the return; VIN 5.3 kohm to the return, the
+// K1's bare footprint reading 5.5 kohm; VIN to SW 2.7 kohm one way and 5.5 kohm the other, which with SW
+// at the return is VIN's own path to it, a junction in it making the figure depend on the probes' way
+// (which way gave which is unrecorded). The lifted part was too small to hold for reading. And the 4R7's
+// terminal away from the converter (OUT) reads 1.4 ohm to the return with the part gone (carried as about
+// 1 ohm; the record holds whole ohms).
+data e1_footprint_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "1. ~0, ~0 2. 1.4ohm 3. 5.3k 4. 2,7k one way, 5.5k the other 5. its too hard to read the actual chip, its too small and fidgets around." }
+data e1_sw_out_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "2. OK, its like .03 3. its also like .03 - the fluke isn't very stable, because its on auto, but it always trends to the same number" }
+data e1_footprint_photos_1101: EvidenceRef = e1_photo(taken_on: "2026-11-01", locator: "two Andonstar frames, uploads 250ddd68 and 4ba68d1e: the E1's U10_P2 footprint after the lift and cleaning, eight pads in two rows of four, every gap showing solder mask, the pads dull with removal-alloy residue, two lint fibres, and a ridge in the mask just below the inductor-side row where the part's body sat")
+fn e1_pad(number: Nat, name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: e1_converter_near_footprint, terminal: pad_terminal_name(number: number, name: name) as TerminalIdentity)
+}
+fn e1_after_lift_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, display: ResistanceDisplay, certainty: StatementCertainty) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: first, second: second, record: record,
+    conditions: e1_bench, polarity: polarity, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: certainty,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] },
+    evidence: [e1_footprint_said, e1_footprint_photos_1101],
+  }
+}
+// Before the footprint was cleaned: its own state, the removal alloy still on the pads.
+data e1_footprint_before_cleaning_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_e1_b,
+    first: terminal_ref(component: e1_converter_near_footprint, terminal: pad_terminal_name(number: 3, name: "SW") as TerminalIdentity),
+    second: terminal_ref(component: e1_converter_near_footprint, terminal: pad_terminal_name(number: 4, name: "GND") as TerminalIdentity),
+    record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: "'GND': the footprint's GND pad beside SW, taken as the point; J20's return is the other reading of the word"),
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: AutoRanging, display: DisplayZeroWithoutBaseline { reported: "shorted" }, stability: StabilityUnrecorded,
+    certainty: StatedHedged { verbatim: "i still see GND is shorted to SW (read before the footprint was reported cleaned)" },
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] },
+    evidence: [e1_u10p2_lift_said],
+  },
+]
+data e1_footprint_resistances: List<ResistanceObservation> = [
+  e1_after_lift_read(first: e1_pad(number: 3, name: "SW"), second: e1_pad(number: 4, name: "GND"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: PolarityUnrecorded, display: DisplayZeroWithoutBaseline { reported: "~0" }, certainty: StatedPlainly),
+  e1_after_lift_read(first: e1_pad(number: 3, name: "SW"), second: e1_ground_ref, record: second_point_inferred_first(basis: footprint_pad_basis), polarity: PolarityUnrecorded, display: DisplayZeroWithoutBaseline { reported: "~0" }, certainty: StatedPlainly),
+  e1_after_lift_read(first: e1_pad(number: 2, name: "VIN"), second: e1_ground_ref, record: second_point_inferred_first(basis: footprint_pad_basis), polarity: PolarityUnrecorded, display: DisplayValue { ohms: 5300, approximate: false }, certainty: StatedPlainly),
+  e1_after_lift_read(first: e1_pad(number: 2, name: "VIN"), second: e1_pad(number: 3, name: "SW"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: PolarityUnrecorded, display: DisplayValue { ohms: 2700, approximate: false }, certainty: StatedPlainly),
+  e1_after_lift_read(first: e1_pad(number: 2, name: "VIN"), second: e1_pad(number: 3, name: "SW"), record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: footprint_pad_basis), polarity: PolarityUnrecorded, display: DisplayValue { ohms: 5500, approximate: false }, certainty: StatedPlainly),
+  // After the footprint was brushed with isopropyl: the probes together read about .03 ohm and the SW pad
+  // to the 4R7's terminal away from the converter the same, the display moving on auto-range but settling
+  // there. No range was recorded, so no baseline join is made; read beside the figures, SW and OUT are
+  // one node through the inductor.
+  ResistanceObservation {
+    asset: p4261_e1_b, first: e1_pad(number: 3, name: "SW"), second: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_near_u4),
+    record: both_points_inferred(first_basis: footprint_pad_basis, second_basis: "the 4R7's terminal away from the converter, the pad nearer U4 (the converter sits on the side away from U4's heatsink, k1_two_4r7_photo_1031)"),
+    conditions: e1_bench, polarity: PolarityUnrecorded, range: AutoRanging, display: DisplayZeroWithoutBaseline { reported: "like .03, the probes together reading like .03" }, stability: KeptMoving,
+    certainty: StatedHedged { verbatim: "its also like .03 - the fluke isn't very stable, because its on auto, but it always trends to the same number" },
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] },
+    evidence: [e1_sw_out_said],
+  },
+]
+// The rail read at the inductor's terminal away from the converter, after the lift: a terminal of the
+// intact board read in the lifted state, kept apart from the footprint's own readings.
+data e1_after_lift_rail_resistances: List<ResistanceObservation> = [
+  e1_after_lift_read(first: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_near_u4), second: e1_ground_ref, record: second_point_inferred_first(basis: "the 4R7's terminal away from the converter, the pad nearer U4 (the converter sits on the side away from U4's heatsink, k1_two_4r7_photo_1031)"), polarity: PolarityUnrecorded, display: DisplayValue { ohms: 1, approximate: true }, certainty: StatedPlainly),
+]
+data converter_said_1101_checks: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "1. reversing the probes, I see 8.4Mohm instead of open 2. 0hm both ways 3. 0-30ohm a little jumpy 5. 13kohm" }
+data e1_fissure_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "I do kind of see/feel a fissure running along that side, from the empty pad to the right, under the four top pins- not sure if it's real, but I can feel it in certain areas" }
+data pair_list_basis: NonEmptyStr = "the lead is named by the numbered list the operator was given with the labelled photographs (pin labels drawn from the MP2333CGTL row's pin order), the same inference as the lead readings'"
+data converter_side_terminal_basis: NonEmptyStr = "'the 4R7 terminal next to the chip': the pad farther from U4, since the converter sits on the side of the 4R7 away from U4's heatsink in the wide photograph (k1_two_4r7_photo_1031)"
+fn e1_converter_pin(number: Nat, name: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_converter_near, name: pin_terminal_name(number: number, name: name))
+}
+fn e1_check_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, polarity: ProbePolarity, display: ResistanceDisplay, stability: ReadingStability, certainty: StatementCertainty) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: first, second: second, record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointRecorded },
+    conditions: e1_bench, polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: certainty,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    evidence: [converter_said_1101_checks],
+  }
+}
+fn e1_pair_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, display: ResistanceDisplay) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_b, first: first, second: second, record: record,
+    conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    evidence: [converter_said_1031_pairs, e1_converter_area_photo_1031],
+  }
+}
+data k1_converter_pair_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity), second: k1_pad_1023(name: inductor_pad_far_u4),
+    record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: converter_side_terminal_basis } },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayZeroWithoutBaseline { reported: "0ohm" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1031_pairs, k1_two_4r7_photo_1031],
+  },
+  // The K1's in-circuit figure for VIN to SW before the lift (2026-11-01): 13 kohm on U10_P2, red on VIN.
+  ResistanceObservation {
+    asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 2, name: "VIN") as TerminalIdentity), second: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity),
+    record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: pair_list_basis } },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 13000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1101_checks],
+  },
+]
+data e1_converter_pair_resistances: List<ResistanceObservation> = [
+  e1_pair_read(first: e1_converter_pin(number: 3, name: "SW"), second: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_far_u4), record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: converter_side_terminal_basis } }, display: DisplayZeroWithoutBaseline { reported: "0ohm" }),
+  e1_pair_read(first: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_near_u4), second: e1_ground_ref, record: ProbeRecord { first: PointInferred { basis: converter_side_terminal_basis }, second: PointRecorded }, display: DisplayZeroWithoutBaseline { reported: "0ohm" }),
+  e1_pair_read(first: e1_converter_pin(number: 5, name: "BST"), second: e1_converter_pin(number: 3, name: "SW"), record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: pair_list_basis } }, display: DisplayOverRange),
+  e1_pair_read(first: e1_converter_pin(number: 2, name: "VIN"), second: e1_converter_pin(number: 3, name: "SW"), record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: pair_list_basis } }, display: DisplayZeroWithoutBaseline { reported: "0ohm" }),
+  // The consistency checks of 2026-11-01, from a second numbered list: (1) BST to the return, red on the
+  // lead over range and reversed 8.4 Mohm, so BST's first-sweep 0 is retired by two readings and stays in
+  // the record as the contradiction it is; (2) VIN to the inductor's converter-side terminal 0 both ways,
+  // the VIN-SW path confirmed without two tips on adjacent leads and metallic, not a junction; (3) VIN to
+  // the return 0-30 ohm, a little jumpy.
+  e1_check_read(first: e1_converter_pin(number: 5, name: "BST"), second: e1_ground_ref, polarity: RedOnFirst, display: DisplayOverRange, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  e1_check_read(first: e1_converter_pin(number: 5, name: "BST"), second: e1_ground_ref, polarity: RedOnSecond, display: DisplayValue { ohms: 8400000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  e1_check_read(first: e1_converter_pin(number: 2, name: "VIN"), second: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_far_u4), polarity: RedOnFirst, display: DisplayZeroWithoutBaseline { reported: "0hm both ways" }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  e1_check_read(first: e1_converter_pin(number: 2, name: "VIN"), second: e1_terminal(c: e1_l_4r7_near, name: inductor_pad_far_u4), polarity: RedOnSecond, display: DisplayZeroWithoutBaseline { reported: "0hm both ways" }, stability: StabilityUnrecorded, certainty: StatedPlainly),
+  e1_check_read(first: e1_converter_pin(number: 2, name: "VIN"), second: e1_ground_ref, polarity: RedOnFirst, display: DisplayValue { ohms: 15, approximate: true }, stability: KeptMoving, certainty: StatedHedged { verbatim: "0-30ohm a little jumpy" }),
+]
+// U100 on the E1 (2026-10-23): the dot side's four leads at 1 ohm to the return and at the baseline to
+// the right-hand pad; the far side's four kilohms to both. The far-side-to-pad figures are in the order
+// said, taken as bottom-up like the statements before them.
+data e1_u100_lead_resistances: List<ResistanceObservation> = [
+  u100_lead_read_e1(lead: "dot-side lead, bottom", second: e1_ground_ref, display: DisplayValue { ohms: 1, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "dot-side lead, second from bottom", second: e1_ground_ref, display: DisplayValue { ohms: 1, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "dot-side lead, third from bottom", second: e1_ground_ref, display: DisplayValue { ohms: 1, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "dot-side lead, top", second: e1_ground_ref, display: DisplayValue { ohms: 1, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "far-side lead, bottom", second: e1_ground_ref, display: DisplayValue { ohms: 900, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "far-side lead, second from bottom", second: e1_ground_ref, display: DisplayValue { ohms: 900, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "far-side lead, third from bottom", second: e1_ground_ref, display: DisplayValue { ohms: 5500, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "far-side lead, top", second: e1_ground_ref, display: DisplayValue { ohms: 5500, approximate: false }, evidence: [converter_said_1023_e1]),
+  u100_lead_read_e1(lead: "far-side lead, bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_left_1023), display: DisplayValue { ohms: 1000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "far-side lead, second from bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_left_1023), display: DisplayValue { ohms: 3000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "far-side lead, third from bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_left_1023), display: DisplayValue { ohms: 8000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "far-side lead, top", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_left_1023), display: DisplayValue { ohms: 4000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "dot-side lead, bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_right_1023), display: DisplayZeroWithoutBaseline { reported: "baseline" }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "dot-side lead, second from bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_right_1023), display: DisplayZeroWithoutBaseline { reported: "baseline" }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "dot-side lead, third from bottom", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_right_1023), display: DisplayZeroWithoutBaseline { reported: "baseline" }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_e1(lead: "dot-side lead, top", second: e1_terminal(c: e1_l_4r7_near, name: pad_on_the_right_1023), display: DisplayZeroWithoutBaseline { reported: "baseline" }, evidence: [converter_said_1023_pads]),
+]
+// U100 on the K1 (2026-10-23, the dot side to the right-hand pad re-read 2026-10-24 answering a question
+// about the first figure): both readings of each of those four pairs are kept, two links each.
+data k1_u100_lead_resistances: List<ResistanceObservation> = [
+  u100_lead_read_k1(lead: "dot-side lead, bottom", second: k1_return, record: both_points_recorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "dot-side lead, second from bottom", second: k1_return, record: both_points_recorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "dot-side lead, third from bottom", second: k1_return, record: both_points_recorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "dot-side lead, top", second: k1_return, record: both_points_recorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "far-side lead, bottom", second: k1_return, record: both_points_recorded, display: DisplayValue { ohms: 6000, approximate: false }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "far-side lead, second from bottom", second: k1_return, record: both_points_recorded, display: DisplayValue { ohms: 6000, approximate: false }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "far-side lead, third from bottom", second: k1_return, record: both_points_recorded, display: DisplayValue { ohms: 10000, approximate: false }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "far-side lead, top", second: k1_return, record: both_points_recorded, display: DisplayValue { ohms: 10000, approximate: false }, evidence: [converter_said_1023_k1]),
+  u100_lead_read_k1(lead: "far-side lead, bottom", second: k1_pad_1023(name: pad_on_the_left_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 4000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "far-side lead, second from bottom", second: k1_pad_1023(name: pad_on_the_left_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 4000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "far-side lead, third from bottom", second: k1_pad_1023(name: pad_on_the_left_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 12000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "far-side lead, top", second: k1_pad_1023(name: pad_on_the_left_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 12000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "dot-side lead, bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 8000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "dot-side lead, second from bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 8000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "dot-side lead, third from bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 8000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "dot-side lead, top", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 8000, approximate: false }, evidence: [converter_said_1023_pads]),
+  u100_lead_read_k1(lead: "dot-side lead, bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 4000, approximate: false }, evidence: [converter_said_1024]),
+  u100_lead_read_k1(lead: "dot-side lead, second from bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 12000, approximate: false }, evidence: [converter_said_1024]),
+  u100_lead_read_k1(lead: "dot-side lead, third from bottom", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 12000, approximate: false }, evidence: [converter_said_1024]),
+  u100_lead_read_k1(lead: "dot-side lead, top", second: k1_pad_1023(name: pad_on_the_right_1023), record: second_point_inferred(basis: k1_u100_inductor_basis), display: DisplayValue { ohms: 12000, approximate: false }, evidence: [converter_said_1024]),
+]
+// The K1's inductor beside U100, both pads to the return with the Fluke auto-ranging (2026-10-24):
+// 8.3 kohm each, the figure the 2k-range '~4k' reading above was hedged toward; its identity as the
+// 4R7 nearest U4 is the same inference as its U100 readings'.
+data k1_l_4r7_near_pad_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_near_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+  },
+  ResistanceObservation {
+    asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_far_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
+    conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+  },
+]
+
+// THE CONVERTER IS THE LEADING CANDIDATE FOR THE E1'S RAIL SHORT, NOT YET THE VERDICT. Read against the
+// K1 lead by lead, three of the E1's leads sit near the return where the K1's read kilohms: SW, which
+// the shorted rail explains by itself; VIN, 5 kohm there and 10 ohm here; and BST, 134 kohm there and a
+// reported zero here. VIN and BST are nodes, not isolated pins: the input capacitors and whatever feeds
+// VIN sit on the one, the bootstrap capacitor and the device's internal charging path on the other, so
+// a resistance reading names the node and not yet the part on it. What separates the device from the
+// parts around it is a read with one of them gone.
+data p4261_near_4r7_converter_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the separation is read: removing the converter beside the 4R7 nearest U4, MPS's MP2333CGTL (marked BDFP 528), and cleaning its footprint cleared the VIN-SW short (the bare footprint's VIN at 5.3 kohm to the return against the K1's 5.5 kohm, where it read 0-30 ohm with the part fitted), so the converter, or a connection its removal disturbed, carried it; which of the two is not distinguished, the lifted part being unread. And a low reading remains on the rail with the converter gone: the inductor's terminal away from the converter still reads about 1 ohm to the return with the converter off the board, where the K1's SW pad reads 8.4 kohm, so replacing the converter alone has not been shown sufficient; the reading does not name a capacitor, a load or the copper. Before the separation the claim stood: its VIN reads 0 ohm to the switch node both ways, metallic, where the K1's same converter reads 13 kohm, and VIN and SW both read near the return where the K1's read 5 kohm and 8 kohm. Not yet the verdict: a 0 between VIN and SW is the device's high-side switch, a bridge between those adjacent leads, or two separate paths to the return (an input capacitor shorted beside the shorted rail) reading as one, and the three are separated only with the device off the board; the bootstrap node reads as the K1's does once re-read; the rail's own parts are separated only by a lift; and U100 is not on the switch node",
+  sources: [
+    "E1 against the K1's same converter (U10_P2), lead by lead, 2026-10-31 (e1_converter_lead_resistances, k1_near_converter_lead_resistances): GND 0 / 0; SW 10-30 ohm unsettled / 8 kohm; VIN 10 ohm / 5 kohm; PG 9 kohm / 16 kohm; BST 0 / over range; EN 130 kohm / 130 kohm; SS over range / 19 Mohm; FB 50 kohm / 50 kohm. PG's difference is the rail's own, seen through a pull-up. The K1's farther converter (U2_P2, k1_converter_lead_resistances, read first that evening) agrees lead for lead except BST at 134 kohm and SS at 50 Mohm, so the BST node's DC path to the return differs by instance or by circuit, and the E1's 0 at BST is read against U10_P2's over range",
+    "VIN and BST are nodes, not isolated pins: VIN carries the input capacitors and whatever feeds it, BST the bootstrap capacitor and the device's internal charging path (the datasheet's block diagram), so a low reading at either names the node and not yet the part on it",
+    "the SW lead at 10-30 ohm, unsettled, against the inductor's pads at 'ground' on the 2 kohm range on 2026-10-21 (e1_after_short_resistances), a range whose last digit is 1 ohm: not reconciled. Probe contact on a 0.5 mm lead, the lead's attribution, the site or the copper between lead and pad; the SW-to-pad read decides",
+    "the datasheet's circuit joins BST to SW through a 1 uF capacitor in series with 20 ohm (extdeps.electronic_component.mps_mp2333c): a shorted bootstrap capacitor would read about 20 ohm from BST to SW if the board fits that resistor, and the baseline if it does not or if the short is inside the device",
+    "U100's eight leads (e1_u100_lead_resistances, k1_u100_lead_resistances): the dot side at the return on both carriers, the far side kilohms, and on the K1 no lead at the baseline to either pad of the inductor beside it",
+    "the five pair readings of 2026-10-31 (e1_converter_pair_resistances, k1_converter_pair_resistances): SW to the 4R7's converter-side terminal 0 on both carriers, so the pin map holds on the K1 (a comparison board, its health not established) and the E1's SW lead is on its pad; the E1's far terminal (OUT) to the return 0 after the cleaning; the E1's BST to SW open, so the bootstrap capacitor is not shorted and BST's earlier 0 to the return cannot stand beside it; the E1's VIN to SW 0: the device's high-side switch, a bridge between those adjacent 0.5 mm leads, or VIN and SW each shorted to the return by separate parts, which reads the same in circuit (the earlier VIN to the return at 10 ohm and SW near the return are the two legs of that reading)",
+    "a line the operator can feel along the row of the converter's inductor-side leads, from the via at their right (e1_fissure_said, e1_converter_lead_row_photos_1031), where the probe slipped on 2026-10-21: a probe dragged across 0.5 mm leads can smear solder between two of them, and a bridge between VIN and SW reads 0 ohm exactly as a shorted high-side switch does, so the 0 at VIN to SW is not yet the device's; and a VIN-to-SW bridge made while the board was energized would have put the converter's input voltage on the inductor and the rail, so the rail's 0 to the return may be a part downstream that died of that, with the device alive or dead",
+    "the consistency checks of 2026-11-01 (e1_converter_pair_resistances, k1_converter_pair_resistances): BST to the return over range with red on the lead and 8.4 Mohm reversed, so the first sweep's 0 at BST is retired by two readings and kept only as the contradiction it is; VIN to the inductor's converter-side terminal 0 both ways, the VIN-SW path confirmed metallic without two tips on adjacent leads, against 13 kohm at the K1's same converter; VIN to the return 0-30 ohm, a little jumpy, low as a VIN-SW path onto the shorted rail predicts and read on a 0.5 mm lead",
+    "read with every reported zero as a join, the E1 record contradicts itself at six readings, every one a non-zero reading at a lead whose node a zero joins to the return: SW and VIN to the return at 20, 10 and 0-30 ohm where SW to its pad, VIN to SW, VIN to the pad and the pad to the return read 0, and three readings at BST (open to SW, over range and 8.4 Mohm to the return) where the first sweep's BST read 0 to the return. The first group is near-zero figures at leads beside true zeros at the same nodes; the second is one first-sweep reading every later one disagrees with. That reading is hypothetical: the measured netlist joins only readings at a recorded baseline (is_at_baseline refuses a zero with no baseline and an auto-ranging join), so it joins none of these zeros and the six are not contradictions there. Under the hypothetical reading none is read diagnostically, none has its cause assigned (probe contact on 0.5 mm leads is a candidate for the near-zero figures, not an established cause), and nothing is deleted",
+    "the E1's cleaned footprint (e1_footprint_resistances, e1_after_lift_rail_resistances, photographs e1_footprint_photos_1101 showing no bridge): SW about 0 to the GND pad and to the return; VIN 5.3 kohm to the return; VIN to SW 2.7 and 5.5 kohm by the probes' way, VIN's own path with SW at the return; OUT 1.4 ohm to the return. The lifted part itself was not read (too small to hold), so 'the part or something removed with it' carried the VIN-SW short; the footprint's photographs show nothing left between those pads",
+    "after the footprint was brushed, the probes together read about .03 ohm and the SW pad to the 4R7's terminal away from the converter the same (e1_footprint_resistances, e1_sw_out_said): SW and OUT are one node through the inductor, so SW's ~0 against OUT's 1.4 ohm to the return is a contact difference at the return end, not two faults; one short holds that node between about 0 and 1.4 ohm to the return",
+    "the K1's bare footprint (k1_footprint_resistances): VIN 5.5 kohm and SW 8.4 kohm to the return and VIN to SW 13.3 kohm both ways, about those two in series, so on the K1 the VIN-SW figure read with the part fitted was the board's, through the return; the E1's footprint read on the same pads decides whether the E1's 0 went with its part",
+    "the E1's converter lifted 2026-11-01 (e1_u10p2_lift), the inductor in place; the first reading after it, SW 'shorted' to GND (e1_footprint_resistances), was taken before the footprint was reported cleaned, so a residue bridge between those adjacent pads is not excluded",
+    "the device's 4.2 V to 18 V input range bounds the path feeding VIN (pin 2), which is unread; it says nothing about J20's voltage (p4261_j20_main_input_hypothesis)",
+    "both sites cleaned and inspected under the Andonstar 2026-10-31 with nothing broken, cracked or singed (e1_inductor_short_incident); the carriers differ in population around the inductor (two 0603 parts under the E1's, four empty pads under the K1's; two large ceramics against one), so the K1 is a reference for the converter and not for every part on the rail",
+  ],
+  decided_by: "The SW-inductor-OUT connection is read at the probe baseline after the rework (e1_sw_out_said). The supply tested alone, no board connected (0.30 V and 0.50 A set, OCP shutdown off with the current limit kept, the no-load output read with the Fluke in DC volts, then a lead across the terminals for the limited voltage, current and CC). Then a bounded thermal test with the converter off the board: the positive lead on a wire soldered to the 4R7's terminal away from the converter, never a hand-held probe, the return at J20's black lead, starting at 0.30 V and 0.25 A and stepping toward at most 1.0 V and 1.0 A, under the rail's 3.2 V working level, at most 30 s per step, the camera on the inductor, its ceramics and the parts near them. Removing the converter removed its own path back to VIN, not every path: an injected rail can back-power other parts through their protection structures, which the low voltage limits but does not exclude. A warm part is where power dissipates, not by itself the cause; it is lifted and OUT re-read before anything is fitted. The inductor lifted instead separates the SW node's parts from the rail's if the image is ambiguous. Which loads the rail supplies waits on that."
 }
 
 data e1_vector_unrecorded: List<SwitchPoleState> = [e1_pole(package: e1_s2, pole: 1, position: PolePositionUnrecorded), e1_pole(package: e1_s2, pole: 2, position: PolePositionUnrecorded), e1_pole(package: e1_s1, pole: 1, position: PolePositionUnrecorded), e1_pole(package: e1_s1, pole: 2, position: PolePositionUnrecorded)]
@@ -3822,9 +4293,9 @@ data e1_transitions: List<CarrierTransitionObservation> = [
 data e1_bench_record: BenchRecord = BenchRecord {
   incidents: [e1_bridge_incident, e1_inductor_short_incident],
   attachments: [e1_pin7_attachment, e1_w2_attachment, e1_w4_attachment],
-  alterations: [e1_u4_heatsink_alteration],
+  alterations: [e1_u4_heatsink_alteration, e1_u10p2_lift],
   voltages: concat(concat(concat(concat(concat(concat(e1_switch_readings(c: e1_q21), e1_switch_readings(c: e1_q22)), [e1_pad_volts(source_volts: 48, millivolts: 1800, said: "1.8v"), e1_pad_volts(source_volts: 36, millivolts: 1350, said: "1.35 at 36v")]), map([48, 36, 54], v => e1_wire_volts(source_volts: v))), [e1_vdd_volts]), concat([e1_lead_volts(pin: "pin 8", millivolts: 1800), e1_lead_volts(pin: "pin 7", millivolts: 0)], [e1_via_volts(source_volts: 38, millivolts: 3800, certainty: StatedHedged { verbatim: "~3.8v" }), e1_via_volts(source_volts: 54, millivolts: 4900, certainty: StatedPlainly)])), e1_zv_volts),
-  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances), e1_front_chain_resistances), e1_u55_resistances), e1_site_resistances), e1_j24_resistances), e1_ds1_2_resistances), e1_j68_resistances), e1_after_short_resistances),
+  resistances: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(e1_ovlo_pad_resistances, e1_wire_resistances), e1_wire_later_resistances), e1_pin21_resistances), e1_rp1_resistances), e1_w2_resistances), e1_pin7_lead_resistances), e1_w4_resistances), e1_cluster_resistances), e1_q301_resistances), e1_zb_resistances), e1_u51_resistances), e1_front_chain_resistances), e1_u55_resistances), e1_site_resistances), e1_j24_resistances), e1_ds1_2_resistances), e1_j68_resistances), e1_after_short_resistances), e1_u100_lead_resistances), e1_converter_lead_resistances), e1_converter_pair_resistances), concat(concat(e1_footprint_before_cleaning_resistances, e1_footprint_resistances), e1_after_lift_rail_resistances)),
 }
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
@@ -3941,7 +4412,9 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_j68, terminals: names(ns: e1_j68_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a 2 x 5 header at 0.1 inch, read unpowered 2026-10-21 (e1_j68_resistances) in the shape of Intel's ten-pin JTAG layout, a candidate (j68_jtag_standing); under that map R2 is the reference rail, so no bridge is placed between its positions; its ten points to J20's black lead unpowered on a recorded range against the shorted-probe baseline, which alone joins a point to the return; a 2 x 5 footprint fixes no pinout" } },
     InstalledComponent { component: e1_u21, terminals: [], identification: IdentifiedByMarking { row: pca9617adp, marking: MarkingReading { text: "P617A / 01 14 / 226", evidence: e1_u21_marking_photo } } },
     InstalledComponent { component: e1_u53, terminals: [], identification: IdentifiedByMarking { row: pca9617adp, marking: MarkingReading { text: "P617A / 01 14 / 226", evidence: e1_u21_marking_photo } } },
-    InstalledComponent { component: e1_u100, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "C3U / S22 / 25", evidence: e1_u100_photo } }, discriminator: "a 6-lead SOT-23 with a pin-1 dot beside the 4R7 nearest U4 (e1_u100_photo), the converter candidate for that inductor: its top-marking code decoded from a maker's table, or its pins mapped on the K1 (each to J20's black lead and to the inductor's upper pad) so that ground and the switch node are read without a datasheet" } },
+    InstalledComponent { component: e1_u100, terminals: names(ns: u100_lead_terminals), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "C3U / S22 / 25", evidence: e1_u100_photo } }, discriminator: "an 8-lead package (four leads a side, pin-1 dot) beside the 4R7 nearest U4 (e1_u100_photo); its eight leads read on both carriers 2026-10-23 (e1_u100_lead_resistances, k1_u100_lead_resistances): the dot side at the return on both, the far side kilohms, and no lead at the baseline to either inductor pad on the K1, so it is not the inductor's converter. Its code C3U is undecoded; a maker's marking table or the part's own pinout would name it" } },
+    InstalledComponent { component: e1_converter_near, terminals: names(ns: converter_pin_terminals), identification: MarkingCandidate { row: mp2333cgtl, marking: MarkingReading { text: "DFP 528", evidence: e1_u100_photo }, discriminator: "the first glyph of this carrier's own part under the Andonstar: a B completes MPS's MP2333CGTL top-marking code 'BDFY / LLL' (year code P, lot 528, the lot the K1's part reads in full); the package (8 leads, four a side, 0.5 mm pitch) and the lead on the inductor's pad fit the row, and the 2026-10-21 photograph counted its leads as five" } },
+    InstalledComponent { component: e1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: e1_u10p2_lift_said } },
     InstalledComponent { component: e1_u69, terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "an 8-lead package to U21's right (e1_near_4r7_area_photo): its marking under magnification" } },
     InstalledComponent { component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
     InstalledComponent { component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { text: "LV165A / 2BKG4 / AEC0", evidence: e1_lv165a_photo } } },
@@ -4298,7 +4771,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", j24_text(layout: layout),
     ". ", j68_shape_text(layout: layout),
     ". ", alterations_text(layout: layout),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis), ". ", hypothesis_text(h: p4261_near_4r7_converter_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
@@ -4342,6 +4815,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     ProgrammableLogicSpec { logic: _ } => []
     RootOfTrustSpec { root_of_trust: _ } => []
     SerialFlashSpec { flash: _ } => []
+    SwitchingRegulatorSpec { regulator: _ } => []
   }
 }
 
@@ -4475,6 +4949,7 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     ProgrammableLogicSpec { logic: _ } => ""
     RootOfTrustSpec { root_of_trust: _ } => ""
     SerialFlashSpec { flash: _ } => ""
+    SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
   }
 }
 

@@ -1,0 +1,197 @@
+module gunbc.fleet.printer_state_layout
+
+import std.types { String, NonEmptyStr, List, Bool, FilePath }
+import std.algebra { trim, string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_starts_directory, print_run_directory_target, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
+import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name, legacy_completed_suffix }
+import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused }
+import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
+
+// THE PRINTER STATE TREE'S LAYOUT: what directories a printer pass demands (printer_state_directories) and the one
+// step that carries the flat layout the printer-starts directory held until 2026-10-30 onto the per-store members
+// (printer_state_move). Until then the claims, completion records, execution hold and cassette inventory shared
+// one directory through three libraries; each store now has its own member declared in the module that owns it.
+//
+// THE CUTOVER, AS A DECLARED CONVERGE STEP. Every store mint refuses permanently (a typed Unready) while the
+// parent still holds an entry with a dot in its name, so no store ever answers from two layouts. This step moves
+// each such entry, byte for byte, to the member its store reads, and the pass runs it before any mint:
+//   <key>.claimed                      -> claims/<key>.1            (the slot the claim store reads)
+//   <key>.claimed.completed.json       -> completions/<key>.completed.json
+//   <key>.claimed.<evidence>           -> claims/ (same name; the evidence prefix is derived from the claim store)
+//   fleet-print-controller.<n>         -> execution-hold/           (same name; the hold generations)
+//   cassette-prototype-inventory.<n>   -> cassette-inventory/       (same name; the inventory generations)
+// Noop when the parent is clean. A target that already exists with different bytes refuses, and so does an entry
+// no store claims; an equal target is adopted (an interrupted earlier pass). Each move is create-new, read back
+// byte-equal, then delete of the old name, so after every step each key is readable from exactly one layout. The
+// hold is the exception, retired inside its own exclusion: the legacy slot is taken through the hold library and
+// stays held by the fence owner declared in gunbc.fleet.printer_execution_hold while the generations are copied
+// across and are LEFT in the parent (a contiguous history whose head stays held, so an old controller sees the slot
+// occupied); the copy of the head is released in the new store. A live holder makes the hold refuse before it moves; the pass retries on the next run.
+
+data legacy_claimed_suffix: String = ".claimed"
+data legacy_claim_evidence_marker: String = ".claimed."
+data legacy_inventory_prefix: String = "cassette-prototype-inventory."
+
+// THE MOVE IS ADMITTED DEBT WITH AN END: printer_state_move runs on every print pass only while some printing host may
+// still hold a flat printer-starts entry. Its trigger is the typed drain evidence (every printing host's legacy
+// inventory read as clean), which does not exist yet; when it does, the move, legacy_target, retire_hold and the
+// store mints' permanent legacy refusals are deleted together. Until then it is not removed, because a host with
+// a legacy entry would then refuse permanently with nothing to carry it forward.
+data printer_state_move_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_move"),
+    reason: "the one-time carry of the flat printer-starts layout onto per-store members runs on every print pass with no end condition until every printing host's legacy inventory is read as drained",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.printer_state_layout", decl_name: "printer_state_hosts_drained"))
+  )
+]
+
+type PrinterStateMove = PrinterStateMoved | PrinterStateMoveRefused { cause: String }
+
+// THE DIRECTORIES A PRINTER PASS DEMANDS, each derived from the declaration of the module that owns the store.
+fn printer_state_directories(tree: HostStateTree) -> List<OwnedDirectoryTarget> {
+  [
+    printer_starts_directory(tree: tree),
+    print_request_directory_target(tree: tree),
+    print_completion_directory_target(tree: tree),
+    printer_start_claim_directory_target(tree: tree),
+    printer_execution_hold_directory_target(tree: tree),
+    cassette_inventory_directory_target(tree: tree),
+    print_run_directory_target(tree: tree),
+  ]
+}
+
+type Relocated = RelocationDone | RelocationRefused { cause: String }
+
+// ONE FILE, create-new at the target, read back byte-equal, then delete of the source. A target that is already
+// there with the same bytes is adopted; one with other bytes refuses.
+fn copy_file(from: String, to: String) -> Relocated {
+  let source = Filesystem.Read(path: from)
+  if !source.success { return RelocationRefused { cause: join(["cannot read ", from], "") } }
+  let existing = Filesystem.Read(path: to)
+  if existing.success {
+    if existing.content != source.content { return RelocationRefused { cause: join([to, " already exists with different bytes than ", from], "") } }
+  } else {
+    if !Filesystem.WriteCreateNew(path: to, content: source.content).success { return RelocationRefused { cause: join(["cannot create ", to], "") } }
+  }
+  let back = Filesystem.Read(path: to)
+  if !back.success || back.content != source.content { return RelocationRefused { cause: join([to, " read back differently from ", from], "") } }
+  RelocationDone
+}
+
+fn relocate_file(from: String, to: String) -> Relocated {
+  match copy_file(from: from, to: to) {
+    RelocationRefused { cause: c } => RelocationRefused { cause: c }
+    RelocationDone => if Filesystem.Delete(path: from).success { RelocationDone } else { RelocationRefused { cause: join(["cannot delete ", from, " after copying it"], "") } }
+  }
+}
+
+fn legacy_target(tree: HostStateTree, name: String) -> String? {
+  let parent = printer_starts_path(tree: tree) as String
+  if ends_with(s: name, suffix: legacy_completed_suffix) {
+    let key = substring(s: name, start: 0, end: length(name) - length(legacy_completed_suffix))
+    return Present { value: join([print_completion_path(tree: tree) as String, "/", completion_record_name(claim_key: key as NonEmptyStr)], "") }
+  }
+  if name == "batch-state.json" {
+    return Present { value: join([printer_start_claim_path(tree: tree) as String, "/", name], "") }
+  }
+  if string_contains(s: name, pattern: legacy_claim_evidence_marker) {
+    return Present { value: join([printer_start_claim_path(tree: tree) as String, "/", name], "") }
+  }
+  if ends_with(s: name, suffix: legacy_claimed_suffix) {
+    let key = substring(s: name, start: 0, end: length(name) - length(legacy_claimed_suffix))
+    return Present { value: join([printer_start_claim_path(tree: tree) as String, "/", key, ".1"], "") }
+  }
+  if starts_with(s: name, prefix: join([hold_key as String, "."], "")) {
+    return Present { value: join([printer_execution_hold_path(tree: tree) as String, "/", name], "") }
+  }
+  if starts_with(s: name, prefix: legacy_inventory_prefix) {
+    return Present { value: join([cassette_inventory_path(tree: tree) as String, "/", name], "") }
+  }
+  none
+}
+
+
+// THE HOLD'S ENTRIES, LISTED AFTER THE OLD HOLD WAS PROVEN FREE: acquiring and releasing it wrote new generations
+// into the parent, so the list taken before the proof is stale and moving only it would leave those behind.
+type FreshHoldNames = FreshHoldNamesListed { names: List<String> } | FreshHoldNamesUnreadable { detail: String }
+
+fn fresh_hold_names(tree: HostStateTree) -> FreshHoldNames {
+  match printer_starts_legacy_scan(tree: tree, owns: n => printer_execution_hold_legacy_entry(name: n)) {
+    PrinterStartsLegacyEntries { names: fresh } => FreshHoldNamesListed { names: fresh }
+    PrinterStartsClean => FreshHoldNamesListed { names: [] }
+    PrinterStartsUnreadable { detail: d } => FreshHoldNamesUnreadable { detail: d }
+  }
+}
+
+// THE HOLD IS RETIRED INSIDE ITS OWN EXCLUSION: the legacy hold is taken (or resumed) as the declared fence owner and
+// stays held; every generation is COPIED into the hold store's member (the parent keeps them, head held by the fence owner, so an
+// old controller cannot acquire the legacy slot again) and the copied held generation is released in the new store.
+fn retire_hold(tree: HostStateTree) -> List<String> {
+  match printer_execution_hold_fence_begin(tree: tree) {
+    HoldFenceRefused { cause: c } => [join(["the execution hold was not moved: ", c], "")]
+    HoldFenceBegun { fence: f } => {
+      let parent = printer_starts_path(tree: tree) as String
+      let fence_entry = printer_execution_hold_fence_entry(fence: f)
+      let copy_causes = match fresh_hold_names(tree: tree) {
+        FreshHoldNamesUnreadable { detail: d } => [join(["the hold generations could not be listed: ", d], "")]
+        FreshHoldNamesListed { names: names } => names.flat_map(n => match legacy_target(tree: tree, name: n) {
+          Present { value: to } => match copy_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+          Absent => [join(["no store claims ", n], "")]
+        })
+      }
+      let fence_copied = if Filesystem.Read(path: join([printer_execution_hold_path(tree: tree) as String, "/", fence_entry], "")).success { [] } else { [join(["the fence generation ", fence_entry, " was not copied"], "")] }
+      let all_copy_causes = append(copy_causes, items: fence_copied)
+      if count(all_copy_causes) != 0 { all_copy_causes } else {
+        match printer_execution_hold_fence_handover(tree: tree, fence: f) {
+          HoldHandedOver => []
+          HoldHandoverRefused { cause: c } => [join(["the execution hold was not handed over: ", c], "")]
+        }
+      }
+    }
+  }
+}
+
+fn finish_move(tree: HostStateTree, other_causes: List<String>) -> PrinterStateMove {
+  let hold_causes = match printer_execution_hold_legacy_state(tree: tree) {
+    LegacyHoldAbsent => []
+    LegacyHoldUnreadable { detail: d } => [d]
+    LegacyHoldFenced { generation: _ } => retire_hold(tree: tree)
+    LegacyHoldLive { names: _ } => retire_hold(tree: tree)
+  }
+  let causes = append(other_causes, items: hold_causes)
+  if count(causes) != 0 { return PrinterStateMoveRefused { cause: join(causes, "; ") } }
+  match printer_starts_legacy_scan(tree: tree, owns: n => !printer_execution_hold_legacy_entry(name: n)) {
+    PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
+    PrinterStartsLegacyEntries { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
+    PrinterStartsClean => match printer_execution_hold_legacy_state(tree: tree) {
+      LegacyHoldAbsent => PrinterStateMoved
+      LegacyHoldFenced { generation: _ } => PrinterStateMoved
+      LegacyHoldLive { names: left } => PrinterStateMoveRefused { cause: join(["entries remain in printer-starts after the move: ", join(left, ", ")], "") }
+      LegacyHoldUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
+    }
+  }
+}
+
+// PER STORE: the entries of every store but the hold move first and unconditionally; the hold retires after (above).
+fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
+  match printer_starts_legacy_scan(tree: tree, owns: n => !printer_execution_hold_legacy_entry(name: n)) {
+    PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
+    PrinterStartsClean => finish_move(tree: tree, other_causes: [])
+    PrinterStartsLegacyEntries { names: names } => {
+      let parent = printer_starts_path(tree: tree) as String
+      let unknown = names.filter(n => match legacy_target(tree: tree, name: n) { Present { value: _ } => false Absent => true })
+      if count(unknown) != 0 { return PrinterStateMoveRefused { cause: join(["printer-starts holds entries no store claims: ", join(unknown, ", ")], "") } }
+      finish_move(tree: tree, other_causes: names.flat_map(n => match legacy_target(tree: tree, name: n) {
+        Present { value: to } => match relocate_file(from: join([parent, "/", n], ""), to: to) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+        Absent => [join(["no store claims ", n], "")]
+      }))
+    }
+  }
+}
