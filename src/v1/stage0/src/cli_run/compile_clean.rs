@@ -1471,6 +1471,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => {
             "TypeNameCarriesNoRecordConstructor"
         }
+        // Regen bridge: covers the OwnershipViolation variant while the checked-in mirror still has it.
+        #[allow(unreachable_patterns)]
+        _ => "OwnershipViolation",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -1617,6 +1620,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name, .. } => {
             type_name.clone()
         }
+        // Regen bridge: covers the OwnershipViolation variant while the checked-in mirror still has it.
+        #[allow(unreachable_patterns)]
+        _ => String::new(),
     };
     (class.to_string(), name)
 }
@@ -1724,6 +1730,9 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::VariantCollision { .. } => None,
         CompilerDiagnostic::VariantNotFound { .. } => None,
         CompilerDiagnostic::WhereRefinementUnenforced { .. } => None,
+        // Regen bridge: covers the OwnershipViolation variant while the checked-in mirror still has it.
+        #[allow(unreachable_patterns)]
+        _ => None,
     }
 }
 
