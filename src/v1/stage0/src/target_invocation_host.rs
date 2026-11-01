@@ -30,6 +30,11 @@
 // of witness selection, which is `gunbc.compute.test_selection`'s to own.
 
 use crate::cli_run;
+use crate::instrument_registry_generated::{
+    bare_reference_channel_source_roots, behavioral_receipt_source_roots,
+    emitted_crate_workspace_source_roots, heads_reading_differential_source_roots,
+    self_host_source_roots, v2_native_cli_source_roots,
+};
 
 /// The label subset `extdeps.bazel.label` admits, and its refusal vocabulary, mirrored.
 ///
@@ -296,390 +301,25 @@ pub enum TargetProducer {
         function: &'static str,
     },
 }
-
-/// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
-/// index is built from. All four modeled instruments are rows on the same generic seam.
-/// `gunbc.instrument_targets` `heads_reading_differential_source_roots`. The subject is the
-/// instrument's own fact, not a CLI option, so an invocation cannot quietly measure another corpus.
-fn heads_reading_differential_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
-/// `gunbc.instrument_targets` `self_host_source_roots`. Which corpus the seed emits v2 FROM is
-/// this instrument's own fact on the same rule its siblings follow, so an invocation cannot quietly
-/// build a different closure while reporting this target's standing.
-fn self_host_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
-/// `gunbc.instrument_targets` `v2_native_cli_source_roots`. Which corpus the v2-native CLI's closure
-/// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
-fn v2_native_cli_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
 /// Modules this producer evaluates by name at spawn. Parallel to
 /// `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`: listing here is what makes that by-name
 /// evaluation legitimate rather than an undeclared reach. Not a floor-subject seed — the floor
 /// list must not grow this module's closure.
 const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_targets"];
-
-/// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
-/// corpus the self-host step emits from, so the two instruments measure one closure two ways.
-fn emitted_crate_workspace_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
+/// THE INSTRUMENT TABLE THE DISPATCH READS, RENDERED FROM THE MODEL'S BINDING ROWS.
+///
+/// This function used to author its own rows: each spelled an instrument's subject -- the entry path
+/// the host evaluates, the wire function it calls, the census verb it runs -- beside the label, while
+/// `gunbc.instrument_targets` `instrument_bindings()` declared the same subject once. Two owners for
+/// one subject, with the dispatch reading the copy no authority owns, is DESIGN §3's fork: a row here
+/// could go stale and nothing consulted the model, which is the class PR 15298 is the specimen of.
+/// The rows are now rendered from the roster by `gunbc.instruments.instrument_registry_emit` into
+/// `instrument_registry_generated.rs`, which is a seed-build artifact
+/// (`gunbc.seed_build_artifact_emit` `seed_build_artifacts`), so heal regenerates it and refuses on
+/// drift. An instrument that loses its binding row loses its entry here too: one rendering, one
+/// authority, and the gap is a compile failure rather than a silent miss.
 fn instrument_registry() -> Vec<(Label, TargetProducer)> {
-    vec![
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "heads-reading-differential".to_string(),
-            },
-            TargetProducer::HeadsReadingDifferential,
-        ),
-        (
-            instrument_label("behavioral-receipt-plan"),
-            TargetProducer::BehavioralReceiptPlan,
-        ),
-        (
-            instrument_label("behavioral-receipt-census"),
-            TargetProducer::BehavioralReceiptCensus,
-        ),
-        (
-            instrument_label("behavioral-receipt-selftest"),
-            TargetProducer::BehavioralReceiptSelftest,
-        ),
-        (
-            instrument_label("compile-clean-diagnostic-census"),
-            TargetProducer::CompileCleanDiagnosticCensus,
-        ),
-        (instrument_label("self-host"), TargetProducer::SelfHost),
-        (
-            instrument_label("v2-native-cli"),
-            TargetProducer::V2NativeCli,
-        ),
-        (
-            instrument_label("v2-native-frontier"),
-            TargetProducer::V2NativeFrontier,
-        ),
-        (
-            instrument_label("emitted-crate-workspace"),
-            TargetProducer::EmittedCrateWorkspace,
-        ),
-        (
-            instrument_label("native-crypto-vectors"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
-            },
-        ),
-        (
-            instrument_label("rfm-rung-census"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
-            },
-        ),
-        (
-            instrument_label("native-app-attest"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/native_app_attest.dag",
-            },
-        ),
-        (
-            instrument_label("dag-emit-real-grammar-round-trips"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
-            },
-        ),
-        (
-            instrument_label("native-materialization-store-closure"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
-            },
-        ),
-        (
-            instrument_label("native-emission-controls"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/native_emission_controls.dag",
-            },
-        ),
-        (
-            instrument_label("fleet-convergence-verdict-route"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/fleet_convergence_verdict_route.dag",
-                function: "fleet_convergence_verdict_route_wire",
-            },
-        ),
-        (
-            instrument_label("native-allocation-observation"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/native_allocation_observation.dag",
-            },
-        ),
-        (
-            instrument_label("native-xl2-rehearsal"),
-            TargetProducer::NativeClaimProgram {
-                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
-            },
-        ),
-        (
-            instrument_label("brand-mark-assets"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
-            },
-        ),
-        (
-            instrument_label("router-proxy-falsifier"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/router_proxy_falsifier.dag",
-            },
-        ),
-        (
-            instrument_label("serving-benchmark-run"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
-            },
-        ),
-        (
-            instrument_label("value-position-block-nests"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/value_position_block_nests.dag",
-            },
-        ),
-        (
-            instrument_label("roster-import-sweep-native"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/roster_import_sweep_native.dag",
-            },
-        ),
-        (
-            instrument_label("native-serve"),
-            TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/instruments/native_serve_fixture.dag",
-            },
-        ),
-        (
-            instrument_label("native-serve-device-crypto"),
-            TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
-            },
-        ),
-        (
-            instrument_label("native-serve-startup-refusal"),
-            TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/instruments/native_serve_startup_refusal_fixture.dag",
-            },
-        ),
-        (
-            instrument_label("native-serve-startup-slow"),
-            TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag",
-            },
-        ),
-        (
-            instrument_label("native-serve-startup-overrun"),
-            TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
-            },
-        ),
-        (
-            instrument_label("evaluation-store-address-exact-head"),
-            TargetProducer::EvaluationStoreAddressExactHead,
-        ),
-        (
-            instrument_label("typed-graph-exclusive-bytes"),
-            TargetProducer::TypedGraphExclusiveBytes,
-        ),
-        (
-            instrument_label("typed-graph-exclusive-bytes-floor-subject"),
-            TargetProducer::TypedGraphExclusiveBytesFloorSubject,
-        ),
-        (
-            instrument_label("primitive-egress-census"),
-            TargetProducer::PrimitiveEgressCensus,
-        ),
-        (
-            instrument_label("primitive-egress-census-v2"),
-            TargetProducer::PrimitiveEgressCensusV2,
-        ),
-        (
-            instrument_label("primitive-egress-census-dag"),
-            TargetProducer::PrimitiveEgressCensusDag,
-        ),
-        (
-            instrument_label("primitive-egress-census-seed"),
-            TargetProducer::PrimitiveEgressCensusSeed,
-        ),
-        (
-            instrument_label("required-lane-resolution-census"),
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            instrument_label("bare-reference-channel-outcome"),
-            TargetProducer::BareReferenceChannelOutcome,
-        ),
-        (
-            instrument_label("self-host-behavioral-equivalence"),
-            TargetProducer::SelfHostBehavioralEquivalence,
-        ),
-        (
-            instrument_label("dependency-demand-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "demand-census",
-            },
-        ),
-        (
-            instrument_label("decl-ref-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "decl-ref-census",
-            },
-        ),
-        (
-            instrument_label("effect-pair-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "effect-pair-census",
-            },
-        ),
-        (
-            instrument_label("self-host-frontier"),
-            TargetProducer::SelfHostFrontier,
-        ),
-        (
-            instrument_label("generic-identity-census"),
-            TargetProducer::GenericIdentityCensus,
-        ),
-        (
-            instrument_label("interpolation-hole-census"),
-            TargetProducer::InterpolationHoleCensus,
-        ),
-        (
-            instrument_label("shared-type-leaf-collision-census"),
-            TargetProducer::SharedTypeLeafCollisionCensus,
-        ),
-        (
-            instrument_label("cardinality-realization"),
-            TargetProducer::CardinalityRealization,
-        ),
-        (
-            instrument_label("regen-round-cost"),
-            TargetProducer::RegenRoundCost,
-        ),
-        (
-            instrument_label("roster-import-sweep-controls"),
-            TargetProducer::CliWireProgram {
-                entry: "src/v2/workflow/roster_import_sweep.dag",
-                function: "roster_import_sweep_controls_wire",
-            },
-        ),
-        (
-            instrument_label("credential-acquisition-systemd-rows"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/test/claim/dispatch_credential_acquisition_witness.dag",
-                function: "credential_acquisition_systemd_rows_wire",
-            },
-        ),
-        (
-            instrument_label("append-chain-ladder"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",
-            },
-        ),
-        (
-            instrument_label("last-use-move"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/last_use_move_native.dag",
-            },
-        ),
-        (
-            instrument_label("cons-tail-recursion"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
-            },
-        ),
-        (
-            instrument_label("member-home-cost"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/member_home_cost_native.dag",
-            },
-        ),
-        (
-            instrument_label("claim-coverage-census"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/claim_coverage_census_live.dag",
-                function: "claim_coverage_census_exit",
-            },
-        ),
-        // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
-        // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
-        // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
-        // only way to make the instrument's label reachable, and it follows the table's existing shape
-        // (the `claim-coverage-census` row is built the same way).
-        // RECEIPT / DEFERRAL for the duplicated mapping: generating this table from
-        // `gunbc.instrument_targets` is the repair, and it is a seed lane rather than this instrument's
-        // lane because it touches every instrument's binding at once. The hand-maintained table is
-        // already under a seed census, so the duplication is tracked rather than invisible: the
-        // `DeclarationRef { decl_name: "instrument_registry" }` row inside
-        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
-        (
-            instrument_label("known-red-derivation"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/known_red_derivation.dag",
-                function: "known_red_derivation_exit",
-            },
-        ),
-        (
-            instrument_label("roster-reach-inhabitance"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
-                function: "roster_reach_inhabitance_exit",
-            },
-        ),
-        (
-            instrument_label("witness-deferral-freeze-population"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/witness_deferral_freeze_population.dag",
-                function: "witness_deferral_freeze_population_exit",
-            },
-        ),
-        (
-            instrument_label("compute-run-unit-cold"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
-                function: "compute_run_unit_cold_exit",
-            },
-        ),
-        (
-            instrument_label("compute-wrong-capture"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
-                function: "compute_wrong_capture_exit",
-            },
-        ),
-        (
-            // C5: the dependency-only arm of the C1 instrument. Same entry file, its own entry
-            // function -- one body of logic (wrong_capture_run) behind both labels.
-            instrument_label("compute-dependency-wrong-capture"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
-                function: "compute_dependency_wrong_capture_exit",
-            },
-        ),
-        (
-            instrument_label("compute-run-unit-sccache-probe"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
-                function: "compute_run_unit_sccache_probe_exit",
-            },
-        ),
-        (
-            instrument_label("compute-run-unit-cold-same-path"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
-                function: "compute_run_unit_cold_same_path_exit",
-            },
-        ),
-    ]
+    crate::instrument_registry_generated::instrument_registry_rows()
 }
 
 fn instrument_label(target: &str) -> Label {
@@ -704,7 +344,18 @@ fn instrument_label(target: &str) -> Label {
 /// the witness-selection half delegates around.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
-    TargetIsUnknown { target: String },
+    TargetIsUnknown {
+        target: String,
+    },
+    /// A generated row names a subject -- the entry path the host would evaluate -- that this
+    /// checkout does not carry. The table and the corpus disagree; running the row would report on a
+    /// subject that is gone, so the dispatch refuses instead (DESIGN §5: a refusal, not a plausible
+    /// line). `Termination::Refused` is the instrument contract's exit 2.
+    InstrumentSubjectAbsent {
+        label: String,
+        field: String,
+        path: String,
+    },
 }
 
 /// THE REFUSAL NAMES WHAT WOULD HAVE WORKED, AND IT IS DERIVED RATHER THAN WRITTEN DOWN.
@@ -730,6 +381,11 @@ fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
                 format!(
                     "gunbc test: no such target: {target}\n{}",
                     rostered_targets_rendered()
+                )
+            }
+            InvocationRefusal::InstrumentSubjectAbsent { label, field, path } => {
+                format!(
+                    "gunbc test: instrument {label} names {field} \"{path}\" which is absent from this checkout; the instrument table is stale against the corpus -- regenerate src/v1/stage0/src/instrument_registry_generated.rs from gunbc.instrument_targets instrument_bindings() rather than run a subject that is gone"
                 )
             }
         }
@@ -865,14 +521,6 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
 // ---------------------------------------------------------------------------------------------
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES
 // ---------------------------------------------------------------------------------------------
-
-/// `gunbc.instrument_targets` `bare_reference_channel_source_roots`. The subject is the
-/// instrument's own fact on the rule every sibling here follows, and it is a FIXTURE root rather
-/// than the live corpus: the reading must not move when `dag` does.
-fn bare_reference_channel_source_roots() -> Vec<String> {
-    vec!["fixtures/bare_reference_channel".to_string()]
-}
-
 /// `gunbc.target_binding` `BareChannelEligibility`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BareChannelEligibility {
@@ -1040,7 +688,63 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
+/// IS THE SUBJECT IN THIS CHECKOUT? A subject is named from the repository root, which is where a
+/// dispatch runs; a `cargo test` process starts in the package directory instead, so the search walks
+/// toward the root rather than trusting one working directory. The question stays the same -- does any
+/// ancestor checkout carry this file -- so a row naming a subject that no longer exists still refuses.
+fn instrument_subject_is_present(path: &str) -> bool {
+    let candidate = std::path::Path::new(path);
+    let mut dir = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return candidate.exists(),
+    };
+    for _ in 0..8 {
+        if dir.join(candidate).exists() {
+            return true;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    candidate.exists()
+}
+
+/// THE SUBJECT A GENERATED ROW NAMES MUST BE IN THE CHECKOUT BEFORE IT RUNS.
+///
+/// The table is rendered from `gunbc.instrument_targets`, so a row whose entry path the checkout does
+/// not carry can only mean the committed table is stale against the corpus -- the shape of the defect
+/// this change removes, where the host read its own copy and a gone subject kept being reported on as
+/// though it were present. The dispatch therefore refuses, located and typed, at the instrument
+/// contract's exit 2 (`Termination::Refused`), rather than run what is no longer there.
+fn instrument_subject_absence_refusal(
+    producer: &TargetProducer,
+    label: &str,
+) -> Option<InvocationRefusal> {
+    let (field, path) = match producer {
+        TargetProducer::NativeClaimProgram { entry, .. } => ("entry", entry),
+        TargetProducer::NativeServeProgram { entry, .. } => ("entry", entry),
+        TargetProducer::CliWireProgram { entry, .. } => ("entry", entry),
+        _ => return None,
+    };
+    if instrument_subject_is_present(path) {
+        None
+    } else {
+        Some(InvocationRefusal::InstrumentSubjectAbsent {
+            label: label.to_string(),
+            field: field.to_string(),
+            path: path.to_string(),
+        })
+    }
+}
+
 fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
+    if let Some(refusal) = instrument_subject_absence_refusal(&producer, label) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: invocation_refusal_rendered(&refusal),
+        };
+    }
     match producer {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
@@ -2444,11 +2148,6 @@ fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
         message,
     }
 }
-
-fn behavioral_receipt_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
 fn behavioral_outcome(
     outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
 ) -> InvocationOutcome {
@@ -5054,5 +4753,114 @@ mod registry_rows_identity_tests {
             2,
             "a kind change must also be named"
         );
+    }
+}
+
+#[cfg(test)]
+mod instrument_registry_generated_falsifier {
+    use super::*;
+
+    /// CONTROL: the table the dispatch reads is the rendering of the model's binding rows -- all 62
+    /// instruments, each with the subject its binding row names. A row dropped from the roster, or a
+    /// subject rewritten in the host, lands here.
+    #[test]
+    fn the_dispatch_table_is_the_rendered_roster() {
+        let rows = instrument_registry();
+        assert_eq!(rows.len(), 62, "the instrument table lost or gained a row");
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| l.target.as_str()).collect();
+        for expected in [
+            "self-host",
+            "roster-import-sweep-controls",
+            "native-serve-startup-refusal",
+            "heads-reading-differential",
+            "append-chain-ladder",
+        ] {
+            assert!(
+                labels.contains(&expected),
+                "instrument {expected} lost its row"
+            );
+        }
+        let subject_count = rows
+            .iter()
+            .filter(|(_, p)| {
+                matches!(
+                    p,
+                    TargetProducer::NativeClaimProgram { .. }
+                        | TargetProducer::NativeServeProgram { .. }
+                        | TargetProducer::CliWireProgram { .. }
+                        | TargetProducer::NativeCensusVerb { .. }
+                )
+            })
+            .count();
+        assert_eq!(
+            subject_count, 37,
+            "the roster carries 37 subjects (17 claim programs, 12 wire programs, 5 serve programs, 3 census verbs)"
+        );
+    }
+
+    /// CONTROL: every subject the committed table names is present in this checkout. This is the leg
+    /// that a stale table fails -- it is the shape of PR 15298, where a row named a subject that was
+    /// no longer the one the model declared.
+    #[test]
+    fn every_declared_subject_is_present() {
+        for (label, producer) in instrument_registry() {
+            if let Some(refusal) = instrument_subject_absence_refusal(&producer, &label.target) {
+                panic!(
+                    "the committed instrument table names a subject the checkout lacks: {}",
+                    invocation_refusal_rendered(&refusal)
+                );
+            }
+        }
+    }
+
+    /// RED: a generated row whose subject the checkout lacks refuses, typed and located, at exit 2,
+    /// and never reaches the subject. Without the check the host would evaluate a path that is gone
+    /// and report on it.
+    #[test]
+    fn a_row_naming_an_absent_subject_refuses_at_the_instrument_exit_two() {
+        let absent = "dag/gunbc/instruments/absent_subject_fixture.dag";
+        assert!(
+            !std::path::Path::new(absent).exists(),
+            "the fixture path must stay absent for this test to mean anything"
+        );
+        let cases = vec![
+            (
+                TargetProducer::NativeClaimProgram { entry: absent },
+                "native-claim-program",
+            ),
+            (
+                TargetProducer::NativeServeProgram { entry: absent },
+                "native-serve-startup-refusal",
+            ),
+            (
+                TargetProducer::CliWireProgram {
+                    entry: absent,
+                    function: "a_function",
+                },
+                "roster-import-sweep-controls",
+            ),
+        ];
+        for (producer, label) in cases {
+            let outcome = run_producer(producer, label);
+            assert_eq!(
+                outcome.termination,
+                Termination::Refused,
+                "an absent subject must refuse, not run: {label}"
+            );
+            assert!(
+                outcome
+                    .message
+                    .contains("which is absent from this checkout")
+                    && outcome.message.contains(absent)
+                    && outcome.message.contains(&format!("instrument {label}")),
+                "the refusal must name the instrument, the field and the path: {}",
+                outcome.message
+            );
+            assert_eq!(
+                invocation_exit_status(outcome.termination),
+                2,
+                "the instrument contract refuses at exit 2"
+            );
+        }
     }
 }

@@ -1321,6 +1321,38 @@ fn behavioral_receipt_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
+// THE ORPHAN, BROUGHT HOME. The host's emitted-crate-workspace instrument read a source-root list
+// that existed only in the host; the instrument's own module never stated it. Stated here so the
+// corpus it measures is the instrument's fact, rendered into the host by
+// `gunbc.instruments.instrument_registry_emit`.
+fn emitted_crate_workspace_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// WHICH CORPUS AN INSTRUMENT MEASURES, IN ONE LIST.
+//
+// A row is a MEASURED SUBJECT, not a label: the three behavioral producers measure one corpus and
+// share one list, so the key is the subject's name -- the same word the supplying `*_source_roots`
+// function is built from -- and the values come from that function and nowhere else. The host used to
+// hand-list these six bodies beside the code that reads them, which is the same subject held twice
+// with the dispatch reading the unbound copy; the emitter renders them from here, so a subject that
+// loses its row loses its host function and the seed stops compiling rather than measuring nothing.
+type InstrumentSourceRootsRow {
+  name: String
+  roots: List<String>
+}
+
+fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
+  [
+    InstrumentSourceRootsRow { name: "heads_reading_differential" roots: heads_reading_differential_source_roots() }
+    InstrumentSourceRootsRow { name: "self_host" roots: self_host_source_roots() }
+    InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
+    InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
+    InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
+    InstrumentSourceRootsRow { name: "behavioral_receipt" roots: behavioral_receipt_source_roots() }
+  ]
+}
+
 // WHAT AN INVOCATION OF THIS INSTRUMENT DOES NOT ESTABLISH, STATED HERE RATHER THAN ASSUMED SAFE.
 //
 // The differential's producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it

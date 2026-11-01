@@ -258,6 +258,7 @@ pub mod gunbc_stage0_stage0_executable_assembly_generated;
     clippy::all
 )]
 pub mod gunbc_stage0_stage0_partition_package_graph;
+pub mod instrument_registry_generated;
 #[allow(
     unused_imports,
     unused_variables,

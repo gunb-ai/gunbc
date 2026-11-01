@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.instrument_subject_bound_twice_the_registry_reads_the_unbound_copy
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.guarantee_rung { GuaranteeRung }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, RungStanding, FoundOnRung }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data instrument_subject_bound_twice_the_registry_reads_the_unbound_copy: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_subject_bound_twice_the_registry_reads_the_unbound_copy" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: StructurallyGuaranteed },
+    standing: AtCeiling {
+      rung: StructurallyGuaranteed,
+      ceiling_reason: "the instrument table is now RENDERED from the model's binding rows by gunbc.instruments.instrument_registry_emit and joins the seed-build artifact population, so there is no second copy for the dispatch to read: an instrument whose binding row is lost loses its table entry and the seed stops compiling, and a committed table naming a subject the checkout lacks is refused at dispatch with a located cause at the instrument contract's exit 2. The ceiling is the table's subject identity only -- a NativeServeProbe and the native-claim deadline are read from gunbc.instrument_targets at spawn, and the measured-corpus rows key on a subject NAME the model states, so those pairings remain model-side by design rather than being guaranteed here.",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: an instrument's subject -- the entry path the host evaluates, the wire function it calls, the census verb it runs -- is stated in the model and again in the host's dispatch table, and the dispatch reads the host copy. HARM: silent wrongness (DESIGN section 5). The model can be corrected, or the file it names can move, and the host keeps running the stale subject and reporting on it as though it were the declared one; no stage consults the authority the table claims to mirror, so nothing refuses.",
+
+    "OCCURRENCE, 2026-11-01, PR 15298 is the specimen the class was raised from: a label's row named a subject that was not the one `gunbc.instrument_targets` declared, and the dispatch ran what the row said. The same file carried the class a second way: six measured-corpus lists hand-listed beside the code that reads them, and one of the six (`emitted_crate_workspace_source_roots`) existed ONLY in the host, with no fact in the instrument's own module at all. At the time this row was filed the two copies agreed -- a mechanical comparison of all 62 rows found no content drift -- which is what makes the class dangerous rather than merely untidy: agreement is not enforcement, and the copy the dispatch read could have diverged with nothing the worse for it.",
+
+    "Climb note. The class was at `OutsideTheLadder` while the host authored its own rows, because no execution consulted the model at all. It moves to `StructurallyGuaranteed` for the table's subject identity by rendering the table from the roster and admitting the file to the population heal regenerates, which makes a stale table a compile failure or a heal refusal rather than a passing build. What is NOT climbed here, named rather than glossed: the roots rows are keyed by a subject name the model states (a name is not a subject), and the probe plan and deadline were already read from the model at spawn, so they were never part of this fork and are not claimed as fixed.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "instrument_bindings", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.instrument_registry_emit", decl_name: "expected_instrument_registry_generated_rs", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.seed_build_artifact_emit", decl_name: "seed_build_artifacts", field: WholeDeclaration },
+  ],
+}
