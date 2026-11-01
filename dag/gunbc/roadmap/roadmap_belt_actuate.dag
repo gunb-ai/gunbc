@@ -589,10 +589,14 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
-  attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
-import gunbc.durable_handoff_host {
-  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+import gunbc.spool_queue {
+  SpoolAttemptExit, SpoolStore, SpoolEntryKey, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, SpoolListing, SpoolListed, SpoolListingUnreadable,
+  SpoolOutcomeDone, SpoolKeyMinted, SpoolKeyRefused, SpoolClaimWon, SpoolClaimWonUnrecorded, SpoolClaimLost, SpoolClaimAbsentEntry, SpoolClaimNotDone, SpoolClaimUnmovable,
+  SpoolCompleted, SpoolCompleteNotDone, SpoolCompleteUnmovable, SpoolRequeued, SpoolRequeueNotDone, SpoolRequeueUnmovable,
+  SpoolForeignRefused, SpoolForeignIsAnEntry, SpoolForeignUnmovable,
+  spool_open, spool_role_path, spool_entry_key_of_name, spool_queue_list, spool_queue_claim, spool_queue_complete,
+  spool_queue_boot_evidence, spool_queue_requeue_on_evidence, spool_queue_refuse_foreign,
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
@@ -15153,19 +15157,88 @@ type BeltExitDrain
   = BeltExitDrained { entries: List<BeltExitDrainEntry>, launch: BeltObligationEnqueue? }
   | BeltExitDrainRefused { reason: String }
 
-fn belt_exit_entry_move(instance: HostDashboardInstance, entry: String, from: HostSpoolStage, to: HostSpoolStage) -> String? {
+fn belt_exit_entry_move(instance: HostDashboardInstance, entry: String, from: SpoolRole, to: SpoolRole) -> String? {
   belt_exit_entry_move_at(root: instance.instance_root as String, entry: entry, from: from, to: to)
 }
 
-fn belt_exit_entry_move_at(root: String, entry: String, from: HostSpoolStage, to: HostSpoolStage) -> String? {
-  let cmd = mv_exact_destination_command(
-    source: join([attempt_exit_spool_stage_dir(instance_root: root, stage: from), "/", entry], ""),
-    destination: join([attempt_exit_spool_stage_dir(instance_root: root, stage: to), "/", entry], ""),
-  )
-  match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
-    ExecOk { stdout: _ } => none
-    ExecFailed { program: _, exit_code, stderr } => Present { value: join(["mv exited ", to_string(exit_code), ": ", stderr], "") }
-    ExecRefused { program: _, reason } => Present { value: reason }
+fn belt_exit_role_list(root: String, role: SpoolRole) -> SpoolListing {
+  spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: role)
+}
+
+fn belt_exit_role_entry_path(root: String, role: SpoolRole, entry: String) -> String {
+  match spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: role) {
+    Present { value: dir } => join([dir, "/", entry], "")
+    Absent => join(["<the exit spool declares no directory for this role>/", entry], "")
+  }
+}
+
+fn belt_exit_claim_step(store: SpoolStore, key: SpoolEntryKey) -> String? {
+  match spool_queue_claim(store: store, key: key) {
+    SpoolClaimWon { from: _, into: _ } => none
+    SpoolClaimWonUnrecorded { from: _, into: _, cause } => Present { value: join(["claimed, but the claim record was not written: ", cause], "") }
+    SpoolClaimLost => Present { value: "another principal holds the claim" }
+    SpoolClaimAbsentEntry => Present { value: "the entry is no longer in the spool" }
+    SpoolClaimNotDone { assessment: _ } => Present { value: "the entry is not claimable from where it stands" }
+    SpoolClaimUnmovable { from: _, into: _, cause } => Present { value: cause }
+  }
+}
+
+fn belt_exit_complete_step(store: SpoolStore, key: SpoolEntryKey) -> String? {
+  match spool_queue_complete(store: store, key: key, outcome: SpoolOutcomeDone) {
+    SpoolCompleted { into: _ } => none
+    SpoolCompleteNotDone { assessment: _ } => Present { value: "the entry is not completable from where it stands" }
+    SpoolCompleteUnmovable { from: _, into: _, cause } => Present { value: cause }
+  }
+}
+
+fn belt_exit_then(first: String?, next: fn() -> String?) -> String? {
+  match first {
+    Absent => next()
+    Present { value: why } => Present { value: why }
+  }
+}
+
+// EVERY MOVE IS A DECLARED OPERATION OF gunbc.spool_queue: a handoff or claim step, a completion, the evidence-gated
+// requeue, or the refusal of a name that is not an entry. A (from, to) pair the declaration has no operation for is a
+// typed refusal, never a rename.
+fn belt_exit_entry_move_at(root: String, entry: String, from: SpoolRole, to: SpoolRole) -> String? {
+  let store = spool_open(kind: SpoolAttemptExit, instance_root: root)
+  match from {
+    RolePending =>
+      if to == RoleRefused {
+        match spool_queue_refuse_foreign(store: store, name: entry) {
+          SpoolForeignRefused { name: _ } => none
+          SpoolForeignIsAnEntry => Present { value: "the name decodes as an entry; a well-formed entry is refused by its caller, not as foreign" }
+          SpoolForeignUnmovable { cause } => Present { value: cause }
+        }
+      } else {
+        belt_exit_keyed_move(store: store, entry: entry, from: from, to: to)
+      }
+    other => belt_exit_keyed_move(store: store, entry: entry, from: other, to: to)
+  }
+}
+
+fn belt_exit_keyed_move(store: SpoolStore, entry: String, from: SpoolRole, to: SpoolRole) -> String? {
+  match spool_entry_key_of_name(kind: SpoolAttemptExit, name: entry) {
+    SpoolKeyRefused { detail } => Present { value: join(["the name is not an entry key: ", detail], "") }
+    SpoolKeyMinted { key } =>
+      if from == RolePending && to == RoleHandedOff {
+        belt_exit_claim_step(store: store, key: key)
+      } else if from == RoleHandedOff && to == RoleClaimed {
+        belt_exit_claim_step(store: store, key: key)
+      } else if from == RolePending && to == RoleDone {
+        belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_complete_step(store: store, key: key)))
+      } else if from == RoleClaimed && to == RoleDone {
+        belt_exit_complete_step(store: store, key: key)
+      } else if from == RoleClaimed && to == RolePending {
+        match spool_queue_requeue_on_evidence(store: store, key: key, evidence: spool_queue_boot_evidence(store: store, key: key)) {
+          SpoolRequeued { into: _ } => none
+          SpoolRequeueNotDone { assessment: _ } => Present { value: "no evidence that the claimant is dead, so the claimed entry stays claimed" }
+          SpoolRequeueUnmovable { cause } => Present { value: cause }
+        }
+      } else {
+        Present { value: "the exit spool declares no operation for this transition" }
+      }
   }
 }
 
@@ -15179,17 +15252,17 @@ fn belt_exit_entry_move_at(root: String, entry: String, from: HostSpoolStage, to
 // THE MOVE IS SUPPLIED. Production passes belt_exit_entry_move_at; a witness passes a move that refuses a
 // named entry, because an entry the drain's principal cannot rename (a root-owned directory) is not
 // authorable in unprivileged CI.
-fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrainEntry {
+fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> BeltExitDrainEntry {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } =>
-      match move(root, entry, AttemptExitInbox, AttemptExitRefused) {
+      match move(root, entry, RolePending, RoleRefused) {
         Absent => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record: ", reason], "") }
-        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitRefused }, cause: why }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: RolePending, to: RoleRefused }, cause: why }
       }
     AttemptExitEntryDecoded { record: _ } =>
-      match move(root, entry, AttemptExitInbox, AttemptExitQueued) {
+      match move(root, entry, RolePending, RoleHandedOff) {
         Absent => BeltExitEntryClaimed { entry: entry }
-        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitQueued }, cause: why }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: RolePending, to: RoleHandedOff }, cause: why }
       }
   }
 }
@@ -15206,10 +15279,10 @@ fn belt_exit_entry_is_worker(entry: String) -> Bool {
 // hook's `obligation` entry (the unit ended while the manager was up) and the drain's own start (boot,
 // where no hook ran) -- so a lone orphaned claim recovers with no exit, answer, launch or operator
 // action. A live unit keeps its claim; an unreadable manager leaves it and says so.
-fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
-  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
-    AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "running", reason: reason }]
-    AttemptExitStageNames { names } =>
+fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
+  match belt_exit_role_list(root: root, role: RoleClaimed) {
+    SpoolListingUnreadable { reason } => [BeltExitEntryRefused { entry: "running", reason: reason }]
+    SpoolListed { names } =>
       names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: n, reason: join(["running entry is not an exit record: ", reason], "") }]
         AttemptExitEntryDecoded { record } =>
@@ -15223,10 +15296,10 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
   }
 }
 
-fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
-  match move(root, entry, AttemptExitRunning, AttemptExitQueued) {
+fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, RoleClaimed, RoleHandedOff) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitRunning, to: AttemptExitQueued }, cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: RoleClaimed, to: RolePending }, cause: why }]
   }
 }
 
@@ -15240,7 +15313,7 @@ fn belt_exit_entry_is_obligation(entry: String) -> Bool {
 // THE OBLIGATION ENTRY IS A WAKE-UP, NOT A HAND-OFF. Consumed (inbox -> done) only once its attempt's unit
 // is gone -- the hook writes while the unit is still stopping, and consuming it then would lose the very
 // rescue it exists for; a live unit leaves it in the inbox and the level fires again. It is never enqueued.
-fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
     AttemptExitEntryDecoded { record } =>
@@ -15253,10 +15326,10 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
   }
 }
 
-fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
-  match move(root, entry, AttemptExitInbox, AttemptExitDone) {
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, RolePending, RoleDone) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitDone }, cause: why }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: RolePending, to: RoleDone }, cause: why }]
   }
 }
 
@@ -15267,9 +15340,9 @@ fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligatio
 // The sweep runs after every claim in this pass: the claims are bound first, and the sweep lists `queued`
 // afterwards, so a claimed entry is handed in the pass that claimed it. A worker's launch is owed only for
 // a worker entry whose claim succeeded.
-fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrain {
-  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
-    AttemptExitStageUnreadable { reason } => BeltExitDrainRefused { reason: reason }
+fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> BeltExitDrain {
+  match belt_exit_role_list(root: root, role: RolePending) {
+    SpoolListingUnreadable { reason } => BeltExitDrainRefused { reason: reason }
     AttemptExitStageNames { names: inbox } => {
       let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe, move: move)
       let rescues = inbox |> filter(n => belt_exit_entry_is_obligation(entry: n))
@@ -15394,7 +15467,7 @@ type BeltExitStallRelease
   | BeltExitStallStillUnmovable { entries: List<SpoolStallEntry> }
   | BeltExitStallReleaseRefused { reason: String }
 
-fn belt_exit_stall_reclaim_entry_at(root: String, e: SpoolStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+fn belt_exit_stall_reclaim_entry_at(root: String, e: SpoolStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
   if any(inbox, n => n == e.entry) && !belt_exit_entry_is_obligation(entry: e.entry) {
     [belt_exit_entry_drain_at(root: root, entry: e.entry, move: move)]
   } else if any(running, n => n == e.entry) {
@@ -15404,16 +15477,16 @@ fn belt_exit_stall_reclaim_entry_at(root: String, e: SpoolStallEntry, inbox: Lis
   }
 }
 
-fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitStallRelease {
+fn belt_exit_stall_release_at(root: String, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> BeltExitStallRelease {
   match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
     SpoolStallNone => BeltExitStallNotHeld
     SpoolStallUnreadable { reason } => BeltExitStallReleaseRefused { reason: join(["the stall record is unreadable: ", reason], "") }
     SpoolStallHeld { entries: recorded } =>
-      match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
-        AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+      match belt_exit_role_list(root: root, role: RolePending) {
+        SpoolListingUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
         AttemptExitStageNames { names: inbox } =>
-          match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
-            AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+          match belt_exit_role_list(root: root, role: RoleClaimed) {
+            SpoolListingUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
             AttemptExitStageNames { names: running } => {
               let attempts = recorded |> flat_map(e => belt_exit_stall_reclaim_entry_at(root: root, e: e, inbox: inbox, running: running, move: move))
               let still = attempts |> flat_map(a => match a {
@@ -15453,8 +15526,8 @@ fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExi
 
 // WHERE A RECORDED ENTRY LIVES: the stage its failing move starts from (the entry sits in `from`). The stat reading
 // and the clear's admission both take their path from here, so what is observed is exactly what is cleared.
-fn belt_exit_stall_entry_path(root: String, stage: HostSpoolStage, entry: String) -> String {
-  join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", entry], "")
+fn belt_exit_stall_entry_path(root: String, stage: SpoolRole, entry: String) -> String {
+  belt_exit_role_entry_path(root: root, role: stage, entry: entry)
 }
 
 // `stat` WITHOUT -L, so a symlink reads as `symbolic link` and never as what it points at. The type leads so
@@ -15463,7 +15536,7 @@ fn belt_exit_stall_path_stat_at(path: String) -> BeltExitStallObservation {
   belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%F|%U|%a", path]), workdir: belt_observe_workdir as String), what: "stat")
 }
 
-fn belt_exit_stall_entry_stat_at(root: String, stage: HostSpoolStage, entry: String) -> BeltExitStallObservation {
+fn belt_exit_stall_entry_stat_at(root: String, stage: SpoolRole, entry: String) -> BeltExitStallObservation {
   belt_exit_stall_path_stat_at(path: belt_exit_stall_entry_path(root: root, stage: stage, entry: entry))
 }
 
@@ -15703,14 +15776,14 @@ fn belt_exit_entry_is_for(entry: String, node_id: String, attempt_key: String) -
 }
 
 fn belt_exit_entries_claim_at(root: String, node_id: String, attempt_key: String) -> BeltExitClaim {
-  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
-    AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
+  match belt_exit_role_list(root: root, role: RoleHandedOff) {
+    SpoolListingUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
     AttemptExitStageNames { names: queued } =>
-      match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
-        AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the running exit entries could not be listed: ", reason], "") }
+      match belt_exit_role_list(root: root, role: RoleClaimed) {
+        SpoolListingUnreadable { reason } => BeltExitClaimRefused { reason: join(["the running exit entries could not be listed: ", reason], "") }
         AttemptExitStageNames { names: running } => {
           let mine = queued |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key))
-          let failed = mine |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: AttemptExitQueued, to: AttemptExitRunning) {
+          let failed = mine |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: RoleHandedOff, to: RoleClaimed) {
             Absent => [] as List<String>
             Present { value: why } => [join([n, ": ", why], "")]
           })
@@ -15730,7 +15803,7 @@ fn belt_exit_entries_claim(instance: HostDashboardInstance, node_id: String, att
 
 // SETTLEMENT MOVES ONLY THE CLAIM running -> done, after the receipt that names it is written.
 fn belt_exit_entries_settle_at(root: String, claimed: List<String>) -> List<String> {
-  claimed |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: AttemptExitRunning, to: AttemptExitDone) {
+  claimed |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: RoleClaimed, to: RoleDone) {
     Absent => [] as List<String>
     Present { value: why } => [join([n, ": ", why], "")]
   })
@@ -15743,9 +15816,9 @@ fn belt_exit_entries_settle(instance: HostDashboardInstance, claimed: List<Strin
 // EXITS THIS ATTEMPT STILL HAS UNCLAIMED, listed from the queue: the run's own re-check after settling
 // (a second bounded pass picks up an arrival the first one could not have seen).
 fn belt_exit_entries_pending_at(root: String, node_id: String, attempt_key: String) -> BeltExitClaim {
-  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
-    AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
-    AttemptExitStageNames { names } => BeltExitClaimed { entries: names |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key)) }
+  match belt_exit_role_list(root: root, role: RoleHandedOff) {
+    SpoolListingUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
+    SpoolListed { names } => BeltExitClaimed { entries: names |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key)) }
   }
 }
 
@@ -15754,9 +15827,9 @@ fn belt_exit_entries_pending_at(root: String, node_id: String, attempt_key: Stri
 // the next drain picks the entry up), a gone unit is started and its run claims the entry. One enqueue
 // per attempt, whatever its entry count.
 fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
-  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
-    AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "queued", reason: reason }]
-    AttemptExitStageNames { names } =>
+  match belt_exit_role_list(root: root, role: RoleHandedOff) {
+    SpoolListingUnreadable { reason } => [BeltExitEntryRefused { entry: "queued", reason: reason }]
+    SpoolListed { names } =>
       fold(names, init: [] as List<BeltExitDrainEntry>, f: (acc, n) => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
         AttemptExitEntryDecoded { record } => {
@@ -15782,7 +15855,7 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
 // Inbox and queued only: done and refused are not a backlog -- one is consumed, the other is a refusal
 // the drain already reported. Any unreadable listing or unparseable time refuses the read whole.
 type BeltExitSpoolEntryTime {
-  stage: HostSpoolStage
+  stage: SpoolRole
   entry: String
   mtime_epoch: EpochSecs
 }
@@ -15791,11 +15864,11 @@ type BeltExitSpoolTimes
   = BeltExitSpoolTimesRead { entries: List<BeltExitSpoolEntryTime> }
   | BeltExitSpoolTimesUnreadable { reason: String }
 
-fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: HostSpoolStage, label: String) -> BeltExitSpoolTimes {
+fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: SpoolRole, label: String) -> BeltExitSpoolTimes {
   let root = instance.instance_root as String
-  match attempt_exit_stage_list(instance_root: root, stage: stage) {
-    AttemptExitStageUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
-    AttemptExitStageNames { names } =>
+  match belt_exit_role_list(root: root, role: stage) {
+    SpoolListingUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+    SpoolListed { names } =>
       fold(names, init: BeltExitSpoolTimesRead { entries: [] }, f: (acc, n) => match acc {
         BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
         BeltExitSpoolTimesRead { entries } => {
@@ -15820,13 +15893,13 @@ fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: HostSpool
 }
 
 fn belt_exit_spool_times(instance: HostDashboardInstance) -> BeltExitSpoolTimes {
-  match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitInbox, label: "inbox") {
+  match belt_exit_spool_stage_times(instance: instance, stage: RolePending, label: "inbox") {
     BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
     BeltExitSpoolTimesRead { entries: inbox } =>
-      match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitQueued, label: "queued") {
+      match belt_exit_spool_stage_times(instance: instance, stage: RoleHandedOff, label: "queued") {
         BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
         BeltExitSpoolTimesRead { entries: queued } =>
-          match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitRunning, label: "running") {
+          match belt_exit_spool_stage_times(instance: instance, stage: RoleClaimed, label: "running") {
             BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
             BeltExitSpoolTimesRead { entries: running } => BeltExitSpoolTimesRead { entries: concat(inbox, concat(queued, running)) }
           }
