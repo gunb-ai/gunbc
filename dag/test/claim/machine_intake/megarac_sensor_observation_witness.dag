@@ -10,7 +10,9 @@ import gunbc.machine_intake.megarac_sensor_observation {
   MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming,
   megarac_sensor_socket, megarac_socket_sensor_lines, megarac_socket_unstructured_lines,
   megarac_sensor_anomalies, megarac_sensor_table_text,
+  megarac_sdr_socket_naming_reads, decoded_sensor_lines,
 }
+import extdeps.bmc.megarac { megarac_firmware_0_45_3, bmc_firmware_release_identity_eq }
 import gunbc.machine_intake.mtcollins1_power_on_account { BmcAnomaly }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
@@ -72,6 +74,27 @@ test fn a_host_admitted_for_virtual_media_mints_no_socket_naming() -> Bool {
     MegaRacHostRefused { cause: _ } => false
     MegaRacHostAdmitted { host: h } => match megarac_sdr_socket_naming(host: h) { SdrSocketNamingRefused { reason: _ } => true  _ => false }
   }
+}
+
+// EACH NAMING READ IS GROUNDED IN THE CAPTURE IT NAMES, not in this file's word for it. Every row of
+// gunbc.machine_intake.megarac_sensor_observation megarac_sdr_socket_naming_reads carries the capture that READ the naming on that build: the 32-DIMM bring-up
+// `sdr elist`, and the boot diagnostics retained for boot run 37102391062, which is the very capture
+// this controller's MegaRacSdrSocketNaming receipt points at (its table repeats, which is why the floor
+// is 38 rows and not a total). The claim reads each row's own bytes and refuses a row whose prefix
+// those bytes do not use, so a row invented for a build nobody read, or a prefix that drifted, goes red
+// here rather than as a sensor reading that silently attributes nothing.
+test fn the_prefix_a_naming_read_names_is_the_prefix_its_own_capture_uses() -> Bool {
+  all(megarac_sdr_socket_naming_reads, r => {
+    let rows = decoded_sensor_lines(lines: sdr_decode_lines(stdout: Filesystem.Read(path: r.capture as String).content))
+    count(rows.filter(x => starts_with(s: x.name as String, prefix: r.prefix))) >= 38
+  })
+}
+
+// THE OPERATOR'S PAGE LABEL IS NOT A BUILD THIS CONTROLLER WAS READ TO RUN: the page says 0.45.3, and no
+// capture was read on a release named that, so no naming row resolves to it. A row for the label would
+// be a label wearing a read build's clothes, and this is the red that says so.
+test fn the_page_label_release_has_no_socket_naming_read() -> Bool {
+  count(megarac_sdr_socket_naming_reads.filter(r => bmc_firmware_release_identity_eq(a: r.firmware, b: megarac_firmware_0_45_3))) == 0
 }
 
 fn table_read_whole() -> Bool {
