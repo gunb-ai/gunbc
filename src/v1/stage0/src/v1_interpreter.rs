@@ -13370,11 +13370,15 @@ fn eval_field_access(
     // optional `OptionalUnwrap` and every other field read off an optional with value shape
     // `OptionalValue`. The interpreter realizes that declaration: peel `Present { value }`,
     // refuse `Absent` with a typed error. It never reads a field off the variant itself.
+    // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
+    // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
+    // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
+    // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
     let reads_off_optional = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap))
-        || matches!(
+        || (matches!(
             summary.map(|s| &s.value_shape),
             Some(FieldValueShape::OptionalValue)
-        );
+        ) && is_optional_variant(&base_val, ctx));
     let base_val = if reads_off_optional {
         match optional_present_payload(&base_val, ctx)? {
             Some(payload) => payload,
