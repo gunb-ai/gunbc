@@ -22,6 +22,7 @@ import gunbc.fleet.flex_pass_run {
   FlexCarryWritten, FlexCarryWriteSkipped, FlexCarryWriteFailed, flex_carry_absent_reason,
   flex_pass_carry_path, flex_pass_carry_directory, flex_pass_carry_name,
   flex_carry_home_refusal, flex_carry_home_host, flex_carry_read,
+  flex_carry_in_progress, flex_carry_trust_after_write_ahead,
 }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused }
 import product.fabric.flex_vast_loop {
@@ -593,5 +594,47 @@ test fn the_real_carry_reader_off_the_home_host_reads_unread_with_the_located_ca
     FlexCarryUnread { reason: r } => string_contains(s: r as String, pattern: "not on the carry home host srv1")
     FlexCarryLoaded { carry: _ } => false
     FlexCarryAbsent => false
+  }
+}
+
+// THE WRITE-AHEAD RECORD: the carry the pass writes BEFORE its create reads back untrusted, so a final write
+// that never happens leaves the gate shut instead of leaving the previous well-formed carry to be trusted.
+test fn the_write_ahead_record_reads_back_untrusted_and_keeps_the_cooldown() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now, until: w_now + 600000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryNoAsk,
+  } }
+  match flex_carry_gate(content: flex_carry_render(carry: flex_carry_in_progress(reading: prior))) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryUntrusted { reason: r } =>
+          string_contains(s: r, pattern: "never recorded the outcome")
+            && length(c.sightings) == 0
+            && match c.cooldown {
+              Present { value: k } => k.until == w_now + 600000
+              Absent => false
+            }
+        FlexCarryTrusted => false
+      }
+    _ => false
+  }
+}
+
+// The control for it: with a trusted carry, a write-ahead that LANDED leaves the gate as read, and one that
+// FAILED shuts it with the error named, so a create the pass cannot recover is never planned.
+test fn a_failed_write_ahead_shuts_the_create_gate_and_a_landed_one_leaves_it() -> Bool {
+  let trusted = FlexCarryLoaded { carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: FlexCarryNoAsk } }
+  let failed = flex_carry_trust_after_write_ahead(reading: trusted, ahead: FlexCarryWriteFailed { error: "disk full" })
+  let landed = flex_carry_trust_after_write_ahead(reading: trusted, ahead: FlexCarryWritten)
+  match failed {
+    FlexCarryUntrusted { reason: r } =>
+      string_contains(s: r, pattern: "disk full")
+        && match landed {
+          FlexCarryTrusted => true
+          FlexCarryUntrusted { reason: _ } => false
+        }
+    FlexCarryTrusted => false
   }
 }

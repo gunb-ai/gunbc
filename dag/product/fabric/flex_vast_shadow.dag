@@ -1136,15 +1136,15 @@ type FlexLoadingSightings
 // in it reads UNREAD rather than 0.
 type FlexSightingsBasis = FlexSightingsBaselineComplete | FlexSightingsBaselineIncomplete
 
-// What a pass leaves behind: the sightings AND the basis they were taken on. An incomplete walk keeps the
-// PRIOR sightings (their first-sighting instants are still facts, and a later complete walk can use them)
-// but marks the basis incomplete, so nothing is aged until a complete walk re-establishes it.
+// What a pass leaves behind: the sightings AND the basis they were taken on. An incomplete walk DROPS the
+// prior sightings and marks the basis incomplete, so nothing is aged until a complete walk re-establishes it.
 type FlexSightingsCarried { basis: FlexSightingsBasis, sightings: List<FlexLoadingSighting> }
 
-// The LOWER BOUND, taken from the FIRST sighting, never the last: a card still loading across passes keeps
-// accruing it, and a card sighted loading at T was already loading at T, so the true age is at least now-T.
-// A sighting from the future (the clock moved back) is a bound of 0, not a negative age. An id with no
-// sighting inside a KNOWN set is a bound of 0, and it is only KNOWN when the baseline came from a complete
+// The SAMPLED age, taken from the FIRST sighting, never the last: a card still sampled loading across
+// passes keeps accruing it. It says the card was loading at T and at now, and nothing between (see
+// FlexOwnedCard.loading_age_sampled), so it is a span of samples and not a lower bound on the current spell.
+// A sighting from the future (the clock moved back) is 0, not a negative age. An id with no
+// sighting inside a KNOWN set is 0, and it is only KNOWN when the baseline came from a complete
 // walk -- which is why the basis is carried and checked rather than assumed.
 fn flex_loading_age(sightings: FlexLoadingSightings, instance_id: Int, now: EpochMs) -> Second? {
   match sightings {
@@ -1203,7 +1203,7 @@ fn flex_roster_card(
                   loading: false,
                   outbid: false,
                   // Not loading: the age does not apply, and the cut only reads it while loading.
-                  loading_age_at_least: Present { value: second(count: 0) },
+                  loading_age_sampled: Present { value: second(count: 0) },
                 },
               }
           }
@@ -1226,7 +1226,7 @@ fn flex_roster_card(
                   running: false,
                   loading: true,
                   outbid: false,
-                  loading_age_at_least: flex_loading_age(sightings: sightings, instance_id: row.id, now: now),
+                  loading_age_sampled: flex_loading_age(sightings: sightings, instance_id: row.id, now: now),
                 },
               }
           }

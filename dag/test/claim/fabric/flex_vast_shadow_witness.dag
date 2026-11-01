@@ -1171,7 +1171,7 @@ test fn a_running_row_we_label_becomes_a_running_card_we_hold() -> Bool {
             && !c.loading
             && c.held
             && !c.outbid
-            && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false }
+            && match c.loading_age_sampled { Present { value: a } => second_count(s: a) == 0  Absent => false }
             && byte_size_count(b: c.vram) == 98304 * 1048576
         )
     _ => false
@@ -1224,8 +1224,8 @@ test fn a_loading_card_ages_from_the_sighting_an_earlier_pass_left_and_from_noth
   ) {
     FlexRosterCardsBuilt { cards: cards, unread: unread } =>
       length(cards) == 2
-        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 7200  Absent => false })
-        && any(cards, c => c.loading && match c.loading_age_at_least { Present { value: a } => second_count(s: a) == 0  Absent => false })
+        && any(cards, c => c.loading && match c.loading_age_sampled { Present { value: a } => second_count(s: a) == 7200  Absent => false })
+        && any(cards, c => c.loading && match c.loading_age_sampled { Present { value: a } => second_count(s: a) == 0  Absent => false })
     _ => false
   }
 }
@@ -1319,10 +1319,10 @@ test fn the_sightings_a_pass_leaves_keep_the_first_time_a_card_was_seen_loading(
   }
 }
 
-// A pass that could not finish its walk marks the baseline INCOMPLETE and keeps the prior sightings
-// unchanged: an age built on a partial walk is an age built on a roster that under-counts what we hold,
+// A pass that could not finish its walk marks the baseline INCOMPLETE and DROPS the prior sightings
+// (flex_loading_sightings_after): an age built on a partial walk is an age built on a roster that under-counts what we hold,
 // and the next pass reads that basis as UNREAD rather than as a bound of zero.
-test fn a_partial_roster_marks_the_baseline_incomplete_and_keeps_the_prior_sightings() -> Bool {
+test fn a_partial_roster_marks_the_baseline_incomplete_and_drops_the_prior_sightings() -> Bool {
   let now = 1761638400000
   let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [our_loading_row(id: 13)], total: 2 }
   let carried = flex_loading_sightings_after(
@@ -1333,7 +1333,7 @@ test fn a_partial_roster_marks_the_baseline_incomplete_and_keeps_the_prior_sight
   )
   match carried.basis {
     FlexSightingsBaselineIncomplete =>
-      length(carried.sightings) == 1 && length(filter(carried.sightings, x => x.instance_id == 10)) == 1
+      length(carried.sightings) == 0
     FlexSightingsBaselineComplete => false
   }
 }

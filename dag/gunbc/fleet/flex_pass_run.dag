@@ -1000,6 +1000,38 @@ type FlexCarryWrite
 
 type FlexPassReport { receipt: String, carry: FlexCarryWrite }
 
+// THE WRITE-AHEAD RECORD (review of #15462, DESIGN 5). A pass creates FIRST and records its outcome after, so a
+// failed or interrupted final write would leave the PREVIOUS well-formed carry (say, no ask and an expired
+// cooldown) to be read as trusted, and the next pass would plan a second create while the lost ask may still
+// land. So BEFORE the effect the carry is rewritten with the standing UNKNOWN: the final write replaces it, and
+// a final write that never happens leaves the gate shut. The cooldown is kept (it still covers the window); the
+// sightings are dropped and the basis marked incomplete, the same as any pass that cannot vouch for its roster.
+data flex_carry_in_progress_reason: String = "a pass began its create and never recorded the outcome (the write-ahead record was not replaced); an operator must restate the standing before a create is planned"
+
+fn flex_carry_in_progress(reading: FlexCarryReading) -> FlexCarry {
+  FlexCarry {
+    cooldown: flex_carry_cooldown(reading: reading),
+    basis: FlexSightingsBaselineIncomplete,
+    sightings: [],
+    standing: FlexCarryStandingUnknown { reason: flex_carry_in_progress_reason as NonEmptyStr },
+  }
+}
+
+// The create gate the pass runs under: the trust of what it read, unless the write-ahead record could not be
+// written. A skipped write-ahead is an off-home pass whose carry read already refused, so it keeps that trust.
+fn flex_carry_write_ahead_untrusted(error: String) -> FlexCarryTrust {
+  let reason = concat("the write-ahead record could not be written, so a create could not be recovered if its outcome were lost: ", error)
+  FlexCarryUntrusted { reason: reason as NonEmptyStr }
+}
+
+fn flex_carry_trust_after_write_ahead(reading: FlexCarryReading, ahead: FlexCarryWrite) -> FlexCarryTrust {
+  match ahead {
+    FlexCarryWriteFailed { error: e } => flex_carry_write_ahead_untrusted(error: e)
+    FlexCarryWritten => flex_carry_trust(reading: reading)
+    FlexCarryWriteSkipped { because: _ } => flex_carry_trust(reading: reading)
+  }
+}
+
 // The write follows the read's trust: a pass off the carry home host did not read the carry and must not
 // leave a second one behind, so it skips with the located cause (a skip is not a failure; its create already
 // refused on the unread carry).
@@ -1027,6 +1059,8 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
   // file, because neither is on the Vast wire.
   let host = hostname_short_read(transport: LocalShell)
   let carry = flex_carry_read(path: flex_pass_carry_path(), host: host)
+  let write_ahead = flex_carry_write(host: host, content: flex_carry_render(carry: flex_carry_in_progress(reading: carry)))
+  let create_gate = flex_carry_trust_after_write_ahead(reading: carry, ahead: write_ahead)
   let cards = flex_cards_from_roster(
     ours: flex_owner_label_gunbc_flex,
     roster: instances,
@@ -1055,7 +1089,7 @@ fn flex_pass_with_key(key: Secret, resolved_version: NonEmptyStr, now: EpochMs) 
           gates: FlexWetGates { key: FlexKeyLive { route: FlexKeyFromSecretManager { resolved_version: resolved_version } } },
           now: now,
           cooldown: flex_carry_cooldown(reading: carry),
-          carry: flex_carry_trust(reading: carry),
+          carry: create_gate,
           observation: FlexPassObservation { roster: instances, charges: charges },
           cards: flex_cards_list(c: cards),
           allocations: [],
