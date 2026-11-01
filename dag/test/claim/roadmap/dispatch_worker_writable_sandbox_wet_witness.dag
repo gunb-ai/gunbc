@@ -39,10 +39,9 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimUnmovable, AttemptSystemUnitClaimSymlink,
   AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
   attempt_system_unit_write_answer, attempt_system_unit_launch_cli, attempt_system_unit_drain_pass, attempt_unit_stall_verdict, AttemptUnitStalled, AttemptUnitNotStalled, AttemptUnitDrainPass,
-  attempt_system_unit_claimed_path,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
-  attempt_system_unit_request_body_path, attempt_system_unit_request_path,
+  attempt_system_unit_request_body_path,
   attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
   AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
@@ -816,8 +815,8 @@ test fn two_request_entries_keep_distinct_bodies() -> Bool {
         AttemptSystemUnitEnqueued { entry: a, body: _ } =>
           match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n-b", attempt_key: "k1", argv_word: "two")) {
             AttemptSystemUnitEnqueued { entry: b, body: _ } => {
-              let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: a)))
-              let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: b)))
+              let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: unit_request_path(instance_root: root, entry: a)))
+              let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: unit_request_path(instance_root: root, entry: b)))
               ra.success && rb.success && ra.content != rb.content && a != b
             }
             AttemptSystemUnitEnqueueOccupied { entry: _ } => false
@@ -890,7 +889,7 @@ test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dest = unit_request_path(instance_root: root, entry: entry)
     attempt_system_unit_spool_prepare(instance_root: root)
       && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
       && match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
@@ -910,7 +909,7 @@ fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dir = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dir = unit_request_path(instance_root: root, entry: entry)
     let body = attempt_system_unit_request_body_path(dir: dir)
     attempt_system_unit_spool_prepare(instance_root: root)
       && shell.Mkdir.NewOwnerOnly(path: dir as FilePath).success
@@ -1077,7 +1076,7 @@ fn unmovable_request_root(tag: String) -> String? {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
-    let occupied = attempt_system_unit_claimed_path(instance_root: root, entry: entry)
+    let occupied = join([spool_witness_dir(kind: SpoolAttemptUnit, instance_root: root, role: RoleClaimed), "/", entry], "")
     if attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n1", attempt_key: tag, argv_word: "x")) {
         AttemptSystemUnitEnqueued { entry: _, body: _ } => true
@@ -1142,7 +1141,7 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dest = unit_request_path(instance_root: root, entry: entry)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
     let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
       AttemptUnitNotStalled => true
@@ -1170,7 +1169,7 @@ fn planted_symlink_request_root(tag: String, answer_exists: Bool) -> String? {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
-    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", attempt_system_unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
+    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
     let answered = if answer_exists { attempt_system_unit_write_answer(instance_root: root, entry: entry, body: "", answer: AttemptSystemUnitStarted) } else { true }
     if prepared && planted && answered { Present { value: root } } else { none }
   }
@@ -1214,4 +1213,8 @@ fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) ->
     Present { value: d } => d
     Absent => "<the spool declares no directory for this role>"
   }
+}
+
+fn unit_request_path(instance_root: String, entry: String) -> String {
+  join([spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RolePending), "/", entry], "")
 }

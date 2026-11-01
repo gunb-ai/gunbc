@@ -96,7 +96,7 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
       terminals: [],
       enqueuer: PrincipalRequester,
       claimant: PrincipalDrainer,
-      key_separator: "-",
+      key_separator: "+",
       key_part_count: 2,
     }
     SpoolAttemptExit => SpoolDeclaration {

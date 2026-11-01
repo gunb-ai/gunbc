@@ -271,7 +271,7 @@ fn key_refused(kind: SpoolKind, parts: List<String>) -> Bool {
 }
 
 test fn a_part_containing_the_separator_is_refused_so_the_mint_is_injective() -> ProcessExit {
-  if key_refused(kind: SpoolAttemptUnit, parts: ["a-b", "c"]) && key_refused(kind: SpoolAttemptUnit, parts: ["a", "b-c"]) { ExitSuccess } else { exit_failure(reason: "a separator-bearing part minted a key") }
+  if key_refused(kind: SpoolAttemptUnit, parts: ["a+b", "c"]) && key_refused(kind: SpoolAttemptUnit, parts: ["a", "b+c"]) { ExitSuccess } else { exit_failure(reason: "a separator-bearing part minted a key") }
 }
 
 test fn an_empty_or_unsafe_part_is_refused() -> ProcessExit {
@@ -290,7 +290,7 @@ test fn a_foreign_name_does_not_decode_to_a_key() -> ProcessExit {
 }
 
 test fn a_minted_name_decodes_to_the_same_key() -> ProcessExit {
-  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "node1-abc") {
+  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "node-1+abc") {
     SpoolKeyMinted { key: _ } => ExitSuccess
     SpoolKeyRefused { detail: d } => exit_failure(reason: d)
   }

@@ -38,7 +38,7 @@ test fn queue_health_names_the_oldest_owed_entry_past_its_bound() -> Bool {
     HostSpoolHealthEntry { stage: RolePending, entry: "old", age: second(count: 90) },
     HostSpoolHealthEntry { stage: RoleHandedOff, entry: "also-old", age: second(count: 80) },
   ], bounds: bounds)
-  (match clear { HostSpoolHealthClear { depth_inbox: i, depth_queued: q, depth_running: r } => i == 1 && q == 1 && r == 0  _ => false })
+  (match clear { HostSpoolHealthClear { depth_pending: i, depth_handed_off: q, depth_claimed: r } => i == 1 && q == 1 && r == 0  _ => false })
     && (match stale { HostSpoolHealthStale { stage: _, entry: e, age: a, bound: b } => e == "old" && second_count(s: a) == 90 && second_count(s: b) == 60  _ => false })
 }
 

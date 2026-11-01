@@ -475,8 +475,10 @@ test fn the_publication_unit_carries_no_spawn_environment() -> Bool {
 test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Bool {
   spool_witness_dir(kind: SpoolPublication, instance_root: "/opt/gunbc", role: RolePending)
     != publication_answer_dir(instance_root: "/opt/gunbc")
-  && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
-    != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
+  && (match publication_request_path_for(instance_root: "/opt/gunbc", key: "k") {
+    Present { value: p } => p != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
+    Absent => false
+  })
     && string_contains(s: publication_bare_mirror_path(instance_root: "/opt/gunbc") as String, pattern: "publication-spool")
 }
 
