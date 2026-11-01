@@ -793,10 +793,10 @@ test fn an_unsubstituted_exit_artifact_settles_the_real_seat_once_and_the_next_p
 // wedge row honest: everything is identical except that the boot this reading was taken from began BEFORE
 // the ledger acquired the hold, so the conjunction fails and the holder may still be running. The seat is
 // kept, the slot stays Launching, the ledger charge stays, and a second pass behaves the same way. A
-// defective writer plus a not-found reading from the same boot is not death proof: it is a broken writer
+// defective writer plus a not-found reading taken in the boot the hold was acquired in is not death proof: it is a broken writer
 // and a reading that cannot be ordered against the hold. (The rfm row
 // hold_recovered_by_age_not_observed_holder_death SITE 5 states the rule this row refuses to bend.)
-test fn an_unsubstituted_exit_artifact_with_a_not_found_reading_from_the_same_boot_keeps_the_seat_and_the_slot() -> Bool {
+test fn an_unsubstituted_exit_artifact_with_a_not_found_reading_in_a_boot_that_predates_the_acquisition_keeps_the_seat_and_the_slot() -> Bool {
   let dir = fresh_dir(tag: "unsubbound")
   match stores_at(dir: dir) {
     Absent => false

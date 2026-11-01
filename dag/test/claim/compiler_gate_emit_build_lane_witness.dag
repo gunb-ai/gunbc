@@ -5,57 +5,14 @@ import std.optional { Present, Absent }
 import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
-import gunbc.witness.compiler_gate_workflow {
-  compiler_gate_workflow,
-  compiler_gate_required_job, compiler_gate_required_job_id,
-  compiler_gate_fleet_job_condition,
-  compiler_gate_emit_build_bound_steps,
-  compiler_gate_emit_build_capability_closure_holds,
-  compiler_gate_emit_build_notice_step,
-  compiler_gate_emit_build_notice_lines,
-  compiler_gate_emit_build_step
-}
-import gunbc.parse_verdict_publish {
-  materialization_publish_if,
-  parse_verdict_identity_blob_save_step,
-  parse_verdict_identity_blob_save_step_name,
-  parse_verdict_publish_walk_step,
-  parse_verdict_publish_save_step,
-  parse_verdict_publish_step_name,
-  parse_verdict_save_step_name,
-  parse_verdict_publish_cache_key,
-  parse_verdict_publish_command,
-  parse_verdict_compiler_output,
-  parse_verdict_generation_one_basename,
-}
-import gunbc.parse_verdict_schema {
-  parse_verdict_request_family,
-  parse_compiler_sha_identity_cache_prefix,
-}
-import gunbc.required_ci_contract_epoch {
-  required_ci_context_name,
-  required_ci_emitted_subject_obligations,
-}
-import gunbc.emitted_subject_build_gate {
-  NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
-  emit_build_standing_notice_for,
-  emitted_subject_build_rows,
-  emitted_subject_build_label_text,
-  emitted_subject_build_command,
-  emitted_subject_build_step_name,
-  native_fault_experiment_env_name, native_fault_experiment_skip_value,
-  native_product_reuse_env_name, native_product_reuse_env_value, native_product_reuse_fresh_value,
-  native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
-  native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
-  NativeStepMemoryInput, native_step_memory_inputs,
-  emitted_subject_v2_native_cli_step_id,
-  emit_build_memory_envelope_lines
-}
+import gunbc.ci.repository_ci_profile { gunbc_required_context_name }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job, compiler_gate_fleet_job_condition, compiler_gate_emit_build_bound_steps, compiler_gate_emit_build_capability_closure_holds, compiler_gate_emit_build_notice_step, compiler_gate_emit_build_notice_lines, compiler_gate_emit_build_step }
+import gunbc.parse_verdict_publish { materialization_publish_if, parse_verdict_identity_blob_save_step, parse_verdict_identity_blob_save_step_name, parse_verdict_publish_walk_step, parse_verdict_publish_save_step, parse_verdict_publish_step_name, parse_verdict_save_step_name, parse_verdict_publish_cache_key, parse_verdict_publish_command, parse_verdict_compiler_output, parse_verdict_generation_one_basename }
+import gunbc.parse_verdict_schema { parse_verdict_request_family, parse_compiler_sha_identity_cache_prefix }
+import gunbc.required_ci_contract_epoch { required_ci_context_name, required_ci_emitted_subject_obligations }
+import gunbc.emitted_subject_build_gate { NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature, emit_build_standing_notice_for, emitted_subject_build_rows, emitted_subject_build_label_text, emitted_subject_build_command, emitted_subject_build_step_name, native_fault_experiment_env_name, native_fault_experiment_skip_value, native_product_reuse_env_name, native_product_reuse_env_value, native_product_reuse_fresh_value, native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip, native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value, NativeStepMemoryInput, native_step_memory_inputs, emitted_subject_v2_native_cli_step_id, emit_build_memory_envelope_lines }
 import std.measure { byte_size_count }
-import gunbc.runner.runner_slot_desired {
-  gunbc_runner_slot_desired,
-  JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
-}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership }
 import extdeps.exec.command { shell_command_render }
 import std.algebra { length, list_head, skip, string_contains }
 import gunbc.action_use_admission { cache_save_action }
@@ -114,9 +71,9 @@ fn step_env_has(step: Step, key: String, value: String) -> Bool {
 // job (an aggregate regrown, a lane returned) reds this, and so does a workflow that lost the job.
 test fn the_workflow_runs_exactly_the_required_job() -> Bool {
   let ids = compiler_gate_workflow.jobs |> map(j => j.id)
-  compiler_gate_required_job_id == (required_ci_context_name as String)
-    && any(ids, id => id == compiler_gate_required_job_id)
-    && all(ids, id => id == compiler_gate_required_job_id)
+  gunbc_required_context_name() == (required_ci_context_name as String)
+    && any(ids, id => id == gunbc_required_context_name())
+    && all(ids, id => id == gunbc_required_context_name())
 }
 
 // THE FOUR WITHDRAWN LANES ARE NOT JOBS (operator ruling 2026-10-09, gunbc.rung_drop
@@ -526,7 +483,7 @@ fn publisher_order_holds(steps: List<Step>) -> Bool {
 test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
   any(
     compiler_gate_workflow.jobs,
-    j => (j.id == compiler_gate_required_job_id) && publisher_order_holds(steps: j.steps)
+    j => (j.id == gunbc_required_context_name()) && publisher_order_holds(steps: j.steps)
   )
 }
 
