@@ -5,7 +5,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Optional, Present }
 import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.resolve { ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_resolve_module }
@@ -63,7 +63,7 @@ data provider_paths: List<String> = [
 
 fn read_of(path: String, unit: Symbol, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
-    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    source: Medium { carried: Filesystem.Read(path: path).content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
     compilation_unit: unit,
     source_root: root
