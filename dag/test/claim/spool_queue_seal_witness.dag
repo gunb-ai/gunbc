@@ -13,7 +13,7 @@ import gunbc.spool_queue {
   spool_needs_claim_stage, ExclusiveByRename, ExclusiveByAgreement,
   spool_requeue_assess, BootsObserved, NoClaimantObservation, RequeueEligible, RequeueClaimantStillBound, RequeueNotClaimed, RequeueRefused,
   spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EntryAbsent, spool_complete_assess, CompleteEligible, SpoolOutcomeDone, RoleDone, spool_role_writers, PrincipalExternalHook, PrincipalDrainer, SpoolPrincipal,
-  SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
+  SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
   ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
