@@ -15205,7 +15205,7 @@ fn belt_exit_entry_move_at(root: String, entry: String, from: SpoolRole, to: Spo
   let store = spool_open(kind: SpoolAttemptExit, instance_root: root)
   match from {
     RolePending =>
-      if to == RoleRefused {
+      if (to == RoleRefused) {
         match spool_queue_refuse_foreign(store: store, name: entry) {
           SpoolForeignRefused { name: _ } => none
           SpoolForeignIsAnEntry => Present { value: "the name decodes as an entry; a well-formed entry is refused by its caller, not as foreign" }
@@ -15222,15 +15222,15 @@ fn belt_exit_keyed_move(store: SpoolStore, entry: String, from: SpoolRole, to: S
   match spool_entry_key_of_name(kind: SpoolAttemptExit, name: entry) {
     SpoolKeyRefused { detail } => Present { value: join(["the name is not an entry key: ", detail], "") }
     SpoolKeyMinted { key } =>
-      if from == RolePending && to == RoleHandedOff {
+      if (from == RolePending && to == RoleHandedOff) {
         belt_exit_claim_step(store: store, key: key)
-      } else if from == RoleHandedOff && to == RoleClaimed {
+      } else if (from == RoleHandedOff && to == RoleClaimed) {
         belt_exit_claim_step(store: store, key: key)
-      } else if from == RolePending && to == RoleDone {
+      } else if (from == RolePending && to == RoleDone) {
         belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_then(first: belt_exit_claim_step(store: store, key: key), next: () => belt_exit_complete_step(store: store, key: key)))
-      } else if from == RoleClaimed && to == RoleDone {
+      } else if (from == RoleClaimed && to == RoleDone) {
         belt_exit_complete_step(store: store, key: key)
-      } else if from == RoleClaimed && to == RolePending {
+      } else if (from == RoleClaimed && to == RolePending) {
         match spool_queue_requeue_on_evidence(store: store, key: key, evidence: spool_queue_boot_evidence(store: store, key: key)) {
           SpoolRequeued { into: _ } => none
           SpoolRequeueNotDone { assessment: _ } => Present { value: "no evidence that the claimant is dead, so the claimed entry stays claimed" }
