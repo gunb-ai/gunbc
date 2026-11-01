@@ -2,10 +2,8 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem, HeadingBlock, ParagraphBlock,
-  UnorderedListBlock, OrderedListBlock, TextInline, H1, H2, H3, ThematicBreak,
-}
+import std.markdown { MarkdownBlock, MarkdownListItem }
+import gunbc.plans.md_helpers { h1, h2, h3, p, li_blocks, ul, ol, hr }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -86,7 +84,7 @@ fn documentary_blocks_refs(blocks: List<DocumentaryBlock>) -> List<DeclarationRe
 
 fn documentary_cited_p(text: DocumentaryText) -> DocumentaryBlock {
   DocumentaryBlock {
-    block: ParagraphBlock { inlines: [TextInline { text: documentary_text_render(text: text) }] },
+    block: p(text: documentary_text_render(text: text)),
     references: documentary_text_refs(text: text),
   }
 }
@@ -96,19 +94,19 @@ fn documentary_p(text: String) -> DocumentaryBlock {
 }
 
 fn documentary_h1(text: String) -> DocumentaryBlock {
-  documentary_plain_block(block: HeadingBlock { level: H1, inlines: [TextInline { text: text }] })
+  documentary_plain_block(block: h1(text: text))
 }
 fn documentary_h2(text: String) -> DocumentaryBlock {
-  documentary_plain_block(block: HeadingBlock { level: H2, inlines: [TextInline { text: text }] })
+  documentary_plain_block(block: h2(text: text))
 }
 fn documentary_h3(text: String) -> DocumentaryBlock {
-  documentary_plain_block(block: HeadingBlock { level: H3, inlines: [TextInline { text: text }] })
+  documentary_plain_block(block: h3(text: text))
 }
-fn documentary_hr() -> DocumentaryBlock { documentary_plain_block(block: ThematicBreak) }
+fn documentary_hr() -> DocumentaryBlock { documentary_plain_block(block: hr()) }
 
 fn documentary_li_blocks(blocks: List<DocumentaryBlock>) -> DocumentaryListItem {
   DocumentaryListItem {
-    item: MarkdownListItem { blocks: map(blocks, b => b.block) },
+    item: li_blocks(blocks: map(blocks, b => b.block)),
     references: documentary_blocks_refs(blocks: blocks),
   }
 }
@@ -120,13 +118,13 @@ fn documentary_cited_li(text: DocumentaryText) -> DocumentaryListItem {
 }
 fn documentary_ul(items: List<DocumentaryListItem>) -> DocumentaryBlock {
   DocumentaryBlock {
-    block: UnorderedListBlock { items: map(items, i => i.item) },
+    block: ul(items: map(items, i => i.item)),
     references: flat_map(items, i => i.references),
   }
 }
 fn documentary_ol(items: List<DocumentaryListItem>) -> DocumentaryBlock {
   DocumentaryBlock {
-    block: OrderedListBlock { items: map(items, i => i.item) },
+    block: ol(items: map(items, i => i.item)),
     references: flat_map(items, i => i.references),
   }
 }
