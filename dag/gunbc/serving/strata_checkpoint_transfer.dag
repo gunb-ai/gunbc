@@ -3,6 +3,7 @@ module gunbc.serving.strata_checkpoint_transfer
 import std.types { String, Int }
 import extdeps.tools.curl { classify_curl_http_code_after_newline, curl_body_before_http_code, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import extdeps.strata.session_file { SlotRequest, SlotReply, SlotReplyUnreadable, slot_reply }
+import extdeps.strata.request_bound_save { BoundSaveRequest, BoundSaveReply, BoundSaveReplyUnreadable, bound_save_reply }
 
 // A transport failure does not establish whether the native mutation completed.
 type SlotExchange
@@ -18,6 +19,27 @@ fn strata_slot_exchange(request: SlotRequest, exit_code: Int, stdout: String, st
       match reply {
         SlotReplyUnreadable { detail: d } => SlotOutcomeUnknown { detail: d }
         _ => SlotAnswered { reply: reply }
+      }
+    }
+  } }
+}
+
+// The consumer selects the contract by the engine build it targets: strata_slot_exchange speaks upstream
+// Strata, this speaks Strata plus the request-bound save patch. A build without the patch answers with
+// the typed BoundSaveEngineLacksPatch, which is an answer and not an unknown outcome.
+type BoundSaveExchange
+  = BoundSaveAnswered { reply: BoundSaveReply }
+  | BoundSaveOutcomeUnknown { detail: String }
+
+fn strata_bound_save_exchange(request: BoundSaveRequest, exit_code: Int, stdout: String, stderr: String) -> BoundSaveExchange {
+  if exit_code != 0 { BoundSaveOutcomeUnknown { detail: stderr } }
+  else { match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => BoundSaveOutcomeUnknown { detail: c as String }
+    CurlWroteHttpStatus { status: status } => {
+      let reply = bound_save_reply(request: request, status: status, body: curl_body_before_http_code(stdout: stdout))
+      match reply {
+        BoundSaveReplyUnreadable { detail: d } => BoundSaveOutcomeUnknown { detail: d }
+        _ => BoundSaveAnswered { reply: reply }
       }
     }
   } }
