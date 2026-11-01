@@ -22,7 +22,7 @@ import gunbc.design_ruling { the_mint_of_a_fleet_ssh_keypair_is_account_creation
 import extdeps.github.actions { Step, RunStep, UsesStep, workflow_dispatch_max_inputs }
 import extdeps.filesystem.filesystem_io
 import gunbc.repo.repo_self_build { repo_self_build_command }
-import gunbc.shell_command_text { shell_command_text_refused_poison }
+import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_release_build_step_timeout_minutes }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fleet_keypair_mint_job, fleet_converge_fleet_keypair_mint_step_if,
@@ -646,15 +646,23 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
   // was disclosed as a crutch for an interpreter that predated the seed-build fold; that interpreter
   // is not the one that evaluates claims any more, so the branch had exactly one remaining effect:
   // turning a serialization refusal into a green. A refusal now reddens this claim, which is where it
-  // belongs -- the seam that mints the poison text is the next rung, and the rung with its seam list is
-  // declared on the carrier that owns the token: gunbc.shell_command_text, beside
-  // shell_command_text_refused_poison.
+  // belongs. The class has an owning row:
+  // gunbc.recurring_failure_mode.a_serializer_drops_admitted_children_from_a_malformed_body, whose
+  // 2026-10-20 and 2026-10-28 receipts are this same boundary -- a marker standing in for a refused
+  // emission, with no claim reading the producer's output; this specimen is recorded there. Stated plainly
+  // so the citation is not over-claimed: gunbc.recurring_failure_mode.seed_sha256_is_runner_relative's
+  // named deferral is a DIFFERENT check (the hand-run #[ignore]d seed-build reproducibility test, the arm
+  // #15235 sent to Manager 2's lane), not this falsifier, and no row claimed this one before it was
+  // written. The escape branch itself was not in the original witness: it came from #15329 (commit
+  // 8bbf41599c4a), which turned a refusal into a green. The seam that mints the poison text is the next
+  // rung, and the rung with its seam list is declared on the carrier that owns the token:
+  // gunbc.shell_command_text, beside shell_command_text_refused_poison.
   model == committed
 }
 
 // THE CONTROL READS THE MARKER, NOT A SOURCE SPELLING. No seam's constant is quoted here: the needle is
-// derived from the authority this route already mints from -- gunbc.shell_command_text
-// shell_command_text_refused_poison -- as its first word. Derivation failing is not a pass: the carrier is
+// derived, in gunbc.shell_command_text ::shell_command_text_refusal_marker, from the authority this
+// route already mints from -- shell_command_text_refused_poison -- as its first word. Derivation failing is not a pass: the carrier is
 // Optional<String> and Absent makes this claim FALSE. A weaker needle silently stops matching: each of these
 // constants begins with its own token and then diverges, so the full sentence of one seam does not contain
 // another seam's marker -- that is inspection of the constants' own texts, not a measurement, and the
@@ -674,10 +682,6 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
 // those. That each constant re-types the token in its own prose instead of spelling it from one declared
 // token is a fork, and it is declared where it lives: on gunbc.shell_command_text, beside
 // shell_command_text_refused_poison, with its next-rung trigger and the typed-refusal seam list.
-fn bash_refusal_marker_token() -> Optional<String> {
-  return shell_command_text_refused_poison.split(delimiter: " ").first()
-}
-
 // THE CONTROL THAT READS THE MARKER, NOT THE SOURCE. A refused bash fold mints that token in place of a step
 // body. A committed-workflow EQUALITY check cannot see a family-wide refusal: when a regen installs a refused
 // step, both sides of the comparison carry the token and equality still holds. So this claim reads the token
@@ -688,7 +692,7 @@ fn bash_refusal_marker_token() -> Optional<String> {
 test fn refusal_poison_never_reaches_a_build_step_body() -> Bool {
   let mint_model = model_build_run(purpose: "the fleet keypair mint")
   let wait_model = model_build_run(purpose: "the grant wait")
-  match bash_refusal_marker_token() {
+  match shell_command_text_refusal_marker() {
     // No needle, no verdict: refuse rather than check against a weaker string.
     Absent => false
     Present { value: marker } =>

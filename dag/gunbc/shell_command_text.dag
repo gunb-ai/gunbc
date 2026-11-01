@@ -22,7 +22,7 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 // THE TOKEN IS OWNED HERE, AND THE FORK IS DECLARED HERE. This constant is the authority for the bash-fold
 // marker: a check that has to recognise a refusal out of GENERATED text derives its needle from this line
 // instead of re-typing the token -- gunbc.test.claim.host.fleet_keypair_mint_witness
-// ::bash_refusal_marker_token does, and it fails closed (refuses) when the derivation fails. The token is
+// ::shell_command_text_refusal_marker does, and it fails closed (refuses) when the derivation fails. The token is
 // not yet spelled only here: four other constants repeat it in their own prose --
 // ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
 // fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
@@ -45,6 +45,15 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 // __GUNBC_SOL_HOLD_RENDER_REFUSED__, __GUNBC_EFFECT_PLAN_BASH_REFUSED__, __GUNBC_INVOKE_EMIT_REFUSED__,
 // __GUNBC_OIDC_READBACK_REFUSED__, __GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__, __WITNESS_ORCH_EMIT_REFUSED__)
 // and are separate authorities, not arms of this one.
+
+// THE MARKER AS A NEEDLE, for a check that has to recognise a refusal in text that was GENERATED rather
+// than typed. Derived from the authority constant and never re-typed: the hand spellings this replaces
+// were a second copy of one fact, and a copy that can drift silently out of sync with the thing it copies.
+// The carrier is Optional so a check can FAIL CLOSED -- matching against a needle that failed to derive
+// (the empty string matches everything) must never read as a pass.
+fn shell_command_text_refusal_marker() -> Optional<String> {
+  return shell_command_text_refused_poison.split(delimiter: " ").first()
+}
 
 // THE MARKER NAMES WHY THE SERIALIZER REFUSED. A refusal swallowed into a constant marker leaves the
 // operator holding "a command intent was rejected" with no reason, which is a located refusal turned
