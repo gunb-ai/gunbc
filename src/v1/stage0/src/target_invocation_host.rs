@@ -686,28 +686,15 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
     }
 }
 
-/// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
-/// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
-/// IS THE SUBJECT IN THIS CHECKOUT? A subject is named from the repository root, which is where a
-/// dispatch runs; a `cargo test` process starts in the package directory instead, so the search walks
-/// toward the root rather than trusting one working directory. The question stays the same -- does any
-/// ancestor checkout carry this file -- so a row naming a subject that no longer exists still refuses.
+/// IS THE SUBJECT IN THIS CHECKOUT? Resolved against the host's ONE checkout root:
+/// `cli_run::workspace_root` -- the nearest ancestor of the process working directory that carries a
+/// `.git`, refused loudly when the process runs outside any checkout. A dispatch runs from the
+/// repository root, which is where a subject is named from; a `cargo test` process starts in the
+/// package directory, and the host's root derivation answers that too. The root is derived once and
+/// never guessed by searching, so a subject cannot be satisfied by a file in an unrelated ancestor or
+/// in an outer checkout: DESIGN.md §5 refuses an unavailable precise answer instead of widening it.
 fn instrument_subject_is_present(path: &str) -> bool {
-    let candidate = std::path::Path::new(path);
-    let mut dir = match std::env::current_dir() {
-        Ok(dir) => dir,
-        Err(_) => return candidate.exists(),
-    };
-    for _ in 0..8 {
-        if dir.join(candidate).exists() {
-            return true;
-        }
-        match dir.parent() {
-            Some(parent) => dir = parent.to_path_buf(),
-            None => break,
-        }
-    }
-    candidate.exists()
+    cli_run::workspace_root().join(path).exists()
 }
 
 /// THE SUBJECT A GENERATED ROW NAMES MUST BE IN THE CHECKOUT BEFORE IT RUNS.
@@ -738,6 +725,11 @@ fn instrument_subject_absence_refusal(
     }
 }
 
+/// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
+/// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
+///
+/// Its first act is the subject gate: a generated row whose subject the checkout does not carry
+/// refuses, located, before any producer is selected (see `instrument_subject_absence_refusal`).
 fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
     if let Some(refusal) = instrument_subject_absence_refusal(&producer, label) {
         return InvocationOutcome {
@@ -4760,43 +4752,13 @@ mod registry_rows_identity_tests {
 mod instrument_registry_generated_falsifier {
     use super::*;
 
-    /// CONTROL: the table the dispatch reads is the rendering of the model's binding rows -- all 62
-    /// instruments, each with the subject its binding row names. A row dropped from the roster, or a
-    /// subject rewritten in the host, lands here.
-    #[test]
-    fn the_dispatch_table_is_the_rendered_roster() {
-        let rows = instrument_registry();
-        assert_eq!(rows.len(), 62, "the instrument table lost or gained a row");
-        let labels: Vec<&str> = rows.iter().map(|(l, _)| l.target.as_str()).collect();
-        for expected in [
-            "self-host",
-            "roster-import-sweep-controls",
-            "native-serve-startup-refusal",
-            "heads-reading-differential",
-            "append-chain-ladder",
-        ] {
-            assert!(
-                labels.contains(&expected),
-                "instrument {expected} lost its row"
-            );
-        }
-        let subject_count = rows
-            .iter()
-            .filter(|(_, p)| {
-                matches!(
-                    p,
-                    TargetProducer::NativeClaimProgram { .. }
-                        | TargetProducer::NativeServeProgram { .. }
-                        | TargetProducer::CliWireProgram { .. }
-                        | TargetProducer::NativeCensusVerb { .. }
-                )
-            })
-            .count();
-        assert_eq!(
-            subject_count, 37,
-            "the roster carries 37 subjects (17 claim programs, 12 wire programs, 5 serve programs, 3 census verbs)"
-        );
-    }
+    // Completeness of this table is not asserted here by counting rows. The identity join already lives
+    // in this file: `registry_rows_identity_tests::registry_matches_rows` evaluates
+    // gunbc.instrument_targets instrument_bindings through the interpreter and joins it against
+    // instrument_registry() by label, kind, entry and function in BOTH directions, so a row dropped from
+    // the roster, a row added to the roster without one, or a subject rewritten on either side is named
+    // by label. A count copied from today's tree would be a change detector, which DESIGN.md §5 refuses:
+    // "Completeness is an identity join, not a count equality."
 
     /// CONTROL: every subject the committed table names is present in this checkout. This is the leg
     /// that a stale table fails -- it is the shape of PR 15298, where a row named a subject that was
