@@ -427,9 +427,10 @@ fn blower_duct_design_of(row: CardRow) -> BlowerDuctDesign? {
 }
 
 // The A16 instance, kept for the A16-only route reports (product.printed_chassis.card_cooling_route).
-// test.claim.duct_card_catalog_witness pins that it equals blower_duct_design_of over the A16 row, so the
-// 40.64 mm here and the one the selection derives cannot drift apart.
-data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: micrometer(count: 40640))
+// The pitch is cem_slot_envelope over the A16's two slots, not a second spelling of 40.64 mm. BlowerDuctDesign
+// carries the pitch as a bare Micrometer, so the figure's CitedFigureStanding stops at card_slot_pitch and
+// the printed designs do not carry it; that is the type's grain, named here rather than hidden.
+data a16_blower_duct_design: BlowerDuctDesign = blower_duct_design(slot_pitch: cem_slot_envelope(slot_count: 2).value)
 
 fn larger_um(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 fn smaller_um(a: Int, b: Int) -> Int { if a < b { a } else { b } }
@@ -941,6 +942,24 @@ fn plane_on_end_connector_relief(f: EndFaceMeasurement, d: GpuDuctDesign, face_z
     z_hi: plane_on_end_flip_z(z: seat_z - um(m: plane_on_end_relief_front_reach(d: d)), face_z: face_z))
 }
 
+// THE REST OF THE KEEP-OUT. plane_on_end_connector_relief opens the floor and the seat to the head's reach, which is
+// all the head and the cable's turn need. The kernel's POWER-KEEPOUT envelope is deeper than that (the fit policy's
+// connector_keepout_depth, 40 mm), and the housing's top-end side wall stands in it from the relief's back edge to the
+// top of the pocket: a 1.22 mm sliver beside the pocket, 455.139 mm3, which is the overlap the print route refused. The
+// envelope is NOT shrunk to pass. The printed wall is taken out of it instead, across the connector's own footprint, from
+// the relief's back edge to a wall past the envelope's depth, and out to the shoulder's own top edge so no
+// sub-millimetre skin of wall is left standing beside the cut. The blower is a purchased part and is not cut; the
+// housing's other three walls still locate it.
+fn plane_on_end_keepout_relief(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign, face_z: Int, seat_z: Int) -> Primitive {
+  let top = um(m: f.face_length) / 2
+  let keep_len = connector_keepout_length(f: f, d: d)
+  let band = um(m: f.window_from_back)
+  let x_hi = larger_um(a: top, b: um(m: plane_on_end_shoulder_top_x(f: f, d: d, b: b)))
+  plane_on_end_slab(x_lo: top - keep_len, x_hi: x_hi, y_lo: 0, y_hi: band,
+    z_lo: plane_on_end_flip_z(z: seat_z + um(m: d.connector_keepout_depth) + um(m: d.wall), face_z: face_z),
+    z_hi: plane_on_end_flip_z(z: seat_z + um(m: plane_on_end_relief_back_reach(d: d)) - um(m: d.wall), face_z: face_z))
+}
+
 // Does a protrusion of `reach` behind the card's end face still fit, given the declared rear bound? Relief
 // handles anything up to the floor's own depth plus the headroom the bound leaves; beyond that the only
 // remedy is lifting the blower, and the lift needed is reach minus (floor + headroom) -- which by
@@ -1103,13 +1122,16 @@ fn plane_on_end_duct_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuct
       // direction the plugged head lives in.
       plane_on_end_slab(x_lo: 0 - housing_x / 2 - sc, x_hi: 0 + housing_x / 2 + sc, y_lo: housing_lo_y - sc, y_hi: housing_hi_y + sc, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: housing_lo_z, face_z: face_z)),
       plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - 2 * wall, y_hi: housing_lo_y + wall, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + wall),
-      // The passage down to the fins: the window's plug passage, cleared through the shoulder's floor and the
-      // collector's floor so the turned air reaches the fins instead of striking a plate.
-      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z + 2 * wall, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z - fl - wall, face_z: face_z)),
+      // The passage down to the fins: the plug's BORE (the lip's footprint less a wall each side, the footprint the
+      // interface's own bore cut uses), cleared through the shoulder's floor and the collector's floor so the turned
+      // air reaches the fins instead of striking a plate. It is the bore and not the lip's outer footprint: the outer
+      // footprint reaches fl + wall into the plug lip and deletes the lip that seats the part in the card's window.
+      plane_on_end_slab(x_lo: window_x - (plug_w - 2 * wall) / 2, x_hi: window_x + (plug_w - 2 * wall) / 2, y_lo: window_y - (plug_h - 2 * wall) / 2, y_hi: window_y + (plug_h - 2 * wall) / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z + 2 * wall, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z - fl - wall, face_z: face_z)),
       // The connector relief: printed material is taken out of the 8-pin band's own footprint for the whole
-      // depth the kernel's POWER-KEEPOUT envelope claims, so the plugged connector and its latch sit in a
+      // depth the head and the cable's turn reach (the rest of the envelope's depth is plane_on_end_keepout_relief), so the plugged connector and its latch sit in a
       // cleared window instead of pressing against the shoulder's floor. See plane_on_end_connector_relief.
       plane_on_end_connector_relief(f: f, d: d, face_z: face_z, floor_hi_z: floor_hi_z, seat_z: seat_z),
+      plane_on_end_keepout_relief(f: f, d: d, b: b, face_z: face_z, seat_z: seat_z),
     ], interface.cuts), card_screw_holes(f: f, d: d, face_z: face_z)),
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: LayOnXY,
     notes: "Print shoulder-down; the shoulder floor is solid, the housing pocket is open upward and open toward the card along the whole outlet band, and the collector's roof needs support. Drive both M3 x 4 screws into the end cap's inserts through the flange BEFORE the blower goes down, then drop the housing into the pocket with its intake facing the rear chassis fan. The 8-pin connector keep-out is CROSSED by the shoulder's top-end corner (26.28 mm) and the operator admitted it; the floor over the connector's band is relieved away so the plugged header and its 3 mm latch sit in a cleared window -- fit-test it PLUGGED, and if anything protrudes behind the end more than 36.5 mm (plane_on_end_max_admissible_protrusion) the home refuses and the latch must come off or the blower must move forward. PLA for an unpowered fit prototype only; PETG or ASA for service.")

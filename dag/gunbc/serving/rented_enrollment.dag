@@ -1,7 +1,7 @@
 module gunbc.serving.rented_enrollment
 
 import std.types { String, NonEmptyStr, List, Map, Int }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import std.optional { Present, Absent }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.serving_enrollment {

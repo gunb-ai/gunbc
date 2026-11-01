@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_dogfood_route
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_store_root, dogfood_start_store_unready }
 import std.nat { Nat }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -674,10 +675,6 @@ data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v6"
 // the AttemptStateRoot member gunbc.live_deploy.spec deployment_owned_steps installs with its owner
 // and mode before any belt timer runs, and the directory the session placement records already
 // share -- under its own key. A root of its own would be a second deployment member for one file.
-fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr
-}
-
 // THE START RECEIPT, every field the acceptance read requires. Minted only by
 // dogfood_start_candidate (from one WorkflowAttemptEvidence) or by the total decoder below, both of
 // which check every join; the wire encoder re-checks them, so correctness does not rest on
@@ -1064,6 +1061,11 @@ fn dogfood_occupied_slot_record(defect: String?) -> DogfoodStartRecord {
 
 fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
   let root = dogfood_start_store_root(instance: instance)
+  let unready = dogfood_start_store_unready(instance: instance)
+  if unready != "" { DogfoodStartRefused { reason: unready } } else { dogfood_start_record_ready(instance: instance, root: root) }
+}
+
+fn dogfood_start_record_ready(instance: HostDashboardInstance, root: NonEmptyStr) -> DogfoodStartRecord {
   match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key) {
     CasObservedUnreadable { cause: _ } => DogfoodStartRefused { reason: "the start receipt slot cannot be read, so whether a start is recorded is unknown" }
     CasObservedReadable { readable } =>
@@ -1131,6 +1133,10 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
 // a receipt the total decoder accepts. A plain function rather than a floor witness: its subject is
 // a deployment's durable store, which a CI runner does not have. An unreadable slot is not a pass.
 fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
+  if dogfood_start_store_unready(instance: instance) != "" { false } else { dogfood_route_acceptance_ready(instance: instance) }
+}
+
+fn dogfood_route_acceptance_ready(instance: HostDashboardInstance) -> Bool {
   match observe_cas_slot_state(root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key) {
     CasObservedUnreadable { cause: _ } => false
     CasObservedReadable { readable } =>

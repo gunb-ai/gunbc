@@ -166,8 +166,9 @@ test fn w_the_blower_outlet_is_cited_and_closes_on_the_housing() -> Bool {
     && match delta_bfb1012m_outlet_standing { CitedToAuthority { authority: _ } => true TranscribedUncited { read_obligation: _ } => false ObservedByReceipt { observed: _ } => false }
 }
 
-// THE DESIGNS A DUCT IS BUILT AGAINST ARE DERIVED FROM THE CARD, and for the A16 they are the ones it was
-// printed with: the wall design's every number, and the blower design's slot pitch.
+// THE DESIGNS A DUCT IS BUILT AGAINST ARE DERIVED FROM THE CARD, and for the A16 they equal the A16-only
+// designs the route reports read: six of the wall design's numbers, and the blower design's slot pitch and
+// card count. Only the plug fit ring was printed (#15521); this claims no blower design was.
 test fn w_the_a16_designs_derived_from_its_duct_card_are_the_printed_ones() -> Bool {
   match duct_card_dims(card: a16_duct_card) {
     Present { value: d } =>

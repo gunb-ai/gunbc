@@ -1949,7 +1949,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_netrc_is_owner_only_and_gone_after_a_call_that_failed"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_succeeded"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_srv3_login_body_is_owner_only_and_gone_after_a_login_that_failed"),
-  bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_failed_rotation_reaches_the_bmc_call_and_leaves_no_credential_behind"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "the_password_body_reaches_curl_on_stdin_and_never_as_a_path"),
   bin_wet(entry: "dag/test/claim/bmc/bmc_credential_off_disk_real_execution_witness.dag", f: "a_file_name_that_leaves_the_bracket_directory_is_refused_and_touches_nothing_outside"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),

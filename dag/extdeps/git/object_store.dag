@@ -354,6 +354,23 @@ fn git_sha256_object_id(hex: String) -> GitObjectId? {
   }
 }
 
+// git's NULL object id: the id git itself spells as forty zeros, the tree that does not exist. It is a
+// constant, not a parse -- the value is fixed by git -- and the only honest way to name it is the
+// declared constructor at the type's home, where ONE reviewable spelling serves every consumer and the
+// field's own refinement (std.content_hash Sha1DigestHex = String where lower_hex_40) checks the
+// spelling. Four consumers used to ask the emitter for a String -> GitObjectId cast instead:
+// gunbc.compute.work_provider_local's null-tree refusal, two fixtures in
+// test.claim.compute.work_request_witness, one in test.claim.fleet.fleet_converge_cli_witness. A cast
+// from a text literal into a nominal type has no declared route -- the note above is exactly why -- and
+// the native emitter refuses the pair, so those closures could not be emitted at all (RED: compiling
+// test.claim.compute.work_request_witness for rust reported the cast at all three production/fixture
+// sites). Every NON-literal path still goes through the validating constructors above; this constant is
+// the one spelling no parser has to discover, and witness_git_null_object_id_agrees_with_the_validating
+// _constructor keeps the two in agreement so the constant cannot drift from what a parse would admit.
+data git_null_sha1_object_id: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "0000000000000000000000000000000000000000" }
+}
+
 // Format-aware equality, held beside the type rather than in a consumer: two ids of different
 // families are never equal, so a repository mid SHA-1/SHA-256 transition cannot produce a false
 // match on hex alone. It lived briefly in gunbc.merge_admission, which is generic Git behaviour
