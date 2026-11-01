@@ -1,6 +1,8 @@
 module std.host_text
 
 import std.types { Char, List }
+import std.nat { Nat }
+import std.optional { Optional }
 
 // THE HOST-TEXT CARRIER AND THE OPERATIONS WHOSE SEMANTICS NEED IT (operator ruling H2, 2026-10-17,
 // v2-namespace-cutover). HostText is the opaque, native representation of text a host hands the
@@ -51,4 +53,37 @@ fn chars(text: HostText) -> List<Char> {
 // unicode_scalar_fold, the conversion plan's route, calls this).
 fn text_of_chars(scalars: List<Char>) -> HostText {
   chars_to_string(chars: scalars, start: 0, end: scalars |> count)
+}
+
+// THE INDEXED READ OF A HOST TEXT, WITH ABSENCE TYPED (tidy-ant-251 ruling, 2026-11-01, the F5 row of the
+// primitive-egress family). The one-code-point host text at code-point position `pos` of `text`, or Absent
+// when `pos` is at or past the end. `pos` is a CODE-POINT position, never a byte offset: for the text whose
+// scalars are [a, e-acute, b], position 1 is the single scalar e-acute and position 3 is Absent --
+// v2.test.claim.char_at_unicode_witness measures both.
+//
+// ABSENCE IS TYPED, NOT INVENTED (DESIGN section 5; gunbc.recurring_failure_mode
+// absence_carried_by_a_second_representation). The ambient operation refuses nothing today: it returns the
+// EMPTY TEXT at or past the end and clamps a negative position to index 0, so an absent read is
+// indistinguishable from an empty one and a negative position reads as the first character. This
+// declaration removes both. `pos` is std.nat Nat, so a negative position is not expressible at the
+// boundary, and absence is an arm of the canonical carrier std.optional.Optional (rulings
+// cardinality_one_concept, dag_absence_is_one_meaning) -- not a char_at-specific sum, and not a sentinel a
+// caller has to recognize.
+//
+// A HOST SEAM, LIKE chars ABOVE. The body is a self-call no realization reaches; the realization binds by
+// THIS declaration's identity (std.primitive_projection primitive_char_at, a HostRealizedSeam row), and a
+// target without that realization refuses at realization rather than falling back to a name. Its primitive
+// signature already returns the Optional -- the shape of std.algebra map_lookup_primitive_delegate, whose
+// body is the same self-call -- so the seam yields a declared Optional value instead of a value plus a
+// special case for "nothing there".
+//
+// COST (DESIGN section 6, bare minimum cost). The realization is constant-time on the ASCII path and
+// position-proportional on the general path (src/v1/runtime_rust.dag, v1_rt::char_at; the contract row
+// std.primitives char_at_contract records work "pos" and says nothing carrier-sensitive -- making it
+// carrier-sensitive is a named follow-up, not this change). A .dag body here, a guard over chars then a
+// scalar read, would make every call linear and turn the per-character loops among the ambient call sites
+// quadratic; src/v2/std/witness list_nth shows that shape and pays it over a list, where there is no host
+// carrier to read through.
+fn char_at(text: HostText, pos: Nat) -> Optional<HostText> {
+  char_at(text: text, pos: pos)
 }
