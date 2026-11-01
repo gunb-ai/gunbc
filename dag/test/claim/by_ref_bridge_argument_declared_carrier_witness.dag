@@ -53,18 +53,22 @@ module test.claim.by_ref_bridge_argument_declared_carrier_witness
 // second claim asserts the plain borrow survives for a name, so widening the rule into a wrapper at
 // every borrow site reddens the floor too.
 //
-// WHAT THESE CLAIMS ARE NOT. fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_
-// probe.dag (red) and by_ref_primitive_bound_argument_probe.dag (the one-`let` control, which has
-// always compiled) are the rustc-level differential and the right evidence for the DIAGNOSIS, but
-// they are not enrolled on the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so
-// they run on demand only. What these two claims add is an executed pin on the thing this change
-// actually alters — the emitted text — at two seed compiles instead of a build of the whole closure.
+// WHAT THESE CLAIMS ARE, EXACTLY. Two arms over two programs, each one seed compile: the call arm pins the
+// emitted form, and the name arm pins that the plain borrow survives where no binding is needed, so widening
+// the rule into a wrapper at every borrow site reddens the floor. There is no third, rustc-level artifact
+// behind them: an earlier revision pointed at `fixtures/fixture_closure_rustc/
+// by_ref_primitive_generic_call_argument_probe.dag` and `by_ref_primitive_bound_argument_probe.dag` as the
+// differential, and neither file exists in this repository -- citations to a home that does not resolve are
+// §3 defects, so they are gone rather than left as decoration. The rustc-level fact is the seed rebuild
+// itself (recurring_failure_mode
+// by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow, run 41299024017).
 //
 // The programs below are kept in the exact spelling that was measured to emit the defect form, so a
 // reader can run either one through `gunbc compile` and diff it against the assertion.
 
-// A by-ref bridge over an unbound call to the generic `fold_list`: the red arm's shape, with the
-// same primitives as fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_probe.dag.
+// A by-ref bridge over an unbound call to the generic `fold_list`: the shape that was measured emitting the
+// defect form, kept in the spelling it was measured in so a reader can run it through `gunbc compile` and
+// diff the result against the assertion below.
 fn by_ref_generic_call_argument_source() -> String {
   "module byrefgenericarg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(ids: List<Int>) -> List<Int> {\n  sorted_map_keys(fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))\n}\n"
 }

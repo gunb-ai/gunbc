@@ -12311,16 +12311,19 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
 // own seed, so `seed: rc_empty_map()` settles at its default `HashMap<_, _>` while `map_insert`
 // answers `Rc<HashMap<_, _>>` -- E0308 at three sites in v2.compiler.source_authority at one commit
 // (recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow;
-// fixtures/fixture_closure_rustc/by_ref_primitive_generic_call_argument_probe.dag is that program).
+// test.claim.by_ref_bridge_argument_declared_carrier_witness
+// by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier is that program, compiled through
+// the emitter, and it is red without this rule).
 // v1's checker had ALREADY typed that argument; the emission threw the type away and let rustc guess
 // a different one.
 //
 // So the borrow carries the type v1 derived: bind the value at its own inferred carrier and borrow the
 // binding. That is the form a human writes -- `let m: Rc<HashMap<String, Bool>> = fold_list(..);
-// map_keys(m: m)` -- and fixtures/fixture_closure_rustc/by_ref_primitive_bound_argument_probe.dag is
-// exactly that program, same primitives, same nesting, which has always compiled. That is what makes
-// this a claim about the BORROW SITE and not about `fold_list` or `rc_empty_map`: the program is the
-// same either way, and the only difference rustc sees is the named type.
+// map_keys(m: m)`. The control for that comparison is a program in the tree, not a note: the same witness
+// module's by_ref_bridge_over_a_name_keeps_the_plain_borrow compiles a by-ref bridge over a plain name and
+// requires the bare `&s`, so what this rule changes is the BORROW SITE -- over a call whose type arguments
+// nothing states, and only there -- and not `fold_list` or `rc_empty_map`. A name already carries its own
+// type, which is why it needs no binding and why widening the wrapper to every borrow site reddens that arm.
 //
 // The annotation is not a new guess. It is the SAME node v1's walk resolved for that argument
 // (`Node.inferred`, `Resolved`), rendered by `render_node_type` -- the one authority for a Rust
