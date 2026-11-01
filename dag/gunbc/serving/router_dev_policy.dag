@@ -213,8 +213,21 @@ fn router_dev_models_lines() -> List<String> {
   ]
 }
 
-fn router_dev_access_lines() -> List<String> {
+// ONE reading of which row owns a stored binding or an active counter: a row's own name or any name it
+// retires, resolved against the COMPLETE configured row set and independent of the requested model. Model
+// conflict, carry, retention counting, trim and the rented-pool summary all read it, so a rename cannot change
+// what any of them decides. Rows are written with no retiring name shared or live (router_dev_retiring_name_conflict).
+fn router_dev_row_lines() -> List<String> {
   [
+    "local owner_of = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
+    "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
+  ]
+}
+
+fn router_dev_access_lines() -> List<String> {
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local function refuse(status, kind, msg) ngx.status = status ngx.header['Content-Type'] = 'application/json' ngx.say(cjson.encode(\{error = \{message = msg, type = kind}})) return ngx.exit(status) end",
     "local h = ngx.var.http_authorization or ''",
@@ -247,7 +260,6 @@ fn router_dev_access_lines() -> List<String> {
     "  local sk = 'pending:' .. tostring(body.model) .. '|' .. session",
     "  state:set(sk, state:get(sk) or ngx.now(), " + to_string(second_count(s: router_dev_pending_ttl())) + ")",
     "end",
-    "local function active(u) local n=state:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n=n+(state:get('active:' .. old) or 0) end return n end",
     "local candidates = \{}",
     // An out-of-service row is out of the model entirely: it is not a candidate, is never picked, and is
     // not reachable by a stale binding. A drained engine left in the file only lets a hand edit or a
@@ -335,18 +347,17 @@ fn router_dev_access_lines() -> List<String> {
     "local stuck = state:get('session:' .. session)",
     // A binding to a RETIRED name belongs to the row that retires it: the engine was renamed, not lost, so its
     // session keeps its placement and its cache.
-    "if stuck and not candidates[stuck] then for _, u in pairs(candidates) do for _, old in ipairs(u.retiring_names or \{}) do if stuck == old then stuck = u.name end end end end",
-    // A binding may name an engine that no longer answers this model. Refuse only when the bound
-    // row is a LIVE row of a different model: the caller is addressing one engine's model while
-    // holding another's cache, and silently re-placing would answer from the wrong weights.
-    // An unknown name, or a row that is out of service or ejected, is not a conflict -- it has no
-    // surviving cache to lose, so the pick below re-places the session onto a live engine. DIVERGENCE FROM THE
-    // LIVE ROUTER, which answers 409 for an unknown name too: that refusal strands the client for the whole
-    // binding span with nothing it can do, since the row it names no longer exists anywhere.
+    "if stuck then stuck = owner_of[stuck] or stuck end",
+    // A binding may name an engine that no longer answers this model. Refuse when the bound row is a LIVE row
+    // of a different model: the caller is addressing one engine's model while holding another's cache, and
+    // silently re-placing would answer from the wrong weights. A name no configured row owns is refused the
+    // same way, as the live router does: unknown does not establish that no cache survives, and re-placing it
+    // is a permission to reconstruct this policy does not grant (that is the relocation operation's to give).
+    // A row that is out of service is not a conflict; the pick below re-places the session.
     "if stuck and stuck ~= '' and not candidates[stuck] and body.model ~= ROUTER_ALIAS then",
     "  local gone = nil",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do if u.name == stuck then gone = u end end",
-    "  if gone and gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
+    "  if gone == nil or gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
     "end",
     "local function available(u) return candidates[u.name] ~= nil and not state:get('unavailable:' .. u.name) end",
     // NO MOVE ON CONGESTION, for every capped row (operator 2026-10-28: one placement per conversation; deliberate
@@ -380,6 +391,7 @@ fn router_dev_access_lines() -> List<String> {
     "    for _, k in ipairs(state:get_keys(0)) do",
     "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
     "        local row = state:get(k)",
+    "        row = row and (owner_of[row] or row)",
     "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
     "      end",
     "    end",
@@ -420,7 +432,7 @@ fn router_dev_access_lines() -> List<String> {
     "  return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap')",
     "end",
     "return serve(pick, session, out, effort)",
-  ]
+  ])
 }
 
 // The log phase releases the turn and tallies the outcome: every answered request by status, and each
@@ -595,7 +607,7 @@ fn router_dev_binding_ttl() -> Second { second(count: 21600) }
 // sessions up to retain and unbind the rest, so each unbound session pays one cold turn elsewhere instead of
 // evicting its neighbours on every turn. The least recently seen go first; a row without retain is never trimmed.
 fn router_dev_trim_lines() -> List<String> {
-  [
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\"}}') return end",
@@ -605,6 +617,7 @@ fn router_dev_trim_lines() -> List<String> {
     "for _, k in ipairs(state:get_keys(0)) do",
     "  if k:sub(1, 8) == 'session:' then",
     "    local up = state:get(k)",
+    "    up = up and (owner_of[up] or up)",
     "    if up then by[up] = by[up] or \{} table.insert(by[up], \{key = k, seen = state:get('seen:' .. k:sub(9)) or 0}) end",
     "  end",
     "end",
@@ -620,12 +633,12 @@ fn router_dev_trim_lines() -> List<String> {
     "end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(out))",
-  ]
+  ])
 }
 
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
 fn router_dev_stats_lines() -> List<String> {
-  [
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
@@ -679,9 +692,22 @@ fn router_dev_stats_lines() -> List<String> {
     "out.pending = pend",
     // RENTED POOL ADMISSION: stranded demand asks for a card only when the rented pool is full. An uncapped
     // pool has no cap to be full against.
-    "local rented = \{active = 0, cap = 0}",
-    "for _, u in ipairs(ROUTER_UPSTREAMS) do if u.overflow then rented.active = rented.active + (state:get('active:' .. u.name) or 0) rented.cap = rented.cap + (u.cap or 0) end end",
-    "rented.full = rented.cap > 0 and rented.active >= rented.cap",
+    // A capped row is full at its cap (0 included: no turns); an uncapped rented row admits without a ceiling,
+    // so it is never full while it is in service and not ejected. Active counts read as admission reads them.
+    "local rented = \{active = 0, cap = 0, uncapped = 0}",
+    "local any_rented = false",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.overflow and u.in_service ~= false then",
+    "    any_rented = true",
+    "    if u.cap == nil then",
+    "      if not state:get('unavailable:' .. u.name) then rented.uncapped = rented.uncapped + 1 end",
+    "    else",
+    "      rented.active = rented.active + active(u)",
+    "      rented.cap = rented.cap + u.cap",
+    "    end",
+    "  end",
+    "end",
+    "rented.full = any_rented and rented.uncapped == 0 and rented.active >= rented.cap",
     "out.rented = rented",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
@@ -690,7 +716,7 @@ fn router_dev_stats_lines() -> List<String> {
     "  for _, k in ipairs(state:get_keys(0)) do if k:find('^session:') then local id=k:sub(9) out.sessions[id]=\{upstream=state:get(k), last_seen=state:get('seen:' .. id)} end end",
     "end",
     "ngx.say(cjson.encode(out))",
-  ]
+  ])
 }
 
 type RouterDevSite {

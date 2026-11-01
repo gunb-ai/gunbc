@@ -7,7 +7,7 @@ import std.measure { byte_size }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject, json_int, json_string, json_object, json_kv }
 import extdeps.docker.cli_service { DockerCli, SignalHangup }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
@@ -15,7 +15,7 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, RetentionFrontier, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party_upstreams, router_dev_retiring_name_conflict, no_effort_rules }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, RetentionFrontier, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party_upstreams, router_dev_retiring_name_conflict, no_effort_rules, RouterDevRetention, RetentionUnderivable, router_dev_row_refusal, router_dev_layout_retention }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -347,6 +347,18 @@ fn dev_upstreams_json_r1_retain_0() -> String { dev_upstreams_json_with(f1: dev_
 // session cannot enter, so only the carry lets it through.
 fn dev_upstreams_json_h1_renamed() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4323"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1b", extra: ",\"retiring_names\":[\"h1\"],\"retain\":0")) }
 
+// h1 renamed AGAIN (h1b -> h1c, retain 1, mark 4324): h-1 is still stored against h1b, so it counts against
+// h1c's retain before it returns. o1 lowered to cap 0 beside the uncapped u1 (a mixed rented pool).
+fn dev_upstreams_json_h1_renamed_again() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4324"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":1"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "true"))
+}
+
+// The same rows at retain 0 (mark 4325), so h-1 -- still stored against the retired h1b -- is past retain, with u1
+// out of service: the rented pool is only the cap-0 o1, which admits no turns.
+fn dev_upstreams_json_h1_retain_0_pool_zero() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4325"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":0"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "false"))
+}
+
 fn dev_r1_row(retain: String) -> String {
   "\{\"name\":\"r1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kr\",\"model\":\"m-r\",\"cap\":4,\"retain\":" + retain + "},"
 }
@@ -360,6 +372,18 @@ fn dev_f1_row(cap: String, extra: String) -> String {
 }
 
 fn dev_upstreams_json_with(f1: String, r1: String, h1: String) -> String {
+  dev_upstreams_json_rented(f1: f1, r1: r1, h1: h1, o1: dev_o1_row(cap: "1"), u1: dev_u1_row(in_service: "true"))
+}
+
+fn dev_o1_row(cap: String) -> String {
+  "\{\"name\":\"o1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ko\",\"model\":\"m-o\",\"overflow\":true,\"cap\":" + cap + "},"
+}
+
+fn dev_u1_row(in_service: String) -> String {
+  "\{\"name\":\"u1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ku\",\"model\":\"m-u\",\"overflow\":true,\"in_service\":" + in_service + "},"
+}
+
+fn dev_upstreams_json_rented(f1: String, r1: String, h1: String, o1: String, u1: String) -> String {
   "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4,\"effort_effects\":[\{\"client\":\"xhigh\",\"to\":\"high\"},\{\"client\":\"none\",\"drop_thinking\":true}]},"
     + "\{\"name\":\"b\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19443,\"sni\":\"fakeb\",\"key\":\"kb\",\"model\":\"m-b\",\"cap\":4},"
     + "\{\"name\":\"c\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kc\",\"model\":\"m-c\",\"cap\":0},"
@@ -369,8 +393,8 @@ fn dev_upstreams_json_with(f1: String, r1: String, h1: String) -> String {
     + f1
     + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"in_service\":true},"
     + r1
-    + "\{\"name\":\"o1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ko\",\"model\":\"m-o\",\"overflow\":true,\"cap\":1},"
-    + "\{\"name\":\"u1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ku\",\"model\":\"m-u\",\"overflow\":true},"
+    + o1
+    + u1
     + h1
     + "\{\"name\":\"s1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ks1\",\"model\":\"m-s\",\"cap\":1},"
     + "\{\"name\":\"s2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"ks2\",\"model\":\"m-s\",\"cap\":1},"
@@ -405,7 +429,55 @@ fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
 // A ROW WITH NO OPTIONALITIES SET, so a falsifier case can state the one field it is about. The guard
 // under test reads name, in_service and retiring_names only; everything else is filler.
 fn dev_row(name: String, retiring: List<String>) -> RouterDevUpstream {
-  RouterDevUpstream { name: name, scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", capacity: OwnedCap { turns: 1 }, max_model_len: 0, path_prefix: "", retiring_names: retiring, in_service: true, retention: NoRetention, effort_effects: no_effort_rules() }
+  dev_row_retaining(name: name, retiring: retiring, retention: NoRetention)
+}
+
+fn dev_row_retaining(name: String, retiring: List<String>, retention: RouterDevRetention) -> RouterDevUpstream {
+  RouterDevUpstream { name: name, scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", capacity: OwnedCap { turns: 1 }, max_model_len: 0, path_prefix: "", retiring_names: retiring, in_service: true, retention: retention, effort_effects: no_effort_rules() }
+}
+
+// A SHIPPED ROW'S RENDERED MEMBER, compared as the JSON value the proxy reads: the typed row and the wire row
+// are two facts, and only this reads the second.
+fn shipped_row_member_is(name: String, key: String, want: JsonValue) -> Bool {
+  any(row_array(json: router_dev_first_party_json()), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: "name"), n => n == json_string(s: name)) && any(json_object_members_named(members: members, key: key), v => v == want)
+    _ => false
+  })
+}
+
+fn shipped_row_effort_rule_is(name: String, client: String, to: String) -> Bool {
+  any(row_array(json: router_dev_first_party_json()), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: "name"), n => n == json_string(s: name)) && any(json_object_members_named(members: members, key: "effort_effects"), v => match v {
+      JsonArray { elements } => any(elements, e => e == json_object(members: [json_kv(key: "client", value: json_string(s: client)), json_kv(key: "to", value: json_string(s: to))]))
+      _ => false
+    })
+    _ => false
+  })
+}
+
+fn shipped_h11_05_renders_derived_retain_and_cap() -> Bool {
+  let rows = filter(router_dev_first_party_upstreams(), u => u.name == "h11-05")
+  count(rows) == 1 && all(rows, u => match router_dev_layout_retention(group: "h11-strata@85") {
+    RetentionAdmitted { conversations: n } => shipped_row_member_is(name: "h11-05", key: "retain", want: json_int(n: n as Int)) && match u.capacity {
+      OwnedCap { turns: t } => shipped_row_member_is(name: "h11-05", key: "cap", want: json_int(n: t as Int))
+      _ => false
+    }
+    _ => false
+  })
+}
+
+fn shipped_pool_row_renders_its_cap() -> Bool {
+  let rows = filter(router_dev_first_party_upstreams(), u => u.name == "ctrl-vast-pool")
+  count(rows) == 1 && all(rows, u => match u.capacity {
+    RentedCapped { turns: t } => shipped_row_member_is(name: "ctrl-vast-pool", key: "cap", want: json_int(n: t as Int)) && shipped_row_member_is(name: "ctrl-vast-pool", key: "overflow", want: JsonBool { value: true })
+    _ => false
+  })
+}
+
+fn underivable_retention_is_refused_and_shipped_rows_are_not() -> Bool {
+  let bad = router_dev_row_refusal(rows: [dev_row_retaining(name: "x", retiring: [], retention: RetentionUnderivable { group: "no-such-group" })])
+  let good = router_dev_row_refusal(rows: router_dev_first_party_upstreams())
+  (match bad { Present { value: _ } => true Absent => false }) && (match good { Present { value: _ } => false Absent => true })
 }
 
 // HOW MANY TIMES A NEEDLE OCCURS. Some rows must count, not just spot: eleven rows carrying a field is a
@@ -712,6 +784,23 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let reloaded_h1_models = await_models(mark: "4323", n: 20)
   let carried = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-h"), path: "/v1/chat/completions")
   let uncarried = dev_request(key: "ck-falsifier", session: "h-new", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  // 9b. ONE OWNER PER BINDING: h1b is renamed h1c (retain 1) with h-1 still stored against h1b.
+  // A request for another model through the retired name is the model-conflict refusal, a new session meets the
+  // retain h-1 already fills, and the rented pool of a cap-0 row beside an uncapped one is not full.
+  let w11 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed-again.json", content: dev_upstreams_json_h1_renamed_again())
+  let renamed_again = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-renamed-again.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_again = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_again_models = await_models(mark: "4324", n: 20)
+  let retired_other_model = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let renamed_new_session = dev_request(key: "ck-falsifier", session: "h-new2", body: model_body(model: "m-h"), path: "/v1/chat/completions")
+  let mixed_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 9c. TRIM counts old-name bindings under their owner, and a pool of only a cap-0 row is full.
+  let w12 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", content: dev_upstreams_json_h1_retain_0_pool_zero())
+  let lowered_again = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_zero = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_zero_models = await_models(mark: "4325", n: 20)
+  let zero_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let trim_old_names = dev_request(key: "ck-falsifier", session: "t", body: "\{\}", path: "/router/trim-bindings")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
   let removed = remove_all()
@@ -809,6 +898,11 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_any_string_effort_is_reported_in_the_header", held: contains(s: effort_unmapped, p: "X-Gunbc-Reasoning-Effort: turbo") && contains(s: effort_unmapped, p: "\n200 exit=0"), observed: one_line(s: effort_unmapped)),
     case_of(identity: "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain", held: w9.success && lowered_r1.exit_code == 0 && reloaded_r1.exit_code == 0 && contains(s: reloaded_r1_models, p: "4322") && contains(s: trim_no_key, p: "\n401 exit=0") && contains(s: trim_get, p: "\n405 exit=0") && contains(s: trim_post, p: "\"unbound\":1") && contains(s: ret_1_after_trim, p: "\n429 exit=0"), observed: concat(one_line(s: trim_post), one_line(s: ret_1_after_trim))),
     case_of(identity: "dev_binding_to_a_retired_name_is_carried_to_the_row_that_retires_it", held: w10.success && renamed.exit_code == 0 && reloaded_h1.exit_code == 0 && contains(s: reloaded_h1_models, p: "4323") && contains(s: carried, p: "auth=Bearer kh") && contains(s: carried, p: "\n200 exit=0") && contains(s: uncarried, p: "\n429 exit=0"), observed: concat(one_line(s: carried), one_line(s: uncarried))),
+    case_of(identity: "dev_a_retired_name_binding_is_one_owner_for_model_conflict_retention_and_trim", held: w11.success && renamed_again.exit_code == 0 && reloaded_again.exit_code == 0 && contains(s: reloaded_again_models, p: "4324") && contains(s: retired_other_model, p: "\n409 exit=0") && contains(s: renamed_new_session, p: "\n429 exit=0") && w12.success && lowered_again.exit_code == 0 && reloaded_zero.exit_code == 0 && contains(s: reloaded_zero_models, p: "4325") && contains(s: trim_old_names, p: "\"h1c\"") && contains(s: trim_old_names, p: "\"unbound\":1"), observed: concat(one_line(s: retired_other_model), concat(one_line(s: renamed_new_session), one_line(s: trim_old_names)))),
+    case_of(identity: "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct", held: contains(s: mixed_pool_stats, p: "\"full\":false") && contains(s: zero_pool_stats, p: "\"full\":true"), observed: concat(one_line(s: mixed_pool_stats), one_line(s: zero_pool_stats))),
+    case_of(identity: "shipped_rows_render_the_derived_retain_cap_and_effort_values", held: shipped_h11_05_renders_derived_retain_and_cap() && shipped_pool_row_renders_its_cap() && shipped_row_effort_rule_is(name: "srv1-vllm", client: "high", to: "xhigh"), observed: ""),
+    case_of(identity: "an_underivable_retention_is_refused_at_the_row_boundary", held: underivable_retention_is_refused_and_shipped_rows_are_not(), observed: ""),
+    case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: contains(s: dev_text(), p: "input_micro=150000") && contains(s: dev_text(), p: "input=150000/1000000") && contains(s: dev_text(), p: "output=470000/1000000") && contains(s: dev_text(), p: "as_of='2026-10-26'") && contains(s: dev_text(), p: "read_on='2026-10-26'") && contains(s: dev_text(), p: "estimated=true"), observed: ""),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -885,6 +979,11 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_any_string_effort_is_reported_in_the_header",
     "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain",
     "dev_binding_to_a_retired_name_is_carried_to_the_row_that_retires_it",
+    "dev_a_retired_name_binding_is_one_owner_for_model_conflict_retention_and_trim",
+    "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct",
+    "shipped_rows_render_the_derived_retain_cap_and_effort_values",
+    "an_underivable_retention_is_refused_at_the_row_boundary",
+    "comparison_rows_carry_the_cited_quote_values_and_the_live_shape",
     "world_is_removed",
   ]
 }
