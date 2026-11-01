@@ -652,44 +652,49 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
   model == committed
 }
 
-// One token, five mints, and NOT a sixth spelling. Every bash seam that refuses substitutes the same token
-// for a step body, each time inside its own constant: shell_command_text_refused_poison
-// (dag/gunbc/shell_command_text.dag:20), ci_floor_build_verify_refused_poison (dag/gunbc/ci/ci_spec.dag:682),
-// fleet_converge_locked_apply_emit_refused_poison (dag/gunbc/fleet/fleet_converge_plan.dag:2788),
-// bash_emit_program_sequence_refused_poison (src/v2/workflow/bash_emit.dag:237) and
-// ci_release_build_refused_poison (src/v2/workflow/ci_release_build_emit.dag:43);
-// shell_command_text_refused_with_cause appends the serializer's reasons after the same token. So a check
-// against any one constant's full wording tests one seam, not the family -- measured: with the needle set to
-// one constant's sentence, this claim returned TRUE against a committed body that carried a DIFFERENT seam's
-// marker. The token is taken from the authority constant this family already declares, as its first word; it
-// is not re-typed here. That the other four constants repeat the token in their own prose instead of
-// deriving it is a fork, and closing it (one declared token, the five constants spelled from it) is the
-// follow-up named in this module's PR description, with the trigger: the next claim that needs to read a
-// refusal marker from generated text.
-fn bash_refusal_marker_token() -> String {
-  match shell_command_text_refused_poison.split(delimiter: " ").first() {
-    // The Absent arm can only weaken the check (the unsplit sentence still begins with the token), so a
-    // refusal can never turn green because the token could not be derived.
-    Present { value: token } => token
-    Absent => shell_command_text_refused_poison
-  }
+// THE CONTROL READS THE MARKER, NOT A SOURCE SPELLING. No seam's constant is quoted here: the needle is
+// derived from the authority this route already mints from -- gunbc.shell_command_text
+// shell_command_text_refused_poison -- as its first word. Derivation failing is not a pass: the carrier is
+// Optional<String> and Absent makes this claim FALSE, because a weaker needle is exactly the measured false
+// green -- with the needle set to one constant's full sentence, this claim returned TRUE against a committed
+// body carrying a DIFFERENT seam's marker.
+// What it covers, and what it does not: the tree declares twenty *_refused_poison constants across eight
+// distinct tokens. The five that begin with THIS token are the bash-fold family that can reach a hosted build
+// step: shell_command_text_refused_poison and shell_command_text_refused_with_cause in gunbc.shell_command_text,
+// ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec, fleet_converge_locked_apply_emit_refused_poison in
+// gunbc.fleet.fleet_converge_plan, bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and
+// ci_release_build_refused_poison in v2.workflow.ci_release_build_emit. The needle is that token because the
+// seam that renders the bodies read below is gunbc.repo.repo_self_build repo_self_build_env_preamble, whose
+// refusal is shell_command_text_refused_with_cause -- the same token, with the serializer's reasons appended.
+// Other seams mint other tokens (__GUNBC_ORCH_EMIT_REFUSED__, as in helper_snapshot_readback_emit_refused_poison
+// in gunbc.live_deploy.emit; __GUNBC_SOL_HOLD_RENDER_REFUSED__ in gunbc.machine_intake.sol_hold;
+// __GUNBC_EFFECT_PLAN_BASH_REFUSED__; __GUNBC_INVOKE_EMIT_REFUSED__; and others), and this claim does not read
+// those. That each constant re-types the token in its own prose instead of spelling it from one declared token
+// is a fork; closing it is the follow-up named in this module's PR description, with its trigger: the next
+// claim that has to read a refusal marker out of generated text.
+fn bash_refusal_marker_token() -> Optional<String> {
+  return shell_command_text_refused_poison.split(delimiter: " ").first()
 }
 
 // THE CONTROL THAT READS THE MARKER, NOT THE SOURCE. A refused bash fold mints that token in place of a step
 // body. A committed-workflow EQUALITY check cannot see a family-wide refusal: when a regen installs a refused
 // step, both sides of the comparison carry the token and equality still holds. So this claim reads the token
 // out of what the route PRODUCES and out of what the committed artifact CARRIES, and it fails if either side
-// ever does. The first two legs are the non-vacuity arm -- if a route rendered an empty body, every
-// contains-check below would pass by saying nothing -- so the preamble's own first line must be present on
-// both model sides.
+// ever does -- or if the token cannot be derived at all. The first two legs are the non-vacuity arm: if a
+// route rendered an empty body, every contains-check below would pass by saying nothing, so the preamble's own
+// first line must be present on both model sides.
 test fn refusal_poison_never_reaches_a_build_step_body() -> Bool {
-  let marker = bash_refusal_marker_token()
   let mint_model = model_build_run(purpose: "the fleet keypair mint")
   let wait_model = model_build_run(purpose: "the grant wait")
-  starts_with(s: mint_model, prefix: "GUNBC_SEED_CHECKOUT=")
-    && starts_with(s: wait_model, prefix: "GUNBC_SEED_CHECKOUT=")
-    && !mint_model.contains(needle: marker)
-    && !wait_model.contains(needle: marker)
-    && !any(xs: committed_body(step_name: fleet_keypair_mint_build_step_name), line => line.contains(needle: marker))
-    && !any(xs: committed_body(step_name: grant_wait_build_step_name), line => line.contains(needle: marker))
+  match bash_refusal_marker_token() {
+    // No needle, no verdict: refuse rather than check against a weaker string.
+    Absent => false
+    Present { value: marker } =>
+      starts_with(s: mint_model, prefix: "GUNBC_SEED_CHECKOUT=")
+        && starts_with(s: wait_model, prefix: "GUNBC_SEED_CHECKOUT=")
+        && !mint_model.contains(needle: marker)
+        && !wait_model.contains(needle: marker)
+        && !any(xs: committed_body(step_name: fleet_keypair_mint_build_step_name), line => line.contains(needle: marker))
+        && !any(xs: committed_body(step_name: grant_wait_build_step_name), line => line.contains(needle: marker))
+  }
 }
