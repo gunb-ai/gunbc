@@ -29,11 +29,11 @@ fn rust_integer_primitive_matches_width(primitive: RustPrimitive, width: Standar
         Absent => false
         Present { value: bits } =>
           bits == integer_standard_integer_type_width_bits(standard_integer_type: width)
-          && match (integer_standard_integer_type_signedness(standard_integer_type: width), a) {
+          && (match (integer_standard_integer_type_signedness(standard_integer_type: width), a) {
             (Signed, OrderedRingAlgebra) => true
             (Unsigned, SemiringAlgebra) => true
             _ => false
-          }
+          })
       }
   }
 }

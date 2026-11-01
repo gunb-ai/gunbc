@@ -1,6 +1,6 @@
 module gunbc.integer_width_carrier
 
-import std.types { List, String, Bool }
+import std.types { List, String, Bool, NonEmptyStr }
 import std.integer { Signedness, Signed, Unsigned }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -69,5 +69,5 @@ fn integer_width_source_declarations(width: StandardIntegerType) -> List<Declara
 // UInt8Ready remains Int until this route is enforced. PointerWidth needs a resolved target width;
 // it does not inherit a host width by default and is outside the ten fixed-width bindings below.
 data integer_width_carrier_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "Consumer: the seed Rust type realization and source conversion/arithmetic admission, after the 2026-11-01 CARRIER model lands. Trigger: integer-width Compose remains folded and has a checked construction route enforcing integer_width_domain for literals AND nonliteral values; only integer_width_implicit_conversion is implicit; named checked arithmetic and the source trapping/refusal disposition govern overflow. Rust emission consumes gunbc.rust_integer_width_bindings, never a UInt8 branch or provenance_host_numeric_alias. Controls: UInt8 255 admits/300 refuses at the existing located literal wall; runtime 300 refuses the named mint; signedness change is named; same-sign widening is exact; 255+1 refuses while explicitly named wrapping yields zero; Int and unrelated Compose unchanged. Preserve current literal walls throughout. Model rows alone discharge none of these execution obligations."
+  description: "Consumer: the seed Rust type realization and source conversion/arithmetic admission, after the 2026-11-01 CARRIER model lands. Trigger: integer-width Compose remains folded and has a checked construction route enforcing integer_width_domain for literals AND nonliteral values; only integer_width_implicit_conversion is implicit; named checked arithmetic and the source trapping/refusal disposition govern overflow. Rust emission consumes gunbc.rust_integer_width_bindings, never a UInt8 branch or provenance_host_numeric_alias. Controls: UInt8 255 admits/300 refuses at the existing located literal wall; runtime 300 refuses the named mint; signedness change is named; same-sign widening is exact; 255+1 refuses while explicitly named wrapping yields zero; Int and unrelated Compose unchanged. Preserve current literal walls throughout. Model rows alone discharge none of these execution obligations." as NonEmptyStr
 )

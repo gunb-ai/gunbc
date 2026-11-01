@@ -229,4 +229,3 @@ fn rust_integer_carrier_width(carrier: TargetCarrier) -> Int? {
     TerminalCarrier => Absent
   }
 }
-
