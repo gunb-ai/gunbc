@@ -17490,6 +17490,7 @@ pub fn emit_struct_from_children(
                 ),
             ),
             generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
             env.source_indices.clone(),
             header_clone_param_names,
             deserialize_forbidden,
@@ -17937,6 +17938,8 @@ pub fn enum_derives(
         ),
         deserialize_forbidden,
         generic_param_names,
+        emit_info.clone_bounded_type_params.clone(),
+        emit_info.type_decl_items.clone(),
         source_indices,
     )
 }
@@ -18050,6 +18053,8 @@ pub fn emit_enum_from_children(
             children.clone(),
             generic_param_names.clone(),
             header_clone_param_names,
+            emit_info.clone_bounded_type_params.clone(),
+            emit_info.type_decl_items.clone(),
             env.source_indices.clone(),
         );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
