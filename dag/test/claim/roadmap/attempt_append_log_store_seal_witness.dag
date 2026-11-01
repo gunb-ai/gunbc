@@ -36,9 +36,20 @@ data append_log_seal_path_minter_source: String = "module probe_append_log_seal_
 
 data append_log_seal_lawful_source: String = "module probe_append_log_seal_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptAppendLogStore, AttemptAppendLogReading, AttemptLogMember, AttemptWorkerEvents, attempt_append_log_store_open }\nfn f(i: HostDashboardInstance) -> AttemptAppendLogReading {\n  attempt_append_log_store_open(instance: i, node: \"n\", attempt_key: \"k\", member: AttemptWorkerEvents)\n}\n"
 
+// The STRIPPED-TWIN source: the SAME forged literal, but importing the twin record (unsealed.dag) that carries the
+// identical shape without the sole_constructor keyword. The compiler must accept it -- the refusal of the real
+// forged literal is the keyword, not the shape.
+data append_log_seal_twin_literal_source: String = "module probe_append_log_seal_twin\nimport std.types { NonEmptyStr, String }\nimport gunbc.durable_append_log_store { AppendLogSlot }\nimport test.fixture.attempt_append_log_seal.unsealed { AttemptAppendLogStore }\nfn f(d: NonEmptyStr, s: AppendLogSlot) -> AttemptAppendLogStore {\n  AttemptAppendLogStore { instance: \"srv1-lab\", node: \"n\", attempt_key: \"k\", member_name: \"AttemptWorkerEvents\", directory: d, slot: s }\n}\n"
+
 // (a) The seal: a foreign module cannot spell the sealed store (the caller-chosen `directory` is the raw-root route).
 test fn a_forged_attempt_append_log_store_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: append_log_seal_forged_literal_source, subject: "AttemptAppendLogStore"), holds: fn(n) { n == 1 }))
+}
+
+// (a-bis) Stripped twin: the identical forged literal against the same record WITHOUT sole_constructor is accepted
+// (zero SoleConstructorViolation), proving (a) is the keyword and not the shape/name/field-types.
+test fn the_same_forged_source_passes_against_the_seal_stripped_twin() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: append_log_seal_twin_literal_source, subject: "AttemptAppendLogStore"), holds: fn(n) { n == 0 }))
 }
 
 // (b) No raw-root route: the only mint is the business key; handing it a path (in place of the member) is refused.
