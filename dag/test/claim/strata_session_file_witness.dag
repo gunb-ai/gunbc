@@ -1,10 +1,12 @@
 module test.claim.strata_session_file_witness
 
 import std.types { Bool, String }
+import std.optional { Present }
 import std.measure { measure_count }
 import extdeps.strata.session_file {
   SlotSave, SlotRestore, SlotRequest, SlotTransferred, SlotRefused, SlotNativeRefused,
-  SlotReplyUnreadable, SessionInvalid, SessionIo, slot_request_path, slot_request_body, slot_reply,
+  SlotReplyUnreadable, SessionInvalid, SessionIo, SlotSaveConflict, RequestNotCurrent, RequestInFlight, EngineChanged,
+  slot_request_path, slot_request_body, slot_reply,
 }
 import gunbc.serving.strata_checkpoint_transfer { strata_slot_exchange, SlotOutcomeUnknown }
 
@@ -14,7 +16,7 @@ test fn slot_receipts_preserve_native_refusals_and_uncertain_publication() -> Bo
   let request = SlotRequest { action: SlotRestore, filename: "session.bin" }
   let invalid = slot_reply(request: request, status: 400, body: "{\"error\":{\"code\":400,\"message\":\"another configuration\",\"kind\":\"invalid\"}}")
   let refusal = match invalid { SlotRefused { refusal: SlotNativeRefused { error: SessionInvalid, published: false, message: _ } } => true _ => false }
-  let published = slot_reply(request: SlotRequest { action: SlotSave, filename: "session.bin" }, status: 500,
+  let published = slot_reply(request: SlotRequest { action: SlotSave { expected_request_id: none }, filename: "session.bin" }, status: 500,
     body: "{\"error\":{\"code\":500,\"message\":\"directory flush failed\",\"kind\":\"io\",\"published\":true}}")
   let uncertain = match published { SlotRefused { refusal: SlotNativeRefused { error: SessionIo, published: true, message: _ } } => true _ => false }
   let timed_out = strata_slot_exchange(request: request, exit_code: 28, stdout: "", stderr: "timed out")
@@ -30,9 +32,37 @@ test fn slot_receipt_must_name_the_requested_file_and_operation() -> Bool {
     _ => false
   }
   let other_file = match slot_reply(request: SlotRequest { action: SlotRestore, filename: "other.bin" }, status: 200, body: body) { SlotReplyUnreadable { detail: _ } => true _ => false }
-  let other_action = match slot_reply(request: SlotRequest { action: SlotSave, filename: "session.bin" }, status: 200, body: body) { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let other_action = match slot_reply(request: SlotRequest { action: SlotSave { expected_request_id: none }, filename: "session.bin" }, status: 200, body: body) { SlotReplyUnreadable { detail: _ } => true _ => false }
   let duplicate = match slot_reply(request: request, status: 200,
     body: "{\"id_slot\":0,\"filename\":\"session.bin\",\"n_restored\":100,\"n_restored\":99,\"n_read\":2048}") { SlotReplyUnreadable { detail: _ } => true _ => false }
   matched && other_file && other_action && duplicate && slot_request_path(request: request) == "/slots/0?action=restore"
     && slot_request_body(request: request) == "{\"filename\": \"session.bin\"}"
+}
+
+// Producer inhabitance: the pinned patch's serve.test_request_bound_save drives
+// the real HTTP/FIFO path, including legacy replies and native-process changes.
+test fn conditional_save_requires_the_exact_completed_response() -> Bool {
+  let request = SlotRequest { action: SlotSave { expected_request_id: Present { value: "chatcmpl-a" } }, filename: "a.bin" }
+  let receipt = "{\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048,\"request_id\":\"chatcmpl-a\"}"
+  let accepted = match slot_reply(request: request, status: 200, body: receipt) { SlotTransferred { transfer: _ } => true _ => false }
+  let legacy = match slot_reply(request: request, status: 200, body: "{\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let other = match slot_reply(request: request, status: 200, body: "{\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048,\"request_id\":\"chatcmpl-b\"}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let duplicate = match slot_reply(request: request, status: 200, body: "{\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048,\"request_id\":\"chatcmpl-a\",\"request_id\":\"chatcmpl-b\"}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  accepted && legacy && other && duplicate && slot_request_body(request: request) == "{\"filename\": \"a.bin\", \"expected_request_id\": \"chatcmpl-a\"}"
+}
+
+test fn conditional_save_conflicts_preserve_cause_and_uncertain_file() -> Bool {
+  let request = SlotRequest { action: SlotSave { expected_request_id: Present { value: "chatcmpl-a" } }, filename: "a.bin" }
+  let stale = match slot_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"stale\",\"condition\":\"request_not_current\"}}") {
+    SlotRefused { refusal: SlotSaveConflict { condition: RequestNotCurrent, published: false, message: _ } } => true _ => false
+  }
+  let busy = match slot_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"busy\",\"condition\":\"request_in_flight\"}}") {
+    SlotRefused { refusal: SlotSaveConflict { condition: RequestInFlight, published: false, message: _ } } => true _ => false
+  }
+  let changed = match slot_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"unverified\",\"condition\":\"engine_changed\",\"published\":true}}") {
+    SlotRefused { refusal: SlotSaveConflict { condition: EngineChanged, published: true, message: _ } } => true _ => false
+  }
+  let wrong_status = match slot_reply(request: request, status: 500, body: "{\"error\":{\"code\":500,\"message\":\"stale\",\"condition\":\"request_not_current\"}}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let unknown = match slot_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"unknown\",\"condition\":\"another_condition\"}}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  stale && busy && changed && wrong_status && unknown
 }
