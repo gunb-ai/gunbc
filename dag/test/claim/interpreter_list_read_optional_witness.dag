@@ -110,3 +110,21 @@ test fn a_field_read_off_an_absent_first_is_absent() -> Bool {
 test fn a_field_read_off_a_present_first_is_present() -> Bool {
   match ilro_rows.first().status { Present { value: s } => s == "ok"  Absent => false }
 }
+
+data ilro_ints: List<Int> = [1]
+
+data ilro_no_ints: List<Int> = []
+
+// `??` is the optional's elimination: Absent takes the right operand, Present peels to its value.
+// Each RED is false before the change (host-Null-only `??` returned Absent / the Present wrapper).
+test fn none_coalesced_takes_the_right_operand() -> Bool {
+  (none ?? 1) == 1
+}
+
+test fn a_present_first_coalesces_to_its_value_not_the_wrapper() -> Bool {
+  (ilro_ints.first() ?? 0) == 1
+}
+
+test fn an_absent_first_coalesces_to_the_right_operand() -> Bool {
+  (ilro_no_ints.first() ?? 7) == 7
+}

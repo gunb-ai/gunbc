@@ -8652,10 +8652,11 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     // value's truth and the right operand is never asked for.
                     Ok(Value::Bool(left.is_truthy()))
                 }
-                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
-                    if !matches!(left, Value::Null) =>
-                {
-                    Ok(left)
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                    match coalesce_present(&left, ctx)? {
+                        Some(present) => Ok(present),
+                        None => eval_expr(&binop_right(node.clone()), env, ctx),
+                    }
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
@@ -8940,11 +8941,7 @@ fn eval_var(
 
 fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) {
-            right
-        } else {
-            left
-        });
+        return Ok(coalesce_present(&left, ctx)?.unwrap_or(right));
     }
 
     if matches!(op, BinOp::Add) {
@@ -9686,6 +9683,13 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Err(InterpError::PatternMatchFailure {
         value: format!("{}", scrutinee_val),
     })
+}
+
+/// `left ?? right`: the present payload of an `Optional` left, `None` (take the right operand) when
+/// it is `Absent`. One rule for the lazy arm and `eval_binop`; a left that is not an `Optional`
+/// refuses rather than passing through.
+fn coalesce_present(left: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    optional_present_payload(left, ctx)
 }
 
 fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
@@ -21449,11 +21453,11 @@ fn map_response_to_value_json(
 ) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(json_to_value(json)),
+        _ => return Ok(json_to_value(json, ctx)),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(json_to_value(json));
+        return Ok(json_to_value(json, ctx));
     }
 
     let payload_count = children.len();
@@ -21785,7 +21789,7 @@ fn decode_json_by_declared_field_at(
         Some(InferredNode::Resolved { node }) => {
             decode_json_by_declared_type(json, node, path, ctx)
         }
-        _ => Ok(json_to_value(json)),
+        _ => Ok(json_to_value(json, ctx)),
     }
 }
 
@@ -21809,7 +21813,7 @@ fn decode_json_by_declared_type(
                 }
                 Ok(list_value(out))
             }
-            _ => Ok(json_to_value(json)),
+            _ => Ok(json_to_value(json, ctx)),
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
@@ -21860,12 +21864,12 @@ fn decode_json_by_declared_type(
             !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
         if !nullary {
             // A payload-carrying coproduct is not a JSON string and is outside this decode.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
             // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
             // its wire form; every other nullary coproduct is spelled as a string.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         return decode_nullary_coproduct(json, ty, &name, path, ctx);
     }
@@ -21923,7 +21927,7 @@ fn decode_json_by_declared_type(
                             ctx,
                         )?,
                     ),
-                    None => (key.clone(), json_to_value(value)),
+                    None => (key.clone(), json_to_value(value, ctx)),
                 };
                 if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
@@ -21932,7 +21936,7 @@ fn decode_json_by_declared_type(
             return Ok(map_value(fields));
         }
     }
-    Ok(json_to_value(json))
+    Ok(json_to_value(json, ctx))
 }
 
 fn decode_nullary_coproduct(
@@ -22161,9 +22165,10 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     ))
 }
 
-fn json_to_value(json: &serde_json::Value) -> Value {
+/// JSON null is absence: it builds the one `Optional.Absent` constructor, like `none`.
+fn json_to_value(json: &serde_json::Value, ctx: &InterpContext) -> Value {
     value_depth_guarded(|| match json {
-        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Null => optional_absent(ctx),
         serde_json::Value::Bool(b) => Value::Bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -22173,14 +22178,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::String(s) => str_value(s.clone()),
-        serde_json::Value::Array(arr) => {
-            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
-        }
+        serde_json::Value::Array(arr) => list_value(
+            arr.iter()
+                .map(|v| json_to_value(v, ctx))
+                .collect::<Vec<_>>(),
+        ),
         serde_json::Value::Object(obj) => {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v, ctx)))
                 })
                 .collect();
             map_value(fields)
@@ -30474,7 +30481,9 @@ mod value_depth_walker_tests {
         assert_eq!(super::json_container_depth(&wire), limit);
         let text = serde_json::to_string(&wire).expect("serializes");
         assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
-        assert!(json_to_value(&wire) == value);
+        assert!(json_to_value(&wire, &ctx) == value);
+        // JSON null is absence: the one `Optional.Absent` constructor, not host Null.
+        assert!(json_to_value(&serde_json::Value::Null, &ctx) == optional_absent(&ctx));
         // The fixture encoding spends two containers per List level (its tag object and its items
         // array), the empty leaf included, so limit / 2 Lists -- limit / 2 - 1 wrapping levels --
         // fit inside the limit.
