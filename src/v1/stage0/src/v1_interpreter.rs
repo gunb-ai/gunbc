@@ -30273,9 +30273,9 @@ mod value_depth_walker_tests {
         let ctx = fresh_ctx();
         let op = BinOp::NullCoalesce;
         let take = |l: Value, r: Value| super::eval_binop(&op, l, r, &ctx).expect("coalesces");
-        assert!(take(optional_absent(&ctx), Value::Int(1)) == Value::Int(1));
+        assert!(take(super::optional_absent(&ctx), Value::Int(1)) == Value::Int(1));
         assert!(take(super::optional_present(Value::Int(1), &ctx), Value::Int(0)) == Value::Int(1));
-        assert!(take(optional_absent(&ctx), Value::Int(7)) == Value::Int(7));
+        assert!(take(super::optional_absent(&ctx), Value::Int(7)) == Value::Int(7));
         assert!(super::eval_binop(&op, Value::Int(3), Value::Int(0), &ctx).is_err());
     }
 
