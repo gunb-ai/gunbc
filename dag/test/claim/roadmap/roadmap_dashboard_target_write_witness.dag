@@ -3,7 +3,6 @@ module test.claim.roadmap.roadmap_dashboard_target_write_witness
 import std.types { Bool, String, FilePath, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
-import std.roster_frontier { frontier_subject_key }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -17,7 +16,6 @@ import gunbc.roadmap.roadmap_dashboard_target_write {
   CreateNewNotDispatched,
   CreateNewStagingResidue,
   dashboard_target_write_create_new,
-  dashboard_target_write_consumer_frontier_rows,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
