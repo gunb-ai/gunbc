@@ -296,6 +296,12 @@ fn stage0_std_core_modules() -> List<String> {
       "std_optional",
       "std_algebra",
       "std_nat",
+      // Close the integer foundation dependency chain: constructors is a leaf;
+      // machine_constraints imports it and existing foundation modules; integer
+      // imports machine_constraints and existing std-core/runtime modules.
+      "std_constructors",
+      "std_machine_constraints",
+      "std_integer",
       "std_node",
       "std_syntax",
       "std_computation",
