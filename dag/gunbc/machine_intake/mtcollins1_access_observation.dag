@@ -346,10 +346,6 @@ data mtcollins1_boot_run_40264233543_diagnostics_hash: ContentHash = Sha256Hash(
   hex: "e419f3fcc65dea77b6774ae037067c82a03acf3e3784ea4ef5f63be8d41b2822",
 })
 
-// 2026-10-26T02:55:27.734Z: boot 5's own established_at, printed in its media line beside session_index 0
-// and redirection_status 1.
-data mtcollins1_boot_run_40258937016_media_established_at: EpochMs = 1792983327734
-
 // 2026-10-26T02:56:46Z: boot 5's `chassis bootparam get 5` read-back AFTER it set the override (the read
 // BEFORE it was 02:55:10Z).
 data mtcollins1_boot_run_40258937016_boot_param_read_back_at: EpochMs = 1792983406000
