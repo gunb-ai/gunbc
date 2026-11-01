@@ -430,15 +430,42 @@ type OpenAiChatCompletionRequest {
   frequency_penalty: JsonNumber?
 }
 
-// An enumerated member, so it gets the pair this file already uses for enumerated members: wire
-// name in, variant out, unknown kept whole. A request that names a fifth effort is not silently
-// read as one of the four, and it is not refused here either -- the endpoint owns that answer.
+// WHY THIS IS THE SIXTH COPY OF A PAIR AND IS NOT YET GENERALIZED (§6b). Five members of this file
+// already carry the same construction -- a wire-name table, a chain that reads it, an arm that keeps
+// an unknown name whole, and a match that re-emits (OpenAiToolCallType, OpenAiResponsesOutputContentType,
+// OpenAiResponsesOutputItemType, OpenAiResponsesStatus, OpenAiResponsesOutputItemStatus). §6b rejects a
+// repeated pattern until the author answers why it should not be generalized. The answer here is: it
+// SHOULD be, and not now, for two reasons that are facts rather than convenience. (1) Generalizing means
+// rewriting five members this PR does not own, three of them the Responses API shapes, and changing what
+// a parse returns for an undocumented wire name is a behavioural change on readers this PR has not read;
+// the honest unit of that change is one PR per upstream surface, with its readers. (2) The generic shape
+// is not yet determined by evidence: the six copies differ in whether an unknown name is kept, refused,
+// or folded into a status, and a table written now would be guessed rather than read off the last copy.
+// The follow-up is declared, not assumed: openai_chat_completion_wire_frontier_rows carries the row, whose
+// trigger is the seventh member or the first migration, and whose carrier is a wire-name table over a type
+// parameter (the language has parametric declarations: std.algebra Magma<T>, std.affine_space
+// SpatialResult<T>) with the unknown-name and empty-name arms supplied per member.
+//
+// An enumerated member: wire name in, variant out. A request that names a fifth effort is not
+// silently read as one of the four, and it is not refused here either -- the endpoint owns the
+// answer to an effort it does not know; this model only reports the shape.
+//
+// THE EMPTY NAME IS REFUSED, NOT CARRIED. `raw` is a `NonEmptyStr`, which is
+// `String where string_non_empty`, and that predicate is enforced at LITERAL sites only until
+// compile-time evaluation lands (std.types, feature:where-refinement-predicate-declaration-authority).
+// So routing an empty name into that field would put an empty string behind a type whose name
+// promises otherwise, and nothing would say so -- the type would be doing the lying. The refusal is
+// its own arm rather than a Bool parameter or a sanitizing default, because an absent name and an
+// undocumented name are three different facts the caller may need to tell apart, and §5 refuses
+// silently widening a failure arm. This is a fact about THIS endpoint's wire, not a general string
+// law; the general law, if one is ever needed, is std.types' predicate and stays there.
 type OpenAiReasoningEffort
   = EffortMinimal
   | EffortLow
   | EffortMedium
   | EffortHigh
-  | OpenAiReasoningEffortOther { raw: NonEmptyStr }
+  | UndocumentedEffortName { raw: NonEmptyStr }
+  | EmptyEffortName
 
 data openai_reasoning_effort_minimal_wire: String = "minimal"
 data openai_reasoning_effort_low_wire: String = "low"
@@ -450,7 +477,8 @@ fn parse_openai_reasoning_effort(raw: String) -> OpenAiReasoningEffort {
   else if raw == openai_reasoning_effort_low_wire { EffortLow }
   else if raw == openai_reasoning_effort_medium_wire { EffortMedium }
   else if raw == openai_reasoning_effort_high_wire { EffortHigh }
-  else { OpenAiReasoningEffortOther { raw: raw } }
+  else if raw == "" { EmptyEffortName }
+  else { UndocumentedEffortName { raw: raw } }
 }
 
 fn openai_reasoning_effort_wire(effort: OpenAiReasoningEffort) -> String {
@@ -459,7 +487,8 @@ fn openai_reasoning_effort_wire(effort: OpenAiReasoningEffort) -> String {
     EffortLow => openai_reasoning_effort_low_wire
     EffortMedium => openai_reasoning_effort_medium_wire
     EffortHigh => openai_reasoning_effort_high_wire
-    OpenAiReasoningEffortOther { raw: r } => r
+    UndocumentedEffortName { raw: r } => r
+    EmptyEffortName => ""
   }
 }
 
@@ -556,6 +585,13 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionRequest"),
     reason: "no module reads this record yet: the only consumer today is its own witness, and a model nobody reads is not yet evidence that the shape is right",
     dissolution: unbound_dissolution(description: "feature:s3-serving-request-read - the serving path's request read, which the approved plan gunbc.plans.fabric_serving_router puts in its S3 decisions, reads model, stream, stop and reasoning_effort out of this record, and the dashboard client builds it for the call it sends; when a production read and a production build both exist against this record this row deletes. The read belongs to that plan, not to this module: nothing here decides what to do with a request"),
+  ),
+  // The repeated enumerated-member pair, declared as debt with its carrier named rather than left
+  // in a comment: §6b allows deferring a generalization only with a stated reason and trigger.
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiReasoningEffort"),
+    reason: "the wire-name pair (table, read chain, unknown-keeping arm, re-emitting match) is written out by hand for the sixth time in this module; DESIGN section 6b makes the second local implementation the trigger to generalize, and the reason it is deferred here is in the comment above OpenAiReasoningEffort: rewriting five members this change does not own -- three of them Responses API shapes -- would change what an undocumented wire name reads to for readers this change has not read",
+    dissolution: unbound_dissolution(description: "feature:openai-wire-name-table-generalization - the seventh enumerated member of this module, or the first migration of an existing five, whichever comes first: one wire-name table over a type parameter (parametric declarations exist: std.algebra Magma<T>, std.affine_space SpatialResult<T>) taking the member's rows plus the unknown-name and empty-name arms, so adding a variant means adding a row and the pair is written once. The migrating PR must carry the readers of each member it converts, member by member"),
   ),
   // Same for the streamed payload: the framing is already read by extdeps.llm.openai_compat_sse,
   // but nothing yet reads what one of those events carries.
