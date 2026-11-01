@@ -25,7 +25,7 @@ import gunbc.fabric.fabric_storage_wire { fabric_storage_unwire_identity, Fabric
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import gunbc.fabric.fabric_storage_wire { fabric_storage_unwire_advance, fabric_storage_unwire_put }
 import gunbc.fabric.fabric_storage_client { served_reply_from, ServedAnswered, ServedFault }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots,
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots, fabric_store_declared_root, fabric_store_area_paths,
 
   FabricStorageOperations, fabric_store_open, FabricStoreReady, FabricStoreUnready,
   fabric_storage_file_put, fabric_storage_file_get, fabric_storage_file_head, fabric_storage_file_advance, fabric_storage_file_closure, fabric_storage_object_path,
@@ -245,6 +245,19 @@ fn observed_mode_octal(path: String) -> String {
   match coreutils_stat_path_mode(path: path as NonEmptyStr) {
     PathModeObserved { path: _, mode } => file_mode_octal(mode: mode)
     PathModeUnobservable { path: _, reason } => join(["unobservable: ", reason], "")
+  }
+}
+
+test fn a_store_whose_area_rows_were_never_provisioned_is_unready_naming_the_area_and_creates_nothing() -> Bool {
+  // THE MINT OBSERVES, IT DOES NOT CREATE: the declared root is provisioned but the objects/heads rows are
+  // not, so the mint must answer Unready naming "objects" and leave no directory behind.
+  let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_storage_rows.XXXXXX").path as String)
+  let root = fabric_store_declared_root(members: fabric_storage_slots, root: instance.instance_root)
+  if !shell.Mkdir.Parents(path: root).success { false } else {
+    match fabric_store_open(members: fabric_storage_slots, instance: instance, entry_mode: none) {
+      FabricStoreReady { store: _ } => false
+      FabricStoreUnready { area: a, detail: _ } => a == "objects" && !Filesystem.List(path: fabric_store_area_paths(members: fabric_storage_slots, instance: instance).objects as String).success
+    }
   }
 }
 

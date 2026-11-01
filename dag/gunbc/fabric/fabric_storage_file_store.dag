@@ -108,10 +108,9 @@ fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardIn
 
 // THE MINT. It takes the declared member chain and the business key -- never a path, never a directory
 // someone chose. It first lists the store root the declaration picks: a root the substrate has not
-// provisioned is Unready, and no caller can hand the mint a directory to paper over that. Then it stands
-// up the two AREAS under that root, created if absent (the old placement ensure, folded in so the areas
-// derive from the same declaration as the root). The root's parent, ownership and mode stay the
-// substrate's obligation; an unwritable parent refuses. `entry_mode` is a PUBLISHING posture, not a
+// provisioned is Unready, and no caller can hand the mint a directory to paper over that. Then it LISTS the two
+// AREAS under that root and creates nothing: a missing area is Unready naming it (creation and mode are
+// the owned-directory rows'). `entry_mode` is a PUBLISHING posture, not a
 // location: the placement mint derives it from the writer rosters (refusing while they are unresolved)
 // and hands it here; stores with no declared publication mode pass Absent and post at the process umask,
 // exactly as they did before.
@@ -126,18 +125,23 @@ fn fabric_store_open(members: List<NonEmptyStr>, instance: HostDashboardInstance
       FabricStoreUnready { area: "root", detail: join(["the store's directory ", root as String, " is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } =>
       FabricStoreUnready { area: "root", detail: join(["the store's directory ", root as String, " could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => {
-      let o = shell.Mkdir.Parents(path: areas.objects as FilePath)
-      if !o.success {
-        FabricStoreUnready { area: "objects", detail: join(["could not create ", areas.objects as String], "") }
-      } else {
-        let h = shell.Mkdir.Parents(path: areas.heads as FilePath)
-        if !h.success {
-          FabricStoreUnready { area: "heads", detail: join(["could not create ", areas.heads as String], "") }
-        } else {
-          FabricStoreReady { store: FabricStorageOperations { objects: areas.objects, heads: areas.heads, entry_mode: entry_mode } }
-        }
-      }
+    FilesystemDirectoryListed(_) => fabric_store_area_standing(areas: areas, entry_mode: entry_mode)
+  }
+}
+
+// EACH AREA IS OBSERVED, NEVER CREATED. Creation (and the mode) belongs to the owned-directory rows
+// fabric_storage_store_directories / compute_capacity_directories derive from the same declaration, so an
+// area no row has provisioned is Unready naming that area, never a directory made here at the umask.
+fn fabric_store_area_standing(areas: FabricStoreAreas, entry_mode: FileMode?) -> FabricStoreStanding {
+  let o = Filesystem.List(path: areas.objects as String)
+  if !o.success {
+    FabricStoreUnready { area: "objects", detail: join([areas.objects as String, " is not provisioned: ", o.error], "") }
+  } else {
+    let h = Filesystem.List(path: areas.heads as String)
+    if !h.success {
+      FabricStoreUnready { area: "heads", detail: join([areas.heads as String, " is not provisioned: ", h.error], "") }
+    } else {
+      FabricStoreReady { store: FabricStorageOperations { objects: areas.objects, heads: areas.heads, entry_mode: entry_mode } }
     }
   }
 }
